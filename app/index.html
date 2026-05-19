@@ -828,10 +828,170 @@ function calcSoldes(){
   return{gen,realEph,realAvail,prevEph,matelas,totalReal:Object.values(realAvail).reduce((s,v)=>s+v,0),totalPrev:Object.keys(prevEph).map(Number).filter(ym=>ym<=CUR_YEAR*12+11).reduce((s,ym)=>s+(prevEph[ym]||0),0)};
 }
 
+// ================================================================
+// CONGÉS ANNUELS
+// ================================================================
+function getSoldeAnnee(year){
+  const pa=S.profile&&S.profile.congesParAnnee;
+  if(pa&&pa[year]!==undefined)return pa[year];
+  return(S.profile&&S.profile.congesInit)||25;
+}
+function setSoldeAnnee(year,val){
+  if(!S.profile)return;
+  if(!S.profile.congesParAnnee)S.profile.congesParAnnee={};
+  S.profile.congesParAnnee[year]=val;
+}
+function getCET(){return(S.profile&&S.profile.congesCET)||0;}
+
+function calcCongesUsedForYear(year){
+  // Filter conges keys to that year only, then apply full calcCongesUsed logic
+  const allCgKeys=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='cg').sort();
+  const yearKeys=allCgKeys.filter(k=>k.startsWith(String(year)+'-'));
+  if(!yearKeys.length)return 0;
+  const cgSet=new Set(allCgKeys);// full set for écart rule
+
+  function isFullWeekCP(monday){
+    const monKey=dk(monday);
+    if(!cgSet.has(monKey))return false;
+    for(var i=0;i<7;i++){
+      const d=new Date(monday);d.setDate(monday.getDate()+i);
+      const v2=getVac(d);
+      const isWorked=v2.vac&&v2.vac!=='RH'&&!v2.absent;
+      if(isWorked&&!cgSet.has(dk(d)))return false;
+    }
+    return true;
+  }
+  const fullWeeks=new Set(),seenMon=new Set();let total=0;
+  yearKeys.forEach(function(k){
+    const d=new Date(k+'T12:00:00'),mon=getMonday(d),mk=dk(mon);
+    if(seenMon.has(mk))return;seenMon.add(mk);
+    if(isFullWeekCP(mon)){fullWeeks.add(mk);total+=5;}
+  });
+  const partialKeys=yearKeys.filter(function(k){
+    const d=new Date(k+'T12:00:00');return!fullWeeks.has(dk(getMonday(d)));
+  });
+  if(!partialKeys.length)return total;
+  function findReprise(fromDate){
+    const sd=new Date(fromDate);sd.setDate(sd.getDate()+1);
+    while(sd<=new Date('2031-01-01')){
+      const v2=getVac(sd);if(v2.vac&&v2.vac!=='RH'&&!v2.absent)return new Date(sd);
+      sd.setDate(sd.getDate()+1);}return null;
+  }
+  const groups={};
+  partialKeys.forEach(function(k){
+    const d=new Date(k+'T12:00:00'),r=findReprise(d),rk=r?dk(r):'none';
+    if(!groups[rk])groups[rk]={reprise:r,dates:[]};groups[rk].dates.push(d);
+  });
+  Object.values(groups).forEach(function(g){
+    const nb=g.dates.length;if(!g.reprise){total+=nb;return;}
+    const lastCp=new Date(Math.max.apply(null,g.dates));
+    const ecart=Math.round((g.reprise-lastCp)/(864e5))-1;
+    total+=nb+Math.max(0,ecart-2);
+  });
+  return total;
+}
+
 function calcCongesUsed(){
-  const cgKeys=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='cg').sort();
-  if(!cgKeys.length)return 0;
-  const cgSet=new Set(cgKeys);
+  // Total tous azimuts (pour compat récap, etc.) — somme sur toutes les années présentes dans S.conges
+  const allYears=[...new Set(Object.keys(S.conges||{}).filter(k=>S.conges[k]==='cg').map(k=>parseInt(k.slice(0,4))))];
+  return allYears.reduce((s,y)=>s+calcCongesUsedForYear(y),0);
+}
+
+function openCongesModal(){
+  document.body.classList.add('modal-open');
+  // Determine years range: min(year of first cg pose, today-1) to today+1
+  const allCgKeys=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='cg').sort();
+  const nowY=NOW.getFullYear();
+  const minY=allCgKeys.length?Math.min(parseInt(allCgKeys[0].slice(0,4)),nowY):nowY;
+  const maxY=nowY+1;
+  const years=[];for(let y=minY;y<=maxY;y++)years.push(y);
+
+  const cet=getCET();
+
+  let rows='';
+  years.forEach(function(y){
+    const solde=getSoldeAnnee(y);
+    const used=calcCongesUsedForYear(y);
+    const rest=Math.max(0,solde-used);
+    const isPast=y<nowY,isFut=y>nowY;
+    const rowStyle=isPast?'opacity:.6':'';
+    rows+=`<tr style="${rowStyle}">
+      <td style="padding:7px 8px;font-size:13px;font-weight:${y===nowY?'600':'400'};color:${y===nowY?'var(--text)':'var(--text2)'}">${y}</td>
+      <td style="padding:7px 8px;text-align:center">
+        <div style="display:flex;align-items:center;justify-content:center;gap:4px">
+          <button onclick="adjSoldeAnnee(${y},-1)" style="width:22px;height:22px;border-radius:50%;border:0.5px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center">−</button>
+          <span id="cpa-solde-${y}" style="font-size:13px;font-weight:500;min-width:28px;text-align:center">${solde} j</span>
+          <button onclick="adjSoldeAnnee(${y},+1)" style="width:22px;height:22px;border-radius:50%;border:0.5px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center">+</button>
+        </div>
+      </td>
+      <td style="padding:7px 8px;text-align:center;font-size:13px;color:var(--rendu-red-text)">${used} j</td>
+      <td style="padding:7px 8px;text-align:center;font-size:13px;font-weight:500;color:${rest>0?'var(--green)':'var(--text3)'}">${rest} j</td>
+    </tr>`;
+  });
+
+  const cetSection=`
+    <div style="margin-top:16px;padding:12px;background:var(--bg3);border-radius:var(--r);border:0.5px solid var(--border)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <span style="font-size:12px;font-weight:600;color:var(--amber)">CET — Compte Épargne Temps</span>
+        <span style="font-size:14px;font-weight:700;color:var(--amber)" id="cet-val">${cet} j</span>
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Jours mis en réserve depuis le solde annuel</div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button onclick="adjCET(-1)" style="flex:1;padding:8px;border:0.5px solid var(--border);border-radius:var(--r);background:transparent;color:var(--text2);cursor:pointer;font-size:12px">− 1 j</button>
+        <button onclick="adjCET(+1)" style="flex:1;padding:8px;border:0.5px solid var(--border2);border-radius:var(--r);background:rgba(224,152,48,.12);color:var(--amber);cursor:pointer;font-size:12px;font-weight:500">+ 1 j CET</button>
+      </div>
+      <div style="font-size:10px;color:var(--text3);margin-top:6px;text-align:center">Mettre en CET retire 1 j du solde de l'année en cours (${nowY})</div>
+    </div>`;
+
+  document.getElementById('modal-root').innerHTML=
+    '<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet">'
+    +'<div class="sh"></div><div class="st">Congés annuels</div>'
+    +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'
+    +'<thead><tr>'
+    +'<th style="padding:4px 8px;font-size:10px;color:var(--text3);text-align:left;text-transform:uppercase;letter-spacing:.05em">Année</th>'
+    +'<th style="padding:4px 8px;font-size:10px;color:var(--text3);text-align:center;text-transform:uppercase;letter-spacing:.05em">Solde</th>'
+    +'<th style="padding:4px 8px;font-size:10px;color:var(--text3);text-align:center;text-transform:uppercase;letter-spacing:.05em">Posés</th>'
+    +'<th style="padding:4px 8px;font-size:10px;color:var(--text3);text-align:center;text-transform:uppercase;letter-spacing:.05em">Restants</th>'
+    +'</tr></thead>'
+    +'<tbody>'+rows+'</tbody>'
+    +'</table></div>'
+    +cetSection
+    +'<button class="mcancel" onclick="closeModal()">Fermer</button>'
+    +'</div></div>';
+}
+
+function adjSoldeAnnee(year,delta){
+  const cur=getSoldeAnnee(year);
+  const nv=Math.max(0,cur+delta);
+  setSoldeAnnee(year,nv);
+  saveState();
+  // Refresh just the cell
+  const el=document.getElementById('cpa-solde-'+year);
+  if(el)el.textContent=nv+' j';
+  // Also refresh the used/rest cell (re-render whole modal is simpler)
+  openCongesModal();
+}
+
+function adjCET(delta){
+  const nowY=NOW.getFullYear();
+  const cet=getCET();
+  const solde=getSoldeAnnee(nowY);
+  if(!S.profile)return;
+  if(delta>0){
+    // Add to CET: remove 1j from this year's solde
+    if(solde<=0)return;
+    setSoldeAnnee(nowY,solde-1);
+    S.profile.congesCET=(cet+1);
+  } else {
+    // Remove from CET: add 1j to this year's solde
+    if(cet<=0)return;
+    setSoldeAnnee(nowY,solde+1);
+    S.profile.congesCET=Math.max(0,cet-1);
+  }
+  saveState();
+  openCongesModal();
+  updateCounters();
+}
 
   // A week counts as 5 CP only if the pose covers from MONDAY
   // (i.e. Monday is either posed or non-worked, AND all worked days are posed)
@@ -1155,7 +1315,7 @@ function goToMonth(m){
 // ================================================================
 function updateCounters(){
   const{gen,realEph,realAvail,prevEph,matelas,totalReal,totalPrev}=calcSoldes();
-  const cRest=Math.max(0,((S.profile&&S.profile.congesInit)||25)-calcCongesUsed());
+  const cRest=Math.max(0,getSoldeAnnee(curY)-calcCongesUsedForYear(curY));
   // HS for current month (respect toggle and temporal settings)
   const settHS=settingsForYM(curY*12+curM);
   const useHSRendu=settHS.hsRendu;
@@ -1173,7 +1333,7 @@ function updateCounters(){
   el.innerHTML=`
     <div class="ctr"><div class="clbl">Éphem. dispo</div><div class="cval" style="color:var(--blue)">${fmtMin(totalReal)}</div><div class="csub">priorité</div></div>
     <div class="ctr"><div class="clbl">Matelas</div><div class="cval" style="color:var(--blue)">${fmtMin(Math.max(0,matelas))}</div><div class="csub">permanent</div></div>
-    <div class="ctr"><div class="clbl">Congés</div><div class="cval" style="color:var(--green)">${cRest} j</div></div>
+    <div class="ctr clk" onclick="openCongesModal()"><div class="clbl">Congés ${curY} <span style="font-size:8px;opacity:.5">▼</span></div><div class="cval" style="color:var(--green)">${cRest} j</div></div>
     <div class="ctr clk" onclick="openHSModal(${mym})"><div class="clbl">HS ce mois <span style="font-size:8px;opacity:.5">▼</span></div><div class="cval" style="color:var(--blue)">${fmtMin(hsTotal)}</div><div class="csub">${useHSRendu?'rendus':'payés'}</div></div>
     <div class="ctr"><div class="clbl">Paniers</div><div class="cval" style="color:var(--amber)">${panCount}</div><div class="csub">ce mois</div></div>
     <div class="ctr wide clk" onclick="openDetailMois(${mym})"><div class="clbl">Créés ce mois <span style="font-size:8px;opacity:.5">▼</span></div><div class="ctr-wide-inner"><div><div class="cval" style="color:var(--rendu-red-text)">${fmtMin(gt)}</div><div class="csub">${mym>TODAY_YM?'prévis.':'acquis'}</div></div><div class="ctr-detail">${det}</div></div></div>`;
@@ -1306,15 +1466,19 @@ function undoEph(ym){
 // ================================================================
 function updateRecap(){
   const el=document.getElementById('recap-content');if(!el)return;
-  const used=calcCongesUsed();
+  const usedCurY=calcCongesUsedForYear(NOW.getFullYear());
+  const soldeCurY=getSoldeAnnee(NOW.getFullYear());
+  const restCurY=Math.max(0,soldeCurY-usedCurY);
   const rendusMin=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='rend').reduce((s,k)=>s+getDur(new Date(k+'T12:00:00')),0);
-  el.innerHTML='<div class="recap-row"><span>Congés posés</span><b style="color:var(--green)">'+used+' j</b></div>'
+  el.innerHTML='<div class="recap-row"><span>Congés '+NOW.getFullYear()+' restants</span><b style="color:var(--green)">'+restCurY+' j</b></div>'
     +'<div class="recap-row"><span>Rendus posés</span><b style="color:var(--rendu-red-text)">'+fmtMin(rendusMin)+'</b></div>';
 }
 function openRecapModal(){
   document.querySelectorAll('[onclick*="openRecapModal"]').forEach(el=>el.classList.add('active'));document.body.classList.add('modal-open');
   setTimeout(function(){if(document.documentElement.classList.contains('touch')){const _t=document.createElement('button');_t.style.cssText='position:fixed;opacity:0;pointer-events:none;top:0;left:0';document.body.appendChild(_t);_t.focus();document.body.removeChild(_t);}},50);
-  const used=calcCongesUsed();
+  const used=calcCongesUsedForYear(NOW.getFullYear());
+  const soldeCurY=getSoldeAnnee(NOW.getFullYear());
+  const restCurY=Math.max(0,soldeCurY-used);
   const cgKeys=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='cg').sort();
   const rendKeys=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='rend').sort();
   const MC=['jan','fév','mar','avr','mai','jun','jui','aoû','sep','oct','nov','déc'];
@@ -1340,7 +1504,7 @@ function openRecapModal(){
   document.getElementById('modal-root').innerHTML=
     '<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet">'
     +'<div class="sh"></div><div class="st">Récapitulatif</div>'
-    +'<div class="recap-row"><span>Congés posés</span><b style="color:var(--green)">'+used+' j</b></div>'
+    +'<div class="recap-row"><span>Congés '+NOW.getFullYear()+' restants</span><b style="color:var(--green)">'+restCurY+' j</b></div>'
     +'<div class="recap-row"><span>Rendus posés</span><b style="color:var(--rendu-red-text)">'+fmtMin(rendusMin)+'</b></div>'
     +'<div class="recap-row" style="margin-bottom:12px"><span>Éphem. dispo</span><b style="color:var(--blue)">'+fmtMin(cs.totalReal)+'</b></div>'
     +'<div class="btit" style="margin-bottom:4px;margin-top:4px">Congés</div>'
@@ -1404,7 +1568,7 @@ function openDay(key){
   var date=new Date(key+'T12:00:00'),VAC=getVAC(),v2=getVac(date),vac=v2.vac,ov=v2.ov,fromSV=v2.fromSV,absent=v2.absent,echange=v2.echange,li=v2.li,cycleVac=v2.cycleVac;
   var isFer=FERIES.has(key),hasCg=(S.conges||{})[key],dur=getDur(date);
   var cs=calcSoldes(),totalReal=cs.totalReal,matelas=cs.matelas,totalDispo=totalReal+Math.max(0,matelas);
-  var cR=Math.max(0,((S.profile&&S.profile.congesInit)||25)-calcCongesUsed());
+  var cR=Math.max(0,getSoldeAnnee(date.getFullYear())-calcCongesUsedForYear(date.getFullYear()));
   var lbl=fmtDate(date),factor=renduFactor(date),ramee=isSemaineRamenée(getMonday(date)),hsW=calcHSWeek(getMonday(date)),sett=settingsForYM(date.getFullYear()*12+date.getMonth());
   var tt=vac&&vac!=='RH'?vac:'';if(absent)tt='Absent';else if(isFer)tt=vac&&vac!=='RH'?vac:'Férié';else if(!vac)tt='Repos';if(echange)tt+=' (echange)';
 
