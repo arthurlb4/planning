@@ -399,7 +399,16 @@ body.modal-open .bloc.clk:hover,body.modal-open .ctr.clk:hover{background:var(--
 <div class="side-col">
   <div class="bloc clk" id="eph-rest-bloc" onclick="openRestantsModal()">
     <div class="btit">Rendus éphémères <span style="font-size:8px;opacity:.5">▼</span></div>
-    <div id="eph-total-dispo" style="font-size:18px;font-weight:600;color:var(--blue);margin-bottom:6px"></div>
+    <div style="display:flex;gap:10px;margin-bottom:6px;align-items:flex-end">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:9px;color:var(--text3);margin-bottom:2px;text-transform:uppercase;letter-spacing:.04em">Acquis dispo</div>
+        <div id="eph-total-dispo" style="font-size:18px;font-weight:600;color:var(--blue);line-height:1"></div>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:9px;color:var(--text3);margin-bottom:2px;text-transform:uppercase;letter-spacing:.04em" id="eph-prev-label">Prévis. + acquis</div>
+        <div id="eph-total-prev" style="font-size:18px;font-weight:600;color:#6aaaf0;line-height:1"></div>
+      </div>
+    </div>
     <div id="eph-rest-list"></div>
   </div>
   <div class="ctr-grid" id="ctr-main"></div>
@@ -1235,6 +1244,25 @@ function updateCounters(){
   if(restEl)restEl.innerHTML=restHtml||'<div style="font-size:11px;color:var(--text3)">Aucun rendu disponible.</div>';
   const dispEl=document.getElementById('eph-total-dispo');
   if(dispEl)dispEl.textContent=fmtMin(totalExisting);
+  // Second counter: acquis non expirés + prévisionnels non expirés à la fin du mois affiché
+  const viewedYM=curY*12+curM;
+  let totalAtView=0;
+  // Acquis réels non expirés à la fin du mois affiché
+  Object.keys(realAvail).map(Number).forEach(function(ym){
+    if(realAvail[ym]>0&&getExpYm(ym)>viewedYM)totalAtView+=realAvail[ym];
+  });
+  // Prévisionnels créés au plus tard fin du mois affiché, non expirés à cette date
+  Object.keys(prevEph).map(Number).forEach(function(ym){
+    if(prevEph[ym]>0&&ym<=viewedYM&&getExpYm(ym)>viewedYM)totalAtView+=prevEph[ym];
+  });
+  const prevEl=document.getElementById('eph-total-prev');
+  const prevLblEl=document.getElementById('eph-prev-label');
+  if(prevEl)prevEl.textContent=fmtMin(totalAtView);
+  // Update label: show "fin mois affiché" only when different from today
+  if(prevLblEl){
+    const isCurMonth=(viewedYM===TODAY_YM);
+    prevLblEl.textContent=isCurMonth?'Prévis. + acquis':'Prévis. + acquis ('+MC[curM]+' '+curY+')';
+  }
   updateRecap();
 }
 
@@ -3679,7 +3707,7 @@ function gcalDisconnect(){
 }
 
 </script>
-<div style="text-align:center;padding:20px 0 8px;font-size:10px;color:var(--text3);opacity:.5">v4.08 — 19 mai 2026</div>
+<div style="text-align:center;padding:20px 0 8px;font-size:10px;color:var(--text3);opacity:.5">v4.09 — 20 mai 2026</div>
 
 </body>
 </html>
