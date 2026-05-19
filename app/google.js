@@ -136,7 +136,9 @@ function signOut(){
 }
 
 var _syncWknTimer=null;
+var _appReady=false;
 function syncWknHeight(){
+  if(!_appReady)return;
   clearTimeout(_syncWknTimer);
   _syncWknTimer=setTimeout(function(){
     const dayCell=document.querySelector('.dc');
