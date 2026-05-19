@@ -141,33 +141,37 @@ function syncWknHeight(){
   if(!_appReady)return;
   clearTimeout(_syncWknTimer);
   _syncWknTimer=setTimeout(function(){
-    const dayCell=document.querySelector('.dc');
-    if(!dayCell)return;
-    const h=dayCell.getBoundingClientRect().height;
-    if(!h||h<10)return;
-    document.querySelectorAll('td.wkn').forEach(function(td){
-      const num=td.getAttribute('data-wn')||td.textContent.trim();
-      if(!td.getAttribute('data-wn'))td.setAttribute('data-wn',num);
-      // Get actual computed background of cal-wrap for opaque badge
-      const isLight=document.documentElement.getAttribute('data-theme')==='light';
-      const calBg=isLight?'rgb(222,222,217)':'rgb(50,50,55)';
-      var bg='transparent';var color=isLight?'#4a4a46':'#c8c8cc';var fw='normal';
-      const tr=td.parentElement;
-      if(td.classList.contains('wram')){
-        bg=isLight?'rgba(220,185,60,.25)':'color-mix(in srgb, '+calBg+' 75%, rgba(184,148,30,1) 25%)';
-        color=isLight?'#7a5c00':'#d4b040';fw='600';
-      } else if(td.classList.contains('wcg')){
-        bg=isLight?'rgba(90,158,63,.20)':'color-mix(in srgb, '+calBg+' 75%, rgba(90,158,63,1) 25%)';
-        color=isLight?'#2d6b18':'#6ab84a';fw='600';
-      }
-      // Apply row background color to the td cell (behind the badge)
-      var cellBg='transparent';
-      if(tr&&tr.classList.contains('curweek'))cellBg='rgba(78,160,247,.06)';
-      else if(tr&&tr.classList.contains('cgweek'))cellBg='rgba(90,158,63,.07)';
-      td.style.position='relative';
-      td.style.padding='0';
-      td.style.background=cellBg;
-      td.innerHTML='<div style="position:absolute;top:50%;left:0;transform:translateY(-50%);width:calc(100% - 4px);height:'+h+'px;display:flex;align-items:center;justify-content:center;font-size:9px;border-radius:0 var(--r) var(--r) 0;background:'+bg+';color:'+color+';font-weight:'+fw+';z-index:1;box-sizing:border-box">'+num+'</div>';
+    requestAnimationFrame(function(){
+      requestAnimationFrame(function(){
+        const dayCell=document.querySelector('.dc');
+        if(!dayCell)return;
+        const h=dayCell.getBoundingClientRect().height;
+        if(!h||h<10)return;
+        document.querySelectorAll('td.wkn').forEach(function(td){
+          const num=td.getAttribute('data-wn')||td.textContent.trim();
+          if(!td.getAttribute('data-wn'))td.setAttribute('data-wn',num);
+          // Get actual computed background of cal-wrap for opaque badge
+          const isLight=document.documentElement.getAttribute('data-theme')==='light';
+          const calBg=isLight?'rgb(222,222,217)':'rgb(50,50,55)';
+          var bg='transparent';var color=isLight?'#4a4a46':'#c8c8cc';var fw='normal';
+          const tr=td.parentElement;
+          if(td.classList.contains('wram')){
+            bg=isLight?'rgba(220,185,60,.25)':'color-mix(in srgb, '+calBg+' 75%, rgba(184,148,30,1) 25%)';
+            color=isLight?'#7a5c00':'#d4b040';fw='600';
+          } else if(td.classList.contains('wcg')){
+            bg=isLight?'rgba(90,158,63,.20)':'color-mix(in srgb, '+calBg+' 75%, rgba(90,158,63,1) 25%)';
+            color=isLight?'#2d6b18':'#6ab84a';fw='600';
+          }
+          // Apply row background color to the td cell (behind the badge)
+          var cellBg='transparent';
+          if(tr&&tr.classList.contains('curweek'))cellBg='rgba(78,160,247,.06)';
+          else if(tr&&tr.classList.contains('cgweek'))cellBg='rgba(90,158,63,.07)';
+          td.style.position='relative';
+          td.style.padding='0';
+          td.style.background=cellBg;
+          td.innerHTML='<div style="position:absolute;top:50%;left:0;transform:translateY(-50%);width:calc(100% - 4px);height:'+h+'px;display:flex;align-items:center;justify-content:center;font-size:9px;border-radius:0 var(--r) var(--r) 0;background:'+bg+';color:'+color+';font-weight:'+fw+';z-index:1;box-sizing:border-box">'+num+'</div>';
+        });
+      });
     });
   },100);
 }
@@ -897,4 +901,3 @@ function gcalDisconnect(){
   gcalCalendarId='primary';
   gcalUpdateBtn();
 }
-
