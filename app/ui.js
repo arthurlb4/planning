@@ -9,6 +9,16 @@ function render(){
   else{el_ml.textContent=ML[curM]+' '+curY;renderMonth(el_heads,el_cal);}
   updateCounters();renderHistory();
 
+function syncWknHeight(){
+  const wkns=document.querySelectorAll('td.wkn');
+  wkns.forEach(function(td){
+    const tr=td.closest('tr');
+    if(!tr)return;
+    td.style.height='';
+    const h=tr.offsetHeight;
+    if(h)td.style.lineHeight=h+'px';
+  });
+}
   syncWknHeight();
 }
 
