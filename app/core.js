@@ -111,7 +111,6 @@ function getProfiles(){
   const all=Object.entries(_profs).map(([id,d])=>({id,name:capitalize((d&&d.profile&&d.profile.name)||id)}));
   // Active profile always first
   return [all.find(p=>p.id===_aid),...all.filter(p=>p.id!==_aid)].filter(Boolean);
-  gcalLoad();gcalUpdateBtn();
 }
 
 // ================================================================
