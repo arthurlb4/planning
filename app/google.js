@@ -135,8 +135,10 @@ function signOut(){
   window.location.href='/planning/';
 }
 
+var _syncWknTimer=null;
 function syncWknHeight(){
-  setTimeout(function(){
+  clearTimeout(_syncWknTimer);
+  _syncWknTimer=setTimeout(function(){
     const dayCell=document.querySelector('.dc');
     if(!dayCell)return;
     const h=dayCell.getBoundingClientRect().height;
