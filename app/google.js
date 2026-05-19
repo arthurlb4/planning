@@ -167,7 +167,7 @@ function syncWknHeight(){
       td.style.background=cellBg;
       td.innerHTML='<div style="position:absolute;top:50%;left:0;transform:translateY(-50%);width:calc(100% - 4px);height:'+h+'px;display:flex;align-items:center;justify-content:center;font-size:9px;border-radius:0 var(--r) var(--r) 0;background:'+bg+';color:'+color+';font-weight:'+fw+';z-index:1;box-sizing:border-box">'+num+'</div>';
     });
-  },0);
+  },100);
 }
 
 function gcalLoad(){
