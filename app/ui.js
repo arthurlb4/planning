@@ -19,7 +19,7 @@ function syncWknHeight(){
     if(h)td.style.lineHeight=h+'px';
   });
 }
-  syncWknHeight();
+requestAnimationFrame(function(){ setTimeout(syncWknHeight, 0); });
 }
 
 function renderMonth(el_heads,el_cal){
