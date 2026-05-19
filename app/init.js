@@ -24,32 +24,22 @@ function init(){
   window._authUser=authUser;
   // Show user name in header if needed
   loadState();applyTheme();
-  // Load cycle override from server if available
-  fetch(CLOUD_API+'/get-cycle',{method:'POST',headers:cloudHeaders(),body:'{}'})
-    .then(function(r){return r.json();})
-    .then(function(d){
-      if(d&&d.currentOverride&&d.currentOverride.weeks&&d.currentOverride.weeks.length>0){
-        // Override the hardcoded CYCLE with the admin version
-        d.currentOverride.weeks.forEach(function(week,i){CYCLE[i]=week;});
-        render();
-      }
-    }).catch(function(){});// Fail silently
-  // Load global vacations and cycles from KV
-  Promise.all([
-    fetch(CLOUD_API+'/get-vacations',{method:'POST',headers:cloudHeaders(),body:'{}'}).then(function(r){return r.json();}),
-    fetch(CLOUD_API+'/get-cycle',{method:'POST',headers:cloudHeaders(),body:'{}'}).then(function(r){return r.json();})
-  ]).then(function(results){
-    const vd=results[0],cd=results[1];
-    if(vd&&vd.vacations)_globalVacs=vd.vacations;
-    if(cd&&cd.cycles)_globalCycles=cd.cycles;
-    render();
-  }).catch(function(){});
   document.body.style.opacity='1';document.body.style.transition='opacity .2s';setTimeout(function(){document.body.style.transition='';},300);
   const isIOS=/iphone|ipad|ipod/i.test(navigator.userAgent);
   if(isIOS&&!window.navigator.standalone)document.getElementById('pwa-banner').style.display='flex';
   updateUrBtns();
-  // Load from cloud FIRST, then render (KV is source of truth)
-  cloudLoadAll().then(function(){    
+  // Load everything in parallel, single render at the end
+  Promise.all([
+    fetch(CLOUD_API+'/get-cycle',{method:'POST',headers:cloudHeaders(),body:'{}'}).then(function(r){return r.json();}).catch(function(){return {};}),
+    fetch(CLOUD_API+'/get-vacations',{method:'POST',headers:cloudHeaders(),body:'{}'}).then(function(r){return r.json();}).catch(function(){return {};}),
+    cloudLoadAll()
+  ]).then(function(results){
+    const cd=results[0],vd=results[1];
+    if(cd&&cd.currentOverride&&cd.currentOverride.weeks&&cd.currentOverride.weeks.length>0){
+      cd.currentOverride.weeks.forEach(function(week,i){CYCLE[i]=week;});
+    }
+    if(cd&&cd.cycles)_globalCycles=cd.cycles;
+    if(vd&&vd.vacations)_globalVacs=vd.vacations;
     _appReady=true;
     render();
     const hpn=document.getElementById('hdr-profile-name');
