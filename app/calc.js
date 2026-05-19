@@ -389,7 +389,7 @@ function applyTheme(t){
     document.body.style.backgroundColor='#18181b';
   }
 
-  setTimeout(syncWknHeight,150);
+  setTimeout(syncWknHeight,300);
   const _meta=document.getElementById('theme-color-meta');if(_meta)_meta.content=t==='dark'?'#18181b':'#fff';
   const icon=document.getElementById('theme-icon');
   if(icon)icon.className=t==='dark'?'ti ti-moon':'ti ti-sun';
