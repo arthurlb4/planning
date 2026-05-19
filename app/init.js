@@ -49,7 +49,8 @@ function init(){
   if(isIOS&&!window.navigator.standalone)document.getElementById('pwa-banner').style.display='flex';
   updateUrBtns();
   // Load from cloud FIRST, then render (KV is source of truth)
-  cloudLoadAll().then(function(){
+  cloudLoadAll().then(function(){    
+    _appReady=true;
     render();
     const hpn=document.getElementById('hdr-profile-name');
     if(hpn&&S&&S.profile)hpn.textContent=S.profile.name||'Profil';
