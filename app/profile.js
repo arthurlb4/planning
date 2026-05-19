@@ -274,7 +274,8 @@ function confirmChangeLigne(pid){
   if(scopeVal==='total'){
     // Check if same as current line
     const _diffNow=Math.round((getMonday(NOW)-ANCHOR)/(7*864e5));
-    const _curVisual=((pr.profile.anchorLine!==undefined?pr.profile.anchorLine:ANCHOR_L)+_diffNow+ getCycleLen(NOW)*1000)%getCycleLen(NOW);
+    const _N=getCycleLen(NOW);
+    const _curVisual=((pr.profile.anchorLine!==undefined?pr.profile.anchorLine:ANCHOR_L)+_diffNow+_N*1000)%_N;
     if(_curVisual===_chosenVisual&&!(pr.profile.lineHistory&&pr.profile.lineHistory.length)){
       alert('Cette ligne est déjà votre ligne actuelle.');return;
     }
@@ -290,6 +291,7 @@ function confirmChangeLigne(pid){
     // anchorLine: want chosenVisual at fromDate week
     const _fromMonday=getMonday(new Date(fromDate+'T12:00:00'));
     const _diffFrom=Math.round((_fromMonday-ANCHOR)/(7*864e5));
+    const _N2=getCycleLen(_fromMonday);
     const newAnchor=((_chosenVisual-_diffFrom)%_N2+_N2)%_N2;
     if(!pr.profile.lineHistory)pr.profile.lineHistory=[];
     // Save origAnchor before first change
