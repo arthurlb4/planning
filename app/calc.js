@@ -378,15 +378,6 @@ function buildRameeSet(y,m){
 // ================================================================
 // THEME
 // ================================================================
-function syncWknHeight(){
-  document.querySelectorAll('td.wkn').forEach(function(td){
-    const tr=td.closest('tr');
-    if(!tr)return;
-    td.style.lineHeight='';
-    const h=tr.offsetHeight;
-    if(h)td.style.lineHeight=h+'px';
-  });
-}
 function applyTheme(t){
   t=t||(S&&S.settings&&S.settings.theme)||document.documentElement.getAttribute('data-theme')||'dark';
   document.documentElement.setAttribute('data-theme',t);
