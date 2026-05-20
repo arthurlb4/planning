@@ -572,7 +572,7 @@ export default {
             results.push({ id: ev.id, googleEventId: (r3.data && r3.data.id) || ev.googleEventId });
           }
           if (r3 && r3.newToken) tokens.access_token = r3.newToken;
-          await new Promise(function(res){ setTimeout(res, 100); });
+          await new Promise(function(res){ setTimeout(res, 30); });
         } catch(e) {
           results.push({ id: ev.id, error: e.message });
         }
@@ -634,7 +634,7 @@ export default {
             if (pr2.newToken) tokens.access_token = pr2.newToken;
           }
           synced++;
-          await new Promise(function(res){ setTimeout(res, 80); });
+          await new Promise(function(res){ setTimeout(res, 30); });
         } catch(e) { /* continue */ }
       }
       const progress = { chunkIndex, totalChunks, startDate, endDate, updatedAt: Date.now() };
@@ -722,7 +722,7 @@ export default {
         for (var ev3 of items2) {
           if (ev3.id) {
             await calApi('DELETE', calPath2 + '/' + ev3.id, null, token, refresh_token, env);
-            await new Promise(function(res){ setTimeout(res, 50); });
+            await new Promise(function(res){ setTimeout(res, 20); });
             deleted2++;
           }
         }
@@ -758,7 +758,7 @@ export default {
                 if (r.status === 404 || r.status === 410) r = await calApi('POST', calPath, eventWithId, token, refresh_token, env);
               }
               results.push({ id: ev.id, googleEventId: r.data.id || ev.googleEventId });
-              await new Promise(function(res){ setTimeout(res, 100); });
+              await new Promise(function(res){ setTimeout(res, 30); });
             } else if (!ev._delete && ev.googleEventId) {
               r = await calApi('PUT', calPath + '/' + ev.googleEventId, ev.event, token, refresh_token, env);
               if (r.status === 404 || r.status === 410) {
