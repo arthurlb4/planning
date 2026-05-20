@@ -962,6 +962,7 @@ function _parsePDFGrid(items) {
   // ── Méthode A : alignement par colonnes (principal) ────────────────────────
   // Fonctionne même sans numéros de semaine (format avec noms de personnes)
   let weeks = [];
+  let colSpacing = 50;
   if (dayColX && dayColX.some(x => x !== null)) {
     // Interpoler les positions manquantes
     const known = dayColX.reduce((a, x, i) => x !== null ? [...a, {i, x}] : a, []);
@@ -971,7 +972,36 @@ function _parsePDFGrid(items) {
         if (dayColX[i] === null) dayColX[i] = known[0].x + (i - known[0].i) * spacing;
       }
     }
-    const X_TOL = 32;
+    // Espacement moyen entre colonnes pour les tolérances dynamiques
+    const knownPts = dayColX.filter(x => x !== null).sort((a,b) => a-b);
+    if (knownPts.length >= 2) {
+      const diffs = [];
+      for (let i = 1; i < knownPts.length; i++) diffs.push(knownPts[i] - knownPts[i-1]);
+      colSpacing = diffs.reduce((s,d) => s+d, 0) / diffs.length;
+    }
+
+    // Calibration : affiner dayColX depuis les positions réelles des codes dans les données
+    // Les en-têtes sont souvent alignés à gauche du texte, les codes sont centrés dans la cellule
+    const calSums = Array(7).fill(0), calCounts = Array(7).fill(0);
+    const CAL_TOL = colSpacing * 0.9;
+    for (const row of rows) {
+      if (row.y <= headerY) continue;
+      for (const item of row.items) {
+        if (_toVacCode(item.str) === undefined) continue;
+        let bestDi = -1, bestDist = Infinity;
+        for (let di = 0; di < 7; di++) {
+          if (dayColX[di] === null) continue;
+          const d = Math.abs(item.x - dayColX[di]);
+          if (d < CAL_TOL && d < bestDist) { bestDist = d; bestDi = di; }
+        }
+        if (bestDi >= 0) { calSums[bestDi] += item.x; calCounts[bestDi]++; }
+      }
+    }
+    for (let di = 0; di < 7; di++) {
+      if (calCounts[di] >= 2) dayColX[di] = calSums[di] / calCounts[di];
+    }
+
+    const X_TOL = colSpacing * 0.45;
     for (const row of rows) {
       if (row.y <= headerY) continue;
       // Pour chaque colonne jour, trouver l'item le plus proche
@@ -1030,15 +1060,15 @@ function _parsePDFGrid(items) {
     }
   }
 
-  const vacations = dayColX ? _parsePDFVacations(items, rows, dayColX) : {};
+  const vacations = dayColX ? _parsePDFVacations(items, rows, dayColX, colSpacing) : {};
   return { weeks, startDate: detectedDate, detected: weeks.length > 0, rawRows, vacations };
 }
 
-function _parsePDFVacations(allItems, rows, dayColX) {
+function _parsePDFVacations(allItems, rows, dayColX, colSpacing) {
   const TIME_RE = /^(\d{1,2})h(\d{2})$/;
   // Reconnaît tout code vacances plausible : lettres + chiffres/suffixe, P+digits, RH
   const CODE_RE = /^([A-Z][a-z]?\d{0,2}[a-z]?|P\d{3,4})$/;
-  const X_TOL = 45;
+  const X_TOL = colSpacing ? colSpacing * 0.55 : 45;
   const vacMap = {};
 
   // Index plat de tous les items horaires avec leur y brut (pas groupé)
