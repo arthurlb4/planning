@@ -1,4 +1,4 @@
-const SW_VERSION = '4.20';
+const SW_VERSION = '4.21';
 
 self.addEventListener('install', function() { self.skipWaiting(); });
 

@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>Planning</title>
-<meta name="app-version" content="v4.20">
+<meta name="app-version" content="v4.21">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -339,7 +339,7 @@ body.modal-open .bloc.clk:hover,body.modal-open .ctr.clk:hover{background:var(--
 
 <!-- HEADER -->
 <div class="hdr" style="justify-content:space-between">
-  <span class="hdr-ver" style="font-size:10px;color:var(--text3);opacity:.5;padding-left:4px;white-space:nowrap">v4.20 — 20 mai 2026</span>
+  <span class="hdr-ver" style="font-size:10px;color:var(--text3);opacity:.5;padding-left:4px;white-space:nowrap">v4.21 — 20 mai 2026</span>
   <div class="hdr-btns" style="position:relative">
     <div style="position:relative;display:none;align-items:center;margin-right:6px;" id="warn-icon-wrap">
       <button class="ibtn" id="warn-icon-btn" onclick="toggleWarnDropdown()"><i class="ti ti-alert-triangle" style="font-size:14px"></i></button>
@@ -430,7 +430,7 @@ body.modal-open .bloc.clk:hover,body.modal-open .ctr.clk:hover{background:var(--
 <div id="modal-root"></div>
 
 <script>
-var _appVer='v4.20';
+var _appVer='v4.21';
 var GCAL_CLIENT_ID='669191513748-a40uvl9k46kqsmjatpqokhnhgvrc7mdt.apps.googleusercontent.com';
 var GCAL_REDIRECT_URI='https://arthurlb4.github.io/planning/app/';
 var GCAL_SCOPE='https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events';
@@ -3033,18 +3033,51 @@ async function cloudLoadAll(){
 }
 
 function deleteCurrentProfile(){
+  const hasGcal=!!gcalTokens&&!!gcalCalendarId&&gcalCalendarId!=='primary';
+  const gcalRow=hasGcal
+    ?'<label style="display:flex;align-items:center;gap:10px;margin:14px 0;padding:12px;background:var(--bg);border-radius:10px;cursor:pointer">'
+     +'<input type="checkbox" id="del-gcal-cb" style="width:18px;height:18px;accent-color:#ea4335;flex-shrink:0" checked>'
+     +'<span style="font-size:13px;color:var(--text2)">Supprimer aussi le calendrier <strong>Planning France Info</strong> dans Google Agenda</span>'
+     +'</label>'
+    :'';
+  document.getElementById('modal-root').innerHTML=
+    '<div class="overlay" onclick="if(event.target===this)closeModal()">'
+    +'<div class="sheet">'
+    +'<div class="sh"></div>'
+    +'<div class="st" style="color:var(--rendu-red-text)">Supprimer le compte</div>'
+    +'<div style="font-size:13px;color:var(--text2);margin:8px 0 4px">Toutes vos données de planning seront définitivement effacées et vous serez déconnecté.</div>'
+    +gcalRow
+    +'<div style="display:flex;gap:8px;margin-top:16px">'
+    +'<button class="mcancel" style="flex:1" onclick="closeModal()">Annuler</button>'
+    +'<button class="mb" style="flex:1;background:#e53935;color:#fff;border:none" onclick="confirmDeleteAccount()"><i class="ti ti-trash" style="font-size:13px;margin-right:4px"></i>Supprimer</button>'
+    +'</div>'
+    +'</div></div>';
+  document.body.classList.add('modal-open');
+}
+
+async function confirmDeleteAccount(){
   const pid=_aid||Object.keys(_profs)[0];
-  if(!pid)return;
-  const name=(S&&S.profile&&S.profile.name)||'ce profil';
-  if(!confirm('Supprimer "'+name+'" et se déconnecter ? Cette action est irréversible.'))return;
+  const delGcal=!!(document.getElementById('del-gcal-cb')&&document.getElementById('del-gcal-cb').checked);
+  // Delete Google Calendar if requested
+  if(delGcal&&gcalTokens&&gcalCalendarId&&gcalCalendarId!=='primary'){
+    try{
+      const token=await gcalGetToken();
+      if(token){
+        await fetch('https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(gcalCalendarId),{
+          method:'DELETE',headers:{Authorization:'Bearer '+token}
+        });
+        localStorage.removeItem('gcal_calendar_id');
+      }
+    }catch(e){console.warn('gcal delete',e);}
+  }
+  // Delete cloud data + account
   if(window._authToken){
-    fetch(CLOUD_API+'/data/deleteProfile',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({profileId:pid})}).catch(function(){});
+    if(pid)fetch(CLOUD_API+'/data/deleteProfile',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({profileId:pid})}).catch(function(){});
+    fetch(CLOUD_API+'/auth/delete-account',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({})}).catch(function(){});
     fetch(CLOUD_API+'/auth/logout',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({})}).catch(function(){});
   }
-  localStorage.removeItem('pl_v8');
-  localStorage.removeItem('auth_token');
-  localStorage.removeItem('auth_user');
-  localStorage.removeItem('remember_creds');
+  // Clear all local storage
+  ['pl_v8','auth_token','auth_user','remember_creds','gcal_calendar_id'].forEach(function(k){localStorage.removeItem(k);});
   window.location.href='/planning/?tab=register';
 }
 
@@ -3816,7 +3849,7 @@ function gcalDisconnect(){
 }
 
 </script>
-<div style="text-align:center;padding:20px 0 8px;font-size:10px;color:var(--text3);opacity:.5">v4.20 — 20 mai 2026</div>
+<div style="text-align:center;padding:20px 0 8px;font-size:10px;color:var(--text3);opacity:.5">v4.21 — 20 mai 2026</div>
 <script>if('serviceWorker'in navigator){navigator.serviceWorker.register('./sw.js').catch(function(){});}</script>
 </body>
 </html>
