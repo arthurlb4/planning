@@ -411,6 +411,10 @@ body.modal-open .bloc.clk:hover,body.modal-open .ctr.clk:hover{background:var(--
     <div id="eph-rest-list"></div>
   </div>
   <div class="ctr-grid" id="ctr-main"></div>
+  <div class="bloc clk" id="eph-bloc" onclick="openPrevisMois()">
+    <div class="btit">Rendus éphémères créés</div>
+    <div id="eph-list"></div>
+  </div>
   <div class="bloc clk" onclick="openRecapModal()">
     <div class="btit">Récap <span style="font-size:8px;opacity:.5">▼</span></div>
     <div id="recap-content"></div>
@@ -1294,7 +1298,7 @@ function updateCounters(){
       <div style="display:flex;gap:2px;align-items:center;width:26px;flex-shrink:0">${dotHtml}</div>
     </div>`;
   });
-  document.getElementById('eph-list').innerHTML=ephHtml||'<div style="font-size:11px;color:var(--text3)">Aucune donnée.</div>';
+  const ephListEl=document.getElementById('eph-list');if(ephListEl)ephListEl.innerHTML=ephHtml||'<div style="font-size:11px;color:var(--text3)">Aucune donnée.</div>';
   let restHtml='';
   let totalExisting=0; // only real (non-future) non-expired
   // Combine real available + previsionnal months (4 future max inline)
@@ -2390,7 +2394,7 @@ function renderProfilesDropdown(){
         +'<div style="flex:1"><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:4px">Stock éphem.</label>'
         +'<input id="ps-eph" value="'+fmtMin(Math.round((pr.profile.ephSolde||0)*60))+'" onfocus="if(this.value)this.select()" '+'style="width:100%;height:36px;box-sizing:border-box;padding:6px 8px;border:0.5px solid var(--border);border-radius:var(--r);font-size:12px;background:var(--bg2);color:var(--text)"'+' ></div>'
         +'</div>'
-        +'<button class="mb" style="width:100%;height:36px;font-size:12px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);margin-bottom:16px" data-pid="'+p.id+'" onclick="saveProfileFromDD(this.dataset.pid)">Enregistrer</button>'
+        +'<button class="mb" style="width:100%;height:36px;font-size:12px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);margin-top:12px;margin-bottom:16px" data-pid="'+p.id+'" onclick="saveProfileFromDD(this.dataset.pid)">Enregistrer</button>'
         // ── SECTION GÉNÉRATION DES RENDUS ──
         +'<div '+'style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;margin-top:12px;padding-bottom:4px;border-bottom:0.5px solid var(--border)"'+'>Génération des rendus (M+1)</div>'
         +mkToggle('ps-dim','Dimanches',computeSettForProfile(pr,TODAY_YM+1,'dimRendu'),pr.settings&&pr.settings.settingsHistory,'dimRendu',p.id)
@@ -2616,41 +2620,52 @@ function confirmChangeLigne(pid){
   const scope=[...document.querySelectorAll('input[name="cl-scope"]')].find(function(r){return r.checked;});
   const scopeVal=scope?scope.value:'total';
   const fromDate=scopeVal==='from'?(document.getElementById('cl-date')||{value:''}).value:'';
-
-  const _chosenVisual=parseInt(li.value);
+  const chosenVisual=parseInt(li.value);
 
   if(scopeVal==='total'){
-    // Check if same as current line
     const _diffNow=Math.round((getMonday(NOW)-ANCHOR)/(7*864e5));
-    const _curVisual=((pr.profile.anchorLine!==undefined?pr.profile.anchorLine:ANCHOR_L)+_diffNow+ getCycleLen(NOW)*1000)%getCycleLen(NOW);
-    if(_curVisual===_chosenVisual&&!(pr.profile.lineHistory&&pr.profile.lineHistory.length)){
+    const _curVisual=((pr.profile.anchorLine!==undefined?pr.profile.anchorLine:ANCHOR_L)+_diffNow+getCycleLen(NOW)*1000)%getCycleLen(NOW);
+    if(_curVisual===chosenVisual&&!(pr.profile.lineHistory&&pr.profile.lineHistory.length)){
       alert('Cette ligne est déjà votre ligne actuelle.');return;
     }
-    // anchorLine: want chosenVisual at NOW week
+  } else {
+    if(!fromDate){alert('Date requise.');return;}
+  }
+
+  const warnText=scopeVal==='total'
+    ?'Cette action effacera toutes vos modifications manuelles et vos congés.'
+    :'Cette action effacera vos modifications et congés à partir du '+fromDate+'.';
+  document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet">'
+    +'<div class="sh"></div><div class="st">Confirmer le changement ?</div>'
+    +'<div class="ss" style="margin-bottom:20px">'+warnText+'</div>'
+    +'<button class="mb wide" style="background:#c0392b;color:#fff;margin-bottom:8px" onclick="applyChangeLigne(\''+pid+'\','+chosenVisual+',\''+scopeVal+'\',\''+fromDate+'\')">Oui, changer de ligne</button>'
+    +'<button class="mcancel" onclick="closeModal()">Annuler</button>'
+    +'</div></div>';
+}
+
+function applyChangeLigne(pid,chosenVisual,scopeVal,fromDate){
+  const pr=_profs[pid];if(!pr)return;
+
+  if(scopeVal==='total'){
+    const _diffNow=Math.round((getMonday(NOW)-ANCHOR)/(7*864e5));
     const _Nc=getCycleLen(NOW);
-    const newAnchor=((_chosenVisual-_diffNow)%_Nc+_Nc)%_Nc;
+    const newAnchor=((chosenVisual-_diffNow)%_Nc+_Nc)%_Nc;
     pr.profile.anchorLine=newAnchor;
     pr.profile.lineHistory=[];
     delete pr.profile.origAnchor;
     pr.overrides={};
     pr.conges={};
   } else {
-    if(!fromDate){alert('Date requise.');return;}
-    // anchorLine: want chosenVisual at fromDate week
     const _fromMonday=getMonday(new Date(fromDate+'T12:00:00'));
     const _diffFrom=Math.round((_fromMonday-ANCHOR)/(7*864e5));
     const _Nc2=getCycleLen(_fromMonday);
-    const newAnchor=((_chosenVisual-_diffFrom)%_Nc2+_Nc2)%_Nc2;
+    const newAnchor=((chosenVisual-_diffFrom)%_Nc2+_Nc2)%_Nc2;
     if(!pr.profile.lineHistory)pr.profile.lineHistory=[];
-    // Save origAnchor before first change
     if(pr.profile.origAnchor===undefined)pr.profile.origAnchor=pr.profile.anchorLine;
-    // Remove entries from this date onwards
     pr.profile.lineHistory=pr.profile.lineHistory.filter(function(h){return h.from<fromDate;});
     pr.profile.lineHistory.push({anchorLine:newAnchor,from:fromDate});
     pr.profile.lineHistory.sort(function(a,b){return a.from<b.from?-1:1;});
-    // Update anchorLine to latest entry
     pr.profile.anchorLine=pr.profile.lineHistory[pr.profile.lineHistory.length-1].anchorLine;
-    // Clear overrides + conges from fromDate onwards
     const _fromTs=_fromMonday.getTime();
     Object.keys(pr.overrides||{}).forEach(function(k){if(new Date(k+'T00:00:00').getTime()>=_fromTs)delete pr.overrides[k];});
     Object.keys(pr.conges||{}).forEach(function(k){if(new Date(k+'T00:00:00').getTime()>=_fromTs)delete pr.conges[k];});
