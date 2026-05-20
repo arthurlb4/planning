@@ -764,10 +764,11 @@ function _toVacCode(str) {
   const s = str.trim().replace(/\s/g, '');
   if (!s || s === '-' || s === '—' || s === '–' || s === '/') return null;
   if (/^r\.?h\.?$/i.test(s)) return 'RH';
+  if (/^sv$/i.test(s)) return null; // Sans Vacation = repos
   if (_VAC_SET.has(s)) return s;
   const sl = s.toLowerCase();
   for (const v of _VAC_SET) { if (v.toLowerCase() === sl) return v; }
-  return undefined;
+  return undefined; // inconnu — à ignorer
 }
 
 function _parsePDFGrid(items) {
@@ -784,11 +785,22 @@ function _parsePDFGrid(items) {
     row.items.sort((a, b) => a.x - b.x);
     row.text = row.items.map(i => i.str).join(' ');
   }
+  const rawRows = rows.map(r => r.text);
 
-  // Locate day-header row (Lu/Ma/Me/Je/Ve/Sa/Di and variants)
+  // Détection de la date dans tout le document
+  let detectedDate = '';
+  for (const row of rows) {
+    if (detectedDate) break;
+    let dm;
+    if ((dm = row.text.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/)))
+      detectedDate = `${dm[3]}-${dm[2].padStart(2,'0')}-${dm[1].padStart(2,'0')}`;
+    else if ((dm = row.text.match(/(\d{4})-(\d{2})-(\d{2})/))) detectedDate = dm[0];
+  }
+
+  // Trouver la ligne d'en-tête des jours (LUNDI MARDI MERCREDI JEUDI VENDREDI SAMEDI DIMANCHE)
   const DAY_MAP = { lu:0,lun:0,lundi:0, ma:1,mar:1,mardi:1, me:2,mer:2,mercredi:2,
     je:3,jeu:3,jeudi:3, ve:4,ven:4,vendredi:4, sa:5,sam:5,samedi:5, di:6,dim:6,dimanche:6 };
-  let dayColX = Array(7).fill(null);
+  let dayColX = null, headerY = -1;
   for (const row of rows) {
     const hits = row.items.map(it => {
       const k = it.str.trim().toLowerCase();
@@ -797,87 +809,82 @@ function _parsePDFGrid(items) {
     if (new Set(hits.map(h => h.col)).size >= 5) {
       const cols = Array(7).fill(null);
       for (const h of hits) { if (cols[h.col] === null) cols[h.col] = h.x; }
-      dayColX = cols; break;
+      dayColX = cols; headerY = row.y; break;
     }
   }
 
-  const useColumns = dayColX.some(x => x !== null);
-  const X_TOL = 28;
-  const weekRows = [];
-  let detectedDate = '';
-
-  for (const row of rows) {
-    const tokens = row.items.map(i => i.str.trim()).filter(Boolean);
-    const text = tokens.join(' ');
-
-    if (!detectedDate) {
-      let dm;
-      if ((dm = text.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/)))
-        detectedDate = `${dm[3]}-${dm[2].padStart(2,'0')}-${dm[1].padStart(2,'0')}`;
-      else if ((dm = text.match(/(\d{4})-(\d{2})-(\d{2})/))) detectedDate = dm[0];
+  // ── Méthode A : alignement par colonnes (principal) ────────────────────────
+  // Fonctionne même sans numéros de semaine (format avec noms de personnes)
+  let weeks = [];
+  if (dayColX && dayColX.some(x => x !== null)) {
+    // Interpoler les positions manquantes
+    const known = dayColX.reduce((a, x, i) => x !== null ? [...a, {i, x}] : a, []);
+    if (known.length >= 2) {
+      const spacing = (known[known.length-1].x - known[0].x) / (known[known.length-1].i - known[0].i);
+      for (let i = 0; i < 7; i++) {
+        if (dayColX[i] === null) dayColX[i] = known[0].x + (i - known[0].i) * spacing;
+      }
     }
-
-    // Detect week number — multiple patterns
-    let wn = null, skipTokens = 1;
-    const t0 = tokens[0] || '';
-    const m1 = t0.match(/^S?(\d{1,2})$/i);
-    if (m1) { const n = parseInt(m1[1]); if (n >= 1 && n <= 52) wn = n; }
-    if (wn === null) {
-      const prefix = tokens.slice(0, 3).join(' ');
-      const m2 = prefix.match(/\bsem\.?\s*(\d{1,2})\b/i);
-      if (m2) { const n = parseInt(m2[1]); if (n >= 1 && n <= 52) { wn = n; skipTokens = 2; } }
-    }
-    if (wn === null) continue;
-
-    let dayCodes;
-    if (useColumns) {
-      dayCodes = Array(7).fill(null);
+    const X_TOL = 32;
+    for (const row of rows) {
+      if (row.y <= headerY) continue;
+      // Pour chaque colonne jour, trouver l'item le plus proche
+      const dayCodes = Array(7).fill(undefined);
+      let found = 0;
       for (let di = 0; di < 7; di++) {
-        if (dayColX[di] === null) continue;
         let best = null, bestDist = Infinity;
-        for (let ti = skipTokens; ti < row.items.length; ti++) {
-          const d = Math.abs(row.items[ti].x - dayColX[di]);
-          if (d < bestDist && d < X_TOL) { bestDist = d; best = row.items[ti]; }
+        for (const item of row.items) {
+          const d = Math.abs(item.x - dayColX[di]);
+          if (d < X_TOL && d < bestDist) { bestDist = d; best = item; }
         }
-        if (best) { const c = _toVacCode(best.str); if (c !== undefined) dayCodes[di] = c; }
+        if (best) {
+          const c = _toVacCode(best.str);
+          if (c !== undefined) { dayCodes[di] = c; found++; }
+        }
       }
-      if (dayCodes.every(c => c === null)) dayCodes = null;
+      // Inclure la ligne si au moins 2 colonnes ont un code reconnu
+      if (found >= 2) weeks.push(dayCodes.map(c => c === undefined ? null : c));
     }
-    if (!dayCodes) {
-      dayCodes = [];
-      for (let ti = skipTokens; ti < tokens.length && dayCodes.length < 7; ti++) {
-        const c = _toVacCode(tokens[ti]);
-        if (c !== undefined) dayCodes.push(c);
-      }
-      while (dayCodes.length < 7) dayCodes.push(null);
-    }
-    if (dayCodes.some(c => c !== null)) weekRows.push({ wn, vacs: dayCodes.slice(0, 7) });
   }
 
-  // Fallback: any row with >= 5 recognisable vacation codes, treated as sequential weeks
-  if (weekRows.length === 0) {
-    let autoWn = 1;
+  // ── Méthode B : détection par numéros de semaine (S1…S52) ─────────────────
+  if (weeks.length === 0) {
+    const weekRows = [];
+    for (const row of rows) {
+      const tokens = row.items.map(i => i.str.trim()).filter(Boolean);
+      let wn = null, skip = 1;
+      const m1 = (tokens[0]||'').match(/^S?(\d{1,2})$/i);
+      if (m1) { const n = parseInt(m1[1]); if (n>=1&&n<=52) wn = n; }
+      if (wn === null) {
+        const m2 = tokens.slice(0,3).join(' ').match(/\bsem\.?\s*(\d{1,2})\b/i);
+        if (m2) { const n = parseInt(m2[1]); if (n>=1&&n<=52) { wn=n; skip=2; } }
+      }
+      if (wn === null) continue;
+      const codes = [];
+      for (let ti = skip; ti < tokens.length && codes.length < 7; ti++) {
+        const c = _toVacCode(tokens[ti]); if (c !== undefined) codes.push(c);
+      }
+      while (codes.length < 7) codes.push(null);
+      if (codes.some(c => c !== null)) weekRows.push({ wn, vacs: codes.slice(0,7) });
+    }
+    weekRows.sort((a,b) => a.wn - b.wn);
+    const seen = new Set();
+    weeks = weekRows.filter(r => seen.has(r.wn) ? false : (seen.add(r.wn),true)).map(r => r.vacs);
+  }
+
+  // ── Méthode C : détection séquentielle (dernier recours) ──────────────────
+  if (weeks.length === 0) {
     for (const row of rows) {
       const tokens = row.items.map(i => i.str.trim()).filter(Boolean);
       const codes = [];
       for (const tok of tokens) { const c = _toVacCode(tok); if (c !== undefined) codes.push(c); }
-      if (codes.length >= 5) {
-        const padded = codes.slice(0, 7);
-        while (padded.length < 7) padded.push(null);
-        weekRows.push({ wn: autoWn++, vacs: padded });
+      if (codes.length >= 3) {
+        const w = codes.slice(0,7); while (w.length < 7) w.push(null); weeks.push(w);
       }
     }
   }
 
-  weekRows.sort((a, b) => a.wn - b.wn);
-  const seen = new Set();
-  const unique = weekRows.filter(r => seen.has(r.wn) ? false : (seen.add(r.wn), true));
-  return {
-    weeks: unique.map(r => r.vacs),
-    startDate: detectedDate,
-    detected: unique.length > 0,
-    rawRows: rows.map(r => r.text)
-  };
+  return { weeks, startDate: detectedDate, detected: weeks.length > 0, rawRows };
 }
 
 function _showPDFPreview(result) {
@@ -896,7 +903,7 @@ function _showPDFPreview(result) {
           + '</tr>').join('')
       + '</table></div>';
   } else {
-    status = '<div class="alert alert-orange" style="margin-bottom:10px">⚠ Aucune grille détectée automatiquement. Consultez le texte extrait ci-dessous pour comprendre le format du PDF.</div>';
+    status = '<div class="alert alert-orange" style="margin-bottom:10px">⚠ Aucune grille détectée. Consultez le texte extrait ci-dessous.</div>';
     grid = '';
   }
 
