@@ -789,41 +789,16 @@ async function doSaveImportedCycle() {
   var vacs = d.vacations || {};
 
   try {
-    // 1. Load existing vacations to detect conflicts
-    var existingRes = await fetch(API + '/admin/vacations', { method: 'POST', headers: adminHeaders(), body: '{}' });
-    var existingData = await existingRes.json();
-    var existing = existingData.vacations || {};
+    // 1. Resolve vacation renames
+    var resolved = await _resolveVacRename(vacs);
+    var rename = resolved.rename, existing = resolved.existing;
 
-    // 2. Resolve vacation names: rename if same code but different hours
-    var rename = {}; // originalCode -> finalCode
-    var allNames = new Set(Object.keys(existing));
-    var suffixes = 'bcdefghijklmnopqrstuvwxyz'.split('');
-    Object.keys(vacs).forEach(function(vname) {
-      var v = vacs[vname];
-      var ex = existing[vname];
-      if (!ex) { rename[vname] = vname; allNames.add(vname); return; }
-      if (ex.deb === v.deb && ex.fin === v.fin) { rename[vname] = vname; return; }
-      // Hours differ: find a free name
-      var base = vname.replace(/[b-z]$/i, ''); // strip existing suffix
-      var found = null;
-      for (var si = 0; si < suffixes.length; si++) {
-        var candidate = base + suffixes[si];
-        if (!allNames.has(candidate)) { found = candidate; break; }
-      }
-      if (!found) found = vname + '_new';
-      rename[vname] = found;
-      allNames.add(found);
-    });
-
-    // 3. Build weeks grid, applying renames
+    // 2. Build weeks grid applying renames
     var weeks = (d.lines || []).map(function(line) {
-      return (line.schedule || []).map(function(code) {
-        if (!code) return null;
-        return rename[code] || code;
-      });
+      return (line.schedule || []).map(function(code) { return !code ? null : rename[code] || code; });
     });
 
-    // 4. Create cycle
+    // 3. Create cycle
     var cycRes = await fetch(API + '/admin/cycle/create', {
       method: 'POST', headers: adminHeaders(),
       body: JSON.stringify({ cycle: { name: name, startDate: startDate, anchor: startDate, endDate: null, weeks: weeks } })
@@ -832,25 +807,8 @@ async function doSaveImportedCycle() {
     if (!cycRes.ok) { errEl.textContent = cycData.error || 'Erreur création cycle'; if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Créer le cycle'; } return; }
     var cycleId = cycData.cycle && cycData.cycle.id;
 
-    // 5. Create new/renamed vacations + link all to cycle
-    var renamed = [];
-    var vacNames = Object.keys(vacs);
-    for (var vi = 0; vi < vacNames.length; vi++) {
-      var vname = vacNames[vi];
-      var finalName = rename[vname];
-      var v = vacs[vname];
-      if (!existing[finalName]) {
-        await fetch(API + '/admin/vacation/save', {
-          method: 'POST', headers: adminHeaders(),
-          body: JSON.stringify({ vacation: { name: finalName, label: vname, deb: v.deb||'', fin: v.fin||'', dur: v.dur||0, panier: false, type: 'week' } })
-        });
-      }
-      await fetch(API + '/admin/vacation/addcycle', {
-        method: 'POST', headers: adminHeaders(),
-        body: JSON.stringify({ name: finalName, cycleId: cycleId })
-      });
-      if (finalName !== vname) renamed.push(vname + ' → ' + finalName);
-    }
+    // 4. Save/link vacations
+    var renamed = Object.keys(vacs).length ? await _saveVacationsAndLink(cycleId, vacs, rename, existing) : [];
 
     closeModal();
     loadCycles();
@@ -1069,11 +1027,69 @@ function _parsePDFGrid(items) {
     }
   }
 
-  return { weeks, startDate: detectedDate, detected: weeks.length > 0, rawRows };
+  const vacations = dayColX ? _parsePDFVacations(rows, dayColX) : {};
+  return { weeks, startDate: detectedDate, detected: weeks.length > 0, rawRows, vacations };
+}
+
+function _parsePDFVacations(rows, dayColX) {
+  const TIME_RE = /^(\d{1,2})h(\d{2})$/;
+  const X_TOL = 40;
+  const vacMap = {};
+  for (const row of rows) {
+    for (let di = 0; di < 7; di++) {
+      if (dayColX[di] === null) continue;
+      let code = null, codeX = null;
+      for (const item of row.items) {
+        if (Math.abs(item.x - dayColX[di]) < X_TOL) {
+          const c = _toVacCode(item.str);
+          if (c) { code = c; codeX = item.x; break; }
+        }
+      }
+      if (!code || vacMap[code]) continue;
+      // Collect time items below this code row (same column x, up to 75px below)
+      const timesBelow = [];
+      for (const other of rows) {
+        if (other.y <= row.y + 1) continue;
+        if (other.y > row.y + 75) break;
+        for (const item of other.items) {
+          if (Math.abs(item.x - dayColX[di]) < X_TOL) {
+            const m = TIME_RE.exec(item.str.trim());
+            if (m) timesBelow.push({ h: parseInt(m[1]), min: parseInt(m[2]), str: item.str.trim(), y: other.y, x: item.x });
+          }
+        }
+      }
+      if (timesBelow.length < 2) continue;
+      // Group by y-level
+      const byY = [];
+      for (const t of timesBelow) {
+        const g = byY.find(g => Math.abs(g.y - t.y) <= 8);
+        if (g) g.times.push(t); else byY.push({ y: t.y, times: [t] });
+      }
+      byY.sort((a, b) => a.y - b.y);
+      for (const g of byY) g.times.sort((a, b) => a.x - b.x);
+      // Row 1: deb (leftmost) + fin (rightmost)
+      const r1 = byY[0].times;
+      if (r1.length < 2) continue;
+      const deb = r1[0].str, fin = r1[r1.length - 1].str;
+      let dur = (r1[r1.length-1].h*60 + r1[r1.length-1].min) - (r1[0].h*60 + r1[0].min);
+      if (dur < 0) dur += 1440;
+      // Row 2: pause (leftmost) — subtract if reasonable
+      if (byY.length >= 2) {
+        const r2 = byY[1].times;
+        if (r2.length >= 1) {
+          const pause = r2[0].h * 60 + r2[0].min;
+          if (pause > 0 && pause < dur && pause <= 90) dur -= pause;
+        }
+      }
+      vacMap[code] = { deb, fin, dur: Math.max(0, dur) };
+    }
+  }
+  return vacMap;
 }
 
 function _showPDFPreview(result) {
-  const { weeks, startDate, detected, name, rawRows } = result;
+  const { weeks, startDate, detected, name, rawRows, vacations } = result;
+  window._pdfVacations = vacations || {};
   const DAYS = ['Lu','Ma','Me','Je','Ve','Sa','Di'];
   const mc = document.getElementById('modal-content');
   mc.className = 'modal modal-wide';
@@ -1092,6 +1108,15 @@ function _showPDFPreview(result) {
     grid = '';
   }
 
+  const vacKeys = Object.keys(window._pdfVacations).sort();
+  const vacHtml = vacKeys.length
+    ? '<div style="font-size:11px;color:var(--text3);margin:8px 0 4px">' + vacKeys.length + ' vacation(s) extraite(s)</div>'
+      + '<div class="pdf-grid-preview" style="max-height:150px"><table>'
+      + '<tr><th>Code</th><th>Début</th><th>Fin</th><th>Durée</th></tr>'
+      + vacKeys.map(function(n){ var v=window._pdfVacations[n]; return '<tr><td style="font-weight:600">'+n+'</td><td>'+_esc(v.deb||'—')+'</td><td>'+_esc(v.fin||'—')+'</td><td>'+(v.dur||0)+' min</td></tr>'; }).join('')
+      + '</table></div>'
+    : '<div style="font-size:11px;color:var(--text3);margin:8px 0">Aucune vacation extraite (horaires non lisibles dans ce PDF)</div>';
+
   const debugHtml = (rawRows && rawRows.length)
     ? '<details style="margin-top:10px"><summary style="font-size:11px;color:var(--text3);cursor:pointer;user-select:none">▶ Texte extrait du PDF (' + rawRows.length + ' lignes)</summary>'
       + '<textarea readonly style="width:100%;height:180px;margin-top:6px;font-size:10px;font-family:monospace;background:var(--bg);border:0.5px solid var(--border);border-radius:var(--r);color:var(--text2);padding:8px">'
@@ -1104,6 +1129,7 @@ function _showPDFPreview(result) {
     + '<div class="row"><div class="flex1 field"><label>Date de début</label><input type="date" id="pdf-cyc-start" value="' + _esc(startDate || '') + '"></div>'
     + '<div class="flex1 field"><label>Date de fin (optionnel)</label><input type="date" id="pdf-cyc-end"></div></div>'
     + grid
+    + vacHtml
     + debugHtml
     + '<div class="modal-btns">'
     + '<button class="btn btn-ghost" onclick="closeModal()">Annuler</button>'
@@ -1112,6 +1138,38 @@ function _showPDFPreview(result) {
     + '</div>'
     + '<div class="err" id="pdf-err" style="margin-top:8px"></div>';
   window._pdfWeeks = weeks.length > 0 ? weeks : null;
+}
+
+// Step 1: compute rename map (no side effects)
+async function _resolveVacRename(vacs) {
+  if (!vacs || !Object.keys(vacs).length) return { rename: {}, existing: {} };
+  const existing = ((await (await fetch(API+'/admin/vacations',{method:'POST',headers:adminHeaders(),body:'{}'})).json()).vacations)||{};
+  const rename = {}, allNames = new Set(Object.keys(existing)), sfx = 'bcdefghijklmnopqrstuvwxyz'.split('');
+  for (const [vname, v] of Object.entries(vacs)) {
+    const ex = existing[vname];
+    if (!ex) { rename[vname] = vname; allNames.add(vname); continue; }
+    if (ex.deb === v.deb && ex.fin === v.fin) { rename[vname] = vname; continue; }
+    const base = vname.replace(/[b-z]$/i, '');
+    let found = null;
+    for (const s of sfx) { if (!allNames.has(base+s)) { found = base+s; break; } }
+    if (!found) found = vname + '_new';
+    rename[vname] = found; allNames.add(found);
+  }
+  return { rename, existing };
+}
+// Step 2: save new vacations + link all to cycle
+async function _saveVacationsAndLink(cycleId, vacs, rename, existing) {
+  const renamed = [];
+  for (const [vname, v] of Object.entries(vacs)) {
+    const fn = rename[vname];
+    if (!existing[fn]) {
+      await fetch(API+'/admin/vacation/save', { method:'POST', headers:adminHeaders(),
+        body: JSON.stringify({ vacation: { name:fn, ...(fn!==vname?{label:vname}:{}), deb:v.deb||'', fin:v.fin||'', dur:v.dur||0, panier:false, type:'week' } }) });
+    }
+    await fetch(API+'/admin/vacation/addcycle', { method:'POST', headers:adminHeaders(), body: JSON.stringify({ name:fn, cycleId }) });
+    if (fn !== vname) renamed.push(vname + ' → ' + fn);
+  }
+  return renamed;
 }
 
 function _pdfOpenInEditor() {
@@ -1128,14 +1186,27 @@ async function _pdfSaveDirect() {
   const endDate = document.getElementById('pdf-cyc-end').value || null;
   const err = document.getElementById('pdf-err');
   if (!name || !startDate) { err.textContent = 'Nom et date de début requis.'; return; }
-  const weeks = window._pdfWeeks || [[null,null,null,null,null,null,'RH']];
-  const res = await fetch(API + '/admin/cycle/create', {
-    method: 'POST', headers: adminHeaders(),
-    body: JSON.stringify({ cycle: { name, startDate, endDate, anchor: startDate, weeks } })
-  });
-  const data = await res.json();
-  if (res.ok) { closeModal(); loadCycles(); }
-  else { err.textContent = data.error || 'Erreur'; }
+  const btn = document.querySelector('#modal-content .btn-green');
+  if (btn) { btn.disabled = true; btn.textContent = 'Enregistrement…'; }
+  try {
+    const vacs = window._pdfVacations || {};
+    const { rename, existing } = await _resolveVacRename(vacs);
+    const rawWeeks = window._pdfWeeks || [[null,null,null,null,null,null,'RH']];
+    const weeks = rawWeeks.map(w => w.map(c => !c ? null : rename[c] || c));
+    const res = await fetch(API + '/admin/cycle/create', {
+      method: 'POST', headers: adminHeaders(),
+      body: JSON.stringify({ cycle: { name, startDate, endDate, anchor: startDate, weeks } })
+    });
+    const data = await res.json();
+    if (!res.ok) { err.textContent = data.error || 'Erreur'; if (btn) { btn.disabled = false; btn.textContent = 'Créer le cycle'; } return; }
+    const cycleId = data.cycle && data.cycle.id;
+    const renamed = Object.keys(vacs).length ? await _saveVacationsAndLink(cycleId, vacs, rename, existing) : [];
+    closeModal(); loadCycles();
+    var msg = 'Cycle "' + name + '" créé' + (Object.keys(vacs).length ? ' avec ' + Object.keys(vacs).length + ' vacation(s).' : '.');
+    if (renamed.length) msg += '\n\nVacations renommées :\n' + renamed.join('\n');
+    if (Object.keys(vacs).length) msg += '\n\nPensez à vérifier le panier repas dans l\'onglet Vacations.';
+    alert(msg);
+  } catch(e) { err.textContent = 'Erreur : ' + e.message; if (btn) { btn.disabled = false; btn.textContent = 'Créer le cycle'; } }
 }
 
 function _esc(s) {
