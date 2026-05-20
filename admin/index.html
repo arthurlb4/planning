@@ -761,18 +761,17 @@ const _VAC_SET = new Set(['RH','A1','A2','A3','B1','C1','C2','D1','D2','P423',
   'As1','As2','As3','Cs','Es','Fs','Ad1','Ad2','Ad3','Cd','Ed','Fd']);
 
 function _toVacCode(str) {
-  const s = str.trim().replace(/[ ​]/g, '');
-  if (!s || s === '-' || s === '—' || s === '/') return null;
+  const s = str.trim().replace(/\s/g, '');
+  if (!s || s === '-' || s === '—' || s === '–' || s === '/') return null;
   if (/^r\.?h\.?$/i.test(s)) return 'RH';
   if (_VAC_SET.has(s)) return s;
   const sl = s.toLowerCase();
   for (const v of _VAC_SET) { if (v.toLowerCase() === sl) return v; }
-  return undefined; // not a known code — skip
+  return undefined;
 }
 
 function _parsePDFGrid(items) {
-  const Y_TOL = 5;
-  // Group items into rows by y proximity
+  const Y_TOL = 8;
   const rows = [];
   for (const item of [...items].sort((a, b) => a.y - b.y)) {
     let placed = false;
@@ -786,7 +785,7 @@ function _parsePDFGrid(items) {
     row.text = row.items.map(i => i.str).join(' ');
   }
 
-  // Try to locate the day-header row (Lu/Ma/Me/Je/Ve/Sa/Di)
+  // Locate day-header row (Lu/Ma/Me/Je/Ve/Sa/Di and variants)
   const DAY_MAP = { lu:0,lun:0,lundi:0, ma:1,mar:1,mardi:1, me:2,mer:2,mercredi:2,
     je:3,jeu:3,jeudi:3, ve:4,ven:4,vendredi:4, sa:5,sam:5,samedi:5, di:6,dim:6,dimanche:6 };
   let dayColX = Array(7).fill(null);
@@ -795,18 +794,15 @@ function _parsePDFGrid(items) {
       const k = it.str.trim().toLowerCase();
       return DAY_MAP.hasOwnProperty(k) ? { col: DAY_MAP[k], x: it.x } : null;
     }).filter(Boolean);
-    const unique = new Set(hits.map(h => h.col));
-    if (unique.size >= 5) {
+    if (new Set(hits.map(h => h.col)).size >= 5) {
       const cols = Array(7).fill(null);
       for (const h of hits) { if (cols[h.col] === null) cols[h.col] = h.x; }
-      dayColX = cols;
-      break;
+      dayColX = cols; break;
     }
   }
 
   const useColumns = dayColX.some(x => x !== null);
-  const X_TOL = 22;
-
+  const X_TOL = 28;
   const weekRows = [];
   let detectedDate = '';
 
@@ -814,21 +810,24 @@ function _parsePDFGrid(items) {
     const tokens = row.items.map(i => i.str.trim()).filter(Boolean);
     const text = tokens.join(' ');
 
-    // Date detection (DD/MM/YYYY or YYYY-MM-DD)
     if (!detectedDate) {
       let dm;
-      if ((dm = text.match(/(\d{2})[\/\-](\d{2})[\/\-](\d{4})/))) {
+      if ((dm = text.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/)))
         detectedDate = `${dm[3]}-${dm[2].padStart(2,'0')}-${dm[1].padStart(2,'0')}`;
-      } else if ((dm = text.match(/(\d{4})-(\d{2})-(\d{2})/))) {
-        detectedDate = dm[0];
-      }
+      else if ((dm = text.match(/(\d{4})-(\d{2})-(\d{2})/))) detectedDate = dm[0];
     }
 
-    // Week row: first token matches S1–S52 or just 1–52
-    const wm = (tokens[0] || '').match(/^S?(\d{1,2})$/i);
-    if (!wm) continue;
-    const wn = parseInt(wm[1]);
-    if (wn < 1 || wn > 52) continue;
+    // Detect week number — multiple patterns
+    let wn = null, skipTokens = 1;
+    const t0 = tokens[0] || '';
+    const m1 = t0.match(/^S?(\d{1,2})$/i);
+    if (m1) { const n = parseInt(m1[1]); if (n >= 1 && n <= 52) wn = n; }
+    if (wn === null) {
+      const prefix = tokens.slice(0, 3).join(' ');
+      const m2 = prefix.match(/\bsem\.?\s*(\d{1,2})\b/i);
+      if (m2) { const n = parseInt(m2[1]); if (n >= 1 && n <= 52) { wn = n; skipTokens = 2; } }
+    }
+    if (wn === null) continue;
 
     let dayCodes;
     if (useColumns) {
@@ -836,35 +835,53 @@ function _parsePDFGrid(items) {
       for (let di = 0; di < 7; di++) {
         if (dayColX[di] === null) continue;
         let best = null, bestDist = Infinity;
-        for (let ti = 1; ti < row.items.length; ti++) {
+        for (let ti = skipTokens; ti < row.items.length; ti++) {
           const d = Math.abs(row.items[ti].x - dayColX[di]);
           if (d < bestDist && d < X_TOL) { bestDist = d; best = row.items[ti]; }
         }
         if (best) { const c = _toVacCode(best.str); if (c !== undefined) dayCodes[di] = c; }
       }
-      // Fall back to sequential if column alignment yielded nothing meaningful
       if (dayCodes.every(c => c === null)) dayCodes = null;
     }
     if (!dayCodes) {
       dayCodes = [];
-      for (let ti = 1; ti < tokens.length && dayCodes.length < 7; ti++) {
+      for (let ti = skipTokens; ti < tokens.length && dayCodes.length < 7; ti++) {
         const c = _toVacCode(tokens[ti]);
         if (c !== undefined) dayCodes.push(c);
       }
       while (dayCodes.length < 7) dayCodes.push(null);
     }
-
     if (dayCodes.some(c => c !== null)) weekRows.push({ wn, vacs: dayCodes.slice(0, 7) });
+  }
+
+  // Fallback: any row with >= 5 recognisable vacation codes, treated as sequential weeks
+  if (weekRows.length === 0) {
+    let autoWn = 1;
+    for (const row of rows) {
+      const tokens = row.items.map(i => i.str.trim()).filter(Boolean);
+      const codes = [];
+      for (const tok of tokens) { const c = _toVacCode(tok); if (c !== undefined) codes.push(c); }
+      if (codes.length >= 5) {
+        const padded = codes.slice(0, 7);
+        while (padded.length < 7) padded.push(null);
+        weekRows.push({ wn: autoWn++, vacs: padded });
+      }
+    }
   }
 
   weekRows.sort((a, b) => a.wn - b.wn);
   const seen = new Set();
   const unique = weekRows.filter(r => seen.has(r.wn) ? false : (seen.add(r.wn), true));
-  return { weeks: unique.map(r => r.vacs), startDate: detectedDate, detected: unique.length > 0 };
+  return {
+    weeks: unique.map(r => r.vacs),
+    startDate: detectedDate,
+    detected: unique.length > 0,
+    rawRows: rows.map(r => r.text)
+  };
 }
 
 function _showPDFPreview(result) {
-  const { weeks, startDate, detected, name } = result;
+  const { weeks, startDate, detected, name, rawRows } = result;
   const DAYS = ['Lu','Ma','Me','Je','Ve','Sa','Di'];
   const mc = document.getElementById('modal-content');
   mc.className = 'modal modal-wide';
@@ -879,9 +896,15 @@ function _showPDFPreview(result) {
           + '</tr>').join('')
       + '</table></div>';
   } else {
-    status = '<div class="alert alert-orange" style="margin-bottom:10px">⚠ Aucune grille détectée automatiquement — le cycle sera créé vide pour édition manuelle.</div>';
+    status = '<div class="alert alert-orange" style="margin-bottom:10px">⚠ Aucune grille détectée automatiquement. Consultez le texte extrait ci-dessous pour comprendre le format du PDF.</div>';
     grid = '';
   }
+
+  const debugHtml = (rawRows && rawRows.length)
+    ? '<details style="margin-top:10px"><summary style="font-size:11px;color:var(--text3);cursor:pointer;user-select:none">▶ Texte extrait du PDF (' + rawRows.length + ' lignes)</summary>'
+      + '<textarea readonly style="width:100%;height:180px;margin-top:6px;font-size:10px;font-family:monospace;background:var(--bg);border:0.5px solid var(--border);border-radius:var(--r);color:var(--text2);padding:8px">'
+      + _esc(rawRows.slice(0, 80).join('\n')) + '</textarea></details>'
+    : '';
 
   mc.innerHTML = '<h2>Import PDF — Aperçu</h2>'
     + status
@@ -889,6 +912,7 @@ function _showPDFPreview(result) {
     + '<div class="row"><div class="flex1 field"><label>Date de début</label><input type="date" id="pdf-cyc-start" value="' + _esc(startDate || '') + '"></div>'
     + '<div class="flex1 field"><label>Date de fin (optionnel)</label><input type="date" id="pdf-cyc-end"></div></div>'
     + grid
+    + debugHtml
     + '<div class="modal-btns">'
     + '<button class="btn btn-ghost" onclick="closeModal()">Annuler</button>'
     + '<button class="btn" onclick="_pdfOpenInEditor()">Ouvrir dans l\'éditeur</button>'
