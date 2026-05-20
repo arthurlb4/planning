@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>Planning</title>
-<meta name="app-version" content="v4.37">
+<meta name="app-version" content="v4.38">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -339,7 +339,7 @@ body.modal-open .bloc.clk:hover,body.modal-open .ctr.clk:hover{background:var(--
 
 <!-- HEADER -->
 <div class="hdr" style="justify-content:space-between">
-  <span class="hdr-ver" style="font-size:10px;color:var(--text3);opacity:.5;padding-left:4px;white-space:nowrap">v4.37 — 20 mai 2026</span>
+  <span class="hdr-ver" style="font-size:10px;color:var(--text3);opacity:.5;padding-left:4px;white-space:nowrap">v4.38 — 20 mai 2026</span>
   <div class="hdr-btns" style="position:relative">
     <div style="position:relative;display:none;align-items:center;margin-right:6px;" id="warn-icon-wrap">
       <button class="ibtn" id="warn-icon-btn" onclick="toggleWarnDropdown()"><i class="ti ti-alert-triangle" style="font-size:14px"></i></button>
@@ -430,7 +430,7 @@ body.modal-open .bloc.clk:hover,body.modal-open .ctr.clk:hover{background:var(--
 <div id="modal-root"></div>
 
 <script>
-var _appVer='v4.37';
+var _appVer='v4.38';
 var GCAL_CLIENT_ID='669191513748-a40uvl9k46kqsmjatpqokhnhgvrc7mdt.apps.googleusercontent.com';
 var GCAL_REDIRECT_URI='https://arthurlb4.github.io/planning/app/';
 var GCAL_SCOPE='https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events';
@@ -3679,12 +3679,10 @@ function gcalStartPoll(){
 async function gcalClear(){
   if(!gcalTokens){alert('Google Agenda non connecté.');return;}
   if(!confirm('Supprimer tous les événements du calendrier franceinfo ?'))return;
-  // Cancel any running sync first
   if(_syncAbort){_syncAbort.abort();_syncAbort=null;}
   clearTimeout(_syncTimer);_syncTimer=null;
   const token=await gcalGetToken();
   if(!token)return;
-  // Disable auto-sync during clear
   if(S.profile)S.profile.gcalAutoSync=false;
   saveState();gcalUpdateBtn();
   const wrap=document.getElementById('gcal-status-wrap');
@@ -3694,43 +3692,21 @@ async function gcalClear(){
   if(wrap){wrap.classList.add('gcal-syncing');wrap.classList.add('gcal-clearing');}
   if(ico)ico.innerHTML=gSvg('#4ea0f7');
   if(circle){circle.style.stroke='#ea4335';circle.style.strokeDashoffset='0';}
-  if(btn)btn.innerHTML='<span style="font-size:10px;font-weight:600">0%</span>';
+  if(btn)btn.innerHTML='<span style="font-size:9px;font-weight:600">...</span>';
   try{
-    // Step 1: count total events
-    if(btn)btn.innerHTML='<span style="font-size:9px;font-weight:600">0%</span>';
-    let totalEvents=0;
-    try{
-      const cntRes=await fetch(GCAL_FUNCTIONS+'/calendar',{
-        method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({action:'countEvents',access_token:gcalTokens.access_token,refresh_token:gcalTokens.refresh_token,calendarId:gcalCalendarId}),
-      });
-      const cntData=await cntRes.json();
-      if(cntData.newToken)gcalTokens.access_token=cntData.newToken;
-      totalEvents=cntData.total||0;
-    }catch(e){}
-    // Step 2: delete in batches
-    let pageToken=null;let totalDeleted=0;
-    do{
-      const res=await fetch(GCAL_FUNCTIONS+'/calendar',{
-        method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({action:'clearAll',access_token:gcalTokens.access_token,refresh_token:gcalTokens.refresh_token,calendarId:gcalCalendarId,pageToken:pageToken}),
-      });
-      const data=await res.json();
-      if(data.newToken)gcalTokens.access_token=data.newToken;
-      totalDeleted+=(data.deleted||0);
-      // Show percentage
-      const pct=totalEvents>0?Math.round(totalDeleted/totalEvents*100):totalDeleted;
-      if(btn)btn.innerHTML='<span style="font-size:9px;font-weight:600">'+(totalEvents>0?pct+'%':'-'+totalDeleted)+'</span>';
-      // Update circle progress
-      if(circle&&totalEvents>0){circle.style.stroke='#ea4335';circle.style.strokeDashoffset=81.68*(1-pct/100);}
-      pageToken=data.nextPageToken||null;
-    }while(pageToken);
+    // Supprimer le calendrier entier et le recréer — instantané quelle que soit la quantité d'événements
+    if(gcalCalendarId&&gcalCalendarId!=='primary'){
+      await fetch(GCAL_FUNCTIONS+'/calendar',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({action:'deleteCalendar',access_token:gcalTokens.access_token,refresh_token:gcalTokens.refresh_token,calendarId:gcalCalendarId})});
+    }
+    const res2=await fetch(GCAL_FUNCTIONS+'/calendar',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'createCalendar',access_token:gcalTokens.access_token,refresh_token:gcalTokens.refresh_token,event:{summary:'franceinfo',timeZone:'Europe/Paris'}})});
+    const cal2=await res2.json();
+    if(cal2.newToken)gcalTokens.access_token=cal2.newToken;
+    if(cal2.id){gcalCalendarId=cal2.id;localStorage.setItem('gcal_calendar_id',gcalCalendarId);}
   }catch(e){alert('Erreur: '+e.message);}
   if(circle){circle.style.stroke='transparent';circle.style.strokeDashoffset='81.68';}
-  if(btn)btn.innerHTML='<span style="font-size:10px;font-weight:600">100%</span>';
-  setTimeout(function(){
-    if(btn)btn.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M9 3h6a1 1 0 0 1 1 1v1H8V4a1 1 0 0 1 1-1zM3 6h18v2H3V6zm2 3h14l-1.5 12a1 1 0 0 1-1 .9H7.5a1 1 0 0 1-1-.9L5 9z"/></svg>';
-  },1000);
+  if(btn)btn.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M9 3h6a1 1 0 0 1 1 1v1H8V4a1 1 0 0 1 1-1zM3 6h18v2H3V6zm2 3h14l-1.5 12a1 1 0 0 1-1 .9H7.5a1 1 0 0 1-1-.9L5 9z"/></svg>';
   if(wrap){wrap.classList.remove('gcal-syncing');wrap.classList.remove('gcal-clearing');}
   gcalUpdateBtn();
 }
@@ -3747,7 +3723,7 @@ function gcalDisconnect(){
 }
 
 </script>
-<div style="text-align:center;padding:20px 0 8px;font-size:10px;color:var(--text3);opacity:.5">v4.37 — 20 mai 2026</div>
+<div style="text-align:center;padding:20px 0 8px;font-size:10px;color:var(--text3);opacity:.5">v4.38 — 20 mai 2026</div>
 <script>if('serviceWorker'in navigator){navigator.serviceWorker.register('./sw.js').catch(function(){});}</script>
 </body>
 </html>
