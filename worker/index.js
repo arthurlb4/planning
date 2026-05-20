@@ -293,6 +293,39 @@ export default {
       return resp({ ok: true });
     }
 
+    if (path === '/admin/parse-cycle-pdf') {
+      if (!await verifyAdmin(request, env)) return resp({ error: 'Non autorise' }, 401);
+      var pdfBase64 = body.pdfBase64;
+      if (!pdfBase64) return resp({ error: 'PDF manquant' }, 400);
+      if (!env.ANTHROPIC_API_KEY) return resp({ error: 'ANTHROPIC_API_KEY non configure dans les secrets Cloudflare' }, 500);
+      var prompt = 'Analyse ce planning France Info. Retourne UNIQUEMENT un JSON valide (aucun texte avant ou apres, aucun bloc markdown).\n\nStructure attendue:\n{\n  "title": "titre complet du cycle",\n  "lines": [\n    {"name": "NOM_AGENT", "schedule": ["codeL","codeMa","codeMe","codeJ","codeV","codeSa","codeDi"]}\n  ],\n  "vacations": {\n    "CODE": {"deb": "HHhMM", "fin": "HHhMM", "dur": 480}\n  }\n}\n\nRegles:\n- schedule: null pour jour repos sans code, "RH" pour recuperation hebdomadaire, code exact sinon\n- vacations: une entree par code unique avec deb/fin extraits du tableau, dur = duree en minutes (fin - deb - pauses)\n- Format heures: "HHhMM" (ex: "03h45", "00h30")\n- Inclus les lignes Antenne ET Pool Cadre dans l\'ordre du document';
+      try {
+        var claudeRes = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+          body: JSON.stringify({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 8192,
+            messages: [{ role: 'user', content: [
+              { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 } },
+              { type: 'text', text: prompt }
+            ]}]
+          })
+        });
+        if (!claudeRes.ok) {
+          var errBody = await claudeRes.json().catch(function(){ return {}; });
+          return resp({ error: 'Erreur Claude API: ' + (errBody.error && errBody.error.message || claudeRes.status) }, 500);
+        }
+        var claudeData = await claudeRes.json();
+        var text = (claudeData.content && claudeData.content[0] && claudeData.content[0].text) || '';
+        text = text.replace(/^```(?:json)?\n?/m, '').replace(/\n?```\s*$/m, '').trim();
+        var parsed = JSON.parse(text);
+        return resp({ ok: true, data: parsed });
+      } catch(e) {
+        return resp({ error: 'Erreur: ' + e.message }, 500);
+      }
+    }
+
     if (path === '/cycles') {
       var cycles = await env.PLANNING_DB.get('global:cycles', { type: 'json' }) || [];
       return resp({ cycles: cycles });

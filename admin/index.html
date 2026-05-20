@@ -128,7 +128,8 @@ textarea{width:100%;padding:9px 12px;background:var(--bg);border:0.5px solid var
       <span style="font-size:12px;color:var(--text3)">Gestion des cycles de planning</span>
       <div style="display:flex;gap:6px">
         <button class="btn btn-sm btn-ghost" onclick="migrateHardcodedCycleIfNeeded().then(loadCycles).then(()=>switchTab('vacations'))">Migrer cycle initial</button>
-        <button class="btn btn-sm btn-ghost" onclick="importCycleFromPDF()">📄 Importer PDF</button>
+        <button class="btn btn-sm btn-ghost" onclick="importCycleFromPDF()" title="Parsing client-side via pdf.js">📄 Import PDF</button>
+        <button class="btn btn-sm btn-orange" onclick="showImportPDF()" title="Analyse par IA (Claude) — extrait aussi les vacations">🤖 Import IA</button>
         <button class="btn btn-sm btn-green" onclick="showCreateCycle()">+ Nouveau cycle</button>
       </div>
     </div>
@@ -677,6 +678,158 @@ async function deleteCycle(cycleId) {
   if (!confirm('Supprimer ce cycle ?')) return;
   const res = await fetch(API + '/admin/cycle/delete', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ cycleId }) });
   if (res.ok) loadCycles();
+}
+
+// PDF IMPORT
+var _parsedCycleData = null;
+
+function showImportPDF() {
+  _parsedCycleData = null;
+  document.getElementById('modal-content').innerHTML = '<h2>Importer un cycle depuis un PDF</h2>'
+    + '<div class="alert alert-blue" style="margin-bottom:14px">Le PDF sera analysé par l\'IA (Claude) pour extraire automatiquement le cycle et les vacations.</div>'
+    + '<div class="field"><label>Fichier PDF</label>'
+    + '<input type="file" id="pdf-file-input" accept=".pdf" style="width:100%;padding:8px;background:var(--bg);border:0.5px solid var(--border);border-radius:var(--r);color:var(--text);font-size:13px;cursor:pointer">'
+    + '</div>'
+    + '<div class="err" id="pdf-import-err" style="margin-top:4px"></div>'
+    + '<div class="modal-btns"><button class="btn btn-ghost" onclick="closeModal()">Annuler</button>'
+    + '<button class="btn btn-orange" id="pdf-parse-btn" onclick="doParsePDF()">Analyser le PDF</button></div>';
+  document.getElementById('modal-bg').style.display = 'flex';
+}
+
+async function doParsePDF() {
+  var fileInput = document.getElementById('pdf-file-input');
+  var errEl = document.getElementById('pdf-import-err');
+  var btn = document.getElementById('pdf-parse-btn');
+  if (!fileInput || !fileInput.files[0]) { errEl.textContent = 'Sélectionnez un fichier PDF.'; return; }
+  var file = fileInput.files[0];
+  if (file.type !== 'application/pdf' && !file.name.endsWith('.pdf')) { errEl.textContent = 'Le fichier doit être un PDF.'; return; }
+  btn.disabled = true;
+  btn.textContent = 'Analyse en cours…';
+  errEl.textContent = '';
+  try {
+    var base64 = await new Promise(function(resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function(e) { resolve(e.target.result.split(',')[1]); };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+    var res = await fetch(API + '/admin/parse-cycle-pdf', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ pdfBase64: base64 }) });
+    var data = await res.json();
+    if (!res.ok) { errEl.textContent = data.error || 'Erreur serveur'; btn.disabled = false; btn.textContent = 'Analyser le PDF'; return; }
+    _parsedCycleData = data.data;
+    showParsedPreview();
+  } catch(e) { errEl.textContent = 'Erreur réseau: ' + e.message; btn.disabled = false; btn.textContent = 'Analyser le PDF'; }
+}
+
+function showParsedPreview() {
+  var d = _parsedCycleData;
+  if (!d) return;
+  var DAYS = ['L','Ma','Me','J','V','Sa','Di'];
+  var lines = d.lines || [];
+  var vacs = d.vacations || {};
+
+  var grid = '<div style="overflow-x:auto;max-height:320px;overflow-y:auto;margin-bottom:12px">'
+    + '<table style="border-collapse:collapse;font-size:11px;white-space:nowrap">'
+    + '<thead><tr><th style="padding:3px 8px;position:sticky;left:0;background:var(--bg2);color:var(--text3)">Ligne</th>'
+    + DAYS.map(function(d){ return '<th style="padding:3px 8px;color:var(--text3)">' + d + '</th>'; }).join('')
+    + '</tr></thead><tbody>'
+    + lines.map(function(line, i) {
+      return '<tr>'
+        + '<td style="padding:3px 8px;position:sticky;left:0;background:var(--bg2);font-weight:500;font-size:11px;white-space:nowrap">'
+        + '<span style="color:var(--text3);margin-right:4px">S' + (i+1) + '</span>' + (line.name||'') + '</td>'
+        + (line.schedule||[]).map(function(code) {
+          var c = !code ? 'var(--text3)' : code === 'RH' ? 'var(--red)' : code === 'SV' ? 'var(--text3)' : 'var(--blue)';
+          return '<td style="padding:3px 8px;text-align:center;color:' + c + '">' + (code||'—') + '</td>';
+        }).join('')
+        + '</tr>';
+    }).join('')
+    + '</tbody></table></div>';
+
+  var vacKeys = Object.keys(vacs).sort();
+  var vacTable = vacKeys.length ? '<div style="overflow-x:auto;max-height:180px;overflow-y:auto;margin-bottom:12px">'
+    + '<table style="border-collapse:collapse;font-size:11px;width:100%">'
+    + '<thead><tr><th style="padding:3px 8px;color:var(--text3)">Code</th><th style="padding:3px 8px;color:var(--text3)">Début</th><th style="padding:3px 8px;color:var(--text3)">Fin</th><th style="padding:3px 8px;color:var(--text3)">Durée</th></tr></thead><tbody>'
+    + vacKeys.map(function(name) {
+      var v = vacs[name];
+      return '<tr><td style="padding:3px 8px;font-weight:600">' + name + '</td>'
+        + '<td style="padding:3px 8px">' + (v.deb||'—') + '</td>'
+        + '<td style="padding:3px 8px">' + (v.fin||'—') + '</td>'
+        + '<td style="padding:3px 8px">' + (v.dur||0) + ' min</td></tr>';
+    }).join('')
+    + '</tbody></table></div>' : '<div class="empty">Aucune vacation extraite</div>';
+
+  document.getElementById('modal-content').innerHTML = '<h2>Aperçu — ' + lines.length + ' lignes, ' + vacKeys.length + ' vacations</h2>'
+    + '<div class="row" style="margin-bottom:12px">'
+    + '<div class="flex1 field"><label>Nom du cycle</label><input type="text" id="cyc-import-name" value="' + (d.title||'').replace(/"/g,'&quot;') + '" placeholder="Nom du cycle"></div>'
+    + '<div class="flex1 field"><label>Date de début</label><input type="date" id="cyc-import-start"></div>'
+    + '</div>'
+    + grid
+    + '<div style="font-size:11px;color:var(--text3);margin-bottom:6px">' + vacKeys.length + ' vacation(s) extraite(s) — les nouvelles seront créées, les existantes conservées</div>'
+    + vacTable
+    + '<div class="err" id="pdf-save-err" style="margin-top:4px"></div>'
+    + '<div class="modal-btns">'
+    + '<button class="btn btn-ghost" onclick="showImportPDF()">Retour</button>'
+    + '<button class="btn btn-green" onclick="doSaveImportedCycle()">Créer le cycle</button>'
+    + '</div>';
+  document.getElementById('modal-bg').style.display = 'flex';
+}
+
+async function doSaveImportedCycle() {
+  var d = _parsedCycleData;
+  if (!d) return;
+  var name = document.getElementById('cyc-import-name').value.trim();
+  var startDate = document.getElementById('cyc-import-start').value;
+  var errEl = document.getElementById('pdf-save-err');
+  if (!name) { errEl.textContent = 'Nom du cycle requis.'; return; }
+  if (!startDate) { errEl.textContent = 'Date de début requise.'; return; }
+  errEl.textContent = '';
+  var saveBtn = document.querySelector('#modal-content .btn-green');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Enregistrement…'; }
+
+  var weeks = (d.lines || []).map(function(line) {
+    return (line.schedule || []).map(function(code) { return code || null; });
+  });
+  var vacs = d.vacations || {};
+
+  try {
+    // 1. Create cycle
+    var cycRes = await fetch(API + '/admin/cycle/create', {
+      method: 'POST', headers: adminHeaders(),
+      body: JSON.stringify({ cycle: { name: name, startDate: startDate, anchor: startDate, endDate: null, weeks: weeks } })
+    });
+    var cycData = await cycRes.json();
+    if (!cycRes.ok) { errEl.textContent = cycData.error || 'Erreur création cycle'; if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Créer le cycle'; } return; }
+    var cycleId = cycData.cycle && cycData.cycle.id;
+
+    // 2. Load existing vacations
+    var existingRes = await fetch(API + '/admin/vacations', { method: 'POST', headers: adminHeaders(), body: '{}' });
+    var existingData = await existingRes.json();
+    var existing = existingData.vacations || {};
+
+    // 3. Create new vacations + link all to cycle
+    var vacNames = Object.keys(vacs);
+    for (var vi = 0; vi < vacNames.length; vi++) {
+      var vname = vacNames[vi];
+      if (!existing[vname]) {
+        var v = vacs[vname];
+        await fetch(API + '/admin/vacation/save', {
+          method: 'POST', headers: adminHeaders(),
+          body: JSON.stringify({ vacation: { name: vname, deb: v.deb||'', fin: v.fin||'', dur: v.dur||0, panier: false, type: 'week' } })
+        });
+      }
+      await fetch(API + '/admin/vacation/addcycle', {
+        method: 'POST', headers: adminHeaders(),
+        body: JSON.stringify({ name: vname, cycleId: cycleId })
+      });
+    }
+
+    closeModal();
+    loadCycles();
+    alert('Cycle "' + name + '" créé avec ' + vacNames.length + ' vacation(s).\n\nPensez à vérifier le panier repas de chaque vacation dans l\'onglet Vacations.');
+  } catch(e) {
+    errEl.textContent = 'Erreur réseau: ' + e.message;
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Créer le cycle'; }
+  }
 }
 
 // Change admin password
