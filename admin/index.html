@@ -1027,60 +1027,64 @@ function _parsePDFGrid(items) {
     }
   }
 
-  const vacations = dayColX ? _parsePDFVacations(rows, dayColX) : {};
+  const vacations = dayColX ? _parsePDFVacations(items, rows, dayColX) : {};
   return { weeks, startDate: detectedDate, detected: weeks.length > 0, rawRows, vacations };
 }
 
-function _parsePDFVacations(rows, dayColX) {
+function _parsePDFVacations(allItems, rows, dayColX) {
   const TIME_RE = /^(\d{1,2})h(\d{2})$/;
-  const X_TOL = 40;
+  // Reconnaît tout code vacances plausible : lettres + chiffres/suffixe, P+digits, RH
+  const CODE_RE = /^([A-Z][a-z]?\d{0,2}[a-z]?|P\d{3,4})$/;
+  const X_TOL = 45;
   const vacMap = {};
+
+  // Index plat de tous les items horaires avec leur y brut (pas groupé)
+  const allTimeItems = allItems
+    .map(it => { const m = TIME_RE.exec(it.str.trim()); return m ? { h: +m[1], min: +m[2], str: it.str.trim(), x: it.x, y: it.y } : null; })
+    .filter(Boolean);
+
   for (const row of rows) {
     for (let di = 0; di < 7; di++) {
       if (dayColX[di] === null) continue;
-      let code = null, codeX = null;
+      let code = null, codeY = row.y;
       for (const item of row.items) {
         if (Math.abs(item.x - dayColX[di]) < X_TOL) {
-          const c = _toVacCode(item.str);
-          if (c) { code = c; codeX = item.x; break; }
+          const s = item.str.trim().replace(/\s/g, '');
+          if (CODE_RE.test(s)) { code = s; codeY = item.y !== undefined ? item.y : row.y; break; }
         }
       }
       if (!code || vacMap[code]) continue;
-      // Collect time items below this code row (same column x, up to 75px below)
-      const timesBelow = [];
-      for (const other of rows) {
-        if (other.y <= row.y + 1) continue;
-        if (other.y > row.y + 75) break;
-        for (const item of other.items) {
-          if (Math.abs(item.x - dayColX[di]) < X_TOL) {
-            const m = TIME_RE.exec(item.str.trim());
-            if (m) timesBelow.push({ h: parseInt(m[1]), min: parseInt(m[2]), str: item.str.trim(), y: other.y, x: item.x });
-          }
-        }
-      }
-      if (timesBelow.length < 2) continue;
-      // Group by y-level
+
+      // Cherche les items horaires bruts dans la même colonne, de codeY à codeY+90
+      const nearby = allTimeItems.filter(t =>
+        Math.abs(t.x - dayColX[di]) < X_TOL && t.y >= codeY - 2 && t.y <= codeY + 90
+      );
+      if (nearby.length < 2) continue;
+
+      // Regroupe par niveau y (tolérance 8px)
       const byY = [];
-      for (const t of timesBelow) {
+      for (const t of nearby) {
         const g = byY.find(g => Math.abs(g.y - t.y) <= 8);
         if (g) g.times.push(t); else byY.push({ y: t.y, times: [t] });
       }
       byY.sort((a, b) => a.y - b.y);
       for (const g of byY) g.times.sort((a, b) => a.x - b.x);
-      // Row 1: deb (leftmost) + fin (rightmost)
-      const r1 = byY[0].times;
-      if (r1.length < 2) continue;
+
+      // Premier groupe avec ≥2 items = deb (gauche) + fin (droite)
+      const debFinGroup = byY.find(g => g.times.length >= 2);
+      if (!debFinGroup) continue;
+      const r1 = debFinGroup.times;
       const deb = r1[0].str, fin = r1[r1.length - 1].str;
       let dur = (r1[r1.length-1].h*60 + r1[r1.length-1].min) - (r1[0].h*60 + r1[0].min);
       if (dur < 0) dur += 1440;
-      // Row 2: pause (leftmost) — subtract if reasonable
-      if (byY.length >= 2) {
-        const r2 = byY[1].times;
-        if (r2.length >= 1) {
-          const pause = r2[0].h * 60 + r2[0].min;
-          if (pause > 0 && pause < dur / 2) dur -= pause;
-        }
+
+      // Groupe suivant : cherche une pause (valeur gauche, soustraite si < dur/2)
+      const nextIdx = byY.indexOf(debFinGroup) + 1;
+      if (nextIdx < byY.length) {
+        const pause = byY[nextIdx].times[0].h * 60 + byY[nextIdx].times[0].min;
+        if (pause > 0 && pause < dur / 2) dur -= pause;
       }
+
       vacMap[code] = { deb, fin, dur: Math.max(0, dur) };
     }
   }
