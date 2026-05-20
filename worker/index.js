@@ -733,48 +733,45 @@ export default {
         var cal = calendarId || 'primary';
         var evList = events || [];
         if (!evList.length) return resp({ results: [], newToken: null });
-        var results = [];
-        for (var i = 0; i < evList.length; i++) {
-          var ev = evList[i];
+        var latestToken = token;
+        var calPath = '/calendars/' + encodeURIComponent(cal) + '/events';
+        async function processEv(ev) {
+          var tok = latestToken;
+          var r;
           try {
-            var r;
-            var calPath = '/calendars/' + encodeURIComponent(cal) + '/events';
             if (ev._delete && ev.googleEventId) {
-              r = await calApi('DELETE', calPath + '/' + ev.googleEventId, null, token, refresh_token, env);
-              if (r.status !== 404 && r.status !== 410 || !ev.soft) {
-                results.push({ id: ev.id, deleted: true });
-              } else {
-                results.push({ id: ev.id, deleted: false, skipped: true });
-              }
-            } else if (!ev._delete && ev.stable && ev.googleEventId) {
-              var eventWithId = Object.assign({}, ev.event, { id: ev.googleEventId });
-              r = await calApi('PUT', calPath + '/' + ev.googleEventId, eventWithId, token, refresh_token, env);
-              if (r.status === 404 || r.status === 410) {
-                r = await calApi('POST', calPath, eventWithId, token, refresh_token, env);
-              }
-              if (r.status === 403 || r.status === 429) {
-                await new Promise(function(res){ setTimeout(res, 1000); });
-                r = await calApi('PUT', calPath + '/' + ev.googleEventId, eventWithId, token, refresh_token, env);
-                if (r.status === 404 || r.status === 410) r = await calApi('POST', calPath, eventWithId, token, refresh_token, env);
-              }
-              results.push({ id: ev.id, googleEventId: r.data.id || ev.googleEventId });
-              await new Promise(function(res){ setTimeout(res, 30); });
+              r = await calApi('DELETE', calPath + '/' + ev.googleEventId, null, tok, refresh_token, env);
+              if (r.newToken) return { id: ev.id, deleted: true, _tok: r.newToken };
+              if (r.status === 404 || r.status === 410) return { id: ev.id, deleted: false, skipped: true };
+              return { id: ev.id, deleted: true };
             } else if (!ev._delete && ev.googleEventId) {
-              r = await calApi('PUT', calPath + '/' + ev.googleEventId, ev.event, token, refresh_token, env);
+              var evData = ev.stable ? Object.assign({}, ev.event, { id: ev.googleEventId }) : ev.event;
+              r = await calApi(ev.stable ? 'PUT' : 'POST', ev.stable ? calPath + '/' + ev.googleEventId : calPath, evData, tok, refresh_token, env);
+              if (r.newToken) tok = r.newToken;
               if (r.status === 404 || r.status === 410) {
-                r = await calApi('POST', calPath, ev.event, token, refresh_token, env);
+                r = await calApi('POST', calPath, evData, tok, refresh_token, env);
+                if (r.newToken) tok = r.newToken;
               }
-              results.push({ id: ev.id, googleEventId: r.data.id || ev.googleEventId });
+              return { id: ev.id, googleEventId: r.data.id || ev.googleEventId, _tok: tok !== latestToken ? tok : null };
             } else if (!ev._delete) {
-              r = await calApi('POST', calPath, ev.event, token, refresh_token, env);
-              results.push({ id: ev.id, googleEventId: r.data.id });
+              r = await calApi('POST', calPath, ev.event, tok, refresh_token, env);
+              if (r.newToken) tok = r.newToken;
+              return { id: ev.id, googleEventId: r.data && r.data.id, _tok: tok !== latestToken ? tok : null };
             }
-            if (r && r.newToken) token = r.newToken;
-          } catch(e) {
-            results.push({ id: ev.id, googleEventId: ev.googleEventId });
+          } catch(e) {}
+          return { id: ev.id, googleEventId: ev.googleEventId };
+        }
+        var results = [];
+        var GROUP = 5;
+        for (var gi = 0; gi < evList.length; gi += GROUP) {
+          var grp = await Promise.all(evList.slice(gi, gi + GROUP).map(processEv));
+          for (var j = 0; j < grp.length; j++) {
+            var item = grp[j];
+            if (item._tok) { latestToken = item._tok; delete item._tok; }
+            results.push(item);
           }
         }
-        return resp({ results: results, newToken: token !== access_token ? token : null });
+        return resp({ results: results, newToken: latestToken !== access_token ? latestToken : null });
       }
 
       return resp({ error: 'Invalid action' }, 400);
