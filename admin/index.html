@@ -902,16 +902,18 @@ async function importCycleFromPDF() {
 
 const _VAC_SET = new Set(['RH','A1','A2','A3','B1','C1','C2','D1','D2','P423',
   'As1','As2','As3','Cs','Es','Fs','Ad1','Ad2','Ad3','Cd','Ed','Fd']);
+const _VAC_CODE_RE = /^([A-Z][a-z]?\d{0,2}[a-z]?|P\d{3,4})$/;
 
 function _toVacCode(str) {
   const s = str.trim().replace(/\s/g, '');
   if (!s || s === '-' || s === '—' || s === '–' || s === '/') return null;
   if (/^r\.?h\.?$/i.test(s)) return 'RH';
-  if (/^sv$/i.test(s)) return null; // Sans Vacation = repos
+  if (/^sv$/i.test(s)) return null;
   if (_VAC_SET.has(s)) return s;
   const sl = s.toLowerCase();
   for (const v of _VAC_SET) { if (v.toLowerCase() === sl) return v; }
-  return undefined; // inconnu — à ignorer
+  if (_VAC_CODE_RE.test(s)) return s; // code inconnu mais plausible
+  return undefined;
 }
 
 function _parsePDFGrid(items) {
@@ -1055,33 +1057,44 @@ function _parsePDFVacations(allItems, rows, dayColX) {
       }
       if (!code || vacMap[code]) continue;
 
-      // Cherche les items horaires bruts dans la même colonne, de codeY à codeY+90
+      // Cherche les items horaires bruts dans la même colonne, strictement sous le code
       const nearby = allTimeItems.filter(t =>
-        Math.abs(t.x - dayColX[di]) < X_TOL && t.y >= codeY - 2 && t.y <= codeY + 90
+        Math.abs(t.x - dayColX[di]) < X_TOL && t.y > codeY && t.y <= codeY + 90
       );
       if (nearby.length < 2) continue;
 
-      // Regroupe par niveau y (tolérance 8px)
+      // Regroupe par niveau y avec tolérance 4px (petite pour ne pas fusionner deb/fin avec pause/dur)
       const byY = [];
       for (const t of nearby) {
-        const g = byY.find(g => Math.abs(g.y - t.y) <= 8);
+        const g = byY.find(g => Math.abs(g.y - t.y) <= 4);
         if (g) g.times.push(t); else byY.push({ y: t.y, times: [t] });
       }
       byY.sort((a, b) => a.y - b.y);
       for (const g of byY) g.times.sort((a, b) => a.x - b.x);
 
-      // Premier groupe avec ≥2 items = deb (gauche) + fin (droite)
-      const debFinGroup = byY.find(g => g.times.length >= 2);
-      if (!debFinGroup) continue;
-      const r1 = debFinGroup.times;
-      const deb = r1[0].str, fin = r1[r1.length - 1].str;
-      let dur = (r1[r1.length-1].h*60 + r1[r1.length-1].min) - (r1[0].h*60 + r1[0].min);
+      // deb = item le plus à gauche du 1er groupe, fin = item le plus à gauche du 2e groupe si 1er n'a qu'un item
+      // (cas rare : deb et fin sur lignes légèrement séparées)
+      let debItem, finItem, pauseGroupIdx;
+      if (byY[0].times.length >= 2) {
+        // Cas normal : deb et fin sur la même ligne
+        debItem = byY[0].times[0];
+        finItem = byY[0].times[byY[0].times.length - 1];
+        pauseGroupIdx = 1;
+      } else if (byY.length >= 2) {
+        // deb seul sur ligne 1, fin seul sur ligne 2
+        debItem = byY[0].times[0];
+        finItem = byY[1].times[byY[1].times.length - 1];
+        pauseGroupIdx = 2;
+      } else {
+        continue;
+      }
+      const deb = debItem.str, fin = finItem.str;
+      let dur = (finItem.h*60 + finItem.min) - (debItem.h*60 + debItem.min);
       if (dur < 0) dur += 1440;
 
-      // Groupe suivant : cherche une pause (valeur gauche, soustraite si < dur/2)
-      const nextIdx = byY.indexOf(debFinGroup) + 1;
-      if (nextIdx < byY.length) {
-        const pause = byY[nextIdx].times[0].h * 60 + byY[nextIdx].times[0].min;
+      // Groupe pause : valeur gauche soustraite si < dur/2
+      if (pauseGroupIdx < byY.length) {
+        const pause = byY[pauseGroupIdx].times[0].h * 60 + byY[pauseGroupIdx].times[0].min;
         if (pause > 0 && pause < dur / 2) dur -= pause;
       }
 
