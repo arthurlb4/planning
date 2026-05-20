@@ -243,7 +243,8 @@ export default {
         dur: vac.dur !== undefined ? vac.dur : (existing.dur || 0),
         panier: vac.panier !== undefined ? !!vac.panier : !!existing.panier,
         type: vac.type || existing.type || 'week',
-        cycleIds: existing.cycleIds || []
+        cycleIds: existing.cycleIds || [],
+        ...(vac.label ? { label: vac.label } : existing.label ? { label: existing.label } : {})
       };
       await env.PLANNING_DB.put('global:vacations', JSON.stringify(vacs));
       return resp({ ok: true });

@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>Planning</title>
-<meta name="app-version" content="v4.41">
+<meta name="app-version" content="v4.42">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -339,7 +339,7 @@ body.modal-open .bloc.clk:hover,body.modal-open .ctr.clk:hover{background:var(--
 
 <!-- HEADER -->
 <div class="hdr" style="justify-content:space-between">
-  <span class="hdr-ver" style="font-size:10px;color:var(--text3);opacity:.5;padding-left:4px;white-space:nowrap">v4.41 — 20 mai 2026</span>
+  <span class="hdr-ver" style="font-size:10px;color:var(--text3);opacity:.5;padding-left:4px;white-space:nowrap">v4.42 — 20 mai 2026</span>
   <div class="hdr-btns" style="position:relative">
     <div style="position:relative;display:none;align-items:center;margin-right:6px;" id="warn-icon-wrap">
       <button class="ibtn" id="warn-icon-btn" onclick="toggleWarnDropdown()"><i class="ti ti-alert-triangle" style="font-size:14px"></i></button>
@@ -430,7 +430,7 @@ body.modal-open .bloc.clk:hover,body.modal-open .ctr.clk:hover{background:var(--
 <div id="modal-root"></div>
 
 <script>
-var _appVer='v4.41';
+var _appVer='v4.42';
 var GCAL_CLIENT_ID='669191513748-a40uvl9k46kqsmjatpqokhnhgvrc7mdt.apps.googleusercontent.com';
 var GCAL_REDIRECT_URI='https://arthurlb4.github.io/planning/app/';
 var GCAL_SCOPE='https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events';
@@ -647,6 +647,7 @@ function getVac(date){
 function getDur(date){const{vac}=getVac(date);const VAC=getVAC();return(vac&&vac!=='RH'&&VAC[vac])?VAC[vac].dur:0;}
 function isPanier(date){const{vac}=getVac(date);const VAC=getVAC();return!!(vac&&vac!=='RH'&&VAC[vac]&&VAC[vac].panier);}
 function isRHDay(date){return getCycleVac(date).cycleVac==='RH';}
+function vLbl(code,VAC){return(code&&VAC&&VAC[code]&&VAC[code].label)||code||'';}
 
 function renduFactor(date){
   const key=dk(date),isFer=FERIES.has(key),isDim=date.getDay()===0,isRH=isRHDay(date);
@@ -1152,14 +1153,15 @@ function renderMonth(el_heads,el_cal){
     });
   }
   const cells=[];for(let i=0;i<sdow;i++)cells.push(null);
+  const _VAC=getVAC();
   for(let d=1;d<=last.getDate();d++){
     const date=new Date(curY,curM,d),key=dk(date),st=getState(date),{vac,ov,fromSV,echange}=getVac(date);
     let lbl='';
     if(st==='absent')lbl='abs.';
     else if(st==='sv')lbl=ov?'*':'+';
     else if(st==='rh')lbl='+';
-    else if(st==='fer')lbl=(vac&&vac!=='RH')?vac+(echange?'~':'')+(ov&&!fromSV?'*':''):'+';
-    else if(vac&&vac!=='RH')lbl=vac+(echange?'~':'')+(ov&&!fromSV?'*':'');
+    else if(st==='fer')lbl=(vac&&vac!=='RH')?vLbl(vac,_VAC)+(echange?'~':'')+(ov&&!fromSV?'*':''):'+';
+    else if(vac&&vac!=='RH')lbl=vLbl(vac,_VAC)+(echange?'~':'')+(ov&&!fromSV?'*':'');
     const panDot=isPanier(date)&&!(S.conges||{})[key]?'<span class="pdot"></span>':'';
     const _inWarn=_warnKeys.has(key);
     const warnDot=_inWarn?'<span class="wdot">⚠️</span>':'';
@@ -1500,7 +1502,7 @@ function openDay(key){
   var cs=calcSoldes(),totalReal=cs.totalReal,matelas=cs.matelas,totalDispo=totalReal+Math.max(0,matelas);
   var cR=Math.max(0,getSoldeAnnee(date.getFullYear())-calcCongesUsedForYear(date.getFullYear()));
   var lbl=fmtDate(date),factor=renduFactor(date),ramee=isSemaineRamenée(getMonday(date)),hsW=calcHSWeek(getMonday(date)),sett=settingsForYM(date.getFullYear()*12+date.getMonth());
-  var tt=vac&&vac!=='RH'?vac:'';if(absent)tt='Absent';else if(isFer)tt=vac&&vac!=='RH'?vac:'Férié';else if(!vac)tt='Repos';if(echange)tt+=' (echange)';
+  var tt=vac&&vac!=='RH'?vLbl(vac,VAC):'';if(absent)tt='Absent';else if(isFer)tt=vac&&vac!=='RH'?vLbl(vac,VAC):'Férié';else if(!vac)tt='Repos';if(echange)tt+=' (echange)';
 
   // Grille contextuelle — seulement les vacs du jour
   var dw=date.getDay();
@@ -1529,7 +1531,7 @@ function openDay(key){
         var bg=vi&&vi.dur>0?'var(--blue-l)':'var(--bg2)',cl=vi&&vi.dur>0?'var(--blue)':'var(--text)';
         var bd=isCur?'2px solid var(--blue)':'0.5px solid var(--border)';
         var durLbl=vi&&vi.dur>0?'<div style="font-size:9px;opacity:.7">'+fmtMin(vi.dur)+'</div>':'';
-        vgHtml+=`<button class="mb" style="border:${bd};background:${bg};color:${cl};" onclick="avw('${vn}')"><div>${vn}</div>${durLbl}</button>`;
+        vgHtml+=`<button class="mb" style="border:${bd};background:${bg};color:${cl};" onclick="avw('${vn}')"><div>${vLbl(vn,VAC)}</div>${durLbl}</button>`;
       }
   });
   vgHtml+='</div>';
@@ -1547,7 +1549,7 @@ function openDay(key){
     ah=`<div class="mbtns"><button class="mb del wide" style="border:none" onclick="removeCongé()">Retirer</button></div>`;
   }
 
-  document.getElementById('modal-root').innerHTML=`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="sh"></div><div class="st">${lbl}${tt?' - '+tt:''}</div>${vac&&vac!=='RH'&&!absent&&VAC[vac]?`<div class="ss">${VAC[vac].deb}→${VAC[vac].fin} · ${fmtMin(dur)}</div>`:''}${vgHtml}<div style="height:0.5px;background:var(--border);margin:16px 0;opacity:.5"></div>${ah}${echange?`<button class="mb del wide" style="font-size:11px;padding:8px;margin-bottom:4px" onclick="cancelExchange('${key}')">Annuler l'échange</button>`:ov?`<button class="mb wide ghost" style="font-size:11px;padding:8px;margin-bottom:4px" onclick="resetVac()">Remettre le cycle (${cycleVac||'repos'})</button>`:''}<button class="mcancel" onclick="closeModal()">Fermer</button></div></div>`;
+  document.getElementById('modal-root').innerHTML=`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="sh"></div><div class="st">${lbl}${tt?' - '+tt:''}</div>${vac&&vac!=='RH'&&!absent&&VAC[vac]?`<div class="ss">${VAC[vac].deb}→${VAC[vac].fin} · ${fmtMin(dur)}</div>`:''}${vgHtml}<div style="height:0.5px;background:var(--border);margin:16px 0;opacity:.5"></div>${ah}${echange?`<button class="mb del wide" style="font-size:11px;padding:8px;margin-bottom:4px" onclick="cancelExchange('${key}')">Annuler l'échange</button>`:ov?`<button class="mb wide ghost" style="font-size:11px;padding:8px;margin-bottom:4px" onclick="resetVac()">Remettre le cycle (${cycleVac?vLbl(cycleVac,VAC):'repos'})</button>`:''}<button class="mcancel" onclick="closeModal()">Fermer</button></div></div>`;
 }
 function avw(sel){
   if(!sel)return;
@@ -2246,7 +2248,7 @@ function renderExchangeModal(){
         const vi=VAC[vn],dur=vi?vi.dur:0;
         const bg=vi&&vi.dur>0?'var(--blue-l)':'var(--bg2)',cl=vi&&vi.dur>0?'var(--blue)':'var(--text)';
         const durLbl=vi&&vi.dur>0?'<div style="font-size:9px;opacity:.7">'+fmtMin(dur)+'</div>':'';
-        exVgHtml+='<button class="mb" style="background:'+bg+';color:'+cl+'" data-exvac="'+vn+'"><div>'+vn+'</div>'+durLbl+'</button>';
+        exVgHtml+='<button class="mb" style="background:'+bg+';color:'+cl+'" data-exvac="'+vn+'"><div>'+vLbl(vn,VAC)+'</div>'+durLbl+'</button>';
       }
     });
     exVgHtml+='</div>';
@@ -3724,7 +3726,7 @@ function gcalDisconnect(){
 }
 
 </script>
-<div style="text-align:center;padding:20px 0 8px;font-size:10px;color:var(--text3);opacity:.5">v4.41 — 20 mai 2026</div>
+<div style="text-align:center;padding:20px 0 8px;font-size:10px;color:var(--text3);opacity:.5">v4.42 — 20 mai 2026</div>
 <script>if('serviceWorker'in navigator){navigator.serviceWorker.register('./sw.js').catch(function(){});}</script>
 </body>
 </html>
