@@ -63,6 +63,14 @@ textarea{width:100%;padding:9px 12px;background:var(--bg);border:0.5px solid var
 .mt16{margin-top:16px;}
 .alert{padding:10px 14px;border-radius:var(--r);font-size:12px;margin-bottom:12px;}
 .alert-blue{background:rgba(78,160,247,.1);border:0.5px solid rgba(78,160,247,.3);color:var(--blue);}
+.alert-green{background:rgba(90,158,63,.1);border:0.5px solid rgba(90,158,63,.3);color:#7ec85a;}
+.alert-orange{background:rgba(240,160,48,.1);border:0.5px solid rgba(240,160,48,.3);color:var(--orange);}
+.modal-wide{max-width:700px!important;}
+.pdf-grid-preview{overflow:auto;max-height:320px;margin:10px 0;border:0.5px solid var(--border);border-radius:var(--r);}
+.pdf-grid-preview table{border-collapse:collapse;font-size:11px;width:100%;}
+.pdf-grid-preview th{padding:4px 8px;color:var(--text3);background:var(--bg3);position:sticky;top:0;}
+.pdf-grid-preview td{padding:3px 8px;text-align:center;border:0.5px solid var(--border);}
+.pdf-grid-preview tr:hover td{background:var(--bg3);}
 </style>
 </head>
 <body>
@@ -120,6 +128,7 @@ textarea{width:100%;padding:9px 12px;background:var(--bg);border:0.5px solid var
       <span style="font-size:12px;color:var(--text3)">Gestion des cycles de planning</span>
       <div style="display:flex;gap:6px">
         <button class="btn btn-sm btn-ghost" onclick="migrateHardcodedCycleIfNeeded().then(loadCycles).then(()=>switchTab('vacations'))">Migrer cycle initial</button>
+        <button class="btn btn-sm btn-ghost" onclick="importCycleFromPDF()">📄 Importer PDF</button>
         <button class="btn btn-sm btn-green" onclick="showCreateCycle()">+ Nouveau cycle</button>
       </div>
     </div>
@@ -689,7 +698,237 @@ async function doChangeAdminPwd() {
   else { err.textContent = data.error || 'Erreur'; }
 }
 
-function closeModal() { document.getElementById('modal-bg').style.display = 'none'; }
+// ── PDF IMPORT ──────────────────────────────────────────────────────────────
+
+async function _loadPDFJS() {
+  if (window.pdfjsLib) return;
+  await new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    s.onload = resolve; s.onerror = () => reject(new Error('Impossible de charger PDF.js (vérifiez votre connexion)'));
+    document.head.appendChild(s);
+  });
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
+
+async function importCycleFromPDF() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.pdf,application/pdf';
+  input.onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const mc = document.getElementById('modal-content');
+    mc.className = 'modal';
+    mc.innerHTML = '<h2>Import PDF</h2><div style="text-align:center;padding:24px;color:var(--text3)">Analyse du PDF en cours…</div>';
+    document.getElementById('modal-bg').style.display = 'flex';
+    try {
+      await _loadPDFJS();
+      const buf = await file.arrayBuffer();
+      const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
+      // Extract text items with x,y positions from all pages
+      const allItems = [];
+      let pageOffsetY = 0;
+      for (let p = 1; p <= pdf.numPages; p++) {
+        const page = await pdf.getPage(p);
+        const vp = page.getViewport({ scale: 1 });
+        const content = await page.getTextContent();
+        for (const item of content.items) {
+          const s = (item.str || '').trim();
+          if (s) allItems.push({ str: s, x: item.transform[4], y: pageOffsetY + (vp.height - item.transform[5]) });
+        }
+        pageOffsetY += vp.height + 60;
+      }
+      // Try to get PDF title for cycle name
+      let cycleName = file.name.replace(/\.pdf$/i, '');
+      const meta = await pdf.getMetadata().catch(() => ({}));
+      if (meta && meta.info && meta.info.Title) cycleName = meta.info.Title;
+      const result = _parsePDFGrid(allItems);
+      result.name = cycleName;
+      _showPDFPreview(result);
+    } catch(err) {
+      const mc2 = document.getElementById('modal-content');
+      mc2.innerHTML = '<h2>Erreur d\'import</h2>'
+        + '<p style="color:var(--red);font-size:13px;margin-bottom:16px">' + _esc(err.message || 'Impossible de lire ce PDF') + '</p>'
+        + '<div class="modal-btns"><button class="btn btn-ghost" onclick="closeModal()">Fermer</button></div>';
+    }
+  };
+  input.click();
+}
+
+const _VAC_SET = new Set(['RH','A1','A2','A3','B1','C1','C2','D1','D2','P423',
+  'As1','As2','As3','Cs','Es','Fs','Ad1','Ad2','Ad3','Cd','Ed','Fd']);
+
+function _toVacCode(str) {
+  const s = str.trim().replace(/[ ​]/g, '');
+  if (!s || s === '-' || s === '—' || s === '/') return null;
+  if (/^r\.?h\.?$/i.test(s)) return 'RH';
+  if (_VAC_SET.has(s)) return s;
+  const sl = s.toLowerCase();
+  for (const v of _VAC_SET) { if (v.toLowerCase() === sl) return v; }
+  return undefined; // not a known code — skip
+}
+
+function _parsePDFGrid(items) {
+  const Y_TOL = 5;
+  // Group items into rows by y proximity
+  const rows = [];
+  for (const item of [...items].sort((a, b) => a.y - b.y)) {
+    let placed = false;
+    for (const row of rows) {
+      if (Math.abs(row.y - item.y) <= Y_TOL) { row.items.push(item); placed = true; break; }
+    }
+    if (!placed) rows.push({ y: item.y, items: [item] });
+  }
+  for (const row of rows) {
+    row.items.sort((a, b) => a.x - b.x);
+    row.text = row.items.map(i => i.str).join(' ');
+  }
+
+  // Try to locate the day-header row (Lu/Ma/Me/Je/Ve/Sa/Di)
+  const DAY_MAP = { lu:0,lun:0,lundi:0, ma:1,mar:1,mardi:1, me:2,mer:2,mercredi:2,
+    je:3,jeu:3,jeudi:3, ve:4,ven:4,vendredi:4, sa:5,sam:5,samedi:5, di:6,dim:6,dimanche:6 };
+  let dayColX = Array(7).fill(null);
+  for (const row of rows) {
+    const hits = row.items.map(it => {
+      const k = it.str.trim().toLowerCase();
+      return DAY_MAP.hasOwnProperty(k) ? { col: DAY_MAP[k], x: it.x } : null;
+    }).filter(Boolean);
+    const unique = new Set(hits.map(h => h.col));
+    if (unique.size >= 5) {
+      const cols = Array(7).fill(null);
+      for (const h of hits) { if (cols[h.col] === null) cols[h.col] = h.x; }
+      dayColX = cols;
+      break;
+    }
+  }
+
+  const useColumns = dayColX.some(x => x !== null);
+  const X_TOL = 22;
+
+  const weekRows = [];
+  let detectedDate = '';
+
+  for (const row of rows) {
+    const tokens = row.items.map(i => i.str.trim()).filter(Boolean);
+    const text = tokens.join(' ');
+
+    // Date detection (DD/MM/YYYY or YYYY-MM-DD)
+    if (!detectedDate) {
+      let dm;
+      if ((dm = text.match(/(\d{2})[\/\-](\d{2})[\/\-](\d{4})/))) {
+        detectedDate = `${dm[3]}-${dm[2].padStart(2,'0')}-${dm[1].padStart(2,'0')}`;
+      } else if ((dm = text.match(/(\d{4})-(\d{2})-(\d{2})/))) {
+        detectedDate = dm[0];
+      }
+    }
+
+    // Week row: first token matches S1–S52 or just 1–52
+    const wm = (tokens[0] || '').match(/^S?(\d{1,2})$/i);
+    if (!wm) continue;
+    const wn = parseInt(wm[1]);
+    if (wn < 1 || wn > 52) continue;
+
+    let dayCodes;
+    if (useColumns) {
+      dayCodes = Array(7).fill(null);
+      for (let di = 0; di < 7; di++) {
+        if (dayColX[di] === null) continue;
+        let best = null, bestDist = Infinity;
+        for (let ti = 1; ti < row.items.length; ti++) {
+          const d = Math.abs(row.items[ti].x - dayColX[di]);
+          if (d < bestDist && d < X_TOL) { bestDist = d; best = row.items[ti]; }
+        }
+        if (best) { const c = _toVacCode(best.str); if (c !== undefined) dayCodes[di] = c; }
+      }
+      // Fall back to sequential if column alignment yielded nothing meaningful
+      if (dayCodes.every(c => c === null)) dayCodes = null;
+    }
+    if (!dayCodes) {
+      dayCodes = [];
+      for (let ti = 1; ti < tokens.length && dayCodes.length < 7; ti++) {
+        const c = _toVacCode(tokens[ti]);
+        if (c !== undefined) dayCodes.push(c);
+      }
+      while (dayCodes.length < 7) dayCodes.push(null);
+    }
+
+    if (dayCodes.some(c => c !== null)) weekRows.push({ wn, vacs: dayCodes.slice(0, 7) });
+  }
+
+  weekRows.sort((a, b) => a.wn - b.wn);
+  const seen = new Set();
+  const unique = weekRows.filter(r => seen.has(r.wn) ? false : (seen.add(r.wn), true));
+  return { weeks: unique.map(r => r.vacs), startDate: detectedDate, detected: unique.length > 0 };
+}
+
+function _showPDFPreview(result) {
+  const { weeks, startDate, detected, name } = result;
+  const DAYS = ['Lu','Ma','Me','Je','Ve','Sa','Di'];
+  const mc = document.getElementById('modal-content');
+  mc.className = 'modal modal-wide';
+
+  let status, grid;
+  if (detected && weeks.length > 0) {
+    status = `<div class="alert alert-green" style="margin-bottom:10px">✓ ${weeks.length} semaine(s) détectée(s) dans le PDF</div>`;
+    grid = '<div class="pdf-grid-preview"><table>'
+      + '<tr><th>S</th>' + DAYS.map(d => `<th>${d}</th>`).join('') + '</tr>'
+      + weeks.map((w, wi) => '<tr><td style="font-weight:600;color:var(--text3)">S'+(wi+1)+'</td>'
+          + w.map(v => `<td>${v !== null ? v : '<span style="color:var(--text3)">—</span>'}</td>`).join('')
+          + '</tr>').join('')
+      + '</table></div>';
+  } else {
+    status = '<div class="alert alert-orange" style="margin-bottom:10px">⚠ Aucune grille détectée automatiquement — le cycle sera créé vide pour édition manuelle.</div>';
+    grid = '';
+  }
+
+  mc.innerHTML = '<h2>Import PDF — Aperçu</h2>'
+    + status
+    + '<div class="field"><label>Nom du cycle</label><input type="text" id="pdf-cyc-name" value="' + _esc(name || '') + '" placeholder="Nom du cycle"></div>'
+    + '<div class="row"><div class="flex1 field"><label>Date de début</label><input type="date" id="pdf-cyc-start" value="' + _esc(startDate || '') + '"></div>'
+    + '<div class="flex1 field"><label>Date de fin (optionnel)</label><input type="date" id="pdf-cyc-end"></div></div>'
+    + grid
+    + '<div class="modal-btns">'
+    + '<button class="btn btn-ghost" onclick="closeModal()">Annuler</button>'
+    + '<button class="btn" onclick="_pdfOpenInEditor()">Ouvrir dans l\'éditeur</button>'
+    + '<button class="btn btn-green" onclick="_pdfSaveDirect()">Créer le cycle</button>'
+    + '</div>'
+    + '<div class="err" id="pdf-err" style="margin-top:8px"></div>';
+  window._pdfWeeks = weeks.length > 0 ? weeks : null;
+}
+
+function _pdfOpenInEditor() {
+  const name = document.getElementById('pdf-cyc-name').value.trim();
+  const startDate = document.getElementById('pdf-cyc-start').value;
+  const endDate = document.getElementById('pdf-cyc-end').value || null;
+  closeModal();
+  setTimeout(() => showCreateCycle({ name, startDate, endDate, weeks: window._pdfWeeks || [] }), 80);
+}
+
+async function _pdfSaveDirect() {
+  const name = document.getElementById('pdf-cyc-name').value.trim();
+  const startDate = document.getElementById('pdf-cyc-start').value;
+  const endDate = document.getElementById('pdf-cyc-end').value || null;
+  const err = document.getElementById('pdf-err');
+  if (!name || !startDate) { err.textContent = 'Nom et date de début requis.'; return; }
+  const weeks = window._pdfWeeks || [[null,null,null,null,null,null,'RH']];
+  const res = await fetch(API + '/admin/cycle/create', {
+    method: 'POST', headers: adminHeaders(),
+    body: JSON.stringify({ cycle: { name, startDate, endDate, anchor: startDate, weeks } })
+  });
+  const data = await res.json();
+  if (res.ok) { closeModal(); loadCycles(); }
+  else { err.textContent = data.error || 'Erreur'; }
+}
+
+function _esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── END PDF IMPORT ────────────────────────────────────────────────────────────
+
+function closeModal() { document.getElementById('modal-bg').style.display = 'none'; document.getElementById('modal-content').className = 'modal'; }
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 </script>
 </body>
