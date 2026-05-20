@@ -682,6 +682,27 @@ export default {
         return resp(Object.assign({}, r.data, { newToken: r.newToken }), r.status);
       }
 
+      if (action === 'resetCalendar') {
+        var oldCal = calendarId;
+        var savedColor = null;
+        if (oldCal && oldCal !== 'primary') {
+          var entry = await calApi('GET', '/users/me/calendarList/' + encodeURIComponent(oldCal), null, token, refresh_token, env);
+          if (entry.newToken) token = entry.newToken;
+          savedColor = entry.data && entry.data.backgroundColor;
+          await calApi('DELETE', '/calendars/' + encodeURIComponent(oldCal), null, token, null, env);
+        }
+        var newR = await calApi('POST', '/calendars', { summary: 'franceinfo', timeZone: 'Europe/Paris' }, token, null, env);
+        if (newR.newToken) token = newR.newToken;
+        if (newR.data && newR.data.id) {
+          await calApi('POST', '/users/me/calendarList', { id: newR.data.id }, token, null, env);
+          if (savedColor) {
+            await calApi('PATCH', '/users/me/calendarList/' + encodeURIComponent(newR.data.id),
+              { backgroundColor: savedColor, foregroundColor: '#ffffff' }, token, null, env);
+          }
+        }
+        return resp({ id: newR.data && newR.data.id, newToken: token !== access_token ? token : null });
+      }
+
       if (action === 'createCalendar') {
         var r = await calApi('POST', '/calendars', calEvent, token, refresh_token, env);
         if (r.newToken) token = r.newToken;
