@@ -764,7 +764,7 @@ function showParsedPreview() {
     + '<div class="flex1 field"><label>Date de début</label><input type="date" id="cyc-import-start"></div>'
     + '</div>'
     + grid
-    + '<div style="font-size:11px;color:var(--text3);margin-bottom:6px">' + vacKeys.length + ' vacation(s) extraite(s) — les nouvelles seront créées, les existantes conservées</div>'
+    + '<div style="font-size:11px;color:var(--text3);margin-bottom:6px">' + vacKeys.length + ' vacation(s) extraite(s) — nouvelles créées, mêmes horaires réutilisées, horaires différents → renommées automatiquement (ex: A1b)</div>'
     + vacTable
     + '<div class="err" id="pdf-save-err" style="margin-top:4px"></div>'
     + '<div class="modal-btns">'
@@ -786,13 +786,44 @@ async function doSaveImportedCycle() {
   var saveBtn = document.querySelector('#modal-content .btn-green');
   if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Enregistrement…'; }
 
-  var weeks = (d.lines || []).map(function(line) {
-    return (line.schedule || []).map(function(code) { return code || null; });
-  });
   var vacs = d.vacations || {};
 
   try {
-    // 1. Create cycle
+    // 1. Load existing vacations to detect conflicts
+    var existingRes = await fetch(API + '/admin/vacations', { method: 'POST', headers: adminHeaders(), body: '{}' });
+    var existingData = await existingRes.json();
+    var existing = existingData.vacations || {};
+
+    // 2. Resolve vacation names: rename if same code but different hours
+    var rename = {}; // originalCode -> finalCode
+    var allNames = new Set(Object.keys(existing));
+    var suffixes = 'bcdefghijklmnopqrstuvwxyz'.split('');
+    Object.keys(vacs).forEach(function(vname) {
+      var v = vacs[vname];
+      var ex = existing[vname];
+      if (!ex) { rename[vname] = vname; allNames.add(vname); return; }
+      if (ex.deb === v.deb && ex.fin === v.fin) { rename[vname] = vname; return; }
+      // Hours differ: find a free name
+      var base = vname.replace(/[b-z]$/i, ''); // strip existing suffix
+      var found = null;
+      for (var si = 0; si < suffixes.length; si++) {
+        var candidate = base + suffixes[si];
+        if (!allNames.has(candidate)) { found = candidate; break; }
+      }
+      if (!found) found = vname + '_new';
+      rename[vname] = found;
+      allNames.add(found);
+    });
+
+    // 3. Build weeks grid, applying renames
+    var weeks = (d.lines || []).map(function(line) {
+      return (line.schedule || []).map(function(code) {
+        if (!code) return null;
+        return rename[code] || code;
+      });
+    });
+
+    // 4. Create cycle
     var cycRes = await fetch(API + '/admin/cycle/create', {
       method: 'POST', headers: adminHeaders(),
       body: JSON.stringify({ cycle: { name: name, startDate: startDate, anchor: startDate, endDate: null, weeks: weeks } })
@@ -801,31 +832,32 @@ async function doSaveImportedCycle() {
     if (!cycRes.ok) { errEl.textContent = cycData.error || 'Erreur création cycle'; if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Créer le cycle'; } return; }
     var cycleId = cycData.cycle && cycData.cycle.id;
 
-    // 2. Load existing vacations
-    var existingRes = await fetch(API + '/admin/vacations', { method: 'POST', headers: adminHeaders(), body: '{}' });
-    var existingData = await existingRes.json();
-    var existing = existingData.vacations || {};
-
-    // 3. Create new vacations + link all to cycle
+    // 5. Create new/renamed vacations + link all to cycle
+    var renamed = [];
     var vacNames = Object.keys(vacs);
     for (var vi = 0; vi < vacNames.length; vi++) {
       var vname = vacNames[vi];
-      if (!existing[vname]) {
-        var v = vacs[vname];
+      var finalName = rename[vname];
+      var v = vacs[vname];
+      if (!existing[finalName]) {
         await fetch(API + '/admin/vacation/save', {
           method: 'POST', headers: adminHeaders(),
-          body: JSON.stringify({ vacation: { name: vname, deb: v.deb||'', fin: v.fin||'', dur: v.dur||0, panier: false, type: 'week' } })
+          body: JSON.stringify({ vacation: { name: finalName, deb: v.deb||'', fin: v.fin||'', dur: v.dur||0, panier: false, type: 'week' } })
         });
       }
       await fetch(API + '/admin/vacation/addcycle', {
         method: 'POST', headers: adminHeaders(),
-        body: JSON.stringify({ name: vname, cycleId: cycleId })
+        body: JSON.stringify({ name: finalName, cycleId: cycleId })
       });
+      if (finalName !== vname) renamed.push(vname + ' → ' + finalName);
     }
 
     closeModal();
     loadCycles();
-    alert('Cycle "' + name + '" créé avec ' + vacNames.length + ' vacation(s).\n\nPensez à vérifier le panier repas de chaque vacation dans l\'onglet Vacations.');
+    var msg = 'Cycle "' + name + '" créé avec ' + vacNames.length + ' vacation(s).';
+    if (renamed.length) msg += '\n\nVacations renommées (horaires différents) :\n' + renamed.join('\n');
+    msg += '\n\nPensez à vérifier le panier repas dans l\'onglet Vacations.';
+    alert(msg);
   } catch(e) {
     errEl.textContent = 'Erreur réseau: ' + e.message;
     if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Créer le cycle'; }
