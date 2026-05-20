@@ -777,6 +777,21 @@ export default {
       return resp({ error: 'Invalid action' }, 400);
     }
 
+    if (path === '/sync-status') {
+      const session = await verifySession(request, env);
+      if (!session) return resp({ error: 'Unauthorized' }, 401);
+      if (body.action === 'set') {
+        await env.PLANNING_DB.put(
+          'sync_state:' + session.userId,
+          JSON.stringify({ status: body.status||'idle', current: body.current||0, total: body.total||0, ts: Date.now() }),
+          { expirationTtl: 60 }
+        );
+        return resp({ ok: true });
+      }
+      const state = await env.PLANNING_DB.get('sync_state:' + session.userId, { type: 'json' });
+      return resp(state || { status: 'idle', current: 0, total: 0 });
+    }
+
     return resp({ error: 'Not found' }, 404);
     } catch(e) {
       return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: cors });
