@@ -689,7 +689,7 @@ export default {
           var entry = await calApi('GET', '/users/me/calendarList/' + encodeURIComponent(oldCal), null, token, refresh_token, env);
           if (entry.newToken) token = entry.newToken;
           savedColor = entry.data && entry.data.backgroundColor;
-          await calApi('DELETE', '/calendars/' + encodeURIComponent(oldCal), null, token, null, env);
+          await calApi('DELETE', '/calendars/' + encodeURIComponent(oldCal), null, token, refresh_token, env);
         }
         var newR = await calApi('POST', '/calendars', { summary: 'franceinfo', timeZone: 'Europe/Paris' }, token, null, env);
         if (newR.newToken) token = newR.newToken;
