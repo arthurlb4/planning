@@ -1,3 +1,5 @@
+const SW_VERSION = '4.16';
+
 self.addEventListener('install', function() { self.skipWaiting(); });
 
 self.addEventListener('activate', function(e) {
@@ -10,10 +12,11 @@ self.addEventListener('activate', function(e) {
 
 self.addEventListener('fetch', function(event) {
   if (event.request.mode === 'navigate') {
-    event.respondWith(
-      fetch(event.request, { cache: 'no-store' }).catch(function() {
-        return caches.match(event.request);
-      })
-    );
+    const req = new Request(event.request.url, {
+      method: 'GET',
+      headers: { 'Cache-Control': 'no-cache, no-store', 'Pragma': 'no-cache' },
+      cache: 'no-store'
+    });
+    event.respondWith(fetch(req).catch(function() { return caches.match(event.request); }));
   }
 });
