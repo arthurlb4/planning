@@ -209,7 +209,7 @@ function adminHeaders() { return { 'Content-Type': 'application/json', 'Authoriz
 function showAdmin() {
   document.getElementById('login-section').style.display = 'none';
   document.getElementById('admin').style.display = 'block';
-  migrateHardcodedCycleIfNeeded().then(() => loadUsers());
+  migrateHardcodedCycleIfNeeded().then(() => patchVacationData()).then(() => loadUsers());
 }
 
 // Default hardcoded cycle data
@@ -302,6 +302,32 @@ async function migrateHardcodedCycleIfNeeded() {
   }
 }
 
+// One-time patch: fix data errors in already-migrated vacations.
+// Keyed by patch version so each patch runs exactly once per browser.
+const VAC_PATCHES = {
+  'v2': [
+    { name:'C1',  deb:'12h15', fin:'21h15', dur:540, panier:false, type:'week' },
+    { name:'Cs',  deb:'11h15', fin:'20h15', dur:540, panier:true,  type:'sat'  },
+    { name:'Cd',  deb:'11h15', fin:'20h15', dur:540, panier:true,  type:'sun'  },
+    { name:'P423',deb:'09h45', fin:'18h15', dur:450, panier:false, type:'week' },
+  ],
+};
+async function patchVacationData() {
+  for (const [ver, patches] of Object.entries(VAC_PATCHES)) {
+    const key = 'vac_patch_' + ver;
+    if (localStorage.getItem(key)) continue;
+    try {
+      for (const vacation of patches) {
+        await fetch(API + '/admin/vacation/save', { method:'POST', headers:adminHeaders(),
+          body: JSON.stringify({ vacation }) });
+      }
+      localStorage.setItem(key, '1');
+      console.log('Vacation patch applied:', ver);
+    } catch(e) {
+      console.warn('Vacation patch failed:', ver, e);
+    }
+  }
+}
 
 
 function adminLogout() {
