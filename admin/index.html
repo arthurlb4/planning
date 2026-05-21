@@ -691,7 +691,7 @@ async function doSaveCycle(existingId) {
   if (!name || !startDate) { errEl.textContent = 'Nom et date de début requis.'; return; }
   // Read grid
   syncCycleWeeksFromDOM();
-  const weeks = window._cycleWeeks.map(w => w.map(v => v === 'null' ? null : v));
+  const weeks = window._cycleWeeks.map(w => w.map(v => (!v || v === 'null' || v === 'SV') ? null : v));
   if (!weeks.length || weeks.some(w => !w || w.length !== 7)) { errEl.textContent = 'Chaque semaine doit avoir 7 jours.'; return; }
   const endpoint = existingId ? '/admin/cycle/update' : '/admin/cycle/create';
   const body = { cycle: { id: existingId||undefined, name, startDate, endDate, anchor, weeks } };
@@ -986,7 +986,7 @@ function _parseCycleText(rawText) {
     if (!cands.length) continue;
 
     const rowCodes = Array(7).fill(null);
-    for (const c of cands) { const di = findCol(c.pos); if (di >= 0 && !rowCodes[di]) rowCodes[di] = c.str; }
+    for (const c of cands) { const di = findCol(c.pos); if (di >= 0 && !rowCodes[di]) rowCodes[di] = /^sv$/i.test(c.str) ? null : c.str; }
     if (rowCodes.filter(Boolean).length < 2) continue;
 
     // Find time lines above and below
@@ -1486,7 +1486,7 @@ async function _pdfSaveDirect() {
     const vacs = window._pdfVacations || {};
     const { rename, existing } = await _resolveVacRename(vacs);
     const rawWeeks = window._pdfWeeks || [[null,null,null,null,null,null,'RH']];
-    const weeks = rawWeeks.map(w => w.map(c => !c ? null : rename[c] || c));
+    const weeks = rawWeeks.map(w => w.map(c => (!c || c === 'SV') ? null : rename[c] || c));
     const res = await fetch(API + '/admin/cycle/create', {
       method: 'POST', headers: adminHeaders(),
       body: JSON.stringify({ cycle: { name, startDate, endDate, anchor: startDate, weeks } })
