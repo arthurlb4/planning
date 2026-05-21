@@ -564,10 +564,14 @@ function _calcMixteHsMin(mixteCode,replCode,VAC){
   if(!mv||!rv)return 0;
   const dm=_toMinApp(mv.deb),fm0=_toMinApp(mv.fin);
   const dr=_toMinApp(rv.deb),fr0=_toMinApp(rv.fin);
-  if(dm===null||fm0===null||dr===null||fr0===null)return 0;
-  const fm=fm0<=dm?fm0+1440:fm0;
-  const fr=fr0<=dr?fr0+1440:fr0;
-  return Math.max(0,dm-dr)+Math.max(0,fr-fm);
+  // Bounds overflow (time outside MIXTE window)
+  const hsBounds=(dm!==null&&fm0!==null&&dr!==null&&fr0!==null)?function(){
+    const fm=fm0<=dm?fm0+1440:fm0,fr=fr0<=dr?fr0+1440:fr0;
+    return Math.max(0,dm-dr)+Math.max(0,fr-fm);
+  }():0;
+  // Duration overflow (works longer than MIXTE)
+  const hsDur=Math.max(0,(rv.dur||0)-(mv.dur||0));
+  return Math.max(hsBounds,hsDur);
 }
 function fmtH(min){if(min===0)return'0h00';const h=min/60;if(Number.isInteger(h))return h+'h00';return Math.floor(h)+'h'+String(min%60).padStart(2,'0');}
 function fmtR(min){return(Math.round(min/60*100)/100).toFixed(2).replace('.',',')+'h';}
