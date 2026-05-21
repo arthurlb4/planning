@@ -963,6 +963,15 @@ function _parsePDFGrid(items) {
     }
   }
 
+  // Détecter la limite de la section Antenne (Pool Cadre ou 2ème header de jours)
+  let stopY = Infinity;
+  for (const row of rows) {
+    if (row.y <= headerY) continue;
+    if (row.items.some(it => /^pool$/i.test(it.str.trim()))) { stopY = row.y; break; }
+    const hits2 = row.items.map(it => { const k = it.str.trim().toLowerCase(); return DAY_MAP.hasOwnProperty(k) ? k : null; }).filter(Boolean);
+    if (new Set(hits2).size >= 5) { stopY = row.y; break; }
+  }
+
   // ── Méthode A : alignement par colonnes (principal) ────────────────────────
   // Fonctionne même sans numéros de semaine (format avec noms de personnes)
   let weeks = [];
@@ -989,7 +998,7 @@ function _parsePDFGrid(items) {
     const calSums = Array(7).fill(0), calCounts = Array(7).fill(0);
     const CAL_TOL = colSpacing * 0.9;
     for (const row of rows) {
-      if (row.y <= headerY) continue;
+      if (row.y <= headerY || row.y >= stopY) continue;
       for (const item of row.items) {
         if (_toVacCode(item.str) === undefined) continue;
         let bestDi = -1, bestDist = Infinity;
@@ -1008,7 +1017,7 @@ function _parsePDFGrid(items) {
     // Fusionner les lignes très proches (ligne PDF découpée en 2 parties dans le rendu)
     const gridRows = [];
     for (const row of rows) {
-      if (row.y <= headerY) continue;
+      if (row.y <= headerY || row.y >= stopY) continue;
       const last = gridRows[gridRows.length - 1];
       if (last && row.y - last.y <= 20) {
         for (const it of row.items) last.items.push(it);
@@ -1042,6 +1051,7 @@ function _parsePDFGrid(items) {
   if (weeks.length === 0) {
     const weekRows = [];
     for (const row of rows) {
+      if (row.y >= stopY) continue;
       const tokens = row.items.map(i => i.str.trim()).filter(Boolean);
       let wn = null, skip = 1;
       const m1 = (tokens[0]||'').match(/^S?(\d{1,2})$/i);
@@ -1066,6 +1076,7 @@ function _parsePDFGrid(items) {
   // ── Méthode C : détection séquentielle (dernier recours) ──────────────────
   if (weeks.length === 0) {
     for (const row of rows) {
+      if (row.y >= stopY) continue;
       const tokens = row.items.map(i => i.str.trim()).filter(Boolean);
       const codes = [];
       for (const tok of tokens) { const c = _toVacCode(tok); if (c !== undefined) codes.push(c); }
@@ -1075,11 +1086,11 @@ function _parsePDFGrid(items) {
     }
   }
 
-  const vacations = dayColX ? _parsePDFVacations(items, rows, dayColX, colSpacing) : {};
+  const vacations = dayColX ? _parsePDFVacations(items, rows, dayColX, colSpacing, stopY) : {};
   return { weeks, startDate: detectedDate, detected: weeks.length > 0, rawRows, vacations };
 }
 
-function _parsePDFVacations(allItems, rows, dayColX, colSpacing) {
+function _parsePDFVacations(allItems, rows, dayColX, colSpacing, stopY = Infinity) {
   const TIME_RE = /^(\d{1,2})h(\d{2})$/;
   const CODE_RE = /^([A-Z]{2,8}|[A-Z][a-z]?\d{0,2}[a-z]?|P\d{3,4})$/;
   const WORD_BLOCK = /^(LUNDI|MARDI|MERCREDI|JEUDI|VENDREDI|SAMEDI|DIMANCHE|SEMAINE|CYCLE|REPOS|PAUSE|DUREE|DEBUT|TOTAL|POOL|CADRE|ANTENNE|LIGNE)$/;
@@ -1087,12 +1098,14 @@ function _parsePDFVacations(allItems, rows, dayColX, colSpacing) {
   const X_TOL = colSpacing ? colSpacing * 0.55 : 45;
   const vacMap = {};
 
-  // Index plat de tous les items horaires avec leur y brut (pas groupé)
+  // Index plat de tous les items horaires avec leur y brut (pas groupé), section Antenne seulement
   const allTimeItems = allItems
+    .filter(it => it.y < stopY)
     .map(it => { const m = TIME_RE.exec(it.str.trim()); return m ? { h: +m[1], min: +m[2], str: it.str.trim(), x: it.x, y: it.y } : null; })
     .filter(Boolean);
 
   for (const row of rows) {
+    if (row.y >= stopY) continue;
     for (let di = 0; di < 7; di++) {
       if (dayColX[di] === null) continue;
       let code = null, codeY = row.y, codeX = dayColX[di];
