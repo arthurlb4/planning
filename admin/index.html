@@ -240,17 +240,17 @@ const DEFAULT_VACS_DATA = {
   As2:{deb:'04h45',fin:'12h45',dur:480,panier:false,type:'sat'},
   As3:{deb:'05h45',fin:'14h15',dur:510,panier:false,type:'sat'},
   B1:{deb:'07h45',fin:'15h15',dur:450,panier:true,type:'week'},
-  C1:{deb:'12h15',fin:'21h15',dur:540,panier:true,type:'week'},
+  C1:{deb:'12h15',fin:'21h15',dur:540,panier:false,type:'week'},
   C2:{deb:'13h15',fin:'21h15',dur:480,panier:false,type:'week'},
-  Cd:{deb:'12h15',fin:'21h15',dur:540,panier:true,type:'sun'},
-  Cs:{deb:'12h15',fin:'21h15',dur:540,panier:true,type:'sat'},
+  Cd:{deb:'11h15',fin:'20h15',dur:540,panier:true,type:'sun'},
+  Cs:{deb:'11h15',fin:'20h15',dur:540,panier:true,type:'sat'},
   D1:{deb:'15h45',fin:'00h30',dur:480,panier:false,type:'week'},
   D2:{deb:'15h45',fin:'00h15',dur:465,panier:false,type:'week'},
   Ed:{deb:'14h45',fin:'00h30',dur:540,panier:false,type:'sun'},
   Es:{deb:'15h15',fin:'00h30',dur:510,panier:false,type:'sat'},
   Fd:{deb:'15h45',fin:'00h15',dur:465,panier:false,type:'sun'},
   Fs:{deb:'15h45',fin:'00h15',dur:465,panier:false,type:'sat'},
-  P423:{deb:'09h45',fin:'18h15',dur:390,panier:false,type:'week'},
+  P423:{deb:'09h45',fin:'18h15',dur:450,panier:false,type:'week'},
   RH:{deb:'',fin:'',dur:0,panier:false,type:'all'},
 };
 
@@ -1360,8 +1360,8 @@ function _showPDFPreview(result) {
   const vacHtml = vacKeys.length
     ? '<div style="font-size:11px;color:var(--text3);margin:8px 0 4px">' + vacKeys.length + ' vacation(s) extraite(s)</div>'
       + '<div class="pdf-grid-preview" style="max-height:150px"><table>'
-      + '<tr><th>Code</th><th>Début</th><th>Fin</th><th>Durée</th></tr>'
-      + vacKeys.map(function(n){ var v=window._pdfVacations[n]; return '<tr><td style="font-weight:600">'+n+'</td><td>'+_esc(v.deb||'—')+'</td><td>'+_esc(v.fin||'—')+'</td><td>'+(v.dur||0)+' min</td></tr>'; }).join('')
+      + '<tr><th>Code</th><th>Début</th><th>Fin</th><th>Durée</th><th>Pause</th><th>Panier</th></tr>'
+      + vacKeys.map(function(n){ var v=window._pdfVacations[n]; var pause=_calcPauseMin(v.deb,v.fin,v.dur); var pan=_calcPanier(v.deb,v.fin,v.dur); return '<tr><td style="font-weight:600">'+n+'</td><td>'+_esc(v.deb||'—')+'</td><td>'+_esc(v.fin||'—')+'</td><td>'+(v.dur||0)+' min</td><td>'+(pause!==null?pause+' min':'—')+'</td><td>'+(pan?'✓':'')+'</td></tr>'; }).join('')
       + '</table></div>'
     : '<div style="font-size:11px;color:var(--text3);margin:8px 0">Aucune vacation extraite (horaires non lisibles dans ce PDF)</div>';
 
@@ -1405,6 +1405,26 @@ async function _resolveVacRename(vacs) {
   }
   return { rename, existing };
 }
+function _toMin(t) {
+  const m = /^(\d{1,2})h(\d{2})$/.exec((t || '').trim());
+  return m ? +m[1] * 60 + +m[2] : null;
+}
+function _calcPauseMin(deb, fin, dur_min) {
+  const d = _toMin(deb), f0 = _toMin(fin);
+  if (d === null || f0 === null) return null;
+  const f = f0 <= d ? f0 + 1440 : f0;
+  return Math.max(0, (f - d) - (dur_min || 0));
+}
+// Returns true when the shift fully covers a meal window (11h30-14h30 or 18h30-21h30)
+// AND no adequate 45-min break is accounted for within that window.
+function _calcPanier(deb, fin, dur_min) {
+  const d = _toMin(deb), f0 = _toMin(fin);
+  if (d === null || f0 === null) return false;
+  const f = f0 <= d ? f0 + 1440 : f0;
+  const pause = Math.max(0, (f - d) - (dur_min || 0));
+  return (d < 690 && f > 870 && pause < 45) ||   // covers 11h30–14h30
+         (d < 1110 && f > 1290 && pause < 45);   // covers 18h30–21h30
+}
 // Step 2: save new vacations + link all to cycle
 async function _saveVacationsAndLink(cycleId, vacs, rename, existing) {
   const renamed = [];
@@ -1412,7 +1432,7 @@ async function _saveVacationsAndLink(cycleId, vacs, rename, existing) {
     const fn = rename[vname];
     if (!existing[fn]) {
       await fetch(API+'/admin/vacation/save', { method:'POST', headers:adminHeaders(),
-        body: JSON.stringify({ vacation: { name:fn, ...(fn!==vname?{label:vname}:{}), deb:v.deb||'', fin:v.fin||'', dur:v.dur||0, panier:false, type:'week' } }) });
+        body: JSON.stringify({ vacation: { name:fn, ...(fn!==vname?{label:vname}:{}), deb:v.deb||'', fin:v.fin||'', dur:v.dur||0, panier:_calcPanier(v.deb,v.fin,v.dur), type:'week' } }) });
     }
     await fetch(API+'/admin/vacation/addcycle', { method:'POST', headers:adminHeaders(), body: JSON.stringify({ name:fn, cycleId }) });
     if (fn !== vname) renamed.push(vname + ' → ' + fn);
