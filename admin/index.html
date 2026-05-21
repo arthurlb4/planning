@@ -129,6 +129,7 @@ textarea{width:100%;padding:9px 12px;background:var(--bg);border:0.5px solid var
       <div style="display:flex;gap:6px">
         <button class="btn btn-sm btn-ghost" onclick="migrateHardcodedCycleIfNeeded().then(loadCycles).then(()=>switchTab('vacations'))">Migrer cycle initial</button>
         <button class="btn btn-sm btn-ghost" onclick="importCycleFromPDF()" title="Parsing client-side via pdf.js">📄 Import PDF</button>
+        <button class="btn btn-sm btn-ghost" onclick="importCycleFromText()" title="Coller le texte issu d'un convertisseur PDF">📋 Coller texte</button>
         <button class="btn btn-sm btn-orange" onclick="showImportPDF()" title="Analyse par IA (Claude) — extrait aussi les vacations">🤖 Import IA</button>
         <button class="btn btn-sm btn-green" onclick="showCreateCycle()">+ Nouveau cycle</button>
       </div>
@@ -841,6 +842,169 @@ async function doChangeAdminPwd() {
   else { err.textContent = data.error || 'Erreur'; }
 }
 
+// ── TEXT IMPORT (pdftotext layout) ──────────────────────────────────────────
+
+function importCycleFromText() {
+  const mc = document.getElementById('modal-content');
+  mc.className = 'modal modal-wide';
+  mc.innerHTML = `<h2>Coller le texte du cycle</h2>
+<p style="color:var(--text3);font-size:13px;margin-bottom:10px">
+  Convertissez votre PDF en texte (ex : <a href="https://www.ilovepdf.com/pdf_to_text" target="_blank" style="color:var(--blue)">ilovepdf.com</a>),
+  puis collez le résultat ci-dessous.
+</p>
+<textarea id="cycle-text-input" style="width:100%;height:300px;font-family:monospace;font-size:11px;
+  background:var(--bg2);color:var(--text1);border:1px solid var(--border);border-radius:6px;
+  padding:8px;box-sizing:border-box;resize:vertical" placeholder="Collez ici le texte du PDF…"></textarea>
+<div id="cycle-text-err" style="color:var(--red);font-size:13px;margin-top:6px;display:none"></div>
+<div class="modal-btns" style="margin-top:12px">
+  <button class="btn btn-ghost" onclick="closeModal()">Annuler</button>
+  <button class="btn btn-blue" onclick="_parseAndPreviewText()">Analyser</button>
+</div>`;
+  document.getElementById('modal-bg').style.display = 'flex';
+}
+
+function _parseAndPreviewText() {
+  const raw = document.getElementById('cycle-text-input').value;
+  const err = document.getElementById('cycle-text-err');
+  err.style.display = 'none';
+  if (!raw.trim()) { err.textContent = 'Aucun texte fourni.'; err.style.display = ''; return; }
+  const result = _parseCycleText(raw);
+  if (!result || !result.detected) {
+    err.textContent = 'Impossible de détecter les colonnes de jours. Vérifiez que le texte contient les noms LUNDI, MARDI… DIMANCHE.';
+    err.style.display = ''; return;
+  }
+  result.name = 'Cycle (texte collé)';
+  _showPDFPreview(result);
+}
+
+function _parseCycleText(rawText) {
+  const lines = rawText.split('\n');
+  const DAY_NAMES = ['LUNDI','MARDI','MERCREDI','JEUDI','VENDREDI','SAMEDI','DIMANCHE'];
+  const DAY_IDX = {LUNDI:0,MARDI:1,MERCREDI:2,JEUDI:3,VENDREDI:4,SAMEDI:5,DIMANCHE:6};
+  const WORD_BLOCK = new Set(['LUNDI','MARDI','MERCREDI','JEUDI','VENDREDI','SAMEDI','DIMANCHE',
+    'SEMAINE','CYCLE','TOTAL','POOL','CADRE','ANTENNE','LIGNE','INFO','FRANCE','MOY','HEBDO',
+    'SEM','MED','NOM','DATE','AGENT','ROULEMENT','TECHNIQUE']);
+
+  // Find header line (first line with ≥5 day names)
+  let colPos = null, headerIdx = -1, stopIdx = lines.length;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const found = {};
+    for (const day of DAY_NAMES) { const p = line.indexOf(day); if (p >= 0) found[DAY_IDX[day]] = p; }
+    if (Object.keys(found).length >= 5) {
+      if (!colPos) {
+        colPos = Array(7).fill(null);
+        for (const [di, p] of Object.entries(found)) colPos[+di] = p;
+        headerIdx = i;
+      } else { stopIdx = i; break; }
+    }
+    if (colPos && /pool/i.test(line)) { stopIdx = i; break; }
+  }
+  if (!colPos) return { weeks: [], vacations: {}, detected: false };
+
+  // Interpolate missing columns
+  const known = colPos.map((p,i) => p !== null ? [i,p] : null).filter(Boolean);
+  const sp = (known[known.length-1][1] - known[0][1]) / (known[known.length-1][0] - known[0][0]);
+  for (let i = 0; i < 7; i++) if (colPos[i] === null) colPos[i] = Math.round(known[0][1] + (i - known[0][0]) * sp);
+  const colSpacing = sp;
+
+  function extractTimes(line) {
+    const r = []; let m;
+    const re = /\b(\d{1,2})h(\d{2})\b/g;
+    while ((m = re.exec(line)) !== null)
+      r.push({ pos: m.index, h: +m[1], min: +m[2], str: m[0] });
+    return r;
+  }
+
+  // Group consecutive time items (within 15 chars) into pairs, assign each pair to nearest column
+  function groupPairs(times) {
+    const colPair = Array(7).fill(null);
+    const ts = [...times].sort((a,b) => a.pos - b.pos);
+    let i = 0;
+    while (i < ts.length) {
+      let pair;
+      if (i+1 < ts.length && ts[i+1].pos - ts[i].pos <= 15) { pair = [ts[i], ts[i+1]]; i += 2; }
+      else { pair = [ts[i]]; i++; }
+      const center = pair.reduce((s,t) => s+t.pos, 0) / pair.length;
+      let best = -1, bestD = Infinity;
+      for (let di = 0; di < 7; di++) { const d = Math.abs(center - colPos[di]); if (d < bestD) { bestD = d; best = di; } }
+      if (best >= 0 && bestD < colSpacing * 0.7 && !colPair[best]) colPair[best] = pair;
+    }
+    return colPair;
+  }
+
+  function findCol(pos) {
+    let best = -1, bestD = Infinity;
+    for (let di = 0; di < 7; di++) { const d = Math.abs(pos - colPos[di]); if (d < bestD) { bestD = d; best = di; } }
+    return bestD < colSpacing * 0.6 ? best : -1;
+  }
+
+  const weeks = [], vacMap = {};
+
+  for (let i = headerIdx + 1; i < stopIdx; i++) {
+    const line = lines[i];
+    // Find code candidates: start with uppercase, 2-5 chars, known pattern
+    const cands = [];
+    let m;
+    const cre = /\b([A-Za-z]\w{0,4})\b/g;
+    while ((m = cre.exec(line)) !== null) {
+      const s = m[1];
+      if (s.length < 2 || s.length > 5) continue;
+      if (/^\d+$/.test(s) || /^[a-z]+$/.test(s)) continue;
+      if (WORD_BLOCK.has(s.toUpperCase())) continue;
+      if (!/^[A-Z]/.test(s)) continue;
+      if (/^\d{1,2}h\d{2}$/.test(s)) continue;
+      if (!/^([A-Z][a-z]?\d{0,2}[a-z]?|P\d{3,4}|[A-Z]{2,5})$/.test(s)) continue;
+      cands.push({ pos: m.index, str: s });
+    }
+    if (!cands.length) continue;
+
+    const rowCodes = Array(7).fill(null);
+    for (const c of cands) { const di = findCol(c.pos); if (di >= 0 && !rowCodes[di]) rowCodes[di] = c.str; }
+    if (rowCodes.filter(Boolean).length < 2) continue;
+
+    // Find time lines above and below
+    let ta = [], tb = [];
+    for (let k = i-1; k >= Math.max(headerIdx, i-4); k--) { const tl = extractTimes(lines[k]); if (tl.length >= 2) { ta = tl; break; } }
+    for (let k = i+1; k <= Math.min(stopIdx-1, i+4); k++) { const tl = extractTimes(lines[k]); if (tl.length >= 2) { tb = tl; break; } }
+
+    const pairsAbove = groupPairs(ta), pairsBelow = groupPairs(tb);
+    weeks.push(rowCodes.slice());
+
+    for (let di = 0; di < 7; di++) {
+      const code = rowCodes[di];
+      if (!code || /^(SV|RH)$/i.test(code) || vacMap[code]) continue;
+      const pa = pairsAbove[di], pb = pairsBelow[di];
+      if (!pa || pa.length < 2) continue;
+      const debItem = pa[0], finItem = pa[pa.length-1];
+      const deb = debItem.str, fin = finItem.str;
+      let dur;
+      if (pb && pb.length >= 2) {
+        dur = pb[pb.length-1].h * 60 + pb[pb.length-1].min;
+      } else if (pb && pb.length === 1) {
+        const val = pb[0].h * 60 + pb[0].min;
+        const base = (finItem.h*60+finItem.min) - (debItem.h*60+debItem.min);
+        const baseAdj = base < 0 ? base+1440 : base;
+        dur = val < baseAdj/2 ? baseAdj - val : val;
+      } else {
+        dur = (finItem.h*60+finItem.min) - (debItem.h*60+debItem.min);
+        if (dur < 0) dur += 1440;
+      }
+      vacMap[code] = { deb, fin, dur: Math.max(0, dur) };
+    }
+  }
+
+  // Detect start date from text
+  let startDate = '';
+  for (const line of lines) {
+    let dm;
+    if ((dm = line.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/)))
+      { startDate = `${dm[3]}-${dm[2].padStart(2,'0')}-${dm[1].padStart(2,'0')}`; break; }
+  }
+
+  return { weeks, startDate, detected: weeks.length > 0, rawRows: [], vacations: vacMap };
+}
+
 // ── PDF IMPORT ──────────────────────────────────────────────────────────────
 
 async function _loadPDFJS() {
@@ -921,7 +1085,6 @@ function _toVacCode(str) {
 }
 
 function _parsePDFGrid(items) {
-  console.log('[PDF] _parsePDFGrid called, items=', items.length);
   const Y_TOL = 8;
   const rows = [];
   for (const item of [...items].sort((a, b) => a.y - b.y)) {
@@ -972,7 +1135,6 @@ function _parsePDFGrid(items) {
     const hits2 = row.items.map(it => { const k = it.str.trim().toLowerCase(); return DAY_MAP.hasOwnProperty(k) ? k : null; }).filter(Boolean);
     if (new Set(hits2).size >= 5) { stopY = row.y; break; }
   }
-  console.log(`[PDF] headerY=${headerY.toFixed(1)} stopY=${stopY === Infinity ? 'Infinity' : stopY.toFixed(1)}`);
 
   // ── Méthode A : alignement par colonnes (principal) ────────────────────────
   // Fonctionne même sans numéros de semaine (format avec noms de personnes)
@@ -1131,8 +1293,7 @@ function _parsePDFVacations(allItems, rows, dayColX, colSpacing, stopY = Infinit
         t.x >= codeX - 5 && t.x <= codeX + colSpacing &&
         t.y >= codeY - 10 && t.y <= codeY + 60
       );
-      console.log(`[PDF] code=${code} codeX=${codeX.toFixed(1)} codeY=${codeY.toFixed(1)} nearby=${nearby.map(t=>`${t.str}@(${t.x.toFixed(1)},${t.y.toFixed(1)})`).join(' ')}`);
-      if (nearby.length < 2) { console.log(`[PDF]  → SKIP (nearby<2)`); continue; }
+      if (nearby.length < 2) continue;
 
       // Regroupe par niveau y avec tolérance 8px
       const byY = [];
@@ -1142,11 +1303,9 @@ function _parsePDFVacations(allItems, rows, dayColX, colSpacing, stopY = Infinit
       }
       byY.sort((a, b) => a.y - b.y);
       for (const g of byY) g.times.sort((a, b) => a.x - b.x);
-      console.log(`[PDF]  byY groups: ${byY.map((g,i)=>`[${i}]y=${g.y.toFixed(1)} ${g.times.map(t=>t.str).join(',')}`).join(' | ')}`);
-
       // Ligne 1 = deb (gauche) + fin (droite)
       // Vérifier que deb/fin sont bien dans la même cellule (≤28px sous le code)
-      if (byY[0].times.length < 2 || byY[0].y - codeY > 28) { console.log(`[PDF]  → SKIP (byY[0].len=${byY[0].times.length} delta=${(byY[0].y-codeY).toFixed(1)})`); continue; }
+      if (byY[0].times.length < 2 || byY[0].y - codeY > 28) continue;
       const debItem = byY[0].times[0];
       const finItem = byY[0].times[byY[0].times.length - 1];
       const deb = debItem.str, fin = finItem.str;
@@ -1171,7 +1330,6 @@ function _parsePDFVacations(allItems, rows, dayColX, colSpacing, stopY = Infinit
       }
 
       vacMap[code] = { deb, fin, dur: Math.max(0, dur) };
-      console.log(`[PDF]  → ${code}: deb=${deb} fin=${fin} dur=${Math.max(0,dur)}min`);
     }
   }
   return vacMap;
