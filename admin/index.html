@@ -971,6 +971,7 @@ function _parsePDFGrid(items) {
     const hits2 = row.items.map(it => { const k = it.str.trim().toLowerCase(); return DAY_MAP.hasOwnProperty(k) ? k : null; }).filter(Boolean);
     if (new Set(hits2).size >= 5) { stopY = row.y; break; }
   }
+  console.log(`[PDF] headerY=${headerY.toFixed(1)} stopY=${stopY === Infinity ? 'Infinity' : stopY.toFixed(1)}`);
 
   // ── Méthode A : alignement par colonnes (principal) ────────────────────────
   // Fonctionne même sans numéros de semaine (format avec noms de personnes)
@@ -1129,7 +1130,8 @@ function _parsePDFVacations(allItems, rows, dayColX, colSpacing, stopY = Infinit
         t.x >= codeX - 5 && t.x <= codeX + colSpacing &&
         t.y >= codeY - 10 && t.y <= codeY + 60
       );
-      if (nearby.length < 2) continue;
+      console.log(`[PDF] code=${code} codeX=${codeX.toFixed(1)} codeY=${codeY.toFixed(1)} nearby=${nearby.map(t=>`${t.str}@(${t.x.toFixed(1)},${t.y.toFixed(1)})`).join(' ')}`);
+      if (nearby.length < 2) { console.log(`[PDF]  → SKIP (nearby<2)`); continue; }
 
       // Regroupe par niveau y avec tolérance 8px
       const byY = [];
@@ -1139,10 +1141,11 @@ function _parsePDFVacations(allItems, rows, dayColX, colSpacing, stopY = Infinit
       }
       byY.sort((a, b) => a.y - b.y);
       for (const g of byY) g.times.sort((a, b) => a.x - b.x);
+      console.log(`[PDF]  byY groups: ${byY.map((g,i)=>`[${i}]y=${g.y.toFixed(1)} ${g.times.map(t=>t.str).join(',')}`).join(' | ')}`);
 
       // Ligne 1 = deb (gauche) + fin (droite)
       // Vérifier que deb/fin sont bien dans la même cellule (≤28px sous le code)
-      if (byY[0].times.length < 2 || byY[0].y - codeY > 28) continue;
+      if (byY[0].times.length < 2 || byY[0].y - codeY > 28) { console.log(`[PDF]  → SKIP (byY[0].len=${byY[0].times.length} delta=${(byY[0].y-codeY).toFixed(1)})`); continue; }
       const debItem = byY[0].times[0];
       const finItem = byY[0].times[byY[0].times.length - 1];
       const deb = debItem.str, fin = finItem.str;
@@ -1167,6 +1170,7 @@ function _parsePDFVacations(allItems, rows, dayColX, colSpacing, stopY = Infinit
       }
 
       vacMap[code] = { deb, fin, dur: Math.max(0, dur) };
+      console.log(`[PDF]  → ${code}: deb=${deb} fin=${fin} dur=${Math.max(0,dur)}min`);
     }
   }
   return vacMap;
