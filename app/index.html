@@ -519,18 +519,12 @@ function loadState(){
 }
 function saveState(){
   try{localStorage.setItem('pl_v8',JSON.stringify({p:_profs,a:_aid}));}catch(e){}
-
-  // Annule le délai d'attente précédent pour éviter les requêtes multiples (Debounce)
+  // Cloud sync debounced
   clearTimeout(window._cloudSyncTimer);
-
-  // Déclenche la synchronisation complète de l'état vers le Worker
-  window._cloudSyncTimer=setTimeout(async function(){
+  window._cloudSyncTimer=setTimeout(function(){
     if(!_aid)return;
-
-    // Sauvegarde instantanée de tout l'état de l'application (State Sync)
-    await cloudSave(_aid);
-
-    // Met à jour la liaison de ligne en tâche de fond si nécessaire
+    cloudSave(_aid);
+    // Register line
     if(S&&S.profile&&S.profile.ligne&&window._authToken){
       fetch(CLOUD_API+'/lines/register',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({
         ligne:S.profile.ligne,profileId:_aid,
@@ -538,7 +532,7 @@ function saveState(){
         userName:(window._authUser&&window._authUser.name)||''
       })}).catch(function(){});
     }
-  },1000); // Réduit à 1 seconde pour une synchronisation plus réactive après modification
+  },2000);
 }
 function switchProfile(id){_profs[_aid]=S;saveState();if(!_profs[id])_profs[id]=DEFAULT_PD();_aid=id;S=_profs[_aid];saveState();}
 function createProfile(id,data){_profs[id]=data;saveState();}
