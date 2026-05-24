@@ -858,10 +858,12 @@ export default {
         for (var fci = 0; fci < fsCreate.length; fci += FS_PARALLEL) {
           var cBatch = fsCreate.slice(fci, fci + FS_PARALLEL);
           await Promise.all(cBatch.map(async function(cev) {
-            var cData = Object.assign({}, cev.event, { id: cev.googleEventId });
-            var cr = await fsApply('POST', fsPath, cData);
-            if (cr.status === 200 || cr.status === 201) fsCreated++;
-            else fsFailed++;
+            try {
+              var cData = Object.assign({}, cev.event, { id: cev.googleEventId });
+              var cr = await fsApply('POST', fsPath, cData);
+              if (cr.status === 200 || cr.status === 201) fsCreated++;
+              else fsFailed++;
+            } catch(e) { fsFailed++; }
           }));
           if (fci + FS_PARALLEL < fsCreate.length) await new Promise(function(res){ setTimeout(res, FS_BATCH_DELAY); });
         }
@@ -869,10 +871,12 @@ export default {
         for (var fui = 0; fui < fsUpdate.length; fui += FS_PARALLEL) {
           var uBatch = fsUpdate.slice(fui, fui + FS_PARALLEL);
           await Promise.all(uBatch.map(async function(uev) {
-            var uData = Object.assign({}, uev.event, { id: uev.googleEventId });
-            var ur = await fsApply('PUT', fsPath + '/' + uev.googleEventId, uData);
-            if (ur.status === 200) fsUpdated++;
-            else fsFailed++;
+            try {
+              var uData = Object.assign({}, uev.event, { id: uev.googleEventId });
+              var ur = await fsApply('PUT', fsPath + '/' + uev.googleEventId, uData);
+              if (ur.status === 200) fsUpdated++;
+              else fsFailed++;
+            } catch(e) { fsFailed++; }
           }));
           if (fui + FS_PARALLEL < fsUpdate.length) await new Promise(function(res){ setTimeout(res, FS_BATCH_DELAY); });
         }
@@ -880,8 +884,10 @@ export default {
         for (var fdi = 0; fdi < fsDelete.length; fdi += FS_PARALLEL) {
           var dBatch = fsDelete.slice(fdi, fdi + FS_PARALLEL);
           await Promise.all(dBatch.map(async function(deid) {
-            var dr = await fsApply('DELETE', fsPath + '/' + deid, null);
-            if (dr.status === 204 || dr.status === 200 || dr.status === 404 || dr.status === 410) fsDeleted++;
+            try {
+              var dr = await fsApply('DELETE', fsPath + '/' + deid, null);
+              if (dr.status === 204 || dr.status === 200 || dr.status === 404 || dr.status === 410) fsDeleted++;
+            } catch(e) { fsFailed++; }
           }));
           if (fdi + FS_PARALLEL < fsDelete.length) await new Promise(function(res){ setTimeout(res, FS_BATCH_DELAY); });
         }
