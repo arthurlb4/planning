@@ -844,16 +844,21 @@ export default {
         }
 
         var fsCreated = 0, fsUpdated = 0, fsDeleted = 0, fsFailed = 0;
-        var FS_PARALLEL = 5;
-        var FS_BATCH_DELAY = 100;
+        var FS_PARALLEL = 3;
+        var FS_BATCH_DELAY = 300;
 
         async function fsApply(method, path, data) {
           var r = await calApi(method, path, data, fsToken, refresh_token, env);
           if (r.newToken) fsToken = r.newToken;
           if (r.status === 429 || r.status === 403) {
-            await new Promise(function(res){ setTimeout(res, 2000); });
+            await new Promise(function(res){ setTimeout(res, 5000); });
             r = await calApi(method, path, data, fsToken, refresh_token, env);
             if (r.newToken) fsToken = r.newToken;
+            if (r.status === 429 || r.status === 403) {
+              await new Promise(function(res){ setTimeout(res, 10000); });
+              r = await calApi(method, path, data, fsToken, refresh_token, env);
+              if (r.newToken) fsToken = r.newToken;
+            }
           }
           return r;
         }
