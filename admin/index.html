@@ -901,6 +901,22 @@ async function saveVac() {
   const dur = parsedDur !== null ? parsedDur : calcDur(deb, fin);
   if (!dur) { errEl.textContent = 'Durée invalide.'; return; }
   const vacation = { name, ...(label ? {label} : {}), deb: fmtHHMMToH(deb), fin: fmtHHMMToH(fin), dur, panier, mixte: mixte || false, type };
+
+  // If editing a vacation linked to other cycles, ask what to do
+  if (_editingVac && !window._forceSaveAllCycles) {
+    const otherCycles = (_allVacs[_editingVac]?.cycleIds || []).filter(id => id !== _vacActiveTab);
+    if (otherCycles.length > 0) {
+      const names = otherCycles.map(id => { const c = _allCycles.find(c => c.id === id); return c?.name || id; }).join(', ');
+      window._pendingVacData = vacation;
+      errEl.innerHTML = `⚠️ Aussi dans : <b>${names}</b><br><div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn btn-sm btn-orange" onclick="saveVacForAll()">Modifier pour tous les cycles</button>
+        <button class="btn btn-sm btn-ghost" onclick="saveVacDuplicate()">Dupliquer pour ce cycle uniquement</button>
+      </div>`;
+      return;
+    }
+  }
+  window._forceSaveAllCycles = false;
+
   try {
     const res = await fetch(API + '/admin/vacation/save', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ vacation }) });
     const data = await res.json();
@@ -909,6 +925,13 @@ async function saveVac() {
     if (isNew && _vacActiveTab && _vacActiveTab !== 'none') {
       // New vacation: auto-link to active cycle tab
       await fetch(API + '/admin/vacation/addcycle', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ name, cycleId: _vacActiveTab }) });
+      // If this was a "duplicate for this cycle" operation, unlink the old vacation
+      if (window._duplicateUnlinkOld) {
+        const oldName = window._duplicateUnlinkOld;
+        window._duplicateUnlinkOld = null;
+        await fetch(API + '/admin/vacation/removecycle', { method:'POST', headers:adminHeaders(), body:JSON.stringify({ name: oldName, cycleId: _vacActiveTab }) });
+        if (_allVacs[oldName]) _allVacs[oldName].cycleIds = (_allVacs[oldName].cycleIds||[]).filter(id => id !== _vacActiveTab);
+      }
     } else if (!isNew) {
       // Existing vacation: apply cycle checkbox changes
       const boxes = document.querySelectorAll('#vf-cycles input[data-cyc]');
@@ -922,6 +945,28 @@ async function saveVac() {
     document.getElementById('vac-form').style.display = 'none';
     loadVacations();
   } catch(e) { errEl.textContent = 'Erreur réseau'; }
+}
+
+function saveVacForAll() {
+  window._forceSaveAllCycles = true;
+  window._pendingVacData = null;
+  saveVac();
+}
+
+async function saveVacDuplicate() {
+  const src = window._pendingVacData;
+  const oldName = _editingVac;
+  window._pendingVacData = null;
+  if (!src) return;
+  // Switch form to new-vacation mode with current field values, empty name
+  _editingVac = null;
+  document.getElementById('vf-name').value = '';
+  document.getElementById('vf-name').disabled = false;
+  document.getElementById('vac-form-title').textContent = 'Dupliquer — entrez un nouveau code';
+  document.getElementById('vf-err').innerHTML = '';
+  document.getElementById('vf-dup-btn').style.display = 'none';
+  // Store old name to unlink after save
+  window._duplicateUnlinkOld = oldName;
 }
 
 async function deleteVac(name) {
