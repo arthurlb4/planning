@@ -1324,7 +1324,8 @@ function updateCounters(){
   const sorted=[...allYms].sort();
   // Always include next 3 months even if empty
   const futureMonths=[];for(let i=1;i<=3;i++)futureMonths.push(TODAY_YM+i);
-  const pastDisplay=[...sorted.filter(ym=>ym<=TODAY_YM).slice(-5)];
+  const extYms=new Set(Object.keys(S.ephExtend||{}).map(Number).filter(ym=>ym<=TODAY_YM));
+  const pastDisplay=[...new Set([...sorted.filter(ym=>ym<=TODAY_YM).slice(-5),...extYms])].sort();
   const futureDisplay=[...new Set([...sorted.filter(ym=>ym>TODAY_YM).slice(0,3),...futureMonths])].sort().slice(0,3);
   const display=[...pastDisplay,...futureDisplay];
   const maxV=Math.max(...display.map(ym=>gen[ym]?Object.values(gen[ym]).reduce((s,v)=>s+v,0):0),1);
@@ -1389,23 +1390,20 @@ function updateCounters(){
   if(restEl)restEl.innerHTML=restHtml||'<div style="font-size:11px;color:var(--text3)">Aucun rendu disponible.</div>';
   const dispEl=document.getElementById('eph-total-dispo');
   if(dispEl)dispEl.textContent=fmtMin(totalExisting);
-  // Second counter: acquis non expirés + prévisionnels non expirés à la fin du mois affiché
+  // Second counter: heures qui expirent dans le mois affiché
   const viewedYM=curY*12+curM;
   let totalAtView=0;
-  // Acquis réels non expirés à la fin du mois affiché
   Object.keys(realAvail).map(Number).forEach(function(ym){
-    if(realAvail[ym]>0&&getExpYm(ym)>viewedYM)totalAtView+=realAvail[ym];
+    if(realAvail[ym]>0&&getExpYm(ym)===viewedYM)totalAtView+=realAvail[ym];
   });
-  // Prévisionnels créés au plus tard fin du mois affiché, non expirés à cette date
   Object.keys(prevEph).map(Number).forEach(function(ym){
-    if(prevEph[ym]>0&&ym<=viewedYM&&getExpYm(ym)>viewedYM)totalAtView+=prevEph[ym];
+    if(prevEph[ym]>0&&ym<viewedYM&&getExpYm(ym)===viewedYM)totalAtView+=prevEph[ym];
   });
   const prevEl=document.getElementById('eph-total-prev');
   const prevLblEl=document.getElementById('eph-prev-label');
-  if(prevEl)prevEl.textContent=fmtMin(totalAtView);
-  // Update label: show "fin mois affiché" only when different from today
+  if(prevEl)prevEl.textContent=totalAtView>0?fmtMin(totalAtView):'—';
   if(prevLblEl){
-    prevLblEl.textContent='Dispo '+MC[curM].charAt(0).toUpperCase()+MC[curM].slice(1)+' '+curY;
+    prevLblEl.textContent='Expire en '+MC[curM]+' '+curY;
   }
   updateRecap();
 }
