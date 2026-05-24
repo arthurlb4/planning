@@ -165,11 +165,12 @@ textarea{width:100%;padding:9px 12px;background:var(--bg);border:0.5px solid var
       <div class="row">
         <div class="flex1 field"><label>Code système (ex: A1b)</label><input type="text" id="vf-name" placeholder="A1b"></div>
         <div class="flex1 field"><label>Label affiché (ex: A1)</label><input type="text" id="vf-label" placeholder="Identique au code si vide"></div>
-        <div class="flex1 field"><label>Début</label><input type="time" id="vf-deb" step="900" placeholder="06:00"></div>
-        <div class="flex1 field"><label>Fin</label><input type="time" id="vf-fin" step="900" placeholder="14:00"></div>
+        <div class="flex1 field"><label>Début</label><input type="time" id="vf-deb" step="900" placeholder="06:00" oninput="onVfTimeChange()"></div>
+        <div class="flex1 field"><label>Fin</label><input type="time" id="vf-fin" step="900" placeholder="14:00" oninput="onVfTimeChange()"></div>
       </div>
       <div class="row">
-        <div class="flex1 field"><label>Durée (auto si vide)</label><input type="text" id="vf-dur" placeholder="9h30"></div>
+        <div class="flex1 field"><label>Durée</label><input type="text" id="vf-dur" placeholder="9h30" oninput="onVfDurChange()"></div>
+        <div class="flex1 field"><label>Pause</label><input type="text" id="vf-pause" placeholder="0h30" oninput="onVfPauseChange()"></div>
         <div class="flex1 field"><label>Type</label>
           <select id="vf-type" style="width:100%;padding:8px;border:0.5px solid var(--border);border-radius:var(--r);background:var(--bg);color:var(--text);font-size:13px">
             <option value="week">Semaine</option>
@@ -193,12 +194,7 @@ textarea{width:100%;padding:9px 12px;background:var(--bg);border:0.5px solid var
       </div>
       <div class="err" id="vf-err" style="margin-top:8px"></div>
     </div>
-    <div class="table-scroll">
-      <table>
-        <thead><tr><th>Nom / Code</th><th>Début</th><th>Fin</th><th>Durée</th><th>Panier</th><th>Mixte</th><th>Type</th><th></th></tr></thead>
-        <tbody id="vac-list"></tbody>
-      </table>
-    </div>
+    <div id="vac-list"></div>
   </div>
 
 </div>
@@ -380,7 +376,7 @@ var _vacActiveTab = null; // cycle id or 'none'
 
 async function loadVacations() {
   const el = document.getElementById('vac-list');
-  el.innerHTML = '<tr><td colspan="8" style="color:var(--text3);font-size:12px">Chargement...</td></tr>';
+  el.innerHTML = '<p style="color:var(--text3);font-size:12px;padding:8px 0">Chargement…</p>';
   try {
     const [vres, cres] = await Promise.all([
       fetch(API + '/admin/vacations', { method: 'POST', headers: adminHeaders(), body: '{}' }),
@@ -400,7 +396,7 @@ async function loadVacations() {
     }
     renderVacTabs();
     renderVacList();
-  } catch(e) { el.innerHTML = '<tr><td colspan="8" class="err">Erreur réseau</td></tr>'; }
+  } catch(e) { el.innerHTML = '<p class="err">Erreur réseau</p>'; }
 }
 
 function renderVacTabs() {
@@ -423,35 +419,66 @@ function switchVacTab(id) {
 
 function renderVacList() {
   const el = document.getElementById('vac-list');
-  const types = { week: 'Sem.', sat: 'Sam.', sun: 'Dim.', all: 'Tous' };
-  const entries = Object.entries(_allVacs).sort((a,b) => a[0].localeCompare(b[0]));
+  const entries = Object.entries(_allVacs).sort((a,b) => {
+    const da = _toMinAdmin(a[1].deb), db = _toMinAdmin(b[1].deb);
+    return (da||9999)-(db||9999);
+  });
   const filtered = entries.filter(([name, v]) => {
     if (_vacActiveTab === 'none') return !v.cycleIds || !v.cycleIds.length;
     return (v.cycleIds || []).includes(_vacActiveTab);
   });
   if (!filtered.length) {
-    const msg = Object.keys(_allVacs).length === 0
-      ? 'Aucune vacation. Cliquez sur Migrer ou Ajouter.'
-      : 'Aucune vacation dans cet onglet.';
-    el.innerHTML = `<tr><td colspan="8" style="color:var(--text3);font-size:12px">${msg}</td></tr>`;
+    el.innerHTML = Object.keys(_allVacs).length === 0
+      ? '<p style="color:var(--text3);font-size:12px;padding:8px 0">Aucune vacation. Cliquez sur Migrer ou Ajouter.</p>'
+      : '<p style="color:var(--text3);font-size:12px;padding:8px 0">Aucune vacation dans cet onglet.</p>';
     return;
   }
-  el.innerHTML = filtered.map(([name, v]) => {
-    const cycleNames = (_allCycles||[]).filter(c => (v.cycleIds||[]).includes(c.id)).map(c => c.name||c.id).join(', ');
-    return `<tr>
-      <td><b>${v.label||name}</b>${v.label&&v.label!==name?` <span style="font-size:10px;color:var(--text3)">(${name})</span>`:''}${cycleNames&&_allCycles.length>1?`<div style="font-size:10px;color:var(--text3);margin-top:2px">${cycleNames}</div>`:''}</td>
-      <td style="font-size:11px">${v.deb||'—'}</td>
-      <td style="font-size:11px">${v.fin||'—'}</td>
-      <td style="font-size:11px">${fmtVacDur(v.dur||0)}</td>
-      <td style="text-align:center">${v.panier ? '✓' : '—'}</td>
-      <td style="text-align:center">${v.mixte ? '✓' : '—'}</td>
-      <td style="font-size:11px">${types[v.type]||v.type||'—'}</td>
-      <td style="display:flex;gap:4px;white-space:nowrap">
-        <button class="btn btn-sm" onclick="editVac('${name}')">✏️</button>
-        <button class="btn btn-sm btn-red" onclick="deleteVac('${name}')">🗑</button>
-      </td>
-    </tr>`;
-  }).join('');
+  const week = filtered.filter(([,v]) => !v.type || v.type === 'week');
+  const sat  = filtered.filter(([,v]) => v.type === 'sat');
+  const sun  = filtered.filter(([,v]) => v.type === 'sun');
+  const all  = filtered.filter(([,v]) => v.type === 'all');
+
+  function makeTable(rows) {
+    if (!rows.length) return '<p style="color:var(--text3);font-size:11px">—</p>';
+    return '<table style="width:100%"><thead><tr><th>Nom</th><th>Début</th><th>Fin</th><th>Durée</th><th>Pause</th><th style="text-align:center">🥖</th><th style="text-align:center">M</th><th></th></tr></thead><tbody>'
+      + rows.map(([name, v]) => {
+          const total = calcDur(fmtTimeToHHMM(v.deb||''), fmtTimeToHHMM(v.fin||''));
+          const pause = v.dur && total > v.dur ? fmtVacDur(total - v.dur) : '—';
+          return `<tr style="cursor:pointer" onclick="editVac('${name}')">
+            <td><b>${v.label||name}</b>${v.label&&v.label!==name?` <span style="font-size:10px;color:var(--text3)">(${name})</span>`:''}</td>
+            <td style="font-size:11px">${v.deb||'—'}</td>
+            <td style="font-size:11px">${v.fin||'—'}</td>
+            <td style="font-size:11px">${fmtVacDur(v.dur||0)}</td>
+            <td style="font-size:11px">${pause}</td>
+            <td style="text-align:center">${v.panier?'✓':'—'}</td>
+            <td style="text-align:center">${v.mixte?'✓':'—'}</td>
+            <td><button class="btn btn-sm btn-red" onclick="event.stopPropagation();deleteVac('${name}')">🗑</button></td>
+          </tr>`;
+        }).join('')
+      + '</tbody></table>';
+  }
+
+  const sections = [
+    { label: 'Semaine', rows: week },
+    { label: 'Samedi', rows: sat },
+    { label: 'Dimanche', rows: sun },
+  ];
+  const hasAll = all.length > 0;
+
+  el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;align-items:start">
+    ${sections.map(s => `<div>
+      <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin-bottom:6px">${s.label}</div>
+      <div class="table-scroll">${makeTable(s.rows)}</div>
+    </div>`).join('')}
+  </div>`
+  + (hasAll ? `<div style="margin-top:16px">
+    <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin-bottom:6px">Tous jours</div>
+    <div class="table-scroll">${makeTable(all)}</div>
+  </div>` : '');
+}
+function _toMinAdmin(t) {
+  const m = /^(\d{1,2})h(\d{2})$/.exec((t||'').trim());
+  return m ? +m[1]*60 + +m[2] : null;
 }
 
 async function toggleVacCycle(vacName, cycleId, add) {
@@ -496,6 +523,34 @@ function parseVacDur(s) {
   if (!isNaN(raw)) return raw < 24 ? raw * 60 : raw;
   return null;
 }
+function _vfTotal() {
+  const deb = document.getElementById('vf-deb').value;
+  const fin = document.getElementById('vf-fin').value;
+  return deb && fin ? calcDur(deb, fin) : null;
+}
+function onVfDurChange() {
+  const total = _vfTotal(); if (total === null) return;
+  const dur = parseVacDur(document.getElementById('vf-dur').value);
+  if (dur !== null) document.getElementById('vf-pause').value = fmtVacDur(Math.max(0, total - dur));
+}
+function onVfPauseChange() {
+  const total = _vfTotal(); if (total === null) return;
+  const pause = parseVacDur(document.getElementById('vf-pause').value);
+  if (pause !== null) document.getElementById('vf-dur').value = fmtVacDur(Math.max(0, total - pause));
+}
+function onVfTimeChange() {
+  const total = _vfTotal(); if (total === null) return;
+  const dur = parseVacDur(document.getElementById('vf-dur').value);
+  const pause = parseVacDur(document.getElementById('vf-pause').value);
+  if (pause !== null) {
+    document.getElementById('vf-dur').value = fmtVacDur(Math.max(0, total - pause));
+  } else if (dur !== null) {
+    document.getElementById('vf-pause').value = fmtVacDur(Math.max(0, total - dur));
+  } else {
+    document.getElementById('vf-dur').value = fmtVacDur(total);
+    document.getElementById('vf-pause').value = '0h00';
+  }
+}
 
 function showVacForm(name, v) {
   _editingVac = name || null;
@@ -507,6 +562,8 @@ function showVacForm(name, v) {
   document.getElementById('vf-deb').value = v ? fmtTimeToHHMM(v.deb) : '';
   document.getElementById('vf-fin').value = v ? fmtTimeToHHMM(v.fin) : '';
   document.getElementById('vf-dur').value = v && v.dur ? fmtVacDur(v.dur) : '';
+  const _total = v ? calcDur(fmtTimeToHHMM(v.deb||''), fmtTimeToHHMM(v.fin||'')) : 0;
+  document.getElementById('vf-pause').value = v && v.dur && _total > v.dur ? fmtVacDur(_total - v.dur) : '';
   document.getElementById('vf-panier').checked = v ? !!v.panier : false;
   document.getElementById('vf-mixte').checked = v ? !!v.mixte : false;
   document.getElementById('vf-type').value = v ? (v.type||'week') : 'week';
