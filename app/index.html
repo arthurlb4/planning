@@ -3362,48 +3362,62 @@ async function gcalSync(){
   const ac=new AbortController();_syncAbort=ac;
   const wrap=document.getElementById('gcal-status-wrap');
   const ico=document.getElementById('gcal-status');
+  const circle=document.getElementById('gcal-progress-circle');
   if(wrap){wrap.classList.remove('gcal-pending');wrap.classList.add('gcal-syncing');}
   if(ico)ico.innerHTML=gSvg('#4ea0f7');
+  // Clear any leftover inline circle styles so CSS spinner takes control
+  if(circle){circle.style.stroke='';circle.style.strokeDashoffset='';}
   const token=await gcalGetToken();
-  if(!token){if(wrap)wrap.classList.remove('gcal-syncing');gcalUpdateBtn();return;}
+  if(!token){if(wrap)wrap.classList.remove('gcal-syncing');_syncAbort=null;gcalUpdateBtn();return;}
   if(!gcalCalendarId||gcalCalendarId==='primary')await gcalEnsureCalendar();
   const pid=(_aid||'default').replace(/[^a-z0-9]/gi,'').toLowerCase().slice(0,10);
   function stableId(k){return 'plan'+pid+k.replace(/-/g,'');}
-  // Build full desired state for the relevant date range
+  // Split range into 2-month chunks to stay under Cloudflare Worker 30s timeout
   const startD=new Date();startD.setDate(startD.getDate()-30);
   const endD=new Date();endD.setMonth(endD.getMonth()+12);
-  const events=[];
-  const cur=new Date(startD);
-  while(cur<=endD){
-    const k=dk(cur);
-    const ev=gcalBuildDayEvent(k);
-    if(ev)events.push({id:k,googleEventId:stableId(k),event:ev});
-    cur.setDate(cur.getDate()+1);
+  const CHUNK_DAYS=60;
+  const chunks=[];
+  const cs=new Date(startD);
+  while(cs<=endD){
+    const ce=new Date(cs);ce.setDate(ce.getDate()+CHUNK_DAYS-1);
+    if(ce>endD)ce.setTime(endD.getTime());
+    chunks.push({start:new Date(cs),end:new Date(ce)});
+    cs.setDate(cs.getDate()+CHUNK_DAYS);
   }
+  let curToken=gcalTokens.access_token;
   try{
-    gcalWriteStatus('syncing',0,1);
-    const res=await fetch(GCAL_FUNCTIONS+'/calendar',{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({action:'fullSync',access_token:gcalTokens.access_token,refresh_token:gcalTokens.refresh_token,calendarId:gcalCalendarId,events:events}),
-      signal:ac.signal
-    });
-    if(res.ok){
+    gcalWriteStatus('syncing',0,chunks.length);
+    for(let ci=0;ci<chunks.length;ci++){
+      if(ac.signal.aborted)break;
+      const chunk=chunks[ci];
+      const evs=[];
+      const cur=new Date(chunk.start);
+      while(cur<=chunk.end){
+        const k=dk(cur);
+        const ev=gcalBuildDayEvent(k);
+        if(ev)evs.push({id:k,googleEventId:stableId(k),event:ev});
+        cur.setDate(cur.getDate()+1);
+      }
+      const res=await fetch(GCAL_FUNCTIONS+'/calendar',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({action:'fullSync',access_token:curToken,refresh_token:gcalTokens.refresh_token,calendarId:gcalCalendarId,events:evs,startDate:dk(chunk.start),endDate:dk(chunk.end)}),
+        signal:ac.signal
+      });
+      if(!res.ok){console.error('sync chunk '+ci+' failed',res.status);break;}
       const data=await res.json();
-      if(data.newToken){gcalTokens.access_token=data.newToken;gcalSave();}
-      gcalWriteStatus('done',1,1);
-      gcalSetProgress(0,0);
-      if(wrap)wrap.classList.remove('gcal-syncing');
-      if(ico&&wrap){ico.innerHTML=gSvg('#34a853');wrap.classList.add('gcal-done-anim');setTimeout(function(){wrap.classList.remove('gcal-done-anim');gcalUpdateBtn();},2000);}
-    }else{
-      if(wrap)wrap.classList.remove('gcal-syncing');
-      gcalUpdateBtn();
+      if(data.newToken){curToken=data.newToken;gcalTokens.access_token=data.newToken;gcalSave();}
+      gcalWriteStatus('syncing',ci+1,chunks.length);
     }
-  }catch(e){
+    if(circle){circle.style.stroke='';circle.style.strokeDashoffset='';}
     if(wrap)wrap.classList.remove('gcal-syncing');
-    _syncAbort=null;
-    if(e&&e.name!=='AbortError')console.error('sync error',e);
-    gcalSetProgress(0,0);gcalUpdateBtn();
+    gcalWriteStatus('done',chunks.length,chunks.length);
+    if(ico&&wrap){ico.innerHTML=gSvg('#34a853');wrap.classList.add('gcal-done-anim');setTimeout(function(){wrap.classList.remove('gcal-done-anim');gcalUpdateBtn();},2000);}
+  }catch(e){
+    if(circle){circle.style.stroke='';circle.style.strokeDashoffset='';}
+    if(wrap)wrap.classList.remove('gcal-syncing');
     gcalWriteStatus('idle',0,0);
+    if(e&&e.name!=='AbortError')console.error('sync error',e);
+    gcalUpdateBtn();
   }
   _syncAbort=null;
 }
@@ -3716,9 +3730,8 @@ async function gcalClear(){
   const ico=document.getElementById('gcal-status');
   const circle=document.getElementById('gcal-progress-circle');
   const btn=document.getElementById('gcal-clear-btn');
-  if(wrap){wrap.classList.add('gcal-syncing');wrap.classList.add('gcal-clearing');}
-  if(ico)ico.innerHTML=gSvg('#4ea0f7');
-  if(circle){circle.style.stroke='#ea4335';circle.style.strokeDashoffset='0';}
+  if(wrap){wrap.classList.add('gcal-clearing');}
+  if(ico)ico.innerHTML=gSvg('#ea4335');
   if(btn)btn.innerHTML='<span style="font-size:9px;font-weight:600">...</span>';
   try{
     const res=await fetch(GCAL_FUNCTIONS+'/calendar',{method:'POST',headers:{'Content-Type':'application/json'},

@@ -790,6 +790,8 @@ export default {
         var desired = events || [];
         var fsPath = '/calendars/' + encodeURIComponent(fsCal) + '/events';
         var fsToken = token;
+        var fsStartDate = body.startDate || null;
+        var fsEndDate = body.endDate || null;
 
         // Build map of desired events by googleEventId
         var desiredMap = {};
@@ -798,11 +800,14 @@ export default {
           if (dev.googleEventId) desiredMap[dev.googleEventId] = dev;
         }
 
-        // List all current Google Calendar events (paginated)
+        // List current Google Calendar events in time window (paginated)
         var existing = {};
         var fsPageToken = null;
         do {
-          var fsListUrl = fsPath + '?maxResults=250&singleEvents=true' + (fsPageToken ? '&pageToken=' + fsPageToken : '');
+          var fsListUrl = fsPath + '?maxResults=250&singleEvents=true';
+          if (fsStartDate) fsListUrl += '&timeMin=' + encodeURIComponent(fsStartDate + 'T00:00:00Z');
+          if (fsEndDate) fsListUrl += '&timeMax=' + encodeURIComponent(fsEndDate + 'T23:59:59Z');
+          if (fsPageToken) fsListUrl += '&pageToken=' + fsPageToken;
           var fsListR = await calApi('GET', fsListUrl, null, fsToken, refresh_token, env);
           if (fsListR.newToken) fsToken = fsListR.newToken;
           var fsItems = (fsListR.data && fsListR.data.items) || [];
