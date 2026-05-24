@@ -110,7 +110,7 @@ textarea{width:100%;padding:9px 12px;background:var(--bg);border:0.5px solid var
   <div class="hdr">
     <h1>Administration — France Info</h1>
     <div class="hdr-actions">
-      <span style="font-size:10px;color:var(--text3);opacity:.5;align-self:center">v4.08</span>
+      <span style="font-size:10px;color:var(--text3);opacity:.5;align-self:center">v4.42</span>
       <button class="btn btn-sm btn-ghost" onclick="showChangePwd()">Changer MDP</button>
       <button class="btn btn-sm btn-ghost" onclick="adminLogout()">Déconnexion</button>
     </div>
@@ -168,7 +168,7 @@ textarea{width:100%;padding:9px 12px;background:var(--bg);border:0.5px solid var
         <div class="flex1 field"><label>Fin</label><input type="time" id="vf-fin" step="900" placeholder="14:00"></div>
       </div>
       <div class="row">
-        <div class="flex1 field"><label>Durée (min, auto si vide)</label><input type="number" id="vf-dur" placeholder="Auto"></div>
+        <div class="flex1 field"><label>Durée (auto si vide)</label><input type="text" id="vf-dur" placeholder="9h30"></div>
         <div class="flex1 field"><label>Type</label>
           <select id="vf-type" style="width:100%;padding:8px;border:0.5px solid var(--border);border-radius:var(--r);background:var(--bg);color:var(--text);font-size:13px">
             <option value="week">Semaine</option>
@@ -437,7 +437,7 @@ function renderVacList() {
       <td><b>${name}</b>${cycleNames&&_allCycles.length>1?`<div style="font-size:10px;color:var(--text3);margin-top:2px">${cycleNames}</div>`:''}</td>
       <td style="font-size:11px">${v.deb||'—'}</td>
       <td style="font-size:11px">${v.fin||'—'}</td>
-      <td style="font-size:11px">${v.dur||0} min</td>
+      <td style="font-size:11px">${fmtVacDur(v.dur||0)}</td>
       <td style="text-align:center">${v.panier ? '✓' : '—'}</td>
       <td style="text-align:center">${v.mixte ? '✓' : '—'}</td>
       <td style="font-size:11px">${types[v.type]||v.type||'—'}</td>
@@ -458,7 +458,6 @@ async function toggleVacCycle(vacName, cycleId, add) {
 
 function fmtTimeToHHMM(t) {
   if (!t) return '';
-  // Convert '06h30' to '06:30' or keep 'HH:MM'
   return t.replace('h', ':').replace(/^(\d):/, '0$1:');
 }
 function fmtHHMMToH(t) {
@@ -470,8 +469,27 @@ function calcDur(deb, fin) {
   const [dh,dm] = deb.split(':').map(Number);
   const [fh,fm] = fin.split(':').map(Number);
   let mins = (fh*60+fm) - (dh*60+dm);
-  if (mins <= 0) mins += 24*60; // overnight
+  if (mins <= 0) mins += 24*60;
   return mins;
+}
+function fmtVacDur(min) {
+  if (!min && min !== 0) return '';
+  const h = Math.floor(min / 60), m = min % 60;
+  return h + 'h' + String(m).padStart(2, '0');
+}
+function parseVacDur(s) {
+  if (!s) return null;
+  s = s.trim();
+  // HHhMM or HhMM
+  const hm = s.match(/^(\d+)h(\d{0,2})$/i);
+  if (hm) return parseInt(hm[1]) * 60 + (parseInt(hm[2] || '0') || 0);
+  // Decimal hours with comma or dot
+  const dec = s.match(/^(\d+)[,.](\d+)$/);
+  if (dec) return Math.round(parseFloat(dec[1] + '.' + dec[2]) * 60);
+  // Raw integer — if < 24 treat as hours, else as minutes
+  const raw = parseInt(s);
+  if (!isNaN(raw)) return raw < 24 ? raw * 60 : raw;
+  return null;
 }
 
 function showVacForm(name, v) {
@@ -482,7 +500,7 @@ function showVacForm(name, v) {
   document.getElementById('vf-name').disabled = !!name;
   document.getElementById('vf-deb').value = v ? fmtTimeToHHMM(v.deb) : '';
   document.getElementById('vf-fin').value = v ? fmtTimeToHHMM(v.fin) : '';
-  document.getElementById('vf-dur').value = v ? v.dur : '';
+  document.getElementById('vf-dur').value = v && v.dur ? fmtVacDur(v.dur) : '';
   document.getElementById('vf-panier').checked = v ? !!v.panier : false;
   document.getElementById('vf-mixte').checked = v ? !!v.mixte : false;
   document.getElementById('vf-type').value = v ? (v.type||'week') : 'week';
@@ -501,8 +519,10 @@ async function saveVac() {
   const type = document.getElementById('vf-type').value;
   const errEl = document.getElementById('vf-err');
   if (!name || !deb || !fin) { errEl.textContent = 'Nom, début et fin requis.'; return; }
-  const dur = durInput ? parseInt(durInput) : calcDur(deb, fin);
-  const vacation = { name, deb: fmtHHMMToH(deb), fin: fmtHHMMToH(fin), dur, panier, ...(mixte?{mixte:true}:{}), type };
+  const parsedDur = durInput ? parseVacDur(durInput) : null;
+  const dur = parsedDur !== null ? parsedDur : calcDur(deb, fin);
+  if (!dur) { errEl.textContent = 'Durée invalide.'; return; }
+  const vacation = { name, deb: fmtHHMMToH(deb), fin: fmtHHMMToH(fin), dur, panier, mixte: mixte || false, type };
   try {
     const res = await fetch(API + '/admin/vacation/save', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ vacation }) });
     const data = await res.json();
