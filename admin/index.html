@@ -139,8 +139,8 @@ textarea{width:100%;padding:9px 12px;background:var(--bg);border:0.5px solid var
 
   <!-- Vacations -->
   <div class="section" id="tab-vacations">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-      <span style="font-size:12px;color:var(--text3)">Vacations personnalisées (s'ajoutent aux standards)</span>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px;flex-wrap:wrap">
+      <div id="vac-tabs" style="display:flex;gap:4px;flex-wrap:wrap;background:var(--bg2);border-radius:var(--r);padding:3px;"></div>
       <button class="btn btn-sm btn-green" onclick="showVacForm()">+ Ajouter</button>
     </div>
     <div id="vac-form" style="display:none;background:var(--bg2);border:0.5px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:16px">
@@ -168,12 +168,12 @@ textarea{width:100%;padding:9px 12px;background:var(--bg);border:0.5px solid var
       </div>
       <div class="row">
         <button class="btn btn-green" onclick="saveVac()">Enregistrer</button>
-        <button class="btn btn-ghost" onclick="document.getElementById(\'vac-form\').style.display=\'none\'">Annuler</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('vac-form').style.display='none'">Annuler</button>
       </div>
       <div class="err" id="vf-err" style="margin-top:8px"></div>
     </div>
     <table>
-      <thead><tr><th>Nom</th><th>Début</th><th>Fin</th><th>Durée</th><th>Panier</th><th>Type</th><th></th></tr></thead>
+      <thead><tr><th>Nom</th><th>Début</th><th>Fin</th><th>Durée</th><th>Panier</th><th>Mixte</th><th>Type</th><th></th></tr></thead>
       <tbody id="vac-list"></tbody>
     </table>
   </div>
@@ -352,52 +352,77 @@ function switchTab(tab) {
 // VACATIONS
 var _editingVac = null;
 var _allCycles = [];
+var _allVacs = {};
+var _vacActiveTab = null; // cycle id or 'none'
+
 async function loadVacations() {
   const el = document.getElementById('vac-list');
   el.innerHTML = '<tr><td colspan="8" style="color:var(--text3);font-size:12px">Chargement...</td></tr>';
   try {
-    // Load cycles and vacations in parallel
     const [vres, cres] = await Promise.all([
       fetch(API + '/admin/vacations', { method: 'POST', headers: adminHeaders(), body: '{}' }),
       fetch(API + '/admin/cycles', { method: 'POST', headers: adminHeaders(), body: '{}' })
     ]);
     const vdata = await vres.json();
     const cdata = await cres.json();
-    const vacs = vdata.vacations || {};
-    _allCycles = cdata.cycles || [];
-    const types = { week: 'Sem.', sat: 'Sam.', sun: 'Dim.', all: 'Tous' };
-
-    // Update table header
-    const thead = document.querySelector('#tab-vacations table thead tr');
-    thead.innerHTML = '<th>Nom</th><th>Début</th><th>Fin</th><th>Durée</th><th>Panier</th><th>Type</th>'
-      + _allCycles.map(c => `<th style="font-size:10px;max-width:60px;word-break:break-word">${c.name||c.id}<br><span style="color:var(--text3);font-weight:400">${c.startDate}</span></th>`).join('')
-      + '<th></th>';
-
-    if (!Object.keys(vacs).length) {
-      el.innerHTML = '<tr><td colspan="8" style="color:var(--text3);font-size:12px">Aucune vacation. Cliquez sur Migrer ou Ajouter.</td></tr>';
-      return;
-    }
-
-    el.innerHTML = Object.entries(vacs).sort((a,b) => a[0].localeCompare(b[0])).map(([name, v]) => {
-      const cycleCols = _allCycles.map(c => {
-        const checked = (v.cycleIds || []).includes(c.id);
-        return `<td style="text-align:center"><input type="checkbox" ${checked?'checked':''} onchange="toggleVacCycle('${name}','${c.id}',this.checked)"></td>`;
-      }).join('');
-      return `<tr>
-        <td><b>${name}</b></td>
-        <td style="font-size:11px">${v.deb||'—'}</td>
-        <td style="font-size:11px">${v.fin||'—'}</td>
-        <td style="font-size:11px">${v.dur||0} min</td>
-        <td style="text-align:center">${v.panier ? '✓' : '—'}</td>
-        <td style="font-size:11px">${types[v.type]||v.type||'—'}</td>
-        ${cycleCols}
-        <td style="display:flex;gap:4px;white-space:nowrap">
-          <button class="btn btn-sm" onclick="editVac('${name}',${JSON.stringify(v).replace(/'/g,"\\'")})">✏️</button>
-          <button class="btn btn-sm btn-red" onclick="deleteVac('${name}')">🗑</button>
-        </td>
-      </tr>`;
-    }).join('');
+    _allVacs = vdata.vacations || {};
+    _allCycles = (cdata.cycles || []).sort((a,b) => a.startDate < b.startDate ? -1 : 1);
+    // Default to first cycle tab
+    if (_vacActiveTab === null && _allCycles.length) _vacActiveTab = _allCycles[0].id;
+    renderVacTabs();
+    renderVacList();
   } catch(e) { el.innerHTML = '<tr><td colspan="8" class="err">Erreur réseau</td></tr>'; }
+}
+
+function renderVacTabs() {
+  const el = document.getElementById('vac-tabs');
+  if (!el) return;
+  const tabs = _allCycles.map(c => {
+    const active = _vacActiveTab === c.id;
+    return `<div class="tab${active?' active':''}" onclick="switchVacTab('${c.id}')" style="font-size:12px;padding:5px 10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${c.name||c.id}">${c.name||c.id}</div>`;
+  });
+  tabs.push(`<div class="tab${_vacActiveTab==='none'?' active':''}" onclick="switchVacTab('none')" style="font-size:12px;padding:5px 10px">Sans cycle</div>`);
+  el.innerHTML = tabs.join('');
+}
+
+function switchVacTab(id) {
+  _vacActiveTab = id;
+  renderVacTabs();
+  renderVacList();
+  document.getElementById('vac-form').style.display = 'none';
+}
+
+function renderVacList() {
+  const el = document.getElementById('vac-list');
+  const types = { week: 'Sem.', sat: 'Sam.', sun: 'Dim.', all: 'Tous' };
+  const entries = Object.entries(_allVacs).sort((a,b) => a[0].localeCompare(b[0]));
+  const filtered = entries.filter(([name, v]) => {
+    if (_vacActiveTab === 'none') return !v.cycleIds || !v.cycleIds.length;
+    return (v.cycleIds || []).includes(_vacActiveTab);
+  });
+  if (!filtered.length) {
+    const msg = Object.keys(_allVacs).length === 0
+      ? 'Aucune vacation. Cliquez sur Migrer ou Ajouter.'
+      : 'Aucune vacation dans cet onglet.';
+    el.innerHTML = `<tr><td colspan="8" style="color:var(--text3);font-size:12px">${msg}</td></tr>`;
+    return;
+  }
+  el.innerHTML = filtered.map(([name, v]) => {
+    const cycleNames = (_allCycles||[]).filter(c => (v.cycleIds||[]).includes(c.id)).map(c => c.name||c.id).join(', ');
+    return `<tr>
+      <td><b>${name}</b>${cycleNames&&_allCycles.length>1?`<div style="font-size:10px;color:var(--text3);margin-top:2px">${cycleNames}</div>`:''}</td>
+      <td style="font-size:11px">${v.deb||'—'}</td>
+      <td style="font-size:11px">${v.fin||'—'}</td>
+      <td style="font-size:11px">${v.dur||0} min</td>
+      <td style="text-align:center">${v.panier ? '✓' : '—'}</td>
+      <td style="text-align:center">${v.mixte ? '✓' : '—'}</td>
+      <td style="font-size:11px">${types[v.type]||v.type||'—'}</td>
+      <td style="display:flex;gap:4px;white-space:nowrap">
+        <button class="btn btn-sm" onclick="editVac('${name}',${JSON.stringify(v).replace(/'/g,"\\'")})">✏️</button>
+        <button class="btn btn-sm btn-red" onclick="deleteVac('${name}')">🗑</button>
+      </td>
+    </tr>`;
+  }).join('');
 }
 
 async function toggleVacCycle(vacName, cycleId, add) {
@@ -458,6 +483,11 @@ async function saveVac() {
     const res = await fetch(API + '/admin/vacation/save', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ vacation }) });
     const data = await res.json();
     if (!res.ok) { errEl.textContent = data.error || 'Erreur'; return; }
+    // Auto-link to active cycle tab if creating a new vacation
+    const isNew = !_editingVac;
+    if (isNew && _vacActiveTab && _vacActiveTab !== 'none') {
+      await fetch(API + '/admin/vacation/addcycle', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ name, cycleId: _vacActiveTab }) });
+    }
     document.getElementById('vac-form').style.display = 'none';
     loadVacations();
   } catch(e) { errEl.textContent = 'Erreur réseau'; }
