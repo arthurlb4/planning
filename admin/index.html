@@ -456,31 +456,53 @@ function renderVacList() {
       : '<p style="color:var(--text3);font-size:12px;padding:8px 0">Aucune vacation dans cet onglet.</p>';
     return;
   }
+  // Codes présents dans la grille du cycle actif
+  const activeCycle = _allCycles.find(c => c.id === _vacActiveTab);
+  const gridCodes = activeCycle && activeCycle.weeks
+    ? new Set(activeCycle.weeks.flat().filter(c => c && c !== 'RH'))
+    : new Set();
+
   const week = filtered.filter(([,v]) => !v.type || v.type === 'week');
   const sat  = filtered.filter(([,v]) => v.type === 'sat');
   const sun  = filtered.filter(([,v]) => v.type === 'sun');
   const all  = filtered.filter(([,v]) => v.type === 'all');
 
+  function makeRows(rows) {
+    return rows.map(([name, v]) => {
+      const total = calcDur(fmtTimeToHHMM(v.deb||''), fmtTimeToHHMM(v.fin||''));
+      const pause = v.dur && total > v.dur ? fmtVacDur(total - v.dur) : '—';
+      const chk = _selectedVacs.has(name) ? 'checked' : '';
+      return `<tr style="cursor:pointer" onclick="editVac('${name}')">
+        <td onclick="event.stopPropagation()"><input type="checkbox" class="vac-chk" ${chk} onchange="toggleVacSelect('${name}',this)"></td>
+        <td><b>${v.label||name}</b>${v.label&&v.label!==name?` <span style="font-size:10px;color:var(--text3)">(${name})</span>`:''}</td>
+        <td style="font-size:11px">${v.deb||'—'}</td>
+        <td style="font-size:11px">${v.fin||'—'}</td>
+        <td style="font-size:11px">${fmtVacDur(v.dur||0)}</td>
+        <td style="font-size:11px">${pause}</td>
+        <td style="text-align:center">${v.panier?'✓':'—'}</td>
+        <td style="text-align:center">${v.mixte?'✓':'—'}</td>
+        <td><button class="btn btn-sm btn-red" onclick="event.stopPropagation();deleteVac('${name}')">🗑</button></td>
+      </tr>`;
+    }).join('');
+  }
+  const TH = '<thead><tr><th style="width:20px"></th><th>Nom</th><th>Début</th><th>Fin</th><th>Durée</th><th>Pause</th><th style="text-align:center">🥖</th><th style="text-align:center">M</th><th></th></tr></thead>';
+
   function makeTable(rows) {
     if (!rows.length) return '<p style="color:var(--text3);font-size:11px">—</p>';
-    return '<table style="width:100%"><thead><tr><th style="width:20px"></th><th>Nom</th><th>Début</th><th>Fin</th><th>Durée</th><th>Pause</th><th style="text-align:center">🥖</th><th style="text-align:center">M</th><th></th></tr></thead><tbody>'
-      + rows.map(([name, v]) => {
-          const total = calcDur(fmtTimeToHHMM(v.deb||''), fmtTimeToHHMM(v.fin||''));
-          const pause = v.dur && total > v.dur ? fmtVacDur(total - v.dur) : '—';
-          const chk = _selectedVacs.has(name) ? 'checked' : '';
-          return `<tr style="cursor:pointer" onclick="editVac('${name}')">
-            <td onclick="event.stopPropagation()"><input type="checkbox" class="vac-chk" ${chk} onchange="toggleVacSelect('${name}',this)"></td>
-            <td><b>${v.label||name}</b>${v.label&&v.label!==name?` <span style="font-size:10px;color:var(--text3)">(${name})</span>`:''}</td>
-            <td style="font-size:11px">${v.deb||'—'}</td>
-            <td style="font-size:11px">${v.fin||'—'}</td>
-            <td style="font-size:11px">${fmtVacDur(v.dur||0)}</td>
-            <td style="font-size:11px">${pause}</td>
-            <td style="text-align:center">${v.panier?'✓':'—'}</td>
-            <td style="text-align:center">${v.mixte?'✓':'—'}</td>
-            <td><button class="btn btn-sm btn-red" onclick="event.stopPropagation();deleteVac('${name}')">🗑</button></td>
-          </tr>`;
-        }).join('')
-      + '</tbody></table>';
+    if (!gridCodes.size) {
+      // No cycle grid available — single table
+      return `<div class="table-scroll"><table style="width:100%">${TH}<tbody>${makeRows(rows)}</tbody></table></div>`;
+    }
+    const inGrid  = rows.filter(([name]) => gridCodes.has(name));
+    const outside = rows.filter(([name]) => !gridCodes.has(name));
+    let html = '';
+    if (inGrid.length) html += `
+      <div style="font-size:10px;color:var(--text3);margin-bottom:3px">Dans le cycle</div>
+      <div class="table-scroll"><table style="width:100%">${TH}<tbody>${makeRows(inGrid)}</tbody></table></div>`;
+    if (outside.length) html += `
+      <div style="font-size:10px;color:var(--text3);margin:8px 0 3px">Accessibles</div>
+      <div class="table-scroll"><table style="width:100%">${TH}<tbody>${makeRows(outside)}</tbody></table></div>`;
+    return html || '<p style="color:var(--text3);font-size:11px">—</p>';
   }
 
   const sections = [
@@ -547,12 +569,12 @@ function renderVacList() {
   el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;align-items:start">
     ${sections.map(s => `<div>
       <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin-bottom:6px">${s.label}</div>
-      <div class="table-scroll">${makeTable(s.rows)}</div>
+      ${makeTable(s.rows)}
     </div>`).join('')}
   </div>`
   + (hasAll ? `<div style="margin-top:16px">
     <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin-bottom:6px">Tous jours</div>
-    <div class="table-scroll">${makeTable(all)}</div>
+    ${makeTable(all)}
   </div>` : '')
   + availHtml;
 }
