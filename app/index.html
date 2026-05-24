@@ -3388,25 +3388,18 @@ async function gcalSync(){
     cur.setDate(cur.getDate()+1);
   }
   try{
-    gcalWriteStatus('syncing',0,1);
-    const res=await fetch(GCAL_FUNCTIONS+'/calendar',{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({action:'fullSync',access_token:gcalTokens.access_token,refresh_token:gcalTokens.refresh_token,calendarId:gcalCalendarId,events:events,startDate:dk(startD),endDate:dk(endD)}),
+    const res=await fetch(GCAL_FUNCTIONS+'/gcal/fullsync-start',{
+      method:'POST',headers:cloudHeaders(),
+      body:JSON.stringify({profileId:_aid||'default',calendarId:gcalCalendarId,events:events,startDate:dk(startD),endDate:dk(endD)}),
       signal:ac.signal
     });
+    clearTimeout(_syncTimeout);
+    if(circle){circle.style.stroke='';circle.style.strokeDashoffset='';}
+    if(wrap)wrap.classList.remove('gcal-syncing');
     if(res.ok){
-      const data=await res.json();
-      if(data.newToken){gcalTokens.access_token=data.newToken;gcalSave();}
-      clearTimeout(_syncTimeout);
-      if(circle){circle.style.stroke='';circle.style.strokeDashoffset='';}
-      if(wrap)wrap.classList.remove('gcal-syncing');
       gcalWriteStatus('done',1,1);
       if(ico&&wrap){ico.innerHTML=gSvg('#34a853');wrap.classList.add('gcal-done-anim');setTimeout(function(){wrap.classList.remove('gcal-done-anim');gcalUpdateBtn();},2000);}
-      if(data.failed>0){setTimeout(function(){gcalTrigger();},3000);}
     }else{
-      clearTimeout(_syncTimeout);
-      if(circle){circle.style.stroke='';circle.style.strokeDashoffset='';}
-      if(wrap)wrap.classList.remove('gcal-syncing');
       gcalWriteStatus('idle',0,0);
       gcalUpdateBtn();
     }

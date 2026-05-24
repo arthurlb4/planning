@@ -77,7 +77,7 @@ async function calApi(method, path, data, token, refresh_token, env) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
     try {
     var url = new URL(request.url);
@@ -964,6 +964,183 @@ export default {
       }
       const state = await env.PLANNING_DB.get('sync_state:' + session.userId, { type: 'json' });
       return resp(state || { status: 'idle', current: 0, total: 0 });
+    }
+
+    // ============================================================
+    // ASYNC FULL SYNC (self-chaining, fire-and-forget)
+    // ============================================================
+
+    if (path === '/gcal/fullsync-start') {
+      const session = await verifySession(request, env);
+      if (!session) return resp({ error: 'Non authentifie' }, 401);
+      const profileId = body.profileId || 'default';
+      const calendarId = body.calendarId || null;
+      const events = body.events || [];
+      const startDate = body.startDate || null;
+      const endDate = body.endDate || null;
+
+      const profileData = await env.PLANNING_DB.get('data:' + session.userId + ':' + profileId, { type: 'json' });
+      if (!profileData || !profileData.profile || !profileData.profile.gcalTokens) {
+        return resp({ error: 'Tokens Google manquants' }, 400);
+      }
+      var tokens = Object.assign({}, profileData.profile.gcalTokens);
+      const calId = calendarId || profileData.profile.gcalCalendarId || 'primary';
+
+      if (!tokens.access_token || tokens.expiry < Date.now() - 60000) {
+        var rt = await refreshGToken(tokens.refresh_token, env);
+        if (rt.access_token) {
+          tokens.access_token = rt.access_token;
+          tokens.expiry = Date.now() + (rt.expires_in || 3600) * 1000;
+          profileData.profile.gcalTokens = tokens;
+          await env.PLANNING_DB.put('data:' + session.userId + ':' + profileId, JSON.stringify(profileData));
+        }
+      }
+
+      const fsCalPath = '/calendars/' + encodeURIComponent(calId) + '/events';
+      var fsExisting = {};
+      var fsPT = null;
+      do {
+        var fsListUrl = fsCalPath + '?maxResults=250&singleEvents=true';
+        if (startDate) fsListUrl += '&timeMin=' + encodeURIComponent(startDate + 'T00:00:00Z');
+        if (endDate) fsListUrl += '&timeMax=' + encodeURIComponent(endDate + 'T23:59:59Z');
+        if (fsPT) fsListUrl += '&pageToken=' + fsPT;
+        var fsLR = await calApi('GET', fsListUrl, null, tokens.access_token, tokens.refresh_token, env);
+        if (fsLR.newToken) tokens.access_token = fsLR.newToken;
+        var fsIt = (fsLR.data && fsLR.data.items) || [];
+        for (var k = 0; k < fsIt.length; k++) { if (fsIt[k].id) fsExisting[fsIt[k].id] = fsIt[k]; }
+        fsPT = fsLR.data && fsLR.data.nextPageToken;
+      } while (fsPT);
+
+      var fsDesiredMap = {};
+      for (var di = 0; di < events.length; di++) {
+        if (events[di].googleEventId) fsDesiredMap[events[di].googleEventId] = events[di];
+      }
+      var fsOps = [];
+      var fsDesiredIds = Object.keys(fsDesiredMap);
+      for (var dii = 0; dii < fsDesiredIds.length; dii++) {
+        var fsgid = fsDesiredIds[dii]; var fsdv = fsDesiredMap[fsgid];
+        if (!fsExisting[fsgid]) {
+          fsOps.push({ type: 'create', googleEventId: fsgid, event: fsdv.event });
+        } else {
+          var fsex = fsExisting[fsgid];
+          var fsExStart = fsex.start && (fsex.start.date || (fsex.start.dateTime || '').slice(0, 16));
+          var fsDvStart = fsdv.event.start && (fsdv.event.start.date || (fsdv.event.start.dateTime || '').slice(0, 16));
+          var fsChanged = fsex.summary !== fsdv.event.summary ||
+            (fsex.description || '') !== (fsdv.event.description || '') ||
+            (fsex.colorId || '') !== (fsdv.event.colorId || '') ||
+            fsExStart !== fsDvStart;
+          if (fsChanged) fsOps.push({ type: 'update', googleEventId: fsgid, event: fsdv.event });
+        }
+      }
+      var fsExIds = Object.keys(fsExisting);
+      for (var eii = 0; eii < fsExIds.length; eii++) {
+        if (!fsDesiredMap[fsExIds[eii]]) fsOps.push({ type: 'delete', googleEventId: fsExIds[eii] });
+      }
+
+      if (fsOps.length === 0) {
+        await env.PLANNING_DB.put('gcal_last_sync:' + session.userId + ':' + profileId, Date.now().toString());
+        return resp({ ok: true, ops: 0 });
+      }
+
+      const jobKey = 'gcal_sync_job:' + session.userId + ':' + profileId;
+      await env.PLANNING_DB.put(jobKey, JSON.stringify({
+        ops: fsOps, tokens: tokens, calendarId: calId,
+        userId: session.userId, profileId: profileId, total: fsOps.length
+      }), { expirationTtl: 600 });
+
+      await env.PLANNING_DB.put('sync_state:' + session.userId,
+        JSON.stringify({ status: 'syncing', current: 0, total: fsOps.length, ts: Date.now() }),
+        { expirationTtl: 120 });
+
+      const workerOrigin = new URL(request.url).origin;
+      ctx.waitUntil(fetch(workerOrigin + '/gcal/continue-sync-job', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: session.userId, profileId: profileId })
+      }));
+
+      return resp({ ok: true, ops: fsOps.length, started: true });
+    }
+
+    if (path === '/gcal/continue-sync-job') {
+      const userId = body.userId; const profileId = body.profileId;
+      if (!userId || !profileId) return resp({ error: 'Missing' }, 400);
+
+      const jobKey = 'gcal_sync_job:' + userId + ':' + profileId;
+      const job = await env.PLANNING_DB.get(jobKey, { type: 'json' });
+      if (!job || !job.ops || job.ops.length === 0) {
+        await env.PLANNING_DB.put('gcal_last_sync:' + userId + ':' + profileId, Date.now().toString());
+        await env.PLANNING_DB.put('sync_state:' + userId,
+          JSON.stringify({ status: 'done', current: job ? job.total : 0, total: job ? job.total : 0, ts: Date.now() }),
+          { expirationTtl: 60 });
+        await env.PLANNING_DB.delete(jobKey);
+        return resp({ ok: true, done: true });
+      }
+
+      const BATCH = 30;
+      const batch = job.ops.slice(0, BATCH);
+      const remaining = job.ops.slice(BATCH);
+      var jTokens = Object.assign({}, job.tokens);
+      const jCalPath = '/calendars/' + encodeURIComponent(job.calendarId) + '/events';
+      var failedOps = [];
+
+      for (var bi = 0; bi < batch.length; bi++) {
+        const op = batch[bi];
+        try {
+          var jr;
+          var jEvData = Object.assign({}, op.event, { id: op.googleEventId });
+          if (op.type === 'delete') {
+            jr = await calApi('DELETE', jCalPath + '/' + op.googleEventId, null, jTokens.access_token, job.tokens.refresh_token, env);
+          } else if (op.type === 'update') {
+            jr = await calApi('PUT', jCalPath + '/' + op.googleEventId, jEvData, jTokens.access_token, job.tokens.refresh_token, env);
+            if (jr.status === 404 || jr.status === 410) {
+              jr = await calApi('POST', jCalPath, jEvData, jTokens.access_token, job.tokens.refresh_token, env);
+            }
+          } else {
+            jr = await calApi('POST', jCalPath, jEvData, jTokens.access_token, job.tokens.refresh_token, env);
+            if (jr.status === 409) {
+              jr = await calApi('PUT', jCalPath + '/' + op.googleEventId, jEvData, jTokens.access_token, job.tokens.refresh_token, env);
+            }
+          }
+          if (jr && jr.newToken) jTokens.access_token = jr.newToken;
+          if (jr && (jr.status === 429 || jr.status === 403)) {
+            await new Promise(function(r){ setTimeout(r, 5000); });
+            failedOps.push(op);
+            continue;
+          }
+        } catch(e) {
+          var retries = (op.retries || 0) + 1;
+          if (retries < 3) failedOps.push(Object.assign({}, op, { retries: retries }));
+        }
+        await new Promise(function(r){ setTimeout(r, 80); });
+      }
+
+      const allRemaining = failedOps.concat(remaining);
+      const doneSoFar = job.total - allRemaining.length;
+
+      try {
+        const pd = await env.PLANNING_DB.get('data:' + userId + ':' + profileId, { type: 'json' });
+        if (pd && pd.profile) { pd.profile.gcalTokens = jTokens; await env.PLANNING_DB.put('data:' + userId + ':' + profileId, JSON.stringify(pd)); }
+      } catch(e) {}
+
+      if (allRemaining.length > 0) {
+        await env.PLANNING_DB.put(jobKey, JSON.stringify(Object.assign({}, job, { ops: allRemaining, tokens: jTokens })), { expirationTtl: 600 });
+        await env.PLANNING_DB.put('sync_state:' + userId,
+          JSON.stringify({ status: 'syncing', current: doneSoFar, total: job.total, ts: Date.now() }),
+          { expirationTtl: 120 });
+        const jOrigin = new URL(request.url).origin;
+        ctx.waitUntil(fetch(jOrigin + '/gcal/continue-sync-job', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: userId, profileId: profileId })
+        }));
+      } else {
+        await env.PLANNING_DB.put('gcal_last_sync:' + userId + ':' + profileId, Date.now().toString());
+        await env.PLANNING_DB.put('sync_state:' + userId,
+          JSON.stringify({ status: 'done', current: job.total, total: job.total, ts: Date.now() }),
+          { expirationTtl: 60 });
+        await env.PLANNING_DB.delete(jobKey);
+      }
+
+      return resp({ ok: true, done: allRemaining.length === 0, remaining: allRemaining.length });
     }
 
     return resp({ error: 'Not found' }, 404);
