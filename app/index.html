@@ -430,7 +430,7 @@ body.modal-open .bloc.clk:hover,body.modal-open .ctr.clk:hover{background:var(--
 <div id="modal-root"></div>
 
 <script>
-var _appVer='v4.42';
+var _appVer='v4.43';
 var GCAL_CLIENT_ID='669191513748-a40uvl9k46kqsmjatpqokhnhgvrc7mdt.apps.googleusercontent.com';
 var GCAL_REDIRECT_URI='https://arthurlb4.github.io/planning/app/';
 var GCAL_SCOPE='https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events';
@@ -1313,7 +1313,6 @@ function updateCounters(){
   function detRow(color,val){return val>0?'<div class="ctr-dot-row"><span class="rdot" style="background:'+color+'"></span>'+fmtMin(val)+'</div>':'';}
   const det=detRow('#9c80e0',gm.dim||0)+detRow('#7b9ce0',gm.rh||0)+detRow('var(--gold)',gm.fer||0)+detRow('var(--gold-dark)',gm.ram||0)+detRow('var(--blue)',gm.hs||0)||'<div class="ctr-dot-row" style="color:var(--text3)">-</div>';
   el.innerHTML=`
-    <div class="ctr"><div class="clbl">Éphem. dispo</div><div class="cval" style="color:var(--blue)">${fmtMin(totalReal)}</div><div class="csub">priorité</div></div>
     <div class="ctr"><div class="clbl">Matelas</div><div class="cval" style="color:var(--blue)">${fmtMin(Math.max(0,matelas))}</div><div class="csub">permanent</div></div>
     <div class="ctr clk" onclick="openCongesModal()"><div class="clbl">Congés ${curY} <span style="font-size:8px;opacity:.5">▼</span></div><div class="cval" style="color:var(--green)">${cRest} j</div></div>
     <div class="ctr clk" onclick="openHSModal(${mym})"><div class="clbl">HS ce mois <span style="font-size:8px;opacity:.5">▼</span></div><div class="cval" style="color:var(--blue)">${fmtMin(hsTotal)}</div><div class="csub">${useHSRendu?'rendus':'payés'}</div></div>
@@ -1362,7 +1361,8 @@ function updateCounters(){
   // Combine real available + previsionnal months (4 future max inline)
   const allRestReal=Object.keys(realAvail).map(Number).filter(ym=>realAvail[ym]>0).sort();
   const allRestPrev=Object.keys(prevEph).map(Number).filter(ym=>prevEph[ym]>0).sort().slice(0,4);
-  const allRestYms=[...new Set([...allRestReal,...allRestPrev])].sort();
+  const extendedUsed=Object.keys(S.ephExtend||{}).map(Number).filter(ym=>ym<=TODAY_YM&&getExpYm(ym)>TODAY_YM);
+  const allRestYms=[...new Set([...allRestReal,...allRestPrev,...extendedUsed])].sort();
   const restMaxV=Math.max(...allRestYms.map(ym=>ym>TODAY_YM?(prevEph[ym]||0):(realAvail[ym]||0)),1);
   allRestYms.forEach(ym=>{
     const y2r=Math.floor(ym/12),m2r=ym%12;
@@ -1371,7 +1371,8 @@ function updateCounters(){
     const isExpR=expYmR<=TODAY_YM;
     const isFutR=ym>TODAY_YM;
     const avail=isFutR?(prevEph[ym]||0):(realAvail[ym]||0);
-    if(avail<=0)return;
+    const hasActiveExt=!isFutR&&!isExpR&&getEphExtensions(ym)>0;
+    if(avail<=0&&!hasActiveExt)return;
     // Total = only existing (real, non-expired)
     if(!isExpR&&!isFutR)totalExisting+=avail;
     const moLeft=expYmR-TODAY_YM;
@@ -1390,16 +1391,16 @@ function updateCounters(){
   if(restEl)restEl.innerHTML=restHtml||'<div style="font-size:11px;color:var(--text3)">Aucun rendu disponible.</div>';
   const dispEl=document.getElementById('eph-total-dispo');
   if(dispEl)dispEl.textContent=fmtMin(totalExisting);
-  // Second counter: acquis non expirés + prévisionnels non expirés à la fin du mois affiché
+  // Counter: dispo pendant le mois affiché
   const viewedYM=curY*12+curM;
   let totalAtView=0;
-  // Acquis réels non expirés à la fin du mois affiché
+  // Acquis réels disponibles pendant le mois affiché (expYm >= viewedYM = encore valides ce mois)
   Object.keys(realAvail).map(Number).forEach(function(ym){
-    if(realAvail[ym]>0&&getExpYm(ym)>viewedYM)totalAtView+=realAvail[ym];
+    if(realAvail[ym]>0&&getExpYm(ym)>=viewedYM)totalAtView+=realAvail[ym];
   });
-  // Prévisionnels créés au plus tard fin du mois affiché, non expirés à cette date
+  // Prévisionnels créés au plus tard fin du mois affiché, disponibles ce mois
   Object.keys(prevEph).map(Number).forEach(function(ym){
-    if(prevEph[ym]>0&&ym<=viewedYM&&getExpYm(ym)>viewedYM)totalAtView+=prevEph[ym];
+    if(prevEph[ym]>0&&ym<=viewedYM&&getExpYm(ym)>=viewedYM)totalAtView+=prevEph[ym];
   });
   const prevEl=document.getElementById('eph-total-prev');
   const prevLblEl=document.getElementById('eph-prev-label');
@@ -1958,20 +1959,21 @@ function openRestantsModal(){
   // Combine real + 12 future months
   const allReal=Object.keys(realAvail).map(Number).filter(ym=>realAvail[ym]>0);
   const allPrev=Object.keys(prevEph).map(Number).filter(ym=>prevEph[ym]>0).sort().slice(0,12);
-  const yms=[...new Set([...allReal,...allPrev])].sort();
+  const extendedUsedM=Object.keys(S.ephExtend||{}).map(Number).filter(ym=>ym<=TODAY_YM&&getExpYm(ym)>TODAY_YM);
+  const yms=[...new Set([...allReal,...allPrev,...extendedUsedM])].sort();
   const maxV=Math.max(...yms.map(ym=>ym>TODAY_YM?(prevEph[ym]||0):(realAvail[ym]||0)),1);
   let rows='';
   const btnS='font-size:9px;padding:2px 5px;border:0.5px solid var(--border);border-radius:4px;background:transparent;cursor:pointer;';
   yms.forEach(function(ym){
     const isFut=ym>TODAY_YM;
     const avail=isFut?(prevEph[ym]||0):(realAvail[ym]||0);
-    if(avail<=0)return;
     const y=Math.floor(ym/12),m=ym%12;
     const expYm=getExpYm(ym),expY=Math.floor(expYm/12),expM=expYm%12;
     const isExp=expYm<=TODAY_YM,ext=getEphExtensions(ym);
     // canSub: allowed whenever ext>0
     const canAdd=!isExp&&!isFut&&ext<3;
     const canSub=!isExp&&!isFut&&ext>0;
+    if(avail<=0&&!canSub)return;
     const moLeft=expYm-TODAY_YM;
     const expColor=isExp?'var(--rendu-red-text)':'var(--text3)';
     const barColor=ephBarColor(moLeft,isExp);
