@@ -3341,6 +3341,7 @@ function gcalClearDateId(dateKey){gcalTrigger();}
 // ============================================================
 var _syncTimer=null;
 var _syncAbort=null;
+var _syncQueued=false;
 var _pollTimer=null;
 var _pollFast=false;
 
@@ -3356,7 +3357,8 @@ function gcalTrigger(){
 
 async function gcalSync(){
   if(!gcalTokens)return;
-  if(_syncAbort)return;
+  if(_syncAbort){_syncQueued=true;return;}
+  _syncQueued=false;
   const ac=new AbortController();_syncAbort=ac;
   const _syncTimeout=setTimeout(function(){if(_syncAbort===ac){ac.abort();}},40000);
   const wrap=document.getElementById('gcal-status-wrap');
@@ -3416,6 +3418,7 @@ async function gcalSync(){
     gcalUpdateBtn();
   }
   _syncAbort=null;
+  if(_syncQueued){_syncQueued=false;gcalSync();}
 }
 
 async function checkPendingLineChoice(){

@@ -828,9 +828,12 @@ export default {
             fsCreate.push(dv);
           } else {
             var ex = existing[gid];
+            var exStart = ex.start && (ex.start.date || (ex.start.dateTime || '').slice(0, 16));
+            var dvStart = dv.event.start && (dv.event.start.date || (dv.event.start.dateTime || '').slice(0, 16));
             var changed = ex.summary !== dv.event.summary ||
               (ex.description || '') !== (dv.event.description || '') ||
-              (ex.start && ex.start.date) !== (dv.event.start && dv.event.start.date);
+              (ex.colorId || '') !== (dv.event.colorId || '') ||
+              exStart !== dvStart;
             if (changed) fsUpdate.push(dv);
           }
         }
