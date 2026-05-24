@@ -785,6 +785,98 @@ export default {
         return resp({ ok: true, deleted: deleted2, done: !nextPageToken2, nextPageToken: nextPageToken2||null, newToken: token !== access_token ? token : null });
       }
 
+      if (action === 'fullSync') {
+        var fsCal = calendarId || 'primary';
+        var desired = events || [];
+        var fsPath = '/calendars/' + encodeURIComponent(fsCal) + '/events';
+        var fsToken = token;
+
+        // Build map of desired events by googleEventId
+        var desiredMap = {};
+        for (var di = 0; di < desired.length; di++) {
+          var dev = desired[di];
+          if (dev.googleEventId) desiredMap[dev.googleEventId] = dev;
+        }
+
+        // List all current Google Calendar events (paginated)
+        var existing = {};
+        var fsPageToken = null;
+        do {
+          var fsListUrl = fsPath + '?maxResults=250&singleEvents=true' + (fsPageToken ? '&pageToken=' + fsPageToken : '');
+          var fsListR = await calApi('GET', fsListUrl, null, fsToken, refresh_token, env);
+          if (fsListR.newToken) fsToken = fsListR.newToken;
+          var fsItems = (fsListR.data && fsListR.data.items) || [];
+          for (var fi = 0; fi < fsItems.length; fi++) {
+            var item = fsItems[fi];
+            if (item.id) existing[item.id] = item;
+          }
+          fsPageToken = fsListR.data && fsListR.data.nextPageToken;
+        } while (fsPageToken);
+
+        // Compute diff
+        var fsCreate = [], fsUpdate = [], fsDelete = [];
+        var desiredIds = Object.keys(desiredMap);
+        for (var dii = 0; dii < desiredIds.length; dii++) {
+          var gid = desiredIds[dii];
+          var dv = desiredMap[gid];
+          if (!existing[gid]) {
+            fsCreate.push(dv);
+          } else {
+            var ex = existing[gid];
+            var changed = ex.summary !== dv.event.summary ||
+              (ex.description || '') !== (dv.event.description || '') ||
+              (ex.start && ex.start.date) !== (dv.event.start && dv.event.start.date);
+            if (changed) fsUpdate.push(dv);
+          }
+        }
+        var existingIds = Object.keys(existing);
+        for (var eii = 0; eii < existingIds.length; eii++) {
+          var eid = existingIds[eii];
+          if (!desiredMap[eid]) fsDelete.push(eid);
+        }
+
+        var fsCreated = 0, fsUpdated = 0, fsDeleted = 0, fsFailed = 0;
+        var FS_DELAY = 80;
+
+        async function fsApply(method, path, data) {
+          var r = await calApi(method, path, data, fsToken, refresh_token, env);
+          if (r.newToken) fsToken = r.newToken;
+          if (r.status === 429 || r.status === 403) {
+            await new Promise(function(res){ setTimeout(res, 2000); });
+            r = await calApi(method, path, data, fsToken, refresh_token, env);
+            if (r.newToken) fsToken = r.newToken;
+          }
+          return r;
+        }
+
+        for (var ci = 0; ci < fsCreate.length; ci++) {
+          var cev = fsCreate[ci];
+          var cData = Object.assign({}, cev.event, { id: cev.googleEventId });
+          var cr = await fsApply('POST', fsPath, cData);
+          if (cr.status === 200 || cr.status === 201) fsCreated++;
+          else fsFailed++;
+          await new Promise(function(res){ setTimeout(res, FS_DELAY); });
+        }
+
+        for (var ui = 0; ui < fsUpdate.length; ui++) {
+          var uev = fsUpdate[ui];
+          var uData = Object.assign({}, uev.event, { id: uev.googleEventId });
+          var ur = await fsApply('PUT', fsPath + '/' + uev.googleEventId, uData);
+          if (ur.status === 200) fsUpdated++;
+          else fsFailed++;
+          await new Promise(function(res){ setTimeout(res, FS_DELAY); });
+        }
+
+        for (var dei = 0; dei < fsDelete.length; dei++) {
+          var deid = fsDelete[dei];
+          var dr = await fsApply('DELETE', fsPath + '/' + deid, null);
+          if (dr.status === 204 || dr.status === 200 || dr.status === 404 || dr.status === 410) fsDeleted++;
+          await new Promise(function(res){ setTimeout(res, FS_DELAY); });
+        }
+
+        return resp({ ok: true, created: fsCreated, updated: fsUpdated, deleted: fsDeleted, failed: fsFailed, newToken: fsToken !== access_token ? fsToken : null });
+      }
+
       if (action === 'batchSync') {
         var cal = calendarId || 'primary';
         var evList = events || [];

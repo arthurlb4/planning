@@ -1656,12 +1656,12 @@ function avwConfirm(){
   logH(fmtDate(date)+' -> '+sel+(hs?' (HS)':''),'#4ea0f7',key);
   _pendingVacSel=null;
   saveState();closeModal();render();
-  gcalMarkDirty(key);
+  gcalTrigger();
 }
 
-function resetVac(){removeHistoryForKey(pendingKey);if(!S.overrides)S.overrides={};delete S.overrides[pendingKey];if(!S.conges)S.conges={};delete S.conges[pendingKey];saveState();closeModal();render();gcalMarkDirty(pendingKey);}
-function setAbsent(){var date=new Date(pendingKey+'T12:00:00');if(!S.overrides)S.overrides={};S.overrides[pendingKey]={absent:true};if(!S.conges)S.conges={};S.conges[pendingKey]='absent';logH(fmtDate(date)+' -> absent','#f0a030',pendingKey);saveState();closeModal();render();gcalMarkDirty(pendingKey);}
-function resetAbsent(){removeHistoryForKey(pendingKey);if(!S.overrides)S.overrides={};delete S.overrides[pendingKey];if(!S.conges)S.conges={};delete S.conges[pendingKey];saveState();closeModal();render();gcalMarkDirty(pendingKey);}
+function resetVac(){removeHistoryForKey(pendingKey);if(!S.overrides)S.overrides={};delete S.overrides[pendingKey];if(!S.conges)S.conges={};delete S.conges[pendingKey];saveState();closeModal();render();gcalTrigger();}
+function setAbsent(){var date=new Date(pendingKey+'T12:00:00');if(!S.overrides)S.overrides={};S.overrides[pendingKey]={absent:true};if(!S.conges)S.conges={};S.conges[pendingKey]='absent';logH(fmtDate(date)+' -> absent','#f0a030',pendingKey);saveState();closeModal();render();gcalTrigger();}
+function resetAbsent(){removeHistoryForKey(pendingKey);if(!S.overrides)S.overrides={};delete S.overrides[pendingKey];if(!S.conges)S.conges={};delete S.conges[pendingKey];saveState();closeModal();render();gcalTrigger();}
 function poseConge(t){var date=new Date(pendingKey+'T12:00:00');if(!S.conges)S.conges={};S.conges[pendingKey]=t;logH(fmtDate(date)+' -> '+(t==='cg'?'congé':'rendu '+fmtMin(getDur(date))),t==='cg'?'#5a9e3f':'#b0443a',pendingKey);saveState();closeModal();render();}
 function removeCongé(){
   const key=pendingKey;
@@ -1703,7 +1703,7 @@ function removeCongé(){
   });
   localStorage.setItem('gcal_event_ids_'+_pid2,JSON.stringify(_stored2));
   saveState();closeModal();render();
-  gcalMarkDirty(pendingKey);
+  gcalTrigger();
 }
 function showPoseSelect(){
   var w=document.getElementById('pose-select-wrap');
@@ -1828,10 +1828,7 @@ function applyPose(type,startKey,unique){
   const color=type==='cg'?'#5a9e3f':type==='rend'?'#b0443a':'#f0a030';
   logH(fmtDate(start)+' -> '+label+(unique?'':' au '+fmtDate(end)),color,startKey);
   saveState();closeModal();render();
-  if(gcalTokens){
-    const d2=new Date(start);
-    while(d2<=end){gcalMarkDirty(dk(d2));d2.setDate(d2.getDate()+1);}
-  }
+  gcalTrigger();
 }
 
 function computeSettForProfile(pr,targetYM,key){
@@ -1894,7 +1891,7 @@ function cancelExchange(key){
   gcalClearDateId(key);delete S.overrides[key];
   removeHistoryForKey(key);
   saveState();closeModal();render();
-  gcalMarkDirty(pendingKey);
+  gcalTrigger();
 }
 function openHSModal(mym){
   document.querySelectorAll('[onclick*="openHSModal"]').forEach(el=>el.classList.add('active'));document.body.classList.add('modal-open');
@@ -2406,7 +2403,7 @@ function confirmExchange(){
   S.overrides[_exState.targetKey]={vac:_exState.targetVac,fromSV:!theirCycle||theirCycle==='RH',echange:true,ecSelf:true,hs:hsEx};
   logH('Échange: '+fmtDate(date)+' <-> '+fmtDate(targetDate)+' ('+_exState.targetVac+(hsEx?' HS':'')+')', '#d4a030', myKey);
   saveState();closeModal();render();
-  gcalMarkDirty(pendingKey);
+  gcalTrigger();
 }
 
 
@@ -3026,16 +3023,7 @@ var gcalTokens=null;
 function gSvg(c){return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.28h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="'+c+'"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="'+c+'"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="'+c+'"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="'+c+'"/></svg>';}
 function gcalHandleClick(){
   if(!gcalTokens){gcalConnect();return;}
-  const startD=new Date();startD.setDate(startD.getDate()-30);
-  const endD=new Date();endD.setMonth(endD.getMonth()+12);
-  const cur=new Date(startD);
-  while(cur<=endD){_pendingDates.add(dk(cur));cur.setDate(cur.getDate()+1);}
-  gcalPersistPending();
-  const wrap=document.getElementById('gcal-status-wrap');
-  if(wrap)wrap.classList.add('gcal-pending');
-  const ico=document.getElementById('gcal-status');
-  if(ico)ico.innerHTML=gSvg('#fbbc04');
-  gcalSyncNow();
+  gcalSync();
 }
 
 function gcalSetAutoSync(enabled){
@@ -3047,7 +3035,7 @@ function gcalToggleAutoSync(){
   const cur=S.profile&&S.profile.gcalAutoSync!==false;
   gcalSetAutoSync(!cur);
   // If enabling auto-sync, trigger a full sync
-  if(cur===false&&gcalTokens)gcalResyncAll();
+  if(cur===false&&gcalTokens)gcalSync();
 }
 
 // ============================================================
@@ -3119,17 +3107,10 @@ async function cloudLoadAll(){
   }catch(e){console.warn('cloud load all error',e);}
   gcalLoad();
   checkPendingLineChoice();
-  // Restore pending dates and start poll
-  gcalRestorePending();
-  if(_pendingDates.size)gcalTrigger();
+  if(gcalTokens)gcalSync();
   gcalStartPoll();
-  // Background sync on page close
-  window.addEventListener('beforeunload',function(){
-    if(gcalTokens)gcalSyncBackground();
-  });
-  // Also sync on visibility change (mobile: app goes to background)
+  // Sync on visibility change (mobile: app comes back to foreground)
   document.addEventListener('visibilitychange',function(){
-    if(document.visibilityState==='hidden'&&gcalTokens)gcalSyncBackground();
     if(document.visibilityState==='visible'){
       gcalPollOnce();
       fetch(location.href,{cache:'no-store',headers:{'Cache-Control':'no-cache, no-store','Pragma':'no-cache'}})
@@ -3334,7 +3315,7 @@ async function gcalExchange(code){
       };
       if(S.profile)S.profile.gcalAutoSync=true;gcalSave();gcalUpdateBtn();
       await gcalEnsureCalendar();
-      gcalResyncAll();
+      gcalSync();
     } else {
       console.error('gcal exchange failed', JSON.stringify(data));
       alert('Connexion Google échouée: ' + (data.error_description || data.error || JSON.stringify(data)));
@@ -3350,32 +3331,16 @@ async function gcalExchange(code){
 // ID of dedicated calendar, stored locally
 var gcalCalendarId= localStorage.getItem('gcal_calendar_id') || 'primary';
 
-function gcalClearDateId(dateKey){gcalMarkDirty(dateKey);}
+function gcalClearDateId(dateKey){gcalTrigger();}
 
 
 // ============================================================
-// GCAL AUTO SYNC — pendingDates persisté, sync unifiée
+// GCAL AUTO SYNC — state sync via worker
 // ============================================================
-var _pendingDates=new Set();
 var _syncTimer=null;
 var _syncAbort=null;
 var _pollTimer=null;
 var _pollFast=false;
-
-function gcalPersistPending(){
-  try{localStorage.setItem('gcal_pending',JSON.stringify([..._pendingDates]));}catch(e){}
-}
-
-function gcalRestorePending(){
-  try{const r=localStorage.getItem('gcal_pending');if(r){JSON.parse(r).forEach(function(d){_pendingDates.add(d);});}}catch(e){}
-}
-
-function gcalMarkDirty(key){
-  if(!gcalTokens||(S.profile&&S.profile.gcalAutoSync===false))return;
-  if(key)_pendingDates.add(key);
-  gcalPersistPending();
-  gcalTrigger();
-}
 
 function gcalTrigger(){
   if(!gcalTokens||(S.profile&&S.profile.gcalAutoSync===false))return;
@@ -3384,14 +3349,12 @@ function gcalTrigger(){
   const ico=document.getElementById('gcal-status');
   if(ico&&(!wrap||!wrap.classList.contains('gcal-syncing')))ico.innerHTML=gSvg('#fbbc04');
   clearTimeout(_syncTimer);
-  _syncTimer=setTimeout(function(){_syncTimer=null;gcalSyncNow();},300);
+  _syncTimer=setTimeout(function(){_syncTimer=null;gcalSync();},1000);
 }
 
-async function gcalSyncNow(){
-  if(!gcalTokens||!_pendingDates.size)return;
-  const dates=[..._pendingDates];
-  _pendingDates.clear();
-  gcalPersistPending();
+async function gcalSync(){
+  if(!gcalTokens)return;
+  if(S.profile&&S.profile.gcalAutoSync===false)return;
   if(_syncAbort){_syncAbort.abort();}
   const ac=new AbortController();_syncAbort=ac;
   const wrap=document.getElementById('gcal-status-wrap');
@@ -3399,69 +3362,47 @@ async function gcalSyncNow(){
   if(wrap){wrap.classList.remove('gcal-pending');wrap.classList.add('gcal-syncing');}
   if(ico)ico.innerHTML=gSvg('#4ea0f7');
   const token=await gcalGetToken();
-  if(!token){
-    dates.forEach(function(d){_pendingDates.add(d);});gcalPersistPending();
-    if(wrap)wrap.classList.remove('gcal-syncing');gcalUpdateBtn();return;
-  }
+  if(!token){if(wrap)wrap.classList.remove('gcal-syncing');gcalUpdateBtn();return;}
   if(!gcalCalendarId||gcalCalendarId==='primary')await gcalEnsureCalendar();
   const pid=(_aid||'default').replace(/[^a-z0-9]/gi,'').toLowerCase().slice(0,10);
   function stableId(k){return 'plan'+pid+k.replace(/-/g,'');}
-  const batch=dates.map(function(k){
+  // Build full desired state for the relevant date range
+  const startD=new Date();startD.setDate(startD.getDate()-30);
+  const endD=new Date();endD.setMonth(endD.getMonth()+12);
+  const events=[];
+  const cur=new Date(startD);
+  while(cur<=endD){
+    const k=dk(cur);
     const ev=gcalBuildDayEvent(k);
-    if(ev)return{id:k,googleEventId:stableId(k),event:ev,stable:true};
-    return{id:k,googleEventId:stableId(k),_delete:true,soft:true};
-  });
-  const CHUNK=20;
-  const totalChunks=Math.ceil(batch.length/CHUNK)||1;
+    if(ev)events.push({id:k,googleEventId:stableId(k),event:ev});
+    cur.setDate(cur.getDate()+1);
+  }
   try{
-    gcalSetProgress(0,totalChunks);
-    gcalWriteStatus('syncing',0,totalChunks);
-    for(let ci=0;ci<totalChunks;ci++){
-      if(ac.signal.aborted){
-        batch.slice(ci*CHUNK).forEach(function(ev){_pendingDates.add(ev.id);});
-        gcalPersistPending();
-        if(wrap)wrap.classList.remove('gcal-syncing');gcalUpdateBtn();return;
-      }
-      const chunk=batch.slice(ci*CHUNK,(ci+1)*CHUNK);
-      const res=await fetch(GCAL_FUNCTIONS+'/calendar',{
-        method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({action:'batchSync',access_token:gcalTokens.access_token,refresh_token:gcalTokens.refresh_token,calendarId:gcalCalendarId,events:chunk}),
-        signal:ac.signal
-      });
-      if(!res.ok){
-        chunk.forEach(function(ev){_pendingDates.add(ev.id);});
-        gcalPersistPending();
-        continue;
-      }
+    gcalWriteStatus('syncing',0,1);
+    const res=await fetch(GCAL_FUNCTIONS+'/calendar',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'fullSync',access_token:gcalTokens.access_token,refresh_token:gcalTokens.refresh_token,calendarId:gcalCalendarId,events:events}),
+      signal:ac.signal
+    });
+    if(res.ok){
       const data=await res.json();
       if(data.newToken){gcalTokens.access_token=data.newToken;gcalSave();}
-      gcalSetProgress(ci+1,totalChunks);
-      gcalWriteStatus('syncing',ci+1,totalChunks);
+      gcalWriteStatus('done',1,1);
+      gcalSetProgress(0,0);
+      if(wrap)wrap.classList.remove('gcal-syncing');
+      if(ico&&wrap){ico.innerHTML=gSvg('#34a853');wrap.classList.add('gcal-done-anim');setTimeout(function(){wrap.classList.remove('gcal-done-anim');gcalUpdateBtn();},2000);}
+    }else{
+      if(wrap)wrap.classList.remove('gcal-syncing');
+      gcalUpdateBtn();
     }
-    gcalPersistPending();
-    gcalWriteStatus('done',totalChunks,totalChunks);
-    gcalSetProgress(0,0);
-    if(wrap)wrap.classList.remove('gcal-syncing');
-    if(ico&&wrap){ico.innerHTML=gSvg('#34a853');wrap.classList.add('gcal-done-anim');setTimeout(function(){wrap.classList.remove('gcal-done-anim');gcalUpdateBtn();},2000);}
-    _syncAbort=null;
-    if(_pendingDates.size)setTimeout(gcalTrigger,3000);
   }catch(e){
-    dates.forEach(function(d){_pendingDates.add(d);});gcalPersistPending();
     if(wrap)wrap.classList.remove('gcal-syncing');
     _syncAbort=null;
     if(e&&e.name!=='AbortError')console.error('sync error',e);
     gcalSetProgress(0,0);gcalUpdateBtn();
     gcalWriteStatus('idle',0,0);
   }
-}
-
-function gcalResyncAll(){
-  const startD=new Date();startD.setDate(startD.getDate()-30);
-  const endD=new Date();endD.setMonth(endD.getMonth()+12);
-  const cur=new Date(startD);
-  while(cur<=endD){_pendingDates.add(dk(cur));cur.setDate(cur.getDate()+1);}
-  gcalPersistPending();
-  gcalTrigger();
+  _syncAbort=null;
 }
 
 async function checkPendingLineChoice(){
@@ -3716,27 +3657,6 @@ function gcalBuildDayEvent(dateKey){
     startObj={date:dateKey};endObj={date:dk(_nd)};
   }
   return{summary,description,start:startObj,end:endObj,colorId,extendedProperties:{private:{planningKey:dateKey,planningProfile:(S.profile&&S.profile.name)||'',planningType:congesType||vac}}};
-}
-
-function gcalSyncBackground(){
-  if(!gcalTokens||!gcalTokens.access_token)return;
-  if(S.profile&&S.profile.gcalAutoSync===false)return;
-  if(_syncAbort){_syncAbort.abort();_syncAbort=null;}
-  clearTimeout(_syncTimer);_syncTimer=null;
-  if(!_pendingDates.size)return;
-  const pid=(_aid||'default').replace(/[^a-z0-9]/gi,'').toLowerCase().slice(0,10);
-  function stableId(k){return 'plan'+pid+k.replace(/-/g,'');}
-  const events=[..._pendingDates].map(function(k){
-    const ev=gcalBuildDayEvent(k);
-    if(ev)return{id:k,googleEventId:stableId(k),event:ev,stable:true};
-    return{id:k,googleEventId:stableId(k),_delete:true,soft:true};
-  });
-  fetch(GCAL_FUNCTIONS+'/calendar',{
-    method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({action:'batchSync',access_token:gcalTokens.access_token,refresh_token:gcalTokens.refresh_token,calendarId:gcalCalendarId,events:events}),
-    keepalive:true
-  }).then(function(){_pendingDates.clear();gcalPersistPending();}).catch(function(){});
-  localStorage.setItem('gcal_last_bg_sync',Date.now().toString());
 }
 
 function gcalWriteStatus(status,current,total){
