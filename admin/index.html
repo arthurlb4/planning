@@ -183,6 +183,10 @@ textarea{width:100%;padding:9px 12px;background:var(--bg);border:0.5px solid var
           <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-mixte"> Mixte</label>
         </div>
       </div>
+      <div class="field" id="vf-cycles-field" style="display:none">
+        <label>Cycles</label>
+        <div id="vf-cycles" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px"></div>
+      </div>
       <div class="row" style="margin-top:4px">
         <button class="btn btn-green flex1" onclick="saveVac()">Enregistrer</button>
         <button class="btn btn-ghost flex1" onclick="document.getElementById('vac-form').style.display='none'">Annuler</button>
@@ -507,6 +511,22 @@ function showVacForm(name, v) {
   document.getElementById('vf-mixte').checked = v ? !!v.mixte : false;
   document.getElementById('vf-type').value = v ? (v.type||'week') : 'week';
   document.getElementById('vf-err').textContent = '';
+  // Cycle membership checkboxes (only when editing an existing vacation)
+  const cycField = document.getElementById('vf-cycles-field');
+  const cycDiv = document.getElementById('vf-cycles');
+  if (name && _allCycles.length) {
+    cycField.style.display = 'block';
+    const linked = v ? (v.cycleIds || []) : [];
+    cycDiv.innerHTML = _allCycles.map(c =>
+      `<label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;white-space:nowrap">
+        <input type="checkbox" data-cyc="${c.id}" ${linked.includes(c.id)?'checked':''}> ${c.name||c.id}
+      </label>`
+    ).join('');
+  } else {
+    cycField.style.display = 'none';
+    cycDiv.innerHTML = '';
+  }
+  document.getElementById('vac-form').scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 
 function editVac(name) { showVacForm(name, _allVacs[name]); }
@@ -530,10 +550,19 @@ async function saveVac() {
     const res = await fetch(API + '/admin/vacation/save', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ vacation }) });
     const data = await res.json();
     if (!res.ok) { errEl.textContent = data.error || 'Erreur'; return; }
-    // Auto-link to active cycle tab if creating a new vacation
     const isNew = !_editingVac;
     if (isNew && _vacActiveTab && _vacActiveTab !== 'none') {
+      // New vacation: auto-link to active cycle tab
       await fetch(API + '/admin/vacation/addcycle', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ name, cycleId: _vacActiveTab }) });
+    } else if (!isNew) {
+      // Existing vacation: apply cycle checkbox changes
+      const boxes = document.querySelectorAll('#vf-cycles input[data-cyc]');
+      const oldLinked = (_allVacs[name] && _allVacs[name].cycleIds) || [];
+      await Promise.all([...boxes].map(cb => {
+        const cyc = cb.dataset.cyc, was = oldLinked.includes(cyc), is = cb.checked;
+        if (is && !was) return fetch(API + '/admin/vacation/addcycle', { method:'POST', headers:adminHeaders(), body:JSON.stringify({name, cycleId:cyc}) });
+        if (!is && was) return fetch(API + '/admin/vacation/removecycle', { method:'POST', headers:adminHeaders(), body:JSON.stringify({name, cycleId:cyc}) });
+      }));
     }
     document.getElementById('vac-form').style.display = 'none';
     loadVacations();
