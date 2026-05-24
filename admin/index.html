@@ -482,11 +482,14 @@ function renderVacList() {
   const sun  = filtered.filter(([,v]) => _hasType(v,'sun'));
   const all  = filtered.filter(([,v]) => (v.type||'').split(',').every(t => ['week','sat','sun'].includes(t)) ? false : (v.type||'')==='all');
 
-  function makeRows(rows) {
+  function makeRows(rows, inCycle) {
     return rows.map(([name, v]) => {
       const total = calcDur(fmtTimeToHHMM(v.deb||''), fmtTimeToHHMM(v.fin||''));
       const pause = v.dur && total > v.dur ? fmtVacDur(total - v.dur) : '—';
       const chk = _selectedVacs.has(name) ? 'checked' : '';
+      const unlinkBtn = (inCycle && _vacActiveTab && _vacActiveTab !== 'none')
+        ? `<button class="btn btn-sm btn-ghost" title="Retirer du cycle" onclick="event.stopPropagation();unlinkFromCycle('${name}')">−</button>`
+        : '';
       return `<tr style="cursor:pointer" onclick="editVac('${name}')">
         <td onclick="event.stopPropagation()"><input type="checkbox" class="vac-chk" ${chk} onchange="toggleVacSelect('${name}',this)"></td>
         <td><b>${v.label||name}</b>${v.label&&v.label!==name?` <span style="font-size:10px;color:var(--text3)">(${name})</span>`:''}</td>
@@ -496,15 +499,15 @@ function renderVacList() {
         <td style="font-size:11px">${pause}</td>
         <td style="text-align:center;font-weight:700">${v.panier?'P':'—'}</td>
         <td style="text-align:center">${v.mixte?'✓':'—'}</td>
-        <td><button class="btn btn-sm btn-red" onclick="event.stopPropagation();deleteVac('${name}')">🗑</button></td>
+        <td style="display:flex;gap:4px">${unlinkBtn}<button class="btn btn-sm btn-red" onclick="event.stopPropagation();deleteVac('${name}')">🗑</button></td>
       </tr>`;
     }).join('');
   }
   const TH = '<thead><tr><th style="width:20px"></th><th>Nom</th><th>Début</th><th>Fin</th><th>Durée</th><th>Pause</th><th style="text-align:center">P</th><th style="text-align:center">M</th><th></th></tr></thead>';
 
-  function makeTable(rows) {
+  function makeTable(rows, inCycle) {
     if (!rows.length) return '<p style="color:var(--text3);font-size:11px">—</p>';
-    return `<div class="table-scroll"><table style="width:100%">${TH}<tbody>${makeRows(rows)}</tbody></table></div>`;
+    return `<div class="table-scroll"><table style="width:100%">${TH}<tbody>${makeRows(rows, inCycle)}</tbody></table></div>`;
   }
 
   const sections = [
@@ -591,7 +594,7 @@ function renderVacList() {
     // "Dans le cycle" row
     out += `<div style="font-size:10px;color:var(--text3);margin-bottom:3px">Dans le cycle</div>
     <div style="${GRID};margin-bottom:12px">
-      ${sections.map(s => `<div>${makeTable(s.rows.filter(([n])=>gridCodes.has(n)))}</div>`).join('')}
+      ${sections.map(s => `<div>${makeTable(s.rows.filter(([n])=>gridCodes.has(n)), true)}</div>`).join('')}
     </div>`;
     // "Accessibles" row
     const hasOutside = sections.some(s => s.rows.some(([n])=>!gridCodes.has(n)));
@@ -719,6 +722,14 @@ async function toggleVacCycle(vacName, cycleId, add) {
   const endpoint = add ? '/admin/vacation/addcycle' : '/admin/vacation/removecycle';
   try {
     await fetch(API + endpoint, { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ name: vacName, cycleId }) });
+  } catch(e) { alert('Erreur réseau'); }
+}
+async function unlinkFromCycle(name) {
+  if (!_vacActiveTab || _vacActiveTab === 'none') return;
+  try {
+    await fetch(API + '/admin/vacation/removecycle', { method:'POST', headers:adminHeaders(), body:JSON.stringify({ name, cycleId:_vacActiveTab }) });
+    if (_allVacs[name]) _allVacs[name].cycleIds = (_allVacs[name].cycleIds||[]).filter(id => id !== _vacActiveTab);
+    renderVacList();
   } catch(e) { alert('Erreur réseau'); }
 }
 async function quickCreateAndLink(name) {
