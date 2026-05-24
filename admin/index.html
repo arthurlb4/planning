@@ -163,7 +163,8 @@ textarea{width:100%;padding:9px 12px;background:var(--bg);border:0.5px solid var
     <div id="vac-form" style="display:none;background:var(--bg2);border:0.5px solid var(--border);border-radius:var(--r);padding:16px;margin-bottom:16px">
       <h2 style="font-size:14px;margin-bottom:12px" id="vac-form-title">Nouvelle vacation</h2>
       <div class="row">
-        <div class="flex1 field"><label>Nom (ex: E1)</label><input type="text" id="vf-name" placeholder="E1"></div>
+        <div class="flex1 field"><label>Code système (ex: A1b)</label><input type="text" id="vf-name" placeholder="A1b"></div>
+        <div class="flex1 field"><label>Label affiché (ex: A1)</label><input type="text" id="vf-label" placeholder="Identique au code si vide"></div>
         <div class="flex1 field"><label>Début</label><input type="time" id="vf-deb" step="900" placeholder="06:00"></div>
         <div class="flex1 field"><label>Fin</label><input type="time" id="vf-fin" step="900" placeholder="14:00"></div>
       </div>
@@ -190,7 +191,7 @@ textarea{width:100%;padding:9px 12px;background:var(--bg);border:0.5px solid var
     </div>
     <div class="table-scroll">
       <table>
-        <thead><tr><th>Nom</th><th>Début</th><th>Fin</th><th>Durée</th><th>Panier</th><th>Mixte</th><th>Type</th><th></th></tr></thead>
+        <thead><tr><th>Nom / Code</th><th>Début</th><th>Fin</th><th>Durée</th><th>Panier</th><th>Mixte</th><th>Type</th><th></th></tr></thead>
         <tbody id="vac-list"></tbody>
       </table>
     </div>
@@ -434,7 +435,7 @@ function renderVacList() {
   el.innerHTML = filtered.map(([name, v]) => {
     const cycleNames = (_allCycles||[]).filter(c => (v.cycleIds||[]).includes(c.id)).map(c => c.name||c.id).join(', ');
     return `<tr>
-      <td><b>${name}</b>${cycleNames&&_allCycles.length>1?`<div style="font-size:10px;color:var(--text3);margin-top:2px">${cycleNames}</div>`:''}</td>
+      <td><b>${v.label||name}</b>${v.label&&v.label!==name?` <span style="font-size:10px;color:var(--text3)">(${name})</span>`:''}${cycleNames&&_allCycles.length>1?`<div style="font-size:10px;color:var(--text3);margin-top:2px">${cycleNames}</div>`:''}</td>
       <td style="font-size:11px">${v.deb||'—'}</td>
       <td style="font-size:11px">${v.fin||'—'}</td>
       <td style="font-size:11px">${fmtVacDur(v.dur||0)}</td>
@@ -498,6 +499,7 @@ function showVacForm(name, v) {
   document.getElementById('vac-form-title').textContent = name ? `Modifier ${name}` : 'Nouvelle vacation';
   document.getElementById('vf-name').value = name || '';
   document.getElementById('vf-name').disabled = !!name;
+  document.getElementById('vf-label').value = v ? (v.label || '') : '';
   document.getElementById('vf-deb').value = v ? fmtTimeToHHMM(v.deb) : '';
   document.getElementById('vf-fin').value = v ? fmtTimeToHHMM(v.fin) : '';
   document.getElementById('vf-dur').value = v && v.dur ? fmtVacDur(v.dur) : '';
@@ -513,6 +515,7 @@ async function saveVac() {
   const name = document.getElementById('vf-name').value.trim();
   const deb = document.getElementById('vf-deb').value;
   const fin = document.getElementById('vf-fin').value;
+  const label = document.getElementById('vf-label').value.trim();
   const durInput = document.getElementById('vf-dur').value;
   const panier = document.getElementById('vf-panier').checked;
   const mixte = document.getElementById('vf-mixte').checked;
@@ -522,7 +525,7 @@ async function saveVac() {
   const parsedDur = durInput ? parseVacDur(durInput) : null;
   const dur = parsedDur !== null ? parsedDur : calcDur(deb, fin);
   if (!dur) { errEl.textContent = 'Durée invalide.'; return; }
-  const vacation = { name, deb: fmtHHMMToH(deb), fin: fmtHHMMToH(fin), dur, panier, mixte: mixte || false, type };
+  const vacation = { name, ...(label ? {label} : {}), deb: fmtHHMMToH(deb), fin: fmtHHMMToH(fin), dur, panier, mixte: mixte || false, type };
   try {
     const res = await fetch(API + '/admin/vacation/save', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ vacation }) });
     const data = await res.json();
