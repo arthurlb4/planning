@@ -1035,6 +1035,7 @@ async function loadCycles() {
 function duplicateCycle(idx) {
   const src = _adminCycles[idx];
   if (!src) return;
+  window._duplicatingFromCycleId = src.id;
   showCreateCycle({ ...src, id: null, name: 'Copie de ' + (src.name || 'cycle'), startDate: '', endDate: '' });
 }
 
@@ -1180,8 +1181,23 @@ async function doSaveCycle(existingId) {
   const body = { cycle: { id: existingId||undefined, name, startDate, endDate, anchor, weeks } };
   const res = await fetch(API + endpoint, { method: 'POST', headers: adminHeaders(), body: JSON.stringify(body) });
   const data = await res.json();
-  if (res.ok) { closeModal(); loadCycles(); }
-  else { errEl.textContent = data.error || 'Erreur'; }
+  if (res.ok) {
+    closeModal();
+    // If duplicating, copy vacation links from source cycle to new cycle sequentially
+    const srcId = window._duplicatingFromCycleId;
+    const newId = data.cycle && data.cycle.id;
+    if (!existingId && srcId && newId) {
+      window._duplicatingFromCycleId = null;
+      const linked = Object.entries(_allVacs).filter(([, v]) => (v.cycleIds||[]).includes(srcId));
+      for (const [name] of linked) {
+        await fetch(API + '/admin/vacation/addcycle', { method:'POST', headers:adminHeaders(), body:JSON.stringify({ name, cycleId: newId }) });
+        if (_allVacs[name]) _allVacs[name].cycleIds = [...(_allVacs[name].cycleIds||[]), newId];
+      }
+    } else {
+      window._duplicatingFromCycleId = null;
+    }
+    loadCycles();
+  } else { errEl.textContent = data.error || 'Erreur'; }
 }
 
 async function deleteCycle(cycleId) {
