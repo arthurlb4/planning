@@ -1050,20 +1050,28 @@ function _buildCycleGridHtml(weeks) {
   const inGrid = new Set(weeks.flat().filter(v => v && v !== 'null'));
   const linked = Object.entries(_allVacs||{})
     .filter(([n, v]) => n === 'RH' || inGrid.has(n) || (cycId && (v.cycleIds||[]).includes(cycId)))
-    .sort((a, b) => (_toMinAdmin(a[1].deb)||9999) - (_toMinAdmin(b[1].deb)||9999))
-    .map(([n, v]) => n);
-  const VACS = ['null', ...linked.filter(n => n !== 'null')];
-  const makeOpts = (val) => VACS.map(v => {
-    const lbl = v === 'null' ? '—' : v === 'RH' ? 'RH' : ((_allVacs[v]&&_allVacs[v].label&&_allVacs[v].label!==v) ? `${_allVacs[v].label} (${v})` : v);
-    return `<option value="${v}"${(val===null&&v==='null')||(val===v)?' selected':''}>${lbl}</option>`;
-  }).join('');
+    .sort((a, b) => (_toMinAdmin(a[1].deb)||9999) - (_toMinAdmin(b[1].deb)||9999));
+  // di 0-4 = weekday, 5 = saturday, 6 = sunday
+  const dayKind = di => di === 5 ? 'sat' : di === 6 ? 'sun' : 'week';
+  function vacsForDay(di) {
+    const kind = dayKind(di);
+    return ['null', 'RH', ...linked
+      .filter(([n, v]) => n !== 'RH' && (() => { const ts=(v.type||'week').split(','); return ts.includes('all')||ts.includes(kind); })())
+      .map(([n]) => n)];
+  }
+  function makeOpts(val, di) {
+    return vacsForDay(di).map(v => {
+      const lbl = v === 'null' ? '—' : ((_allVacs[v]&&_allVacs[v].label) ? _allVacs[v].label : v);
+      return `<option value="${v}"${(val===null&&v==='null')||(val===v)?' selected':''}>${lbl}</option>`;
+    }).join('');
+  }
   const DAYS = ['Lu','Ma','Me','Je','Ve','Sa','Di'];
   const SEL_STYLE = 'font-size:10px;padding:2px;border:0.5px solid var(--border);border-radius:3px;background:var(--bg2);color:var(--text);width:58px';
   let h = `<table id="cyc-grid-table" style="border-collapse:collapse;font-size:11px"><tr><th style="padding:3px 6px;color:var(--text3)">S</th>${DAYS.map(d=>`<th style="padding:3px 8px;color:var(--text3)">${d}</th>`).join('')}<th></th></tr>`;
   weeks.forEach((week, wi) => {
     h += `<tr><td style="padding:3px 6px;color:var(--text3);font-weight:600">S${wi+1}</td>`;
     week.forEach((vac, di) => {
-      h += `<td style="padding:2px"><select data-w="${wi}" data-d="${di}" style="${SEL_STYLE}">${makeOpts(vac)}</select></td>`;
+      h += `<td style="padding:2px"><select data-w="${wi}" data-d="${di}" style="${SEL_STYLE}">${makeOpts(vac, di)}</select></td>`;
     });
     h += `<td><button onclick="removeCycleWeek(${wi})" style="font-size:10px;padding:1px 4px;border:0.5px solid var(--border);border-radius:3px;background:transparent;color:var(--text3);cursor:pointer">✕</button></td></tr>`;
   });
