@@ -559,18 +559,20 @@ function updateUrBtns(){const u=document.getElementById('undo-btn'),r=document.g
 function dk(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 function getMonday(d){const x=new Date(d);x.setHours(12,0,0,0);const dw=x.getDay();x.setDate(x.getDate()-(dw===0?6:dw-1));return x;}
 function _toMinApp(t){const m=/^(\d{1,2})h(\d{2})$/.exec((t||'').trim());return m?+m[1]*60+ +m[2]:null;}
-function _calcMixteHsMin(mixteCode,replCode,VAC){
+function _calcMixteHsDetail(mixteCode,replCode,VAC){
   const mv=VAC[mixteCode],rv=VAC[replCode];
-  if(!mv||!rv)return 0;
+  if(!mv||!rv)return{hsBounds:0,hsDur:0};
   const dm=_toMinApp(mv.deb),fm0=_toMinApp(mv.fin);
   const dr=_toMinApp(rv.deb),fr0=_toMinApp(rv.fin);
-  // Bounds overflow (time outside MIXTE window)
   const hsBounds=(dm!==null&&fm0!==null&&dr!==null&&fr0!==null)?function(){
     const fm=fm0<=dm?fm0+1440:fm0,fr=fr0<=dr?fr0+1440:fr0;
     return Math.max(0,dm-dr)+Math.max(0,fr-fm);
   }():0;
-  // Duration overflow (works longer than MIXTE)
   const hsDur=Math.max(0,(rv.dur||0)-(mv.dur||0));
+  return{hsBounds,hsDur};
+}
+function _calcMixteHsMin(mixteCode,replCode,VAC){
+  const{hsBounds,hsDur}=_calcMixteHsDetail(mixteCode,replCode,VAC);
   return hsBounds+hsDur;
 }
 function _cycleVacList(date){
@@ -1600,9 +1602,13 @@ function avw(sel){
   const isSelSV=sel==='SV';
   const isCvMixte=!!(cv&&VAC[cv]&&VAC[cv].mixte);
   if(isCvMixte&&!isSelSV&&VAC[sel]){
-    const hsExtra=_calcMixteHsMin(cv,sel,VAC);
+    const{hsBounds,hsDur}=_calcMixteHsDetail(cv,sel,VAC);
+    const hsExtra=hsBounds+hsDur;
+    var hsParts=[];
+    if(hsBounds>0)hsParts.push('+'+fmtMin(hsBounds)+' hors bornes');
+    if(hsDur>0)hsParts.push('+'+fmtMin(hsDur)+' durée');
     durInfo='<div style="font-size:11px;color:var(--text3);margin-bottom:10px">Vacation mixte'
-      +(hsExtra>0?' · <span style="color:var(--amber)">+'+fmtMin(hsExtra)+' HS hors bornes</span>':'')+'</div>';
+      +(hsExtra>0?' · <span style="color:var(--amber)">'+hsParts.join(' · ')+'</span>':'')+'</div>';
   } else if(VAC[sel]&&VAC[sel].dur>0){
     const cvDur=(cv&&cv!=='RH'&&VAC[cv])?VAC[cv].dur:0;
     const diff=VAC[sel].dur-cvDur;
@@ -1614,7 +1620,7 @@ function avw(sel){
     +'<label class="tgl"><input type="checkbox" id="hs-toggle"'+(curHs?' checked':'')+'><span class="tgl-s"></span></label>'
     +'</div>';
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet">'
-    +'<div class="sh"></div><div class="st">'+sel+'</div>'
+    +'<div class="sh"></div><div class="st">'+((VAC[sel]&&VAC[sel].label)||sel)+'</div>'
     +durInfo+hsToggle
     +'<button class="mb wide" style="margin-top:8px" onclick="avwConfirm()">Confirmer</button>'
     +'<button class="mcancel" onclick="closeModal()">Annuler</button>'
