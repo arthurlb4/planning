@@ -672,35 +672,30 @@ async function applyBulkEdit() {
   const names = [..._selectedVacs];
   const saveAttrs = panier !== '' || mixte !== '' || type !== '';
   try {
-    await Promise.all(names.flatMap(name => {
+    // Sequential to avoid KV race conditions (parallel writes overwrite each other)
+    for (const name of names) {
       const v = _allVacs[name] || {};
-      const promises = [];
       if (saveAttrs) {
         const updated = { ...v, name,
           ...(panier !== '' ? { panier: panier === '1' } : {}),
           ...(mixte  !== '' ? { mixte:  mixte  === '1' } : {}),
           ...(type   !== '' ? { type } : {}),
         };
-        promises.push(fetch(API + '/admin/vacation/save', { method:'POST', headers:adminHeaders(), body:JSON.stringify({vacation:updated}) })
-          .then(() => {
-            if (panier !== '') _allVacs[name].panier = panier === '1';
-            if (mixte  !== '') _allVacs[name].mixte  = mixte  === '1';
-            if (type   !== '') _allVacs[name].type   = type;
-          }));
+        await fetch(API + '/admin/vacation/save', { method:'POST', headers:adminHeaders(), body:JSON.stringify({vacation:updated}) });
+        if (panier !== '') _allVacs[name].panier = panier === '1';
+        if (mixte  !== '') _allVacs[name].mixte  = mixte  === '1';
+        if (type   !== '') _allVacs[name].type   = type;
       }
-      cycleChanges.forEach(({ cycleId, action }) => {
+      for (const { cycleId, action } of cycleChanges) {
         const ep = action === 'add' ? '/admin/vacation/addcycle' : '/admin/vacation/removecycle';
-        promises.push(fetch(API + ep, { method:'POST', headers:adminHeaders(), body:JSON.stringify({name,cycleId}) })
-          .then(() => {
-            const ids = (_allVacs[name] && _allVacs[name].cycleIds) || [];
-            if (action === 'add' && !ids.includes(cycleId))
-              _allVacs[name].cycleIds = [...ids, cycleId];
-            else if (action === 'remove')
-              _allVacs[name].cycleIds = ids.filter(id => id !== cycleId);
-          }));
-      });
-      return promises;
-    }));
+        await fetch(API + ep, { method:'POST', headers:adminHeaders(), body:JSON.stringify({name,cycleId}) });
+        const ids = (_allVacs[name] && _allVacs[name].cycleIds) || [];
+        if (action === 'add' && !ids.includes(cycleId))
+          _allVacs[name].cycleIds = [...ids, cycleId];
+        else if (action === 'remove')
+          _allVacs[name].cycleIds = ids.filter(id => id !== cycleId);
+      }
+    }
     closeModal(); clearVacSel(); renderVacList();
   } catch(e) { alert('Erreur réseau'); }
 }
