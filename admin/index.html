@@ -178,9 +178,22 @@ textarea{width:100%;padding:9px 12px;background:var(--bg);border:0.5px solid var
         <div>
           <div style="font-size:11px;color:var(--text3);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Type jour</div>
           <div style="display:flex;gap:14px">
-            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-type-week"> Semaine</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-type-week" onchange="updateVfDaysVisibility()"> Semaine</label>
             <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-type-sat"> Samedi</label>
             <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-type-sun"> Dimanche</label>
+          </div>
+        </div>
+        <div id="vf-days-wrap" style="display:none;display:flex;align-items:flex-start;gap:0">
+          <div style="width:1px;background:var(--border);align-self:stretch;margin:0 12px 0 4px"></div>
+          <div>
+            <div style="font-size:11px;color:var(--text3);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Jours</div>
+            <div style="display:flex;gap:10px">
+              <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-day-1"> L</label>
+              <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-day-2"> M</label>
+              <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-day-3"> Me</label>
+              <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-day-4"> J</label>
+              <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-day-5"> V</label>
+            </div>
           </div>
         </div>
         <div style="width:1px;background:var(--border);align-self:stretch;margin:0 4px"></div>
@@ -823,6 +836,11 @@ function _updatePanierFromForm() {
     document.getElementById('vf-panier').checked = _calcPanier(deb, fin, dur);
   }
 }
+function updateVfDaysVisibility() {
+  const wrap = document.getElementById('vf-days-wrap');
+  if (!wrap) return;
+  wrap.style.display = document.getElementById('vf-type-week').checked ? 'flex' : 'none';
+}
 function onVfDurChange() {
   const total = _vfTotal(); if (total === null) return;
   const dur = parseVacDur(document.getElementById('vf-dur').value);
@@ -869,6 +887,9 @@ function showVacForm(name, v) {
   document.getElementById('vf-type-week').checked = _isAll || _types.includes('week');
   document.getElementById('vf-type-sat').checked  = _isAll || _types.includes('sat');
   document.getElementById('vf-type-sun').checked  = _isAll || _types.includes('sun');
+  const _days = v && v.days && v.days.length ? v.days : [];
+  [1,2,3,4,5].forEach(d => { document.getElementById('vf-day-'+d).checked = !_days.length || _days.includes(d); });
+  updateVfDaysVisibility();
   document.getElementById('vf-err').textContent = '';
   // Cycle membership checkboxes (only when editing an existing vacation)
   const cycField = document.getElementById('vf-cycles-field');
@@ -911,12 +932,14 @@ async function saveVac() {
   const mixte = document.getElementById('vf-mixte').checked;
   const typeChecks = ['week','sat','sun'].filter(t => document.getElementById('vf-type-'+t).checked);
   const type = typeChecks.length === 0 ? 'week' : typeChecks.join(',');
+  const weekDayChecked = [1,2,3,4,5].filter(d => document.getElementById('vf-day-'+d).checked);
+  const days = type.includes('week') && weekDayChecked.length < 5 ? weekDayChecked : [];
   const errEl = document.getElementById('vf-err');
   if (!name || !deb || !fin) { errEl.textContent = 'Nom, début et fin requis.'; return; }
   const parsedDur = durInput ? parseVacDur(durInput) : null;
   const dur = parsedDur !== null ? parsedDur : calcDur(deb, fin);
   if (!dur) { errEl.textContent = 'Durée invalide.'; return; }
-  const vacation = { name, ...(label ? {label} : {}), deb: fmtHHMMToH(deb), fin: fmtHHMMToH(fin), dur, panier, mixte: mixte || false, type };
+  const vacation = { name, ...(label ? {label} : {}), deb: fmtHHMMToH(deb), fin: fmtHHMMToH(fin), dur, panier, mixte: mixte || false, type, ...(days.length ? {days} : {}) };
 
   // If editing a vacation linked to other cycles, ask what to do
   if (_editingVac && !window._forceSaveAllCycles) {
