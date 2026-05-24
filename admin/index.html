@@ -195,6 +195,7 @@ textarea{width:100%;padding:9px 12px;background:var(--bg);border:0.5px solid var
       <div class="err" id="vf-err" style="margin-top:8px"></div>
     </div>
     <div id="vac-list"></div>
+    <div id="vac-sel-bar" style="display:none;position:sticky;bottom:0;background:var(--bg2);border-top:0.5px solid var(--border);padding:10px 0;margin-top:12px;display:none;align-items:center;gap:8px;flex-wrap:wrap;z-index:10"></div>
   </div>
 
 </div>
@@ -462,11 +463,13 @@ function renderVacList() {
 
   function makeTable(rows) {
     if (!rows.length) return '<p style="color:var(--text3);font-size:11px">—</p>';
-    return '<table style="width:100%"><thead><tr><th>Nom</th><th>Début</th><th>Fin</th><th>Durée</th><th>Pause</th><th style="text-align:center">🥖</th><th style="text-align:center">M</th><th></th></tr></thead><tbody>'
+    return '<table style="width:100%"><thead><tr><th style="width:20px"></th><th>Nom</th><th>Début</th><th>Fin</th><th>Durée</th><th>Pause</th><th style="text-align:center">🥖</th><th style="text-align:center">M</th><th></th></tr></thead><tbody>'
       + rows.map(([name, v]) => {
           const total = calcDur(fmtTimeToHHMM(v.deb||''), fmtTimeToHHMM(v.fin||''));
           const pause = v.dur && total > v.dur ? fmtVacDur(total - v.dur) : '—';
+          const chk = _selectedVacs.has(name) ? 'checked' : '';
           return `<tr style="cursor:pointer" onclick="editVac('${name}')">
+            <td onclick="event.stopPropagation()"><input type="checkbox" class="vac-chk" ${chk} onchange="toggleVacSelect('${name}',this)"></td>
             <td><b>${v.label||name}</b>${v.label&&v.label!==name?` <span style="font-size:10px;color:var(--text3)">(${name})</span>`:''}</td>
             <td style="font-size:11px">${v.deb||'—'}</td>
             <td style="font-size:11px">${v.fin||'—'}</td>
@@ -556,6 +559,102 @@ function renderVacList() {
 function _toMinAdmin(t) {
   const m = /^(\d{1,2})h(\d{2})$/.exec((t||'').trim());
   return m ? +m[1]*60 + +m[2] : null;
+}
+
+// ── Multi-sélection ──────────────────────────────────────────
+var _selectedVacs = new Set();
+
+function toggleVacSelect(name, cb) {
+  if (cb.checked) _selectedVacs.add(name); else _selectedVacs.delete(name);
+  renderSelBar();
+}
+function clearVacSel() {
+  _selectedVacs.clear();
+  document.querySelectorAll('.vac-chk').forEach(cb => cb.checked = false);
+  renderSelBar();
+}
+function renderSelBar() {
+  const bar = document.getElementById('vac-sel-bar');
+  if (!bar) return;
+  if (!_selectedVacs.size) { bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+  bar.innerHTML = `<b style="font-size:13px">${_selectedVacs.size} sélectionnée(s)</b>`
+    + `<button class="btn btn-sm" onclick="showBulkModal()">Modifier…</button>`
+    + `<button class="btn btn-sm btn-ghost" onclick="clearVacSel()">✕ Tout désélectionner</button>`;
+}
+
+function showBulkModal() {
+  const sel = `style="width:100%;padding:8px;border:0.5px solid var(--border);border-radius:var(--r);background:var(--bg);color:var(--text);font-size:13px"`;
+  const noChange = `<option value="">— Inchangé</option>`;
+  const cycleRows = _allCycles.map(c => `
+    <div style="display:flex;align-items:center;gap:8px;margin:4px 0">
+      <select data-bulkcyc="${c.id}" ${sel} style="width:auto;padding:5px 8px">
+        ${noChange}<option value="add">+ Ajouter</option><option value="remove">− Retirer</option>
+      </select>
+      <span style="font-size:13px">${c.name||c.id}</span>
+    </div>`).join('');
+  document.getElementById('modal-content').innerHTML = `
+    <h2>Modifier ${_selectedVacs.size} vacation(s)</h2>
+    ${_allCycles.length ? `<div class="field"><label>Cycles</label>${cycleRows}</div>` : ''}
+    <div class="row">
+      <div class="flex1 field"><label>Panier repas</label>
+        <select id="bulk-panier" ${sel}>${noChange}<option value="1">✓ Oui</option><option value="0">✗ Non</option></select>
+      </div>
+      <div class="flex1 field"><label>Mixte</label>
+        <select id="bulk-mixte" ${sel}>${noChange}<option value="1">✓ Oui</option><option value="0">✗ Non</option></select>
+      </div>
+      <div class="flex1 field"><label>Type jour</label>
+        <select id="bulk-type" ${sel}>${noChange}<option value="week">Semaine</option><option value="sat">Samedi</option><option value="sun">Dimanche</option><option value="all">Tous jours</option></select>
+      </div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="closeModal()">Annuler</button>
+      <button class="btn btn-green" onclick="applyBulkEdit()">Appliquer</button>
+    </div>`;
+  document.getElementById('modal-bg').style.display = 'flex';
+}
+
+async function applyBulkEdit() {
+  const panier = document.getElementById('bulk-panier').value;
+  const mixte  = document.getElementById('bulk-mixte').value;
+  const type   = document.getElementById('bulk-type').value;
+  const cycleChanges = [...document.querySelectorAll('[data-bulkcyc]')]
+    .map(s => ({ cycleId: s.dataset.bulkcyc, action: s.value }))
+    .filter(c => c.action);
+  const names = [..._selectedVacs];
+  const saveAttrs = panier !== '' || mixte !== '' || type !== '';
+  try {
+    await Promise.all(names.flatMap(name => {
+      const v = _allVacs[name] || {};
+      const promises = [];
+      if (saveAttrs) {
+        const updated = { ...v, name,
+          ...(panier !== '' ? { panier: panier === '1' } : {}),
+          ...(mixte  !== '' ? { mixte:  mixte  === '1' } : {}),
+          ...(type   !== '' ? { type } : {}),
+        };
+        promises.push(fetch(API + '/admin/vacation/save', { method:'POST', headers:adminHeaders(), body:JSON.stringify({vacation:updated}) })
+          .then(() => {
+            if (panier !== '') _allVacs[name].panier = panier === '1';
+            if (mixte  !== '') _allVacs[name].mixte  = mixte  === '1';
+            if (type   !== '') _allVacs[name].type   = type;
+          }));
+      }
+      cycleChanges.forEach(({ cycleId, action }) => {
+        const ep = action === 'add' ? '/admin/vacation/addcycle' : '/admin/vacation/removecycle';
+        promises.push(fetch(API + ep, { method:'POST', headers:adminHeaders(), body:JSON.stringify({name,cycleId}) })
+          .then(() => {
+            const ids = (_allVacs[name] && _allVacs[name].cycleIds) || [];
+            if (action === 'add' && !ids.includes(cycleId))
+              _allVacs[name].cycleIds = [...ids, cycleId];
+            else if (action === 'remove')
+              _allVacs[name].cycleIds = ids.filter(id => id !== cycleId);
+          }));
+      });
+      return promises;
+    }));
+    closeModal(); clearVacSel(); renderVacList();
+  } catch(e) { alert('Erreur réseau'); }
 }
 
 async function toggleVacCycle(vacName, cycleId, add) {
