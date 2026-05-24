@@ -571,7 +571,22 @@ function _calcMixteHsMin(mixteCode,replCode,VAC){
   }():0;
   // Duration overflow (works longer than MIXTE)
   const hsDur=Math.max(0,(rv.dur||0)-(mv.dur||0));
-  return Math.max(hsBounds,hsDur);
+  return hsBounds+hsDur;
+}
+function _cycleVacList(date){
+  const d=date instanceof Date?date:new Date(date+'T12:00:00');
+  const dw=d.getDay(),dayType=dw===6?'sat':dw===0?'sun':'week';
+  if(!_globalCycles.length)return null;
+  const key=dk(d);
+  const sorted=[..._globalCycles].sort(function(a,b){return a.startDate<b.startDate?-1:1;});
+  let activeCycle=null;
+  sorted.forEach(function(c){if(c.startDate<=key)activeCycle=c;});
+  if(!activeCycle)return null;
+  return Object.entries(_globalVacs)
+    .filter(function([n,v]){return v.cycleIds&&v.cycleIds.includes(activeCycle.id)&&n!=='RH';})
+    .filter(function([n,v]){return !v.type||v.type==='all'||v.type===dayType;})
+    .sort(function([an,av],[bn,bv]){return(_toMinApp(av.deb)||9999)-(_toMinApp(bv.deb)||9999);})
+    .map(function([n]){return n;});
 }
 function fmtH(min){if(min===0)return'0h00';const h=min/60;if(Number.isInteger(h))return h+'h00';return Math.floor(h)+'h'+String(min%60).padStart(2,'0');}
 function fmtR(min){return(Math.round(min/60*100)/100).toFixed(2).replace('.',',')+'h';}
@@ -1514,24 +1529,28 @@ var _lpk=null; // backup of pendingKey for avw()
 
 function openDay(key){
   if(!key)return;pendingKey=key;_lpk=key;
-  var date=new Date(key+'T12:00:00'),VAC=getVAC(),v2=getVac(date),vac=v2.vac,ov=v2.ov,fromSV=v2.fromSV,absent=v2.absent,echange=v2.echange,li=v2.li,cycleVac=v2.cycleVac;
+  var date=new Date(key+'T12:00:00'),VAC=getVAC(date),v2=getVac(date),vac=v2.vac,ov=v2.ov,fromSV=v2.fromSV,absent=v2.absent,echange=v2.echange,li=v2.li,cycleVac=v2.cycleVac;
   var isFer=FERIES.has(key),hasCg=(S.conges||{})[key],dur=getDur(date);
   var cs=calcSoldes(),totalReal=cs.totalReal,matelas=cs.matelas,totalDispo=totalReal+Math.max(0,matelas);
   var cR=Math.max(0,getSoldeAnnee(date.getFullYear())-calcCongesUsedForYear(date.getFullYear()));
   var lbl=fmtDate(date),factor=renduFactor(date),ramee=isSemaineRamenée(getMonday(date)),hsW=calcHSWeek(getMonday(date)),sett=settingsForYM(date.getFullYear()*12+date.getMonth());
   var tt=vac&&vac!=='RH'?vLbl(vac,VAC):'';if(absent)tt='Absent';else if(isFer)tt=vac&&vac!=='RH'?vLbl(vac,VAC):'Férié';else if(!vac)tt='Repos';if(echange)tt+=' (echange)';
 
-  // Grille contextuelle — seulement les vacs du jour
   var dw=date.getDay();
-  var allVK=Object.keys(VAC).filter(v=>VAC[v]&&VAC[v].dur>0&&v!=='SV');
-  // Row-based grid by day type
-  var rows=[];
-  if(dw===6){rows=[['As1','As2','As3'],['Cs','Es','Fs'],['SV','Vac. perso','Autre']];}
-  else if(dw===0){rows=[['Ad1','Ad2','Ad3'],['Cd','Ed','Fd'],['SV','Vac. perso','Autre']];}
-  else{rows=[['A1','A2','A3','B1'],['C1','C2','D1','D2'],['P423'],['SV','Vac. perso','Autre']];}
-  // Add custom vacs to last row
-  var customVacs=Object.keys(VAC).filter(v=>!VAC_STD[v]&&v!=='SV'&&!(S.customVacs&&S.customVacs[v]&&S.customVacs[v].hidden));
-  customVacs.forEach(function(cv){var found=false;rows.forEach(function(r){if(r.includes(cv))found=true;});if(!found)rows[rows.length-1].unshift(cv);});
+  var rows=[],cycleVacNames=_cycleVacList(date);
+  if(cycleVacNames){
+    var _rowSz=(dw===0||dw===6)?3:4;
+    for(var _i=0;_i<cycleVacNames.length;_i+=_rowSz)rows.push(cycleVacNames.slice(_i,_i+_rowSz));
+    var _lc=Object.keys(S.customVacs||{}).filter(function(v){return !(S.customVacs[v].hidden)&&!cycleVacNames.includes(v);});
+    if(_lc.length)rows.push(_lc);
+    rows.push(['SV','Vac. perso','Autre']);
+  } else {
+    if(dw===6){rows=[['As1','As2','As3'],['Cs','Es','Fs'],['SV','Vac. perso','Autre']];}
+    else if(dw===0){rows=[['Ad1','Ad2','Ad3'],['Cd','Ed','Fd'],['SV','Vac. perso','Autre']];}
+    else{rows=[['A1','A2','A3','B1'],['C1','C2','D1','D2'],['P423'],['SV','Vac. perso','Autre']];}
+    var customVacs=Object.keys(VAC).filter(v=>!VAC_STD[v]&&v!=='SV'&&!(S.customVacs&&S.customVacs[v]&&S.customVacs[v].hidden));
+    customVacs.forEach(function(cv){var found=false;rows.forEach(function(r){if(r.includes(cv))found=true;});if(!found)rows[rows.length-1].unshift(cv);});
+  }
   const gridCols=(dw===0||dw===6)?3:4;
   var vgHtml='<div style="height:8px"></div>';
   // Flatten all rows into a single grid (same sizing as action buttons)
@@ -1577,7 +1596,7 @@ function avw(sel){
   var curHs=curOv&&curOv.hs===true;
   _pendingVacSel={key,sel,date,cv,hs:curHs};
   var durInfo='';
-  const VAC=getVAC();
+  const VAC=getVAC(date);
   const isSelSV=sel==='SV';
   const isCvMixte=!!(cv&&VAC[cv]&&VAC[cv].mixte);
   if(isCvMixte&&!isSelSV&&VAC[sel]){
@@ -2251,12 +2270,20 @@ function renderExchangeModal(){
     const dw=tDate.getDay();
     const VAC=getVAC();
     const exGridCols=(dw===0||dw===6)?3:4;
-    var exRows;
-    if(dw===6)exRows=[['As1','As2','As3'],['Cs','Es','Fs'],['SV','Vac. perso','Autre']];
-    else if(dw===0)exRows=[['Ad1','Ad2','Ad3'],['Cd','Ed','Fd'],['SV','Vac. perso','Autre']];
-    else exRows=[['A1','A2','A3','B1'],['C1','C2','D1','D2'],['P423'],['SV','Vac. perso','Autre']];
-    const customVacs=Object.keys(S.customVacs||{}).filter(function(v){return !(S.customVacs[v].hidden);});
-    if(customVacs.length)exRows.splice(exRows.length-1,0,customVacs);
+    var exRows=[],_exCvn=_cycleVacList(tDate);
+    if(_exCvn){
+      var _exRsz=(dw===0||dw===6)?3:4;
+      for(var _ei=0;_ei<_exCvn.length;_ei+=_exRsz)exRows.push(_exCvn.slice(_ei,_ei+_exRsz));
+      var _exLc=Object.keys(S.customVacs||{}).filter(function(v){return !(S.customVacs[v].hidden)&&!_exCvn.includes(v);});
+      if(_exLc.length)exRows.push(_exLc);
+      exRows.push(['SV','Vac. perso','Autre']);
+    } else {
+      if(dw===6)exRows=[['As1','As2','As3'],['Cs','Es','Fs'],['SV','Vac. perso','Autre']];
+      else if(dw===0)exRows=[['Ad1','Ad2','Ad3'],['Cd','Ed','Fd'],['SV','Vac. perso','Autre']];
+      else exRows=[['A1','A2','A3','B1'],['C1','C2','D1','D2'],['P423'],['SV','Vac. perso','Autre']];
+      const customVacs=Object.keys(S.customVacs||{}).filter(function(v){return !(S.customVacs[v].hidden);});
+      if(customVacs.length)exRows.splice(exRows.length-1,0,customVacs);
+    }
     const allExVns=[];exRows.forEach(function(row){row.forEach(function(vn){allExVns.push(vn);});});
     let exVgHtml='<div style="display:grid;grid-template-columns:repeat('+exGridCols+',1fr);gap:8px;margin-bottom:6px">';
     allExVns.forEach(function(vn){
