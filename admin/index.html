@@ -465,6 +465,37 @@ function renderVacList() {
   ];
   const hasAll = all.length > 0;
 
+  // Unlinked vacations available to add to the current cycle
+  let availHtml = '';
+  if (_vacActiveTab && _vacActiveTab !== 'none') {
+    const avail = entries.filter(([name, v]) => !(v.cycleIds||[]).includes(_vacActiveTab));
+    if (avail.length) {
+      const aWeek = avail.filter(([,v]) => !v.type || v.type === 'week');
+      const aSat  = avail.filter(([,v]) => v.type === 'sat');
+      const aSun  = avail.filter(([,v]) => v.type === 'sun');
+      const aAll  = avail.filter(([,v]) => v.type === 'all');
+      function chipRow(rows) {
+        return rows.map(([name, v]) =>
+          `<button class="btn btn-sm btn-ghost" style="font-size:11px" onclick="quickAddToCycle('${name}')">+ ${v.label||name}</button>`
+        ).join('');
+      }
+      const rows = [
+        aWeek.length ? `<span style="font-size:10px;color:var(--text3);margin-right:4px">Sem.</span>${chipRow(aWeek)}` : '',
+        aSat.length  ? `<span style="font-size:10px;color:var(--text3);margin-right:4px">Sam.</span>${chipRow(aSat)}` : '',
+        aSun.length  ? `<span style="font-size:10px;color:var(--text3);margin-right:4px">Dim.</span>${chipRow(aSun)}` : '',
+        aAll.length  ? `<span style="font-size:10px;color:var(--text3);margin-right:4px">Tous</span>${chipRow(aAll)}` : '',
+      ].filter(Boolean);
+      availHtml = `<details style="margin-top:20px">
+        <summary style="cursor:pointer;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);user-select:none">
+          Vacations disponibles à ajouter (${avail.length})
+        </summary>
+        <div style="display:flex;flex-direction:column;gap:8px;padding:10px 0">
+          ${rows.map(r => `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${r}</div>`).join('')}
+        </div>
+      </details>`;
+    }
+  }
+
   el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;align-items:start">
     ${sections.map(s => `<div>
       <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin-bottom:6px">${s.label}</div>
@@ -474,7 +505,8 @@ function renderVacList() {
   + (hasAll ? `<div style="margin-top:16px">
     <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin-bottom:6px">Tous jours</div>
     <div class="table-scroll">${makeTable(all)}</div>
-  </div>` : '');
+  </div>` : '')
+  + availHtml;
 }
 function _toMinAdmin(t) {
   const m = /^(\d{1,2})h(\d{2})$/.exec((t||'').trim());
@@ -485,6 +517,17 @@ async function toggleVacCycle(vacName, cycleId, add) {
   const endpoint = add ? '/admin/vacation/addcycle' : '/admin/vacation/removecycle';
   try {
     await fetch(API + endpoint, { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ name: vacName, cycleId }) });
+  } catch(e) { alert('Erreur réseau'); }
+}
+async function quickAddToCycle(name) {
+  if (!_vacActiveTab || _vacActiveTab === 'none') return;
+  try {
+    await fetch(API + '/admin/vacation/addcycle', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ name, cycleId: _vacActiveTab }) });
+    // Update local cache immediately for snappy UI
+    if (_allVacs[name]) {
+      _allVacs[name].cycleIds = [...(_allVacs[name].cycleIds||[]), _vacActiveTab];
+    }
+    renderVacList();
   } catch(e) { alert('Erreur réseau'); }
 }
 
