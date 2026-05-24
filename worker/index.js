@@ -242,6 +242,7 @@ export default {
         fin: vac.fin || existing.fin || '',
         dur: vac.dur !== undefined ? vac.dur : (existing.dur || 0),
         panier: vac.panier !== undefined ? !!vac.panier : !!existing.panier,
+        mixte: vac.mixte !== undefined ? !!vac.mixte : !!existing.mixte,
         type: vac.type || existing.type || 'week',
         cycleIds: existing.cycleIds || [],
         ...(vac.label ? { label: vac.label } : existing.label ? { label: existing.label } : {})
