@@ -1021,6 +1021,7 @@ async function showCreateCycle(prefillData) {
   const weeks = prefillData ? prefillData.weeks : DEFAULT_CYCLE;
   // Store current weeks in a JS variable for dynamic editing
   window._cycleWeeks = weeks.map(w => [...w]);
+  window._editingCycleId = prefillData ? prefillData.id : null;
   const makeOpts = (val) => ALL_VACS.map(v => `<option value="${v}"${(val===null&&v==='null')||(val===v)?' selected':''}>${v==='null'?'—':v}</option>`).join('');
 
   const gridHtml = _buildCycleGridHtml(window._cycleWeeks);
@@ -1049,10 +1050,18 @@ function syncCycleWeeksFromDOM() {
   });
 }
 function _buildCycleGridHtml(weeks) {
-  const BASE_VACS = ['null','RH','A1','A2','A3','B1','C1','C2','D1','D2','P423','As1','As2','As3','Cs','Es','Fs','Ad1','Ad2','Ad3','Cd','Ed','Fd'];
-  const extra = Object.keys(_allVacs||{}).filter(v => !BASE_VACS.includes(v));
-  const ALL_VACS = [...BASE_VACS, ...extra];
-  const makeOpts = (val) => ALL_VACS.map(v => `<option value="${v}"${(val===null&&v==='null')||(val===v)?' selected':''}>${v==='null'?'—':v}</option>`).join('');
+  const cycId = window._editingCycleId;
+  // Only vacations linked to this cycle (+ always RH + any code already in grid)
+  const inGrid = new Set(weeks.flat().filter(v => v && v !== 'null'));
+  const linked = Object.entries(_allVacs||{})
+    .filter(([n, v]) => n === 'RH' || inGrid.has(n) || (cycId && (v.cycleIds||[]).includes(cycId)))
+    .sort((a, b) => (_toMinAdmin(a[1].deb)||9999) - (_toMinAdmin(b[1].deb)||9999))
+    .map(([n, v]) => n);
+  const VACS = ['null', ...linked.filter(n => n !== 'null')];
+  const makeOpts = (val) => VACS.map(v => {
+    const lbl = v === 'null' ? '—' : v === 'RH' ? 'RH' : ((_allVacs[v]&&_allVacs[v].label&&_allVacs[v].label!==v) ? `${_allVacs[v].label} (${v})` : v);
+    return `<option value="${v}"${(val===null&&v==='null')||(val===v)?' selected':''}>${lbl}</option>`;
+  }).join('');
   const DAYS = ['Lu','Ma','Me','Je','Ve','Sa','Di'];
   const SEL_STYLE = 'font-size:10px;padding:2px;border:0.5px solid var(--border);border-radius:3px;background:var(--bg2);color:var(--text);width:58px';
   let h = `<table id="cyc-grid-table" style="border-collapse:collapse;font-size:11px"><tr><th style="padding:3px 6px;color:var(--text3)">S</th>${DAYS.map(d=>`<th style="padding:3px 8px;color:var(--text3)">${d}</th>`).join('')}<th></th></tr>`;
