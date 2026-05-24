@@ -368,7 +368,13 @@ async function loadVacations() {
     _allVacs = vdata.vacations || {};
     _allCycles = (cdata.cycles || []).sort((a,b) => a.startDate < b.startDate ? -1 : 1);
     // Default to first cycle tab
-    if (_vacActiveTab === null && _allCycles.length) _vacActiveTab = _allCycles[0].id;
+    if (_vacActiveTab === null && _allCycles.length) {
+      const today = new Date().toISOString().slice(0, 10);
+      const sorted = [..._allCycles].sort((a,b) => a.startDate < b.startDate ? -1 : 1);
+      let activeCyc = null;
+      sorted.forEach(c => { if (c.startDate <= today && (!c.endDate || c.endDate >= today)) activeCyc = c; });
+      _vacActiveTab = activeCyc ? activeCyc.id : _allCycles[0].id;
+    }
     renderVacTabs();
     renderVacList();
   } catch(e) { el.innerHTML = '<tr><td colspan="8" class="err">Erreur réseau</td></tr>'; }
@@ -627,24 +633,13 @@ async function showCreateCycle(prefillData) {
   window._cycleWeeks = weeks.map(w => [...w]);
   const makeOpts = (val) => ALL_VACS.map(v => `<option value="${v}"${(val===null&&v==='null')||(val===v)?' selected':''}>${v==='null'?'—':v}</option>`).join('');
 
-  function buildGridHtml(ws) {
-    let h = `<table id="cyc-grid-table" style="border-collapse:collapse;font-size:11px;width:100%"><tr><th style="padding:3px 6px;color:var(--text3)">S</th>${DAYS.map(d=>`<th style="padding:3px 6px;color:var(--text3)">${d}</th>`).join('')}<th></th></tr>`;
-    ws.forEach((week, wi) => {
-      h += `<tr><td style="padding:3px 6px;color:var(--text3);font-weight:600">S${wi+1}</td>`;
-      week.forEach((vac, di) => {
-        h += `<td style="padding:2px"><select data-w="${wi}" data-d="${di}" style="font-size:10px;padding:2px;border:0.5px solid var(--border);border-radius:3px;background:var(--bg2);color:var(--text);width:60px">${makeOpts(vac)}</select></td>`;
-      });
-      h += `<td><button onclick="removeCycleWeek(${wi})" style="font-size:10px;padding:1px 4px;border:0.5px solid var(--border);border-radius:3px;background:transparent;color:var(--text3);cursor:pointer">✕</button></td></tr>`;
-    });
-    h += '</table>';
-    return h;
-  }
+  const gridHtml = _buildCycleGridHtml(window._cycleWeeks);
 
-  const gridHtml = buildGridHtml(window._cycleWeeks);
-
-  document.getElementById('modal-content').innerHTML = '<h2>' + (prefillData ? 'Modifier le cycle' : 'Nouveau cycle') + '</h2>'
-    + '<div class="field"><label>Nom</label><input type="text" id="cyc-name" value="' + (prefillData ? prefillData.name||'' : '') + '" placeholder="Ex: Cycle été 2026"></div>'
-    + '<div class="row"><div class="flex1 field"><label>Date de début</label><input type="date" id="cyc-start" value="' + (prefillData ? prefillData.startDate||'' : '') + '"></div>'
+  const mc = document.getElementById('modal-content');
+  mc.classList.add('modal-wide');
+  mc.innerHTML = '<h2>' + (prefillData ? 'Modifier le cycle' : 'Nouveau cycle') + '</h2>'
+    + '<div class="row"><div class="flex1 field"><label>Nom</label><input type="text" id="cyc-name" value="' + (prefillData ? prefillData.name||'' : '') + '" placeholder="Ex: Cycle été 2026"></div>'
+    + '<div class="flex1 field"><label>Date de début</label><input type="date" id="cyc-start" value="' + (prefillData ? prefillData.startDate||'' : '') + '"></div>'
     + '<div class="flex1 field"><label>Date de fin (optionnel)</label><input type="date" id="cyc-end" value="' + (prefillData&&prefillData.endDate ? prefillData.endDate : '') + '"></div></div>'
     + '<div class="field"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><label id="cyc-grid-lbl">Grille du cycle (' + window._cycleWeeks.length + ' semaines × 7 jours)</label>'
     + '<div style="display:flex;gap:4px"><button class="btn btn-sm btn-ghost" onclick="addCycleWeek()">+ Semaine</button><button class="btn btn-sm btn-ghost" onclick="removeCycleWeek()">- Semaine</button></div></div>'
@@ -663,23 +658,28 @@ function syncCycleWeeksFromDOM() {
     }
   });
 }
+function _buildCycleGridHtml(weeks) {
+  const BASE_VACS = ['null','RH','A1','A2','A3','B1','C1','C2','D1','D2','P423','As1','As2','As3','Cs','Es','Fs','Ad1','Ad2','Ad3','Cd','Ed','Fd'];
+  const extra = Object.keys(_allVacs||{}).filter(v => !BASE_VACS.includes(v));
+  const ALL_VACS = [...BASE_VACS, ...extra];
+  const makeOpts = (val) => ALL_VACS.map(v => `<option value="${v}"${(val===null&&v==='null')||(val===v)?' selected':''}>${v==='null'?'—':v}</option>`).join('');
+  const DAYS = ['Lu','Ma','Me','Je','Ve','Sa','Di'];
+  const SEL_STYLE = 'font-size:10px;padding:2px;border:0.5px solid var(--border);border-radius:3px;background:var(--bg2);color:var(--text);width:58px';
+  let h = `<table id="cyc-grid-table" style="border-collapse:collapse;font-size:11px"><tr><th style="padding:3px 6px;color:var(--text3)">S</th>${DAYS.map(d=>`<th style="padding:3px 8px;color:var(--text3)">${d}</th>`).join('')}<th></th></tr>`;
+  weeks.forEach((week, wi) => {
+    h += `<tr><td style="padding:3px 6px;color:var(--text3);font-weight:600">S${wi+1}</td>`;
+    week.forEach((vac, di) => {
+      h += `<td style="padding:2px"><select data-w="${wi}" data-d="${di}" style="${SEL_STYLE}">${makeOpts(vac)}</select></td>`;
+    });
+    h += `<td><button onclick="removeCycleWeek(${wi})" style="font-size:10px;padding:1px 4px;border:0.5px solid var(--border);border-radius:3px;background:transparent;color:var(--text3);cursor:pointer">✕</button></td></tr>`;
+  });
+  return h + '</table>';
+}
 function refreshCycleGrid() {
   const wrap = document.getElementById('cyc-grid-wrap');
   const lbl = document.getElementById('cyc-grid-lbl');
   if (!wrap) return;
-  const ALL_VACS = ['null','RH','A1','A2','A3','B1','C1','C2','D1','D2','P423','As1','As2','As3','Cs','Es','Fs','Ad1','Ad2','Ad3','Cd','Ed','Fd'];
-  const makeOpts = (val) => ALL_VACS.map(v => `<option value="${v}"${(val===null&&v==='null')||(val===v)?' selected':''}>${v==='null'?'—':v}</option>`).join('');
-  const DAYS = ['L','M','Me','J','V','S','D'];
-  let h = `<table id="cyc-grid-table" style="border-collapse:collapse;font-size:11px;width:100%"><tr><th style="padding:3px 6px;color:var(--text3)">S</th>${DAYS.map(d=>`<th style="padding:3px 6px;color:var(--text3)">${d}</th>`).join('')}<th></th></tr>`;
-  window._cycleWeeks.forEach((week, wi) => {
-    h += `<tr><td style="padding:3px 6px;color:var(--text3);font-weight:600">S${wi+1}</td>`;
-    week.forEach((vac, di) => {
-      h += `<td style="padding:2px"><select data-w="${wi}" data-d="${di}" style="font-size:10px;padding:2px;border:0.5px solid var(--border);border-radius:3px;background:var(--bg2);color:var(--text);width:60px">${makeOpts(vac)}</select></td>`;
-    });
-    h += `<td><button onclick="removeCycleWeek(${wi})" style="font-size:10px;padding:1px 4px;border:0.5px solid var(--border);border-radius:3px;background:transparent;color:var(--text3);cursor:pointer">✕</button></td></tr>`;
-  });
-  h += '</table>';
-  wrap.innerHTML = h;
+  wrap.innerHTML = _buildCycleGridHtml(window._cycleWeeks);
   if (lbl) lbl.textContent = `Grille du cycle (${window._cycleWeeks.length} semaines × 7 jours)`;
 }
 function addCycleWeek() {
