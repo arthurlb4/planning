@@ -505,19 +505,11 @@ function renderVacList() {
   }
   const TH = '<thead><tr><th style="width:20px"></th><th>Nom</th><th>Début</th><th>Fin</th><th>Durée</th><th>Pause</th><th style="text-align:center">P</th><th style="text-align:center">M</th><th></th></tr></thead>';
 
-  // Build one table per day-type column, with all sections as header rows inside
-  function makeColTable(colSections) {
-    // colSections = [{label, rows, inCycle}]
-    const hasAny = colSections.some(s => s.rows.length);
-    if (!hasAny) return '<p style="color:var(--text3);font-size:11px">—</p>';
-    const NCOLS = 9;
-    let tbody = '';
-    colSections.forEach(s => {
-      if (!s.rows.length) return;
-      tbody += `<tr><td colspan="${NCOLS}" style="padding:6px 0 2px;font-size:10px;color:var(--text3);${s.top?'':'border-top:0.5px solid var(--border);'}">${s.label}</td></tr>`;
-      tbody += makeRows(s.rows, s.inCycle);
-    });
-    return `<div class="table-scroll"><table style="width:100%">${TH}<tbody>${tbody}</tbody></table></div>`;
+  // Fixed column widths shared across all tables → columns align across separate tables
+  const COLS = `<colgroup><col style="width:22px"><col><col style="width:46px"><col style="width:46px"><col style="width:42px"><col style="width:42px"><col style="width:22px"><col style="width:22px"><col style="width:66px"></colgroup>`;
+  function makeTable(rows, inCycle) {
+    if (!rows.length) return '<p style="color:var(--text3);font-size:11px">—</p>';
+    return `<div class="table-scroll"><table style="width:100%;table-layout:fixed">${COLS}${TH}<tbody>${makeRows(rows, inCycle)}</tbody></table></div>`;
   }
 
   const sections = [
@@ -604,33 +596,28 @@ function renderVacList() {
   };
 
   let out = `<div style="${GRID}">`;
-  // Column headers
   sections.forEach(s => { out += `<div style="${SEC_LBL}">${s.label}</div>`; });
 
   if (gridCodes.size) {
-    // Build one table per day-type column containing all sections
-    sections.forEach(s => {
-      const inGrid  = s.rows.filter(([n]) => gridCodes.has(n));
-      const outside = s.rows.filter(([n]) => !gridCodes.has(n));
-      const colSecs = [
-        { label: 'Dans le cycle', rows: inGrid,  inCycle: false, top: true },
-        ...['Coordination','Vidéo','Cadre','Général'].map(cat => ({
-          label: cat,
-          rows: outside.filter(([n]) => (VAC_CAT[n]||'Général') === cat),
-          inCycle: true,
-        })),
-      ];
-      out += `<div>${makeColTable(colSecs)}</div>`;
-    });
+    out += `<div style="${SPAN};font-size:10px;color:var(--text3);margin-top:4px">Dans le cycle</div>`;
+    sections.forEach(s => { out += `<div>${makeTable(s.rows.filter(([n])=>gridCodes.has(n)))}</div>`; });
+
+    const outsideSections = sections.map(s => ({ ...s, rows: s.rows.filter(([n])=>!gridCodes.has(n)) }));
+    if (outsideSections.some(s => s.rows.length)) {
+      ['Coordination','Vidéo','Cadre','Général'].forEach(cat => {
+        const catSec = outsideSections.map(s => ({ ...s, rows: s.rows.filter(([n]) => (VAC_CAT[n]||'Général') === cat) }));
+        if (!catSec.some(s => s.rows.length)) return;
+        out += `<div style="${SPAN};font-size:10px;font-style:italic;color:var(--text3);margin-top:8px">${cat}</div>`;
+        catSec.forEach(s => { out += `<div>${makeTable(s.rows, true)}</div>`; });
+      });
+    }
   } else {
-    sections.forEach(s => {
-      out += `<div>${makeColTable([{ label:'', rows: s.rows, inCycle: false, top: true }])}</div>`;
-    });
+    sections.forEach(s => { out += `<div>${makeTable(s.rows)}</div>`; });
   }
 
   if (hasAll) {
     out += `<div style="${SPAN};${SEC_LBL};margin-top:16px">Tous jours</div>`;
-    out += `<div style="${SPAN}"><div class="table-scroll"><table style="width:100%">${TH}<tbody>${makeRows(all)}</tbody></table></div></div>`;
+    out += `<div style="${SPAN}">${makeTable(all)}</div>`;
   }
 
   out += '</div>';
