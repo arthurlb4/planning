@@ -841,7 +841,8 @@ export default {
         }
 
         var fsCreated = 0, fsUpdated = 0, fsDeleted = 0, fsFailed = 0;
-        var FS_DELAY = 80;
+        var FS_PARALLEL = 5;
+        var FS_BATCH_DELAY = 100;
 
         async function fsApply(method, path, data) {
           var r = await calApi(method, path, data, fsToken, refresh_token, env);
@@ -854,29 +855,35 @@ export default {
           return r;
         }
 
-        for (var ci = 0; ci < fsCreate.length; ci++) {
-          var cev = fsCreate[ci];
-          var cData = Object.assign({}, cev.event, { id: cev.googleEventId });
-          var cr = await fsApply('POST', fsPath, cData);
-          if (cr.status === 200 || cr.status === 201) fsCreated++;
-          else fsFailed++;
-          await new Promise(function(res){ setTimeout(res, FS_DELAY); });
+        for (var fci = 0; fci < fsCreate.length; fci += FS_PARALLEL) {
+          var cBatch = fsCreate.slice(fci, fci + FS_PARALLEL);
+          await Promise.all(cBatch.map(async function(cev) {
+            var cData = Object.assign({}, cev.event, { id: cev.googleEventId });
+            var cr = await fsApply('POST', fsPath, cData);
+            if (cr.status === 200 || cr.status === 201) fsCreated++;
+            else fsFailed++;
+          }));
+          if (fci + FS_PARALLEL < fsCreate.length) await new Promise(function(res){ setTimeout(res, FS_BATCH_DELAY); });
         }
 
-        for (var ui = 0; ui < fsUpdate.length; ui++) {
-          var uev = fsUpdate[ui];
-          var uData = Object.assign({}, uev.event, { id: uev.googleEventId });
-          var ur = await fsApply('PUT', fsPath + '/' + uev.googleEventId, uData);
-          if (ur.status === 200) fsUpdated++;
-          else fsFailed++;
-          await new Promise(function(res){ setTimeout(res, FS_DELAY); });
+        for (var fui = 0; fui < fsUpdate.length; fui += FS_PARALLEL) {
+          var uBatch = fsUpdate.slice(fui, fui + FS_PARALLEL);
+          await Promise.all(uBatch.map(async function(uev) {
+            var uData = Object.assign({}, uev.event, { id: uev.googleEventId });
+            var ur = await fsApply('PUT', fsPath + '/' + uev.googleEventId, uData);
+            if (ur.status === 200) fsUpdated++;
+            else fsFailed++;
+          }));
+          if (fui + FS_PARALLEL < fsUpdate.length) await new Promise(function(res){ setTimeout(res, FS_BATCH_DELAY); });
         }
 
-        for (var dei = 0; dei < fsDelete.length; dei++) {
-          var deid = fsDelete[dei];
-          var dr = await fsApply('DELETE', fsPath + '/' + deid, null);
-          if (dr.status === 204 || dr.status === 200 || dr.status === 404 || dr.status === 410) fsDeleted++;
-          await new Promise(function(res){ setTimeout(res, FS_DELAY); });
+        for (var fdi = 0; fdi < fsDelete.length; fdi += FS_PARALLEL) {
+          var dBatch = fsDelete.slice(fdi, fdi + FS_PARALLEL);
+          await Promise.all(dBatch.map(async function(deid) {
+            var dr = await fsApply('DELETE', fsPath + '/' + deid, null);
+            if (dr.status === 204 || dr.status === 200 || dr.status === 404 || dr.status === 410) fsDeleted++;
+          }));
+          if (fdi + FS_PARALLEL < fsDelete.length) await new Promise(function(res){ setTimeout(res, FS_BATCH_DELAY); });
         }
 
         return resp({ ok: true, created: fsCreated, updated: fsUpdated, deleted: fsDeleted, failed: fsFailed, newToken: fsToken !== access_token ? fsToken : null });
