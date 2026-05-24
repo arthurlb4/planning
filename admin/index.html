@@ -586,17 +586,18 @@ function renderVacList() {
     }
   }
 
+  // Single shared grid — all rows use the same 3 column definitions
+  const SPAN = `grid-column:1/-1`;
+  let out = `<div style="${GRID}">`;
+
   // Column headers
-  let out = `<div style="${GRID};margin-bottom:6px">
-    ${sections.map(s => `<div style="${SEC_LBL}">${s.label}</div>`).join('')}
-  </div>`;
+  sections.forEach(s => { out += `<div style="${SEC_LBL}">${s.label}</div>`; });
 
   if (gridCodes.size) {
     // "Dans le cycle" row
-    out += `<div style="font-size:10px;color:var(--text3);margin-bottom:3px">Dans le cycle</div>
-    <div style="${GRID};margin-bottom:12px">
-      ${sections.map(s => `<div>${makeTable(s.rows.filter(([n])=>gridCodes.has(n)))}</div>`).join('')}
-    </div>`;
+    out += `<div style="${SPAN};font-size:10px;color:var(--text3);margin-top:4px">Dans le cycle</div>`;
+    sections.forEach(s => { out += `<div>${makeTable(s.rows.filter(([n])=>gridCodes.has(n)))}</div>`; });
+
     // "Accessibles" rows — grouped by category
     const VAC_CAT = {
       M:'Coordination',S:'Coordination',Pj:'Coordination',Pv:'Coordination',
@@ -606,29 +607,24 @@ function renderVacList() {
     const outsideSections = sections.map(s => ({ ...s, rows: s.rows.filter(([n])=>!gridCodes.has(n)) }));
     const hasOutside = outsideSections.some(s => s.rows.length);
     if (hasOutside) {
-      out += `<div style="font-size:10px;color:var(--text3);margin:8px 0 3px">Accessibles</div>`;
-      const cats = ['Coordination','Vidéo','Cadre','Général'];
-      cats.forEach(cat => {
-        const catSections = outsideSections.map(s => ({
-          ...s, rows: s.rows.filter(([n]) => (VAC_CAT[n]||'Général') === cat)
-        }));
-        if (!catSections.some(s => s.rows.length)) return;
-        out += `<div style="font-size:10px;font-style:italic;color:var(--text3);margin:6px 0 2px">${cat}</div>
-        <div style="${GRID};margin-bottom:6px">
-          ${catSections.map(s => `<div>${makeTable(s.rows, true)}</div>`).join('')}
-        </div>`;
+      out += `<div style="${SPAN};font-size:10px;color:var(--text3);margin-top:10px">Accessibles</div>`;
+      ['Coordination','Vidéo','Cadre','Général'].forEach(cat => {
+        const catSec = outsideSections.map(s => ({ ...s, rows: s.rows.filter(([n]) => (VAC_CAT[n]||'Général') === cat) }));
+        if (!catSec.some(s => s.rows.length)) return;
+        out += `<div style="${SPAN};font-size:10px;font-style:italic;color:var(--text3);margin-top:6px">${cat}</div>`;
+        catSec.forEach(s => { out += `<div>${makeTable(s.rows, true)}</div>`; });
       });
     }
   } else {
-    out += `<div style="${GRID}">
-      ${sections.map(s => `<div>${makeTable(s.rows)}</div>`).join('')}
-    </div>`;
+    sections.forEach(s => { out += `<div>${makeTable(s.rows)}</div>`; });
   }
 
-  if (hasAll) out += `<div style="margin-top:16px">
-    <div style="${SEC_LBL};margin-bottom:6px">Tous jours</div>
-    ${makeTable(all)}
-  </div>`;
+  if (hasAll) {
+    out += `<div style="${SPAN};${SEC_LBL};margin-top:16px">Tous jours</div>`;
+    out += `<div style="${SPAN}">${makeTable(all)}</div>`;
+  }
+
+  out += '</div>';
 
   el.innerHTML = out + availHtml;
 }
