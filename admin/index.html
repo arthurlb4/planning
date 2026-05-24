@@ -514,20 +514,16 @@ function renderVacList() {
 
     const totalCount = avail.length + toCreate.length;
     if (totalCount) {
-      const TYPE_TAG = {week:'S',sat:'Sa',sun:'Di'};
       function chip(name, v, onCreate) {
         const lbl = v.label || name;
-        const types = (v.type||'week').split(',').filter(t=>t!=='all').map(t=>TYPE_TAG[t]||t);
-        const tag = types.length ? `<sup style="font-size:8px;opacity:.55;margin-left:1px">${types.join('·')}</sup>` : '';
         const action = onCreate ? `quickCreateAndLink('${name}')` : `quickAddToCycle('${name}')`;
         const col = onCreate ? 'var(--blue)' : 'var(--text2)';
-        return `<button class="btn btn-sm btn-ghost" title="${v.deb}→${v.fin}" style="font-size:11px;color:${col};padding:3px 7px" onclick="${action}">+ ${lbl}${tag}</button>`;
+        return `<button class="btn btn-sm btn-ghost" title="${v.deb}→${v.fin}" style="font-size:11px;color:${col};padding:3px 7px" onclick="${action}">+ ${lbl}</button>`;
       }
-      function chipGroup(rows, onCreate) {
-        // Group by cycles already associated (cycleIds), ungrouped for toCreate
-        if (onCreate) {
-          return `<div style="display:flex;flex-wrap:wrap;gap:4px">${rows.map(([n,v])=>chip(n,v,true)).join('')}</div>`;
-        }
+      function _avHasType(v, t) { const ts=(v.type||'week').split(','); return ts.includes('all')||ts.includes(t); }
+      function colChips(rows, onCreate) {
+        if (onCreate) return rows.map(([n,v])=>chip(n,v,true)).join('');
+        // group by existing cycle membership
         const grouped = {};
         rows.forEach(([n,v]) => {
           const ids = (v.cycleIds||[]).filter(id => id !== _vacActiveTab);
@@ -535,19 +531,32 @@ function renderVacList() {
           (grouped[key] = grouped[key]||[]).push([n,v]);
         });
         return Object.entries(grouped).map(([grpLbl, grpRows]) =>
-          `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-bottom:2px">
-            <span style="font-size:9px;color:var(--text3);min-width:60px;white-space:nowrap">${grpLbl}</span>
-            ${grpRows.map(([n,v])=>chip(n,v,false)).join('')}
+          `<div style="margin-bottom:3px">
+            <div style="font-size:9px;color:var(--text3);margin-bottom:2px">${grpLbl}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:3px">${grpRows.map(([n,v])=>chip(n,v,false)).join('')}</div>
           </div>`
         ).join('');
       }
+      function availGrid(rows, onCreate) {
+        const cols = [
+          {lbl:'Semaine',  items: rows.filter(([,v])=>_avHasType(v,'week'))},
+          {lbl:'Samedi',   items: rows.filter(([,v])=>_avHasType(v,'sat'))},
+          {lbl:'Dimanche', items: rows.filter(([,v])=>_avHasType(v,'sun'))},
+        ];
+        return `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:4px">
+          ${cols.map(g=>`<div>
+            <div style="font-size:10px;font-weight:600;color:var(--text3);margin-bottom:4px">${g.lbl}</div>
+            ${g.items.length ? `<div style="display:flex;flex-direction:column;gap:2px">${colChips(g.items,onCreate)}</div>` : '<span style="font-size:10px;color:var(--text3)">—</span>'}
+          </div>`).join('')}
+        </div>`;
+      }
 
       const existingHtml = avail.length ? `
-        <div style="font-size:10px;color:var(--text3);margin:8px 0 4px">Déjà en base — à rattacher :</div>
-        ${chipGroup(avail, false)}` : '';
+        <div style="font-size:10px;color:var(--text3);margin:8px 0 2px">Déjà en base — à rattacher :</div>
+        ${availGrid(avail, false)}` : '';
       const createHtml = toCreate.length ? `
-        <div style="font-size:10px;color:var(--blue);margin:8px 0 4px">À créer et rattacher :</div>
-        ${chipGroup(toCreate, true)}` : '';
+        <div style="font-size:10px;color:var(--blue);margin:8px 0 2px">À créer et rattacher :</div>
+        ${availGrid(toCreate, true)}` : '';
 
       availHtml = `<details style="margin-top:20px" ${_detailsOpen ? 'open' : ''}>
         <summary style="cursor:pointer;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);user-select:none">
