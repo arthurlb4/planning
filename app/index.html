@@ -3604,47 +3604,41 @@ function gcalBuildDayEvent(dateKey){
   const v2=getVac(d);
   const congesType=(S.conges||{})[dateKey];
   const vac=v2.vac||'';
+  const VAC=getVAC(d);
+  const vacLbl=vLbl(vac,VAC)||vac;
   let summary,colorId,description='';
 
   if(congesType==='cg'){
-    summary=(vac&&vac!=='RH'?vac+' ':'')+'Conge';
+    summary=(vac&&vac!=='RH'?vacLbl+' ':'')+'Congé';
     colorId='2';
   } else if(congesType==='rend'){
     const dur=getDur(d);
-    summary=(vac&&vac!=='RH'?vac+' ':'')+'Rendu';
+    summary=(vac&&vac!=='RH'?vacLbl+' ':'')+'Rendu';
     colorId='11';
     description='Rendu ephemere - '+fmtMin(dur);
   } else if(congesType==='absent'){
-    summary=(vac&&vac!=='RH'?vac+' ':'')+'Absent';
+    summary=(vac&&vac!=='RH'?vacLbl+' ':'')+'Absent';
     colorId='8';
   } else if(!vac||vac==='RH'){
     return null;
   } else {
     const dur=getDur(d);
     const panier=isPanier(d)?' - panier':'';
-    if(v2.echange&&!v2.ecSelf){summary=vac+' (donne)';colorId='8';}
-    else if(v2.echange&&v2.ecSelf){summary=vac+' (echange)';colorId='3';}
-    else if(v2.ov&&!v2.fromSV){summary=vac+' *';colorId='9';}
-    else{summary=vac;colorId='7';}
+    if(v2.echange&&!v2.ecSelf){summary=vacLbl+' (donne)';colorId='8';}
+    else if(v2.echange&&v2.ecSelf){summary=vacLbl+' (echange)';colorId='3';}
+    else if(v2.ov&&!v2.fromSV){summary=vacLbl+' *';colorId='9';}
+    else{summary=vacLbl;colorId='7';}
     description=fmtMin(dur)+panier;
   }
 
   const tz='Europe/Paris';
-  function makeDateTime(base,hhmm){
-    const arr=hhmm.split(':');
-    const dt=new Date(base);dt.setHours(parseInt(arr[0]),parseInt(arr[1]),0,0);return dt;
-  }
+  const ph=function(str){const m2=str.match(/(\d+)h(\d*)/);return m2?parseInt(m2[1])+':'+('0'+(m2[2]||0)).slice(-2):null;};
+  function makeDateTime(base,hhmm){const arr=hhmm.split(':');const dt=new Date(base);dt.setHours(parseInt(arr[0]),parseInt(arr[1]),0,0);return dt;}
   let vacStart=null,vacEnd=null;
-  const customVac=S.customVacs&&S.customVacs[vac];
-  if(customVac&&customVac.debut&&customVac.fin){
-    const ph=function(str){const m2=str.match(/(\d+)h(\d*)/);return m2?parseInt(m2[1])+':'+('0'+(m2[2]||0)).slice(-2):null;};
-    vacStart=ph(customVac.debut);vacEnd=ph(customVac.fin);
-  } else {
-    const vsd=VAC_STD[vac];
-    if(vsd&&vsd.deb&&vsd.fin){
-      const ph=function(str){const m2=str.match(/(\d+)h(\d*)/);return m2?parseInt(m2[1])+':'+('0'+(m2[2]||0)).slice(-2):null;};
-      vacStart=ph(vsd.deb);vacEnd=ph(vsd.fin);
-    }
+  const vacData=VAC[vac];
+  if(vacData){
+    const deb=vacData.deb||vacData.debut;
+    if(deb&&vacData.fin){vacStart=ph(deb);vacEnd=ph(vacData.fin);}
   }
   let startObj,endObj;
   if(vacStart&&vacEnd){
