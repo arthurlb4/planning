@@ -575,6 +575,21 @@ function _calcMixteHsMin(mixteCode,replCode,VAC){
   const{hsBounds,hsDur}=_calcMixteHsDetail(mixteCode,replCode,VAC);
   return hsBounds+hsDur;
 }
+function _cycleGridScheduledVacs(date){
+  const d=date instanceof Date?date:new Date(date+'T12:00:00');
+  const dw=d.getDay(),key=dk(d);
+  const sorted=[..._globalCycles].sort(function(a,b){return a.startDate<b.startDate?-1:1;});
+  let activeCycle=null;
+  sorted.forEach(function(c){if(c.startDate<=key)activeCycle=c;});
+  if(!activeCycle||!activeCycle.weeks)return new Set();
+  const weeks=activeCycle.weeks,s=new Set();
+  weeks.forEach(function(w){
+    if(dw===6){if(w[5]&&w[5]!=='RH')s.add(w[5]);}
+    else if(dw===0){if(w[6]&&w[6]!=='RH')s.add(w[6]);}
+    else{for(var i=0;i<5;i++){if(w[i]&&w[i]!=='RH')s.add(w[i]);}}
+  });
+  return s;
+}
 function _cycleVacList(date){
   const d=date instanceof Date?date:new Date(date+'T12:00:00');
   const dw=d.getDay(),dayType=dw===6?'sat':dw===0?'sun':'week';
@@ -1541,8 +1556,12 @@ function openDay(key){
   var dw=date.getDay();
   var rows=[],cycleVacNames=_cycleVacList(date);
   if(cycleVacNames){
+    var _scheduledSet=_cycleGridScheduledVacs(date);
+    var _scheduledVacs=cycleVacNames.filter(function(n){return _scheduledSet.has(n);});
+    var _accessibleVacs=cycleVacNames.filter(function(n){return !_scheduledSet.has(n);});
+    window._autreVacsForDay=_accessibleVacs;
     var _rowSz=(dw===0||dw===6)?3:4;
-    for(var _i=0;_i<cycleVacNames.length;_i+=_rowSz)rows.push(cycleVacNames.slice(_i,_i+_rowSz));
+    for(var _i=0;_i<_scheduledVacs.length;_i+=_rowSz)rows.push(_scheduledVacs.slice(_i,_i+_rowSz));
     var _lc=Object.keys(S.customVacs||{}).filter(function(v){return !(S.customVacs[v].hidden)&&!cycleVacNames.includes(v);});
     if(_lc.length)rows.push(_lc);
     rows.push(['SV','Vac. perso','Autre']);
@@ -2278,8 +2297,12 @@ function renderExchangeModal(){
     const exGridCols=(dw===0||dw===6)?3:4;
     var exRows=[],_exCvn=_cycleVacList(tDate);
     if(_exCvn){
+      var _exSchSet=_cycleGridScheduledVacs(tDate);
+      var _exSched=_exCvn.filter(function(n){return _exSchSet.has(n);});
+      var _exAccess=_exCvn.filter(function(n){return !_exSchSet.has(n);});
+      window._autreVacsForDay=_exAccess;
       var _exRsz=(dw===0||dw===6)?3:4;
-      for(var _ei=0;_ei<_exCvn.length;_ei+=_exRsz)exRows.push(_exCvn.slice(_ei,_ei+_exRsz));
+      for(var _ei=0;_ei<_exSched.length;_ei+=_exRsz)exRows.push(_exSched.slice(_ei,_ei+_exRsz));
       var _exLc=Object.keys(S.customVacs||{}).filter(function(v){return !(S.customVacs[v].hidden)&&!_exCvn.includes(v);});
       if(_exLc.length)exRows.push(_exLc);
       exRows.push(['SV','Vac. perso','Autre']);
@@ -2848,41 +2871,43 @@ function confirmCustomVac(){
 }
 
 function openAutreVacModal(){
-  const VAC=getVAC();
   const key=pendingKey||_lpk;
-  const dw=key?new Date(key+'T12:00:00').getDay():1;
+  const date=key?new Date(key+'T12:00:00'):new Date();
+  const VAC=getVAC(date);
+  const dw=date.getDay();
   const isSam=dw===6,isDim=dw===0,isWeek=!isSam&&!isDim;
 
   function vacBtn(vn){
     const vi=VAC[vn];const dur=vi?vi.dur:0;
     return '<button class="mb" style="background:var(--blue-l);color:var(--blue);border:0.5px solid var(--border);width:100%;" onclick="avw(\''+vn+'\')">'
-      +'<div>'+vn+'</div>'
+      +'<div>'+(vi&&vi.label?vi.label:vn)+'</div>'
       +'<div style="font-size:9px;opacity:.7">'+fmtMin(dur)+'</div>'
       +'</button>';
   }
-  function debMin(vn){const v=VAC[vn];if(!v)return 9999;const m=v.deb.match(/(\d+)h(\d*)/i);return m?parseInt(m[1])*60+(parseInt(m[2])||0):9999;}
+  function debMin(vn){const v=VAC[vn];if(!v)return 9999;const m=(v.deb||'').match(/(\d+)h(\d*)/i);return m?parseInt(m[1])*60+(parseInt(m[2])||0):9999;}
   function section(title,vns){
     if(!vns.length)return'';
-    const sorted=vns.slice().sort((a,b)=>debMin(a)-debMin(b));
+    const sorted=vns.slice().sort(function(a,b){return debMin(a)-debMin(b);});
     return'<div class="btit" style="margin-top:8px;margin-bottom:5px">'+title+'</div>'
-      +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:6px">'
+      +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:6px">'
       +sorted.map(vacBtn).join('')+'</div>';
   }
 
-  // Coord: M lun-ven, S tous les jours, Pj jeudi seul, Pv vendredi seul
-  const coordVacs=[];
-  if(isWeek||isSam||isDim)coordVacs.push('S');  // S dispo tous les jours
-  if(isWeek)coordVacs.push('M');                 // M lun-ven
-  if(dw===4)coordVacs.push('Pj');               // Pj jeudi seulement
-  if(dw===5)coordVacs.push('Pv');               // Pv vendredi seulement
-  // Video: MR+SR en semaine, Ms-R le sam, Md-R le dim
-  const videoVacs=isWeek?['MR','SR']:isSam?['Ms-R']:['Md-R'];
-  // Cadre: semaine=B2V C3V P422V; sam=BsV Ds; dim=BdV Dd
-  const cadreVacs=isWeek?['B2V','C3V','P422V']:isSam?['BsV','Ds']:['BdV','Dd'];
-
-  const html=section('Coordination',coordVacs)
-    +section('Video',videoVacs)
-    +section('Cadre',cadreVacs);
+  var html='';
+  // Cycle mode: show accessible (non-scheduled) cycle vacs
+  if(window._autreVacsForDay&&window._autreVacsForDay.length){
+    html=section('Vacations du cycle',window._autreVacsForDay);
+  } else {
+    // Fallback: hardcoded lists for non-cycle mode
+    const coordVacs=[];
+    if(isWeek||isSam||isDim)coordVacs.push('S');
+    if(isWeek)coordVacs.push('M');
+    if(dw===4)coordVacs.push('Pj');
+    if(dw===5)coordVacs.push('Pv');
+    const videoVacs=isWeek?['MR','SR']:isSam?['Ms-R']:['Md-R'];
+    const cadreVacs=isWeek?['B2V','C3V','P422V']:isSam?['BsV','Ds']:['BdV','Dd'];
+    html=section('Coordination',coordVacs)+section('Vidéo',videoVacs)+section('Cadre',cadreVacs);
+  }
 
   document.getElementById('modal-root').innerHTML=
     '<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet">'
