@@ -1204,9 +1204,20 @@ function render(){
 function renderMonth(el_heads,el_cal){
   el_heads.innerHTML='<th class="wkh"></th>'+['L','M','Me','J','V','S','D'].map(j=>`<th>${j}</th>`).join('');
   const rameeSet=buildRameeSet(curY,curM),first=new Date(curY,curM,1),last=new Date(curY,curM+1,0);
-  // Map mondayKey -> cycle name — only admin-defined cycle start dates
+  // Detect weeks where the active cycle changes (new cycle OR resume after summer etc.)
   const _newCycleWeeks={};
-  _globalCycles.forEach(function(c){if(!c.startDate)return;const _sd=new Date(c.startDate+'T12:00:00');_newCycleWeeks[dk(getMonday(_sd))]=c.name||'Cycle';});
+  if(_globalCycles.length>1){
+    const _cs=[..._globalCycles].filter(function(c){return c.weeks&&c.weeks.length>0;}).sort(function(a,b){return a.startDate<b.startDate?-1:1;});
+    const _getAC=function(mk){let ac=null;_cs.forEach(function(c){if(c.startDate<=mk)ac=c;});return ac;};
+    let _sm=getMonday(new Date(curY,curM,1));
+    const _me=new Date(curY,curM+1,0);
+    while(_sm<=_me){
+      const _mk=dk(_sm),_pmk=dk(new Date(_sm.getTime()-7*864e5));
+      const _ac=_getAC(_mk),_pac=_getAC(_pmk);
+      if(_ac&&(!_pac||_ac.id!==_pac.id))_newCycleWeeks[_mk]=_ac.name||'Cycle';
+      _sm=new Date(_sm.getTime()+7*864e5);
+    }
+  }
   let sdow=first.getDay();sdow=sdow===0?6:sdow-1;
   // Compute warn keys in one FIFO pass
   const _warnKeys=new Set();
