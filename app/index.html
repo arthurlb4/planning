@@ -124,6 +124,10 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 [data-theme=light] .cal tr.cgweek td{background:rgba(61,107,24,.06);}
 /* Week number - base */
 .wkn{font-size:9px;color:var(--text3);text-align:center;vertical-align:middle;width:20px;padding:1px 2px;border-radius:4px;}
+/* New cycle start */
+.cal tr.new-cycle-row>td{border-top:1.5px solid rgba(78,160,247,.35);}
+[data-theme=light] .cal tr.new-cycle-row>td{border-top:1.5px solid rgba(12,68,124,.25);}
+.cycle-tag{display:block;font-size:7px;color:var(--blue);font-weight:700;letter-spacing:.02em;line-height:1.1;margin-top:2px;white-space:nowrap;}
 /* Colored week numbers */
 
 .wkn.wcur{background:var(--blue-l);color:var(--blue);font-weight:600;}.wkn.wram{}.wkn.wcg{}
@@ -1199,6 +1203,9 @@ function render(){
 function renderMonth(el_heads,el_cal){
   el_heads.innerHTML='<th class="wkh"></th>'+['L','M','Me','J','V','S','D'].map(j=>`<th>${j}</th>`).join('');
   const rameeSet=buildRameeSet(curY,curM),first=new Date(curY,curM,1),last=new Date(curY,curM+1,0);
+  // Map mondayKey -> cycle name for new-cycle badges
+  const _newCycleWeeks={};
+  _globalCycles.forEach(function(c){if(!c.startDate)return;const _sd=new Date(c.startDate+'T12:00:00');_newCycleWeeks[dk(getMonday(_sd))]=c.name||'Cycle';});
   let sdow=first.getDay();sdow=sdow===0?6:sdow-1;
   // Compute warn keys in one FIFO pass
   const _warnKeys=new Set();
@@ -1246,8 +1253,10 @@ function renderMonth(el_heads,el_cal){
     const isFullCG=firstReal&&isWeekFullCG(getMonday(firstReal.date));
     // Wkn color: ramenee > plein CG > semaine courante
     const wknCls=rowRamee?'wram':isFullCG?'wcg':isCurWeek?'wcur':'';
-    const rowCls=(rowRamee?'':'')+' '+(isCurWeek?'curweek':isFullCG?'cgweek':'');
-    html+=`<tr class="${rowCls.trim()}"><td class="wkn ${wknCls}" data-wn="${wn}">${wn}</td>`;
+    const cycleStartName=rowMon?_newCycleWeeks[rowMon]:'';
+    const rowCls=(isCurWeek?'curweek':isFullCG?'cgweek':'')+(cycleStartName?' new-cycle-row':'');
+    const wknContent=wn+(cycleStartName?`<span class="cycle-tag">${cycleStartName}</span>`:'');
+    html+=`<tr class="${rowCls.trim()}"><td class="wkn ${wknCls}" data-wn="${wn}">${wknContent}</td>`;
     row.forEach(cell=>{
       if(!cell){html+='<td></td>';return;}
       html+=`<td><div class="dc s-${cell.st}" style="position:relative;">${cell.warnDot}<div class="dci" onclick="openDay('${cell.key}')"><span class="dn">${cell.d}</span><span class="dv">${cell.lbl}</span></div>${cell.panDot}</div></td>`;
