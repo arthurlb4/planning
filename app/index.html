@@ -1507,7 +1507,6 @@ function openRecapModal(){
 // ================================================================
 function renderHistory(){}// No side panel history — use modal
 function logH(detail,color,key){
-  pushUndo();
   if(!S.history)S.history=[];S.history.unshift({t:nowHHMM(),d:detail,c:color,key});
   if(S.history.length>30)S.history.pop();saveState();
 }
@@ -1654,6 +1653,7 @@ function avw(sel){
 var _pendingVacSel=null;
 function avwConfirm(){
   if(!_pendingVacSel)return;
+  pushUndo();
   var{key,sel,date,cv}=_pendingVacSel;
   var hs=document.getElementById('hs-toggle')?document.getElementById('hs-toggle').checked:false;
   if(!S.overrides)S.overrides={};
@@ -1664,13 +1664,14 @@ function avwConfirm(){
   gcalTrigger();
 }
 
-function resetVac(){removeHistoryForKey(pendingKey);if(!S.overrides)S.overrides={};delete S.overrides[pendingKey];if(!S.conges)S.conges={};delete S.conges[pendingKey];saveState();closeModal();render();gcalTrigger();}
-function setAbsent(){var date=new Date(pendingKey+'T12:00:00');if(!S.overrides)S.overrides={};S.overrides[pendingKey]={absent:true};if(!S.conges)S.conges={};S.conges[pendingKey]='absent';logH(fmtDate(date)+' -> absent','#f0a030',pendingKey);saveState();closeModal();render();gcalTrigger();}
-function resetAbsent(){removeHistoryForKey(pendingKey);if(!S.overrides)S.overrides={};delete S.overrides[pendingKey];if(!S.conges)S.conges={};delete S.conges[pendingKey];saveState();closeModal();render();gcalTrigger();}
-function poseConge(t){var date=new Date(pendingKey+'T12:00:00');if(!S.conges)S.conges={};S.conges[pendingKey]=t;logH(fmtDate(date)+' -> '+(t==='cg'?'congé':'rendu '+fmtMin(getDur(date))),t==='cg'?'#5a9e3f':'#b0443a',pendingKey);saveState();closeModal();render();}
+function resetVac(){pushUndo();removeHistoryForKey(pendingKey);if(!S.overrides)S.overrides={};delete S.overrides[pendingKey];if(!S.conges)S.conges={};delete S.conges[pendingKey];saveState();closeModal();render();gcalTrigger();}
+function setAbsent(){pushUndo();var date=new Date(pendingKey+'T12:00:00');if(!S.overrides)S.overrides={};S.overrides[pendingKey]={absent:true};if(!S.conges)S.conges={};S.conges[pendingKey]='absent';logH(fmtDate(date)+' -> absent','#f0a030',pendingKey);saveState();closeModal();render();gcalTrigger();}
+function resetAbsent(){pushUndo();removeHistoryForKey(pendingKey);if(!S.overrides)S.overrides={};delete S.overrides[pendingKey];if(!S.conges)S.conges={};delete S.conges[pendingKey];saveState();closeModal();render();gcalTrigger();}
+function poseConge(t){pushUndo();var date=new Date(pendingKey+'T12:00:00');if(!S.conges)S.conges={};S.conges[pendingKey]=t;logH(fmtDate(date)+' -> '+(t==='cg'?'congé':'rendu '+fmtMin(getDur(date))),t==='cg'?'#5a9e3f':'#b0443a',pendingKey);saveState();closeModal();render();}
 function removeCongé(){
   const key=pendingKey;
   if(!S.conges||!key)return;
+  pushUndo();
   const type=S.conges[key];
   if(!type){saveState();closeModal();render();return;}
   // Find all days of the same type connected to this day (no worked-day gap)
@@ -1817,6 +1818,7 @@ function applyPose(type,startKey,unique){
 
   }
 
+  pushUndo();
   if(!S.conges)S.conges={};if(!S.overrides)S.overrides={};
   var d=new Date(start);
   while(d<=end){
@@ -1879,8 +1881,8 @@ function toggleHistPanel(btn){
 }
 
 function cancelExchange(key){
-  // Remove overrides for both days of the exchange
   if(!S.overrides)return;
+  pushUndo();
   // Find the partner key: look for ec2 (the day we gave away) or ec (the day we took)
   const ov1=S.overrides[key];
   if(!ov1||!ov1.echange)return;
@@ -2396,6 +2398,7 @@ function confirmExchange(){
   var myOrigVac=getVac(date);
   var myOrigVacName=myOrigVac.vac||myCycle;
   var hsEx=document.getElementById('hs-toggle-ex')?document.getElementById('hs-toggle-ex').checked:false;
+  pushUndo();
   if(!S.overrides)S.overrides={};
   // myKey: mon jour original que je DONNE au collègue → je suis absent (gris)
   S.overrides[myKey]={vac:myOrigVacName,fromSV:false,echange:true,ecSelf:false,hs:hsEx};
