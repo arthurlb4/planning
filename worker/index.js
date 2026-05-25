@@ -349,7 +349,8 @@ export default {
         type: vac.type || existing.type || 'week',
         cycleIds: existing.cycleIds || [],
         ...(vac.label ? { label: vac.label } : existing.label ? { label: existing.label } : {}),
-        ...(vac.days && vac.days.length ? { days: vac.days } : {})
+        ...(vac.days && vac.days.length ? { days: vac.days } : {}),
+        ...(vac.cat ? { cat: vac.cat } : existing.cat ? { cat: existing.cat } : {})
       };
       await env.PLANNING_DB.put('global:vacations', JSON.stringify(vacs));
       return resp({ ok: true });
