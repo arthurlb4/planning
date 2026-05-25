@@ -997,15 +997,23 @@ async function saveVacDuplicate() {
   const oldName = _editingVac;
   window._pendingVacData = null;
   if (!src) return;
-  // Switch form to new-vacation mode with current field values, empty name
-  _editingVac = null;
-  document.getElementById('vf-name').value = incrementVacCode(oldName);
-  document.getElementById('vf-name').disabled = false;
-  document.getElementById('vac-form-title').textContent = 'Dupliquer — vérifiez le code';
-  document.getElementById('vf-err').innerHTML = '';
-  document.getElementById('vf-dup-btn').style.display = 'none';
-  // Store old name to unlink after save
-  window._duplicateUnlinkOld = oldName;
+  const newName = incrementVacCode(oldName);
+  const errEl = document.getElementById('vf-err');
+  errEl.textContent = 'Duplication en cours…';
+  try {
+    // Save new vacation with incremented code
+    const vacation = { ...src, name: newName };
+    const res = await fetch(API + '/admin/vacation/save', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ vacation }) });
+    if (!res.ok) { errEl.textContent = 'Erreur lors de la duplication'; return; }
+    // Link new vacation to current cycle
+    if (_vacActiveTab && _vacActiveTab !== 'none') {
+      await fetch(API + '/admin/vacation/addcycle', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ name: newName, cycleId: _vacActiveTab }) });
+    }
+    // Unlink old vacation from current cycle
+    await fetch(API + '/admin/vacation/removecycle', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ name: oldName, cycleId: _vacActiveTab }) });
+    document.getElementById('vac-form').style.display = 'none';
+    loadVacations();
+  } catch(e) { errEl.textContent = 'Erreur réseau'; }
 }
 
 async function deleteVac(name) {
