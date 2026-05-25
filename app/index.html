@@ -3387,6 +3387,31 @@ async function gcalSync(){
     if(ev)events.push({id:k,googleEventId:stableId(k),event:ev});
     cur.setDate(cur.getDate()+1);
   }
+  function _syncDone(ok){
+    if(circle){circle.style.stroke='';circle.style.strokeDashoffset='';}
+    if(wrap)wrap.classList.remove('gcal-syncing');
+    if(ok){
+      gcalWriteStatus('done',1,1);
+      if(ico&&wrap){ico.innerHTML=gSvg('#34a853');wrap.classList.add('gcal-done-anim');setTimeout(function(){wrap.classList.remove('gcal-done-anim');gcalUpdateBtn();},2000);}
+    }else{
+      gcalWriteStatus('idle',0,0);
+      gcalUpdateBtn();
+    }
+    _syncAbort=null;
+    if(_syncQueued){_syncQueued=false;gcalSync();}
+  }
+  function _startPoll(){
+    var polls=0;var maxPolls=90;
+    var iv=setInterval(async function(){
+      polls++;
+      try{
+        const sr=await fetch(CLOUD_API+'/sync-status',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({action:'get'})});
+        const sd=await sr.json();
+        if(sd.status==='done'||sd.status==='error'){clearInterval(iv);_syncDone(sd.status==='done');}
+        else if(polls>=maxPolls){clearInterval(iv);_syncDone(true);}
+      }catch(e){if(polls>=maxPolls){clearInterval(iv);_syncDone(true);}}
+    },2000);
+  }
   try{
     const res=await fetch(GCAL_FUNCTIONS+'/gcal/fullsync-start',{
       method:'POST',headers:cloudHeaders(),
@@ -3394,28 +3419,23 @@ async function gcalSync(){
       signal:ac.signal
     });
     clearTimeout(_syncTimeout);
-    if(circle){circle.style.stroke='';circle.style.strokeDashoffset='';}
-    if(wrap)wrap.classList.remove('gcal-syncing');
     const resData=await res.json().catch(function(){return{};});
     console.log('[gcalSync] fullsync-start response:',resData,'events_sent:',events.length);
     if(res.ok){
-      gcalWriteStatus('done',1,1);
-      if(ico&&wrap){ico.innerHTML=gSvg('#34a853');wrap.classList.add('gcal-done-anim');setTimeout(function(){wrap.classList.remove('gcal-done-anim');gcalUpdateBtn();},2000);}
+      if(!resData.started){
+        _syncDone(true);
+      }else{
+        _startPoll();
+      }
     }else{
       console.error('[gcalSync] fullsync-start error:',resData);
-      gcalWriteStatus('idle',0,0);
-      gcalUpdateBtn();
+      _syncDone(false);
     }
   }catch(e){
     clearTimeout(_syncTimeout);
-    if(circle){circle.style.stroke='';circle.style.strokeDashoffset='';}
-    if(wrap)wrap.classList.remove('gcal-syncing');
-    gcalWriteStatus('idle',0,0);
+    _syncDone(false);
     if(e&&e.name!=='AbortError')console.error('sync error',e);
-    gcalUpdateBtn();
   }
-  _syncAbort=null;
-  if(_syncQueued){_syncQueued=false;gcalSync();}
 }
 
 async function checkPendingLineChoice(){
