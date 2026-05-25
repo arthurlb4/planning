@@ -1203,9 +1203,23 @@ function render(){
 function renderMonth(el_heads,el_cal){
   el_heads.innerHTML='<th class="wkh"></th>'+['L','M','Me','J','V','S','D'].map(j=>`<th>${j}</th>`).join('');
   const rameeSet=buildRameeSet(curY,curM),first=new Date(curY,curM,1),last=new Date(curY,curM+1,0);
-  // Map mondayKey -> cycle name for new-cycle badges
+  // Map mondayKey -> cycle name for new-cycle badges (first start + restarts)
   const _newCycleWeeks={};
+  // 1. First week of each cycle (new cycle starts)
   _globalCycles.forEach(function(c){if(!c.startDate)return;const _sd=new Date(c.startDate+'T12:00:00');_newCycleWeeks[dk(getMonday(_sd))]=c.name||'Cycle';});
+  // 2. Restart weeks: scan every monday of the month, detect when diff%N===0 for active cycle
+  {const _cycSorted=[..._globalCycles].filter(function(c){return c.weeks&&c.weeks.length>0;}).sort(function(a,b){return a.startDate<b.startDate?-1:1;});
+  let _sm=getMonday(new Date(curY,curM,1));const _me=new Date(curY,curM+1,0);
+  while(_sm<=_me){
+    const _mk=dk(_sm);
+    let _ac=null;_cycSorted.forEach(function(c){if(c.startDate<=_mk)_ac=c;});
+    if(_ac&&!_newCycleWeeks[_mk]){
+      const _csm=getMonday(new Date(_ac.startDate+'T12:00:00'));
+      const _diff=Math.round((_sm-_csm)/(7*864e5));
+      if(_diff>0&&_diff%_ac.weeks.length===0)_newCycleWeeks[_mk]=_ac.name||'Cycle';
+    }
+    _sm=new Date(_sm.getTime()+7*864e5);
+  }}
   let sdow=first.getDay();sdow=sdow===0?6:sdow-1;
   // Compute warn keys in one FIFO pass
   const _warnKeys=new Set();
