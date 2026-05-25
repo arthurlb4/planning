@@ -250,7 +250,21 @@ async function doRegister() {
   const regConges = parseInt(document.getElementById('reg-conges')?.value||'25');
   const regMatelasRaw = document.getElementById('reg-matelas')?.value||'';
   const regEphRaw = document.getElementById('reg-eph')?.value||'';
-  function parseHMLogin(str){const m=str.match(/(\d+)h(\d*)/i);return m?parseInt(m[1])*60+(parseInt(m[2])||0):0;}
+  function parseHMLogin(str){
+    if(!str)return 0;
+    str=str.trim().replace(',','.');
+    // 5h30 / 5H30 / 5h / 5H
+    let m=str.match(/^(\d+)[hH](\d*)$/);if(m)return parseInt(m[1])*60+(parseInt(m[2]||'0')||0);
+    // 5:30 / 5h30m
+    m=str.match(/^(\d+)[:\s](\d{1,2})$/);if(m)return parseInt(m[1])*60+parseInt(m[2]);
+    // 5.5 / 5,5 (decimal hours)
+    m=str.match(/^(\d+)\.(\d+)$/);if(m)return Math.round(parseFloat(m[1]+'.'+m[2])*60);
+    // plain minutes: 330
+    m=str.match(/^(\d+)min$/i);if(m)return parseInt(m[1]);
+    // plain number assumed hours: 5
+    m=str.match(/^(\d+)$/);if(m)return parseInt(m[1])*60;
+    return 0;
+  }
   const regMatelas = regMatelasRaw ? parseHMLogin(regMatelasRaw) : 0;
   const regEph = regEphRaw ? parseHMLogin(regEphRaw) : 0;
   // Convert visual line index to anchorLine (0-based index that gives correct week at ANCHOR)
