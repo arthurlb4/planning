@@ -2564,6 +2564,13 @@ function applySettingsFromDD(pid){
   const ferEl=document.getElementById('ps-fer'),hsEl=document.getElementById('ps-hs');
   if(!dimEl)return;
   const newDim=dimEl.checked,newRh=rhEl?rhEl.checked:true,newFer=ferEl?ferEl.checked:true,newHs=hsEl?hsEl.checked:true;
+  // First setup: apply immediately and clear flag
+  if(pr.profile&&pr.profile._needsSetup){
+    pr.settings.dimRendu=newDim;pr.settings.rhRendu=newRh;pr.settings.ferRendu=newFer;pr.settings.hsRendu=newHs;
+    delete pr.profile._needsSetup;
+    _profs[pid]=pr;if(pid===_aid)S=pr;saveState();render();renderProfilesDropdown();gcalUpdateBtn();
+    return;
+  }
 
   // M+1 since date
   const now=new Date();let sy=now.getFullYear(),sm=now.getMonth()+2;
@@ -2610,30 +2617,9 @@ function switchToProfile(id){switchProfile(id);render();document.querySelectorAl
 
 function checkFirstSetup(){
   if(!S.profile||!S.profile._needsSetup)return;
-  function tgl(id,label){
-    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:0.5px solid var(--border)">'
-      +'<span style="font-size:13px;color:var(--text2)">'+label+'</span>'
-      +'<label class="tgl"><input type="checkbox" id="'+id+'" checked><span class="tgl-s"></span></label>'
-      +'</div>';
-  }
-  document.getElementById('modal-root').innerHTML=
-    '<div class="overlay"><div class="sheet">'
-    +'<div class="sh"></div><div class="st">Génération des rendus</div>'
-    +'<div class="ss" style="margin-bottom:4px">Quels jours génèrent des rendus&nbsp;?</div>'
-    +tgl('setup-dim','Dimanches travaillés')
-    +tgl('setup-rh','RH travaillés')
-    +tgl('setup-fer','Fériés travaillés')
-    +tgl('setup-hs','Heures supplémentaires')
-    +'<button class="mb pri wide" style="margin-top:16px" onclick="confirmFirstSetup()">Commencer</button>'
-    +'</div></div>';
-}
-function confirmFirstSetup(){
-  S.settings.dimRendu=document.getElementById('setup-dim').checked;
-  S.settings.rhRendu=document.getElementById('setup-rh').checked;
-  S.settings.ferRendu=document.getElementById('setup-fer').checked;
-  S.settings.hsRendu=document.getElementById('setup-hs').checked;
-  delete S.profile._needsSetup;
-  _profs[_aid]=S;saveState();closeModal();render();
+  renderProfilesDropdown();
+  const dd=document.getElementById('dd-profil');
+  if(dd)dd.style.display='block';
 }
 function toggleNP(){
   const b=document.getElementById('np-body');
