@@ -76,6 +76,91 @@ async function calApi(method, path, data, token, refresh_token, env) {
   return { status: res.status, data: json, newToken: newToken };
 }
 
+// Send up to 50 ops in one multipart batch request to the Google Calendar Batch API.
+// Returns { newToken, statuses[] } where statuses[i] is the HTTP status for ops[i].
+async function gcalBatchRequest(ops, calId, token, refresh_token, env) {
+  const boundary = 'gcalbatch' + Date.now().toString(36);
+  const calBase = '/calendar/v3/calendars/' + encodeURIComponent(calId) + '/events';
+  var body = '';
+  for (var i = 0; i < ops.length; i++) {
+    var op = ops[i];
+    var evData = Object.assign({}, op.event, { id: op.googleEventId });
+    var method, reqPath, reqBody;
+    if (op.type === 'delete') {
+      method = 'DELETE'; reqPath = calBase + '/' + op.googleEventId; reqBody = null;
+    } else if (op.type === 'update') {
+      method = 'PUT'; reqPath = calBase + '/' + op.googleEventId; reqBody = JSON.stringify(evData);
+    } else {
+      method = 'POST'; reqPath = calBase; reqBody = JSON.stringify(evData);
+    }
+    body += '--' + boundary + '\r\n';
+    body += 'Content-Type: application/http\r\nContent-ID: op' + i + '\r\n\r\n';
+    body += method + ' ' + reqPath + ' HTTP/1.1\r\n';
+    if (reqBody) {
+      body += 'Content-Type: application/json; charset=UTF-8\r\n\r\n' + reqBody + '\r\n';
+    } else {
+      body += '\r\n';
+    }
+  }
+  body += '--' + boundary + '--';
+
+  async function doFetch(tok) {
+    return fetch('https://www.googleapis.com/batch/calendar/v3', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + tok, 'Content-Type': 'multipart/mixed; boundary=' + boundary },
+      body: body,
+    });
+  }
+
+  var res = await doFetch(token);
+  var newToken = null;
+  if (res.status === 401 && refresh_token) {
+    var rt = await refreshGToken(refresh_token, env);
+    if (rt.access_token) { newToken = rt.access_token; res = await doFetch(newToken); }
+  }
+  if (res.status === 429) {
+    await new Promise(function(r){ setTimeout(r, 5000); });
+    res = await doFetch(newToken || token);
+  }
+
+  // Parse multipart response to extract individual statuses
+  var respText = await res.text();
+  var ctHeader = res.headers.get('content-type') || '';
+  var bMatch = ctHeader.match(/boundary=([^\s;,]+)/);
+  var statuses = [];
+  if (bMatch) {
+    var resBoundary = bMatch[1];
+    var parts = respText.split('--' + resBoundary);
+    for (var p = 1; p < parts.length; p++) {
+      var part = parts[p];
+      if (part.trim() === '--') break;
+      var sm = part.match(/HTTP\/[\d.]+ (\d+)/);
+      statuses.push(sm ? parseInt(sm[1]) : 0);
+    }
+  }
+  return { newToken: newToken, statuses: statuses };
+}
+
+// Process all ops using the batch API, splitting into groups of 50.
+async function gcalBatchOps(ops, calId, token, refresh_token, env) {
+  var currentToken = token;
+  var failed = 0;
+  const BATCH = 50;
+  for (var i = 0; i < ops.length; i += BATCH) {
+    var batch = ops.slice(i, i + BATCH);
+    try {
+      var result = await gcalBatchRequest(batch, calId, currentToken, refresh_token, env);
+      if (result.newToken) currentToken = result.newToken;
+      for (var j = 0; j < result.statuses.length; j++) {
+        var s = result.statuses[j];
+        if (s >= 400 && s !== 404 && s !== 410 && s !== 409) failed++;
+      }
+    } catch(e) { failed += batch.length; }
+    if (i + BATCH < ops.length) await new Promise(function(r){ setTimeout(r, 300); });
+  }
+  return { newToken: currentToken !== token ? currentToken : null, failed: failed };
+}
+
 export default {
   async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
@@ -967,7 +1052,7 @@ export default {
     }
 
     // ============================================================
-    // ASYNC FULL SYNC (self-chaining, fire-and-forget)
+    // ASYNC FULL SYNC (Google Calendar Batch API, fire-and-forget)
     // ============================================================
 
     if (path === '/gcal/fullsync-start') {
@@ -1046,20 +1131,37 @@ export default {
         JSON.stringify({ status: 'syncing', current: 0, total: fsOps.length, ts: Date.now() }),
         { expirationTtl: 120 });
 
-      const FS_CONT_BATCH = 30;
-      const workerOrigin = new URL(request.url).origin;
-      ctx.waitUntil(fetch(workerOrigin + '/gcal/continue-sync-job', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ops: fsOps.slice(0, FS_CONT_BATCH),
-          pending: fsOps.slice(FS_CONT_BATCH),
-          tokens: tokens,
-          calendarId: calId,
-          userId: session.userId,
-          profileId: profileId,
-          total: fsOps.length
-        })
-      }));
+      const _userId = session.userId;
+      const _profileId = profileId;
+      const _tokens = tokens;
+      const _profileData = profileData;
+      const _fsOps = fsOps;
+      const _calId = calId;
+
+      ctx.waitUntil((async function() {
+        try {
+          var batchResult = await gcalBatchOps(_fsOps, _calId, _tokens.access_token, _tokens.refresh_token, env);
+          if (batchResult.newToken) {
+            _tokens.access_token = batchResult.newToken;
+            _profileData.profile.gcalTokens = _tokens;
+            await env.PLANNING_DB.put('data:' + _userId + ':' + _profileId, JSON.stringify(_profileData));
+          }
+          await env.PLANNING_DB.put('gcal_last_sync:' + _userId + ':' + _profileId, Date.now().toString());
+          await env.PLANNING_DB.put('sync_state:' + _userId,
+            JSON.stringify({ status: 'done', current: _fsOps.length - batchResult.failed, total: _fsOps.length, ts: Date.now() }),
+            { expirationTtl: 60 });
+          await env.PLANNING_DB.put('gcal_debug:' + _userId + ':' + _profileId,
+            JSON.stringify({ ts: Date.now(), ops: _fsOps.length, failed: batchResult.failed, ok: true }),
+            { expirationTtl: 300 });
+        } catch(e) {
+          await env.PLANNING_DB.put('gcal_debug:' + _userId + ':' + _profileId,
+            JSON.stringify({ ts: Date.now(), error: e.message, stack: e.stack }),
+            { expirationTtl: 300 });
+          await env.PLANNING_DB.put('sync_state:' + _userId,
+            JSON.stringify({ status: 'error', ts: Date.now() }),
+            { expirationTtl: 60 });
+        }
+      })());
 
       return resp({ ok: true, ops: fsOps.length, started: true });
     }
@@ -1070,107 +1172,6 @@ export default {
       const profileId = body.profileId || 'default';
       const log = await env.PLANNING_DB.get('gcal_debug:' + session.userId + ':' + profileId, { type: 'json' });
       return resp({ log: log });
-    }
-
-    if (path === '/gcal/continue-sync-job') {
-      const ops = body.ops || [];
-      const pending = body.pending || [];
-      const jTokens_init = body.tokens;
-      const jCalId = body.calendarId;
-      const userId = body.userId;
-      const profileId = body.profileId;
-      const total = body.total || 0;
-
-      const debugLog = { ts: Date.now(), ops: ops.length, pending: pending.length, total, calendarId: jCalId, hasTokens: !!jTokens_init, hasAccessToken: !!(jTokens_init && jTokens_init.access_token), hasRefreshToken: !!(jTokens_init && jTokens_init.refresh_token), firstOp: ops[0] ? ops[0].type : null, results: [] };
-
-      if (!userId || !profileId || !jTokens_init) {
-        if (userId && profileId) await env.PLANNING_DB.put('gcal_debug:' + userId + ':' + profileId, JSON.stringify(Object.assign(debugLog, { error: 'Missing tokens or ids' })), { expirationTtl: 300 });
-        return resp({ error: 'Missing' }, 400);
-      }
-
-      if (ops.length === 0 && pending.length === 0) {
-        await env.PLANNING_DB.put('gcal_last_sync:' + userId + ':' + profileId, Date.now().toString());
-        await env.PLANNING_DB.put('sync_state:' + userId,
-          JSON.stringify({ status: 'done', current: total, total: total, ts: Date.now() }),
-          { expirationTtl: 60 });
-        return resp({ ok: true, done: true });
-      }
-
-      var jTokens = Object.assign({}, jTokens_init);
-      const jCalPath = '/calendars/' + encodeURIComponent(jCalId) + '/events';
-      var failedOps = [];
-
-      for (var bi = 0; bi < ops.length; bi++) {
-        const op = ops[bi];
-        try {
-          var jr;
-          var jEvData = Object.assign({}, op.event, { id: op.googleEventId });
-          if (op.type === 'delete') {
-            jr = await calApi('DELETE', jCalPath + '/' + op.googleEventId, null, jTokens.access_token, jTokens_init.refresh_token, env);
-          } else if (op.type === 'update') {
-            jr = await calApi('PUT', jCalPath + '/' + op.googleEventId, jEvData, jTokens.access_token, jTokens_init.refresh_token, env);
-            if (jr.status === 404 || jr.status === 410) {
-              jr = await calApi('POST', jCalPath, jEvData, jTokens.access_token, jTokens_init.refresh_token, env);
-            }
-          } else {
-            jr = await calApi('POST', jCalPath, jEvData, jTokens.access_token, jTokens_init.refresh_token, env);
-            if (jr.status === 409) {
-              jr = await calApi('PUT', jCalPath + '/' + op.googleEventId, jEvData, jTokens.access_token, jTokens_init.refresh_token, env);
-            }
-          }
-          if (jr && jr.newToken) jTokens.access_token = jr.newToken;
-          if (debugLog.results.length < 5) debugLog.results.push({ type: op.type, status: jr && jr.status, err: jr && jr.data && jr.data.error });
-          if (jr && (jr.status === 429 || jr.status === 403)) {
-            await new Promise(function(r){ setTimeout(r, 5000); });
-            failedOps.push(op);
-            continue;
-          }
-        } catch(e) {
-          if (debugLog.results.length < 5) debugLog.results.push({ type: op.type, exception: e.message });
-          var retries = (op.retries || 0) + 1;
-          if (retries < 3) failedOps.push(Object.assign({}, op, { retries: retries }));
-        }
-        await new Promise(function(r){ setTimeout(r, 80); });
-      }
-
-      const allRemaining = failedOps.concat(pending);
-      const doneSoFar = total - allRemaining.length;
-
-      debugLog.failedOps = failedOps.length;
-      debugLog.doneSoFar = doneSoFar;
-      await env.PLANNING_DB.put('gcal_debug:' + userId + ':' + profileId, JSON.stringify(debugLog), { expirationTtl: 300 });
-
-      try {
-        const pd = await env.PLANNING_DB.get('data:' + userId + ':' + profileId, { type: 'json' });
-        if (pd && pd.profile) { pd.profile.gcalTokens = jTokens; await env.PLANNING_DB.put('data:' + userId + ':' + profileId, JSON.stringify(pd)); }
-      } catch(e) {}
-
-      if (allRemaining.length > 0) {
-        await env.PLANNING_DB.put('sync_state:' + userId,
-          JSON.stringify({ status: 'syncing', current: doneSoFar, total: total, ts: Date.now() }),
-          { expirationTtl: 120 });
-        const jOrigin = new URL(request.url).origin;
-        const NEXT_BATCH = 30;
-        ctx.waitUntil(fetch(jOrigin + '/gcal/continue-sync-job', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ops: allRemaining.slice(0, NEXT_BATCH),
-            pending: allRemaining.slice(NEXT_BATCH),
-            tokens: jTokens,
-            calendarId: jCalId,
-            userId: userId,
-            profileId: profileId,
-            total: total
-          })
-        }));
-      } else {
-        await env.PLANNING_DB.put('gcal_last_sync:' + userId + ':' + profileId, Date.now().toString());
-        await env.PLANNING_DB.put('sync_state:' + userId,
-          JSON.stringify({ status: 'done', current: total, total: total, ts: Date.now() }),
-          { expirationTtl: 60 });
-      }
-
-      return resp({ ok: true, done: allRemaining.length === 0, remaining: allRemaining.length });
     }
 
     return resp({ error: 'Not found' }, 404);
