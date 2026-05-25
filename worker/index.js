@@ -211,20 +211,19 @@ export default {
       if (!await verifyAdmin(request, env)) return resp({ error: 'Non autorise' }, 401);
       var list = await env.PLANNING_DB.list({ prefix: 'user:' });
       var users = [];
+      var linesMap = await env.PLANNING_DB.get('global:lines_used', { type: 'json' }) || {};
+      var userLinesIdx = {};
+      for (var l in linesMap) {
+        for (var e of linesMap[l]) {
+          if (!userLinesIdx[e.userId]) userLinesIdx[e.userId] = [];
+          userLinesIdx[e.userId].push({ ligne: l, profileId: e.profileId, name: e.profileName || e.profileId, vacToday: e.vacToday || '' });
+        }
+      }
       for (var key of list.keys) {
         if (key.name.startsWith('user:email:')) continue;
         var user = await env.PLANNING_DB.get(key.name, { type: 'json' });
         if (!user) continue;
-        var linesUsed = [];
-        if (user.profiles) {
-          for (var pid of Object.keys(user.profiles)) {
-            var profileData = await env.PLANNING_DB.get('data:' + user.userId + ':' + pid, { type: 'json' });
-            if (profileData && profileData.profile && profileData.profile.ligne) {
-              linesUsed.push({ profileId: pid, name: profileData.profile.name || pid, ligne: profileData.profile.ligne });
-            }
-          }
-        }
-        users.push({ userId: user.userId, email: user.email, name: user.name, createdAt: user.createdAt, profiles: user.profiles || {}, linesUsed: linesUsed });
+        users.push({ userId: user.userId, email: user.email, name: user.name, createdAt: user.createdAt, profiles: user.profiles || {}, linesUsed: userLinesIdx[user.userId] || [] });
       }
       return resp({ users: users });
     }
@@ -482,7 +481,7 @@ export default {
         if (linesMap[l].length === 0) delete linesMap[l];
       }
       if (!linesMap[ligne]) linesMap[ligne] = [];
-      linesMap[ligne].push({ userId: session.userId, userName: body.userName || session.userId, profileId: profileId, profileName: profileName || profileId });
+      linesMap[ligne].push({ userId: session.userId, userName: body.userName || session.userId, profileId: profileId, profileName: profileName || profileId, vacToday: body.vacToday || '' });
       await env.PLANNING_DB.put('global:lines_used', JSON.stringify(linesMap));
       return resp({ ok: true });
     }
