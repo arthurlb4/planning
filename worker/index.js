@@ -1064,6 +1064,14 @@ export default {
       return resp({ ok: true, ops: fsOps.length, started: true });
     }
 
+    if (path === '/gcal/sync-debug') {
+      const session = await verifySession(request, env);
+      if (!session) return resp({ error: 'Non authentifie' }, 401);
+      const profileId = body.profileId || 'default';
+      const log = await env.PLANNING_DB.get('gcal_debug:' + session.userId + ':' + profileId, { type: 'json' });
+      return resp({ log: log });
+    }
+
     if (path === '/gcal/continue-sync-job') {
       const ops = body.ops || [];
       const pending = body.pending || [];
@@ -1073,7 +1081,12 @@ export default {
       const profileId = body.profileId;
       const total = body.total || 0;
 
-      if (!userId || !profileId || !jTokens_init) return resp({ error: 'Missing' }, 400);
+      const debugLog = { ts: Date.now(), ops: ops.length, pending: pending.length, total, calendarId: jCalId, hasTokens: !!jTokens_init, hasAccessToken: !!(jTokens_init && jTokens_init.access_token), hasRefreshToken: !!(jTokens_init && jTokens_init.refresh_token), firstOp: ops[0] ? ops[0].type : null, results: [] };
+
+      if (!userId || !profileId || !jTokens_init) {
+        if (userId && profileId) await env.PLANNING_DB.put('gcal_debug:' + userId + ':' + profileId, JSON.stringify(Object.assign(debugLog, { error: 'Missing tokens or ids' })), { expirationTtl: 300 });
+        return resp({ error: 'Missing' }, 400);
+      }
 
       if (ops.length === 0 && pending.length === 0) {
         await env.PLANNING_DB.put('gcal_last_sync:' + userId + ':' + profileId, Date.now().toString());
@@ -1106,12 +1119,14 @@ export default {
             }
           }
           if (jr && jr.newToken) jTokens.access_token = jr.newToken;
+          if (debugLog.results.length < 5) debugLog.results.push({ type: op.type, status: jr && jr.status, err: jr && jr.data && jr.data.error });
           if (jr && (jr.status === 429 || jr.status === 403)) {
             await new Promise(function(r){ setTimeout(r, 5000); });
             failedOps.push(op);
             continue;
           }
         } catch(e) {
+          if (debugLog.results.length < 5) debugLog.results.push({ type: op.type, exception: e.message });
           var retries = (op.retries || 0) + 1;
           if (retries < 3) failedOps.push(Object.assign({}, op, { retries: retries }));
         }
@@ -1120,6 +1135,10 @@ export default {
 
       const allRemaining = failedOps.concat(pending);
       const doneSoFar = total - allRemaining.length;
+
+      debugLog.failedOps = failedOps.length;
+      debugLog.doneSoFar = doneSoFar;
+      await env.PLANNING_DB.put('gcal_debug:' + userId + ':' + profileId, JSON.stringify(debugLog), { expirationTtl: 300 });
 
       try {
         const pd = await env.PLANNING_DB.get('data:' + userId + ':' + profileId, { type: 'json' });
