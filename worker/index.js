@@ -216,7 +216,7 @@ export default {
       for (var l in linesMap) {
         for (var e of linesMap[l]) {
           if (!userLinesIdx[e.userId]) userLinesIdx[e.userId] = [];
-          userLinesIdx[e.userId].push({ ligne: l, profileId: e.profileId, name: e.profileName || e.profileId, vacToday: e.vacToday || '' });
+          userLinesIdx[e.userId].push({ ligne: l, profileId: e.profileId, name: e.profileName || e.profileId, weekVacs: e.weekVacs || [] });
         }
       }
       for (var key of list.keys) {
@@ -481,7 +481,7 @@ export default {
         if (linesMap[l].length === 0) delete linesMap[l];
       }
       if (!linesMap[ligne]) linesMap[ligne] = [];
-      linesMap[ligne].push({ userId: session.userId, userName: body.userName || session.userId, profileId: profileId, profileName: profileName || profileId, vacToday: body.vacToday || '' });
+      linesMap[ligne].push({ userId: session.userId, userName: body.userName || session.userId, profileId: profileId, profileName: profileName || profileId, weekVacs: body.weekVacs || [] });
       await env.PLANNING_DB.put('global:lines_used', JSON.stringify(linesMap));
       return resp({ ok: true });
     }

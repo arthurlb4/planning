@@ -533,15 +533,18 @@ function saveState(){
       const _rDiff=Math.round((getMonday(NOW)-ANCHOR)/(7*864e5));
       const _rN=getCycleLen(NOW);
       const _rVisual=((S.profile.anchorLine+_rDiff)%_rN+_rN)%_rN;
-      const _todayKey=dk(NOW);
-      const _todayConge=(S.conges||{})[_todayKey];
-      const _todayVacObj=getVac(NOW);
-      const _vacToday=_todayConge==='cg'?'CG':_todayConge==='rh'?'RH':_todayVacObj.absent?'Absent':(_todayVacObj.vac||'SV');
+      const _mon=getMonday(NOW);
+      const _weekVacs=[];
+      for(let _wi=0;_wi<7;_wi++){
+        const _wd=new Date(_mon.getTime()+_wi*864e5);
+        const _wk=dk(_wd),_wc=(S.conges||{})[_wk],_wv=getVac(_wd);
+        _weekVacs.push(_wc==='cg'?'CG':_wc==='rh'?'RH':_wv.absent?'Abs':(_wv.vac||'-'));
+      }
       fetch(CLOUD_API+'/lines/register',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({
         ligne:'S'+(_rVisual+1),profileId:_aid,
         profileName:S.profile.name||_aid,
         userName:(window._authUser&&window._authUser.name)||'',
-        vacToday:_vacToday
+        weekVacs:_weekVacs
       })}).catch(function(){});
     }
   },2000);
