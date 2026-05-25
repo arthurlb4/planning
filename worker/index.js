@@ -348,7 +348,8 @@ export default {
         mixte: vac.mixte !== undefined ? !!vac.mixte : !!existing.mixte,
         type: vac.type || existing.type || 'week',
         cycleIds: existing.cycleIds || [],
-        ...(vac.label ? { label: vac.label } : existing.label ? { label: existing.label } : {})
+        ...(vac.label ? { label: vac.label } : existing.label ? { label: existing.label } : {}),
+        ...(vac.days && vac.days.length ? { days: vac.days } : {})
       };
       await env.PLANNING_DB.put('global:vacations', JSON.stringify(vacs));
       return resp({ ok: true });
