@@ -2565,33 +2565,29 @@ function applySettingsFromDD(pid){
   if(!dimEl)return;
   const newDim=dimEl.checked,newRh=rhEl?rhEl.checked:true,newFer=ferEl?ferEl.checked:true,newHs=hsEl?hsEl.checked:true;
 
-  // M+1 since date
-  const now=new Date();let sy=now.getFullYear(),sm=now.getMonth()+2;
-  if(sm>12){sy++;sm=1;}
-  const nextYM=sy*12+(sm-1);
-  const since=sy+'-'+String(sm).padStart(2,'0');
+  // Current month since date (immediate effect)
+  const now=new Date();
+  const since=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+  const curYM=now.getFullYear()*12+now.getMonth();
 
   if(!pr.settings.settingsHistory)pr.settings.settingsHistory=[];
 
-  // What are the current month's effective settings?
-  const curEff=settingsForYM(TODAY_YM);
-  const newMatchesCurrent=curEff.dimRendu===newDim&&curEff.rhRendu===newRh&&curEff.ferRendu===newFer&&curEff.hsRendu===newHs;
+  // Update base settings for immediate retroactive effect on current month
+  pr.settings.dimRendu=newDim;pr.settings.rhRendu=newRh;pr.settings.ferRendu=newFer;pr.settings.hsRendu=newHs;
 
-  if(newMatchesCurrent){
-    // Cancel: remove any pending future entry for M+1
-    pr.settings.settingsHistory=pr.settings.settingsHistory.filter(h=>{
-      const hym=parseInt(h.since.split('-')[0])*12+(parseInt(h.since.split('-')[1])-1);
-      return hym!==nextYM;
-    });
+  // What are the previous month's effective settings (before this change)?
+  const prevEff=settingsForYM(curYM-1);
+  const newMatchesPrev=prevEff.dimRendu===newDim&&prevEff.rhRendu===newRh&&prevEff.ferRendu===newFer&&prevEff.hsRendu===newHs;
+
+  if(newMatchesPrev){
+    // Same as previous month: remove any entry for current month (no change to record)
+    pr.settings.settingsHistory=pr.settings.settingsHistory.filter(h=>h.since!==since);
   } else {
-    // Apply change: upsert entry for M+1
+    // Upsert entry for current month
     pr.settings.settingsHistory=pr.settings.settingsHistory.filter(h=>h.since!==since);
     pr.settings.settingsHistory.push({since,dimRendu:newDim,rhRendu:newRh,ferRendu:newFer,hsRendu:newHs});
     pr.settings.settingsHistory.sort((a,b)=>a.since.localeCompare(b.since));
-    // Keep max 6 entries (preserve oldest = initial creation)
-    if(pr.settings.settingsHistory.length>6){
-      pr.settings.settingsHistory=pr.settings.settingsHistory.slice(-6);
-    }
+    if(pr.settings.settingsHistory.length>6)pr.settings.settingsHistory=pr.settings.settingsHistory.slice(-6);
   }
   const oldLine=_profs[pid]&&_profs[pid].profile&&_profs[pid].profile.anchorLine;
   const newLine=pr.profile.anchorLine;
