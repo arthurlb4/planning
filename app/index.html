@@ -125,10 +125,10 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 /* Week number - base */
 .wkn{font-size:9px;color:var(--text3);text-align:center;vertical-align:middle;width:20px;padding:1px 2px;border-radius:4px;}
 /* New cycle start */
-.cal tr.new-cycle-row>td{border-top:2.5px solid rgba(78,160,247,.55);}
-[data-theme=light] .cal tr.new-cycle-row>td{border-top:2.5px solid rgba(12,68,124,.4);}
+.cal tr.new-cycle-row>td{border-top:2.5px solid rgba(78,160,247,.5);background:rgba(78,160,247,.07);}
+[data-theme=light] .cal tr.new-cycle-row>td{border-top:2.5px solid rgba(12,68,124,.35);background:rgba(12,68,124,.05);}
+.cal tr.new-cycle-row.cgweek>td{background:rgba(90,158,63,.07);}
 .wkn{position:relative;}
-.wkn.wknew::after{content:'';display:block;width:5px;height:5px;border-radius:50%;background:var(--blue);margin:2px auto 0;}
 .cyc-tip{display:none;position:absolute;left:calc(100% + 6px);top:50%;transform:translateY(-50%);background:var(--bg3);color:var(--text);font-size:11px;font-weight:500;padding:5px 10px;border-radius:8px;white-space:nowrap;border:0.5px solid var(--border);z-index:100;pointer-events:none;box-shadow:0 4px 12px rgba(0,0,0,.35);}
 .wkn.wknew:hover .cyc-tip{display:block;}
 /* Colored week numbers */
@@ -1210,16 +1210,18 @@ function renderMonth(el_heads,el_cal){
   const _newCycleWeeks={};
   // 1. First week of each cycle (new cycle starts)
   _globalCycles.forEach(function(c){if(!c.startDate)return;const _sd=new Date(c.startDate+'T12:00:00');_newCycleWeeks[dk(getMonday(_sd))]=c.name||'Cycle';});
-  // 2. Restart weeks: scan every monday of the month, detect when diff%N===0 for active cycle
+  // 2. Restart weeks: scan every monday of the month, detect li===0 via ANCHOR (same as getCycleVac)
   {const _cycSorted=[..._globalCycles].filter(function(c){return c.weeks&&c.weeks.length>0;}).sort(function(a,b){return a.startDate<b.startDate?-1:1;});
   let _sm=getMonday(new Date(curY,curM,1));const _me=new Date(curY,curM+1,0);
   while(_sm<=_me){
     const _mk=dk(_sm);
     let _ac=null;_cycSorted.forEach(function(c){if(c.startDate<=_mk)_ac=c;});
     if(_ac&&!_newCycleWeeks[_mk]){
+      const _N=_ac.weeks.length;
+      const _anchorDiff=Math.round((_sm-ANCHOR)/(7*864e5));
+      const _li=((_anchorDiff%_N)+_N)%_N;
       const _csm=getMonday(new Date(_ac.startDate+'T12:00:00'));
-      const _diff=Math.round((_sm-_csm)/(7*864e5));
-      if(_diff>0&&_diff%_ac.weeks.length===0)_newCycleWeeks[_mk]=_ac.name||'Cycle';
+      if(_li===0&&_sm>_csm)_newCycleWeeks[_mk]=_ac.name||'Cycle';
     }
     _sm=new Date(_sm.getTime()+7*864e5);
   }}
