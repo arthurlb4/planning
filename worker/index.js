@@ -77,7 +77,7 @@ async function calApi(method, path, data, token, refresh_token, env) {
 }
 
 // Send up to 50 ops in one multipart batch request to the Google Calendar Batch API.
-// Returns { newToken, statuses[] } where statuses[i] is the HTTP status for ops[i].
+// Returns { newToken, statuses[], ops409[] } where ops409 are create ops that got 409 (cancelled event).
 async function gcalBatchRequest(ops, calId, token, refresh_token, env) {
   const boundary = 'gcalbatch' + Date.now().toString(36);
   const calBase = '/calendar/v3/calendars/' + encodeURIComponent(calId) + '/events';
@@ -128,6 +128,7 @@ async function gcalBatchRequest(ops, calId, token, refresh_token, env) {
   var ctHeader = res.headers.get('content-type') || '';
   var bMatch = ctHeader.match(/boundary=([^\s;,]+)/);
   var statuses = [];
+  var ops409 = [];
   if (bMatch) {
     var resBoundary = bMatch[1];
     var parts = respText.split('--' + resBoundary);
@@ -135,16 +136,21 @@ async function gcalBatchRequest(ops, calId, token, refresh_token, env) {
       var part = parts[p];
       if (part.trim() === '--') break;
       var sm = part.match(/HTTP\/[\d.]+ (\d+)/);
-      statuses.push(sm ? parseInt(sm[1]) : 0);
+      var pStatus = sm ? parseInt(sm[1]) : 0;
+      statuses.push(pStatus);
+      if (pStatus === 409 && ops[p - 1] && ops[p - 1].type === 'create') {
+        ops409.push(ops[p - 1]);
+      }
     }
   }
-  return { newToken: newToken, statuses: statuses };
+  return { newToken: newToken, statuses: statuses, ops409: ops409 };
 }
 
 // Process all ops using the batch API, splitting into groups of 50.
 async function gcalBatchOps(ops, calId, token, refresh_token, env) {
   var currentToken = token;
   var failed = 0;
+  var allOps409 = [];
   const BATCH = 50;
   for (var i = 0; i < ops.length; i += BATCH) {
     var batch = ops.slice(i, i + BATCH);
@@ -155,8 +161,20 @@ async function gcalBatchOps(ops, calId, token, refresh_token, env) {
         var s = result.statuses[j];
         if (s >= 400 && s !== 404 && s !== 410 && s !== 409) failed++;
       }
+      if (result.ops409 && result.ops409.length) allOps409 = allOps409.concat(result.ops409);
     } catch(e) { failed += batch.length; }
     if (i + BATCH < ops.length) await new Promise(function(r){ setTimeout(r, 300); });
+  }
+  // Retry 409 creates: the event exists as cancelled in Google — PATCH with status:confirmed to restore it
+  const calEvPath = '/calendars/' + encodeURIComponent(calId) + '/events/';
+  for (var k = 0; k < allOps409.length; k++) {
+    var op409 = allOps409[k];
+    try {
+      var patchData = Object.assign({}, op409.event, { id: op409.googleEventId, status: 'confirmed' });
+      var pr = await calApi('PATCH', calEvPath + op409.googleEventId, patchData, currentToken, refresh_token, env);
+      if (pr.newToken) currentToken = pr.newToken;
+      if (pr.status >= 400) failed++;
+    } catch(e) { failed++; }
   }
   return { newToken: currentToken !== token ? currentToken : null, failed: failed };
 }
