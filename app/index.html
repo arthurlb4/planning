@@ -145,8 +145,8 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .dc{width:100%;padding-top:80%;position:relative;border-radius:var(--r);display:block;}
 .dci{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;border-radius:var(--r);transition:background .15s,transform .1s;cursor:pointer;}
 .dci:active{transform:scale(.88);transition:transform .07s;}
-.dn{font-size:13px;font-weight:600;line-height:1;}
-.dv{font-size:10px;line-height:1;opacity:1;}
+.dn{font-size:14px;font-weight:700;line-height:1;letter-spacing:-.01em;}
+.dv{font-size:9px;font-weight:500;line-height:1;opacity:.82;letter-spacing:.02em;}
 .s-tv-am .dn,.s-tv-am .dv{color:#7ec0fb;}
 .s-tv .dn,.s-tv .dv{color:#7ec0fb;}
 .s-tv-pm .dn,.s-tv-pm .dv{color:#7ec0fb;}
@@ -254,6 +254,8 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 
 /* Entrance animations */
 @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes cellPop{0%{transform:scale(1)}40%{transform:scale(1.12)}75%{transform:scale(.96)}100%{transform:scale(1)}}
+.dci.pop{animation:cellPop .38s cubic-bezier(.34,1.56,.64,1);}
 .side-col>*{animation:fadeUp .32s ease backwards;}
 .side-col>*:nth-child(1){animation-delay:.04s}
 .side-col>*:nth-child(2){animation-delay:.09s}
@@ -365,20 +367,8 @@ body.modal-open .bloc.clk:hover,body.modal-open .ctr.clk:hover{background:var(--
 .mnav:hover{background:var(--bg3);}
 .mtit:hover{background:var(--bg3);}
 .ann-month:hover{background:var(--bg3);}
-.cal td:hover .dci{background:var(--bg3);}
-.s-fer .dci:hover{background:var(--gold-l);}
-.s-cg .dci:hover{background:var(--green-m);}
-.s-rend .dci:hover{background:rgba(7,224,210,.42);}
-.s-sv-vac .dci:hover{background:rgba(176,68,58,.44);}
-[data-theme=light] .s-rend .dci:hover{background:rgba(7,224,210,.30);}
-[data-theme=light] .s-sv-vac .dci:hover{background:rgba(176,68,58,.20);}
-.s-tv-fer .dci:hover{background:var(--blue-m);}
-.s-cg-fer .dci:hover{background:var(--green-m);}
-.s-rend-fer .dci:hover{opacity:.8;}
-.s-ec .dci:hover{background:rgba(50,110,230,.42);}
-.s-ec-fer .dci:hover{background:rgba(50,110,230,.42);}
-.s-tv-ov .dci:hover,.s-tv-ov-fer .dci:hover{background:rgba(78,160,247,.34);}
-.s-ec2 .dci:hover{background:var(--bg3);}
+.cal td:hover .dci{filter:brightness(1.22);}
+.s-sv .dci:hover,.s-ec2 .dci:hover{background:rgba(255,255,255,.08);}
 .ctr.clk:hover{background:var(--bg3);}
 .bloc.clk.active:hover,.ctr.clk.active:hover{background:var(--bg3);}
 .eph-rbtn:hover{background:var(--bg3);}
@@ -1349,7 +1339,7 @@ function renderMonth(el_heads,el_cal){
     html+=`<tr class="${rowCls.trim()}"><td class="wkn ${wknCls}" data-wn="${wn}"${wknData}>${wn}</td>`;
     row.forEach(cell=>{
       if(!cell){html+='<td></td>';return;}
-      html+=`<td><div class="dc s-${cell.st}" style="position:relative;">${cell.warnDot}<div class="dci" onclick="openDay('${cell.key}')"><span class="dn">${cell.d}</span><span class="dv">${cell.lbl}</span></div>${cell.panDot}</div></td>`;
+      html+=`<td><div class="dc s-${cell.st}" style="position:relative;">${cell.warnDot}<div class="dci" data-key="${cell.key}" onclick="openDay('${cell.key}')"><span class="dn">${cell.d}</span><span class="dv">${cell.lbl}</span></div>${cell.panDot}</div></td>`;
     });
     html+='</tr>';
   }
@@ -1782,15 +1772,17 @@ function avwConfirm(){
   if(!S.overrides)S.overrides={};
   S.overrides[key]={vac:sel==='SV'?null:sel,fromSV:!cv||cv==='RH'||sel==='SV',echange:false,hs:hs};
   logH(fmtDate(date)+' -> '+sel+(hs?' (HS)':''),'#4ea0f7',key);
+  var _avwKey=key;
   _pendingVacSel=null;
-  saveState();closeModal();render();
+  saveState();closeModal();render();popCell(_avwKey);
   gcalTrigger();
 }
 
-function resetVac(){pushUndo();removeHistoryForKey(pendingKey);if(!S.overrides)S.overrides={};delete S.overrides[pendingKey];if(!S.conges)S.conges={};delete S.conges[pendingKey];saveState();closeModal();render();gcalTrigger();}
+function resetVac(){pushUndo();var _pk=pendingKey;removeHistoryForKey(_pk);if(!S.overrides)S.overrides={};delete S.overrides[_pk];if(!S.conges)S.conges={};delete S.conges[_pk];saveState();closeModal();render();popCell(_pk);gcalTrigger();}
 function setAbsent(){pushUndo();var date=new Date(pendingKey+'T12:00:00');if(!S.overrides)S.overrides={};S.overrides[pendingKey]={absent:true};if(!S.conges)S.conges={};S.conges[pendingKey]='absent';logH(fmtDate(date)+' -> absent','#f0a030',pendingKey);saveState();closeModal();render();gcalTrigger();}
 function resetAbsent(){pushUndo();removeHistoryForKey(pendingKey);if(!S.overrides)S.overrides={};delete S.overrides[pendingKey];if(!S.conges)S.conges={};delete S.conges[pendingKey];saveState();closeModal();render();gcalTrigger();}
-function poseConge(t){pushUndo();var date=new Date(pendingKey+'T12:00:00');if(!S.conges)S.conges={};S.conges[pendingKey]=t;logH(fmtDate(date)+' -> '+(t==='cg'?'congé':'rendu '+fmtMin(getDur(date))),t==='cg'?'#5a9e3f':'#c8a020',pendingKey);saveState();closeModal();render();}
+function popCell(key){var el=document.querySelector('.dci[data-key="'+key+'"]');if(el){el.classList.add('pop');el.addEventListener('animationend',function(){el.classList.remove('pop');},{once:true});}}
+function poseConge(t){pushUndo();var date=new Date(pendingKey+'T12:00:00');if(!S.conges)S.conges={};S.conges[pendingKey]=t;logH(fmtDate(date)+' -> '+(t==='cg'?'congé':'rendu '+fmtMin(getDur(date))),t==='cg'?'#5a9e3f':'#c8a020',pendingKey);saveState();closeModal();render();popCell(pendingKey);}
 function removeCongé(){
   const key=pendingKey;
   if(!S.conges||!key)return;
@@ -1831,7 +1823,7 @@ function removeCongé(){
     delete _stored2[k]; // clear stored IDs so sync re-creates correctly
   });
   localStorage.setItem('gcal_event_ids_'+_pid2,JSON.stringify(_stored2));
-  saveState();closeModal();render();
+  saveState();closeModal();render();popCell(key);
   gcalTrigger();
 }
 function showPoseSelect(){
@@ -2020,7 +2012,7 @@ function cancelExchange(key){
   }
   gcalClearDateId(key);delete S.overrides[key];
   removeHistoryForKey(key);
-  saveState();closeModal();render();
+  saveState();closeModal();render();popCell(key);
   gcalTrigger();
 }
 function openHSModal(mym){
