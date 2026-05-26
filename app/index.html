@@ -482,7 +482,7 @@ body.modal-open .bloc.clk:hover,body.modal-open .ctr.clk:hover{background:var(--
       </div>
       <div class="eph-sol-sep"></div>
       <div class="eph-sol">
-        <div class="eph-sol-lbl">Libre</div>
+        <div class="eph-sol-lbl" id="eph-libre-lbl">Dispo</div>
         <div id="eph-total-libre" class="eph-sol-val"></div>
       </div>
     </div>
@@ -1473,11 +1473,17 @@ function updateCounters(){
   if(uniEl)uniEl.innerHTML=uniHtml||'<div style="font-size:11px;color:var(--text3);padding:4px 0">Aucun rendu.</div>';
   const _mKPose=new Set(Object.keys(S.matelasKeys||{}));
   const totalPose=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='rend'&&!_mKPose.has(k)).reduce((s,k)=>s+getDur(new Date(k+'T12:00:00')),0);
-  const totalLibre=totalReal+totalPrev;
+  // Dispo for viewed month: credits generated in months ≤ viewedYM that haven't expired by viewedYM
+  const viewedYM=curY*12+curM;
+  let dispAtView=0;
+  Object.keys(realAvail).map(Number).forEach(function(ym){if(ym<=viewedYM&&getExpYm(ym)>=viewedYM)dispAtView+=(realAvail[ym]||0);});
+  Object.keys(prevEph).map(Number).forEach(function(ym){if(ym<=viewedYM&&getExpYm(ym)>=viewedYM)dispAtView+=(prevEph[ym]||0);});
   const poseEl=document.getElementById('eph-total-pose');
   if(poseEl)poseEl.textContent=fmtMin(totalPose);
   const libreEl=document.getElementById('eph-total-libre');
-  if(libreEl)libreEl.textContent=fmtMin(totalLibre);
+  if(libreEl)libreEl.textContent=fmtMin(dispAtView);
+  const libreLbl=document.getElementById('eph-libre-lbl');
+  if(libreLbl)libreLbl.textContent='Dispo '+MC[curM].slice(0,3);
   updateRecap();
 }
 
