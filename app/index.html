@@ -477,8 +477,8 @@ body.modal-open .bloc.clk:hover,body.modal-open .ctr.clk:hover{background:var(--
       </div>
       <div class="eph-sol-sep"></div>
       <div class="eph-sol">
-        <div class="eph-sol-lbl">Stock</div>
-        <div id="eph-total-stock" class="eph-sol-val"></div>
+        <div class="eph-sol-lbl">Posé</div>
+        <div id="eph-total-pose" class="eph-sol-val"></div>
       </div>
       <div class="eph-sol-sep"></div>
       <div class="eph-sol">
@@ -937,11 +937,11 @@ function calcSoldes(){
   const realEph={},prevEph={};
   for(let ym=createdYM;ym<=TODAY_YM;ym++)realEph[ym]=0;
   Object.keys(gen).forEach(ymStr=>{const ym=Number(ymStr),total=Object.values(gen[ym]).reduce((s,v)=>s+v,0),expYm=getExpYm(ym);if(ym>TODAY_YM){prevEph[ym]=total;return;}realEph[ym]=expYm<=TODAY_YM?0:total;});
-  // FIFO: deduct all rendus (past AND future) from combined stock (realEph + prevEph)
+  // FIFO: deduct all rendus from combined stock — credit month must be <= rendu month (no borrowing from future months)
+  const _fifoWarnKeys=new Set();
   {
     const _mK=new Set(Object.keys(S.matelasKeys||{}));
     const _rendKeys=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='rend'&&!_mK.has(k)).sort();
-    // Build combined simulation: realEph + prevEph
     const _sim={};
     Object.keys(realEph).forEach(function(ym){_sim[ym]=realEph[ym];});
     Object.keys(prevEph).forEach(function(ym){_sim[ym]=(_sim[ym]||0)+prevEph[ym];});
@@ -950,12 +950,12 @@ function calcSoldes(){
       let _left=_dur;
       const _yms=Object.keys(_sim).map(Number).sort();
       for(const _ym of _yms){
-        if(_sim[_ym]<=0||getExpYm(_ym)<_poseYm)continue;
+        if(_sim[_ym]<=0||getExpYm(_ym)<_poseYm||_ym>_poseYm)continue;
         const _take=Math.min(_sim[_ym],_left);_sim[_ym]-=_take;_left-=_take;
         if(_left<=0)break;
       }
+      if(_left>0)_fifoWarnKeys.add(k);
     });
-    // Write back deductions to realEph and prevEph
     Object.keys(realEph).forEach(function(ym){realEph[ym]=Math.max(0,_sim[ym]||0);});
     Object.keys(prevEph).forEach(function(ym){prevEph[ym]=Math.max(0,(_sim[ym]||0));});
   }
@@ -963,7 +963,7 @@ function calcSoldes(){
   const realAvail={};Object.keys(realEph).map(Number).sort().forEach(ym=>realAvail[ym]=realEph[ym]);
   for(const ym of Object.keys(realAvail).map(Number).sort()){if(toDeduct<=0)break;const take=Math.min(realAvail[ym],toDeduct);realAvail[ym]-=take;toDeduct-=take;}
   let matelas=(S.profile&&S.profile.matelas)||0;if(toDeduct>0)matelas-=toDeduct;
-  return{gen,realEph,realAvail,prevEph,matelas,totalReal:Object.values(realAvail).reduce((s,v)=>s+v,0),totalPrev:Object.keys(prevEph).map(Number).filter(ym=>ym<=CUR_YEAR*12+11).reduce((s,ym)=>s+(prevEph[ym]||0),0)};
+  return{gen,realEph,realAvail,prevEph,matelas,warnKeys:_fifoWarnKeys,totalReal:Object.values(realAvail).reduce((s,v)=>s+v,0),totalPrev:Object.keys(prevEph).map(Number).filter(ym=>ym<=CUR_YEAR*12+11).reduce((s,ym)=>s+(prevEph[ym]||0),0)};
 }
 
 // ================================================================
@@ -1291,25 +1291,8 @@ function renderMonth(el_heads,el_cal){
     }
   }
   let sdow=first.getDay();sdow=sdow===0?6:sdow-1;
-  // Compute warn keys in one FIFO pass
-  const _warnKeys=new Set();
-  {
-    const _cs2=calcSoldes();
-    const _stk={};
-    Object.keys(_cs2.realAvail).map(Number).sort().forEach(function(ym){_stk[ym]=_cs2.realAvail[ym];});
-    Object.keys(_cs2.prevEph).map(Number).sort().forEach(function(ym){_stk[ym]=(_stk[ym]||0)+(_cs2.prevEph[ym]||0);});
-    const _mK2=new Set(Object.keys(S.matelasKeys||{}));
-    const _rks=Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='rend'&&!_mK2.has(k);}).sort();
-    _rks.forEach(function(k){
-      const _d=new Date(k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth(),_dur=getDur(_d);
-      let _lft=_dur;
-      Object.keys(_stk).map(Number).sort().forEach(function(_ym){
-        if(_lft<=0||_stk[_ym]<=0||getExpYm(_ym)<_pym)return;
-        const _tk=Math.min(_stk[_ym],_lft);_stk[_ym]-=_tk;_lft-=_tk;
-      });
-      if(_lft>0)_warnKeys.add(k);
-    });
-  }
+  // Warn keys come directly from the FIFO inside calcSoldes (no double-pass)
+  const _warnKeys=calcSoldes().warnKeys;
   const cells=[];for(let i=0;i<sdow;i++)cells.push(null);
   const _VAC=getVAC();
   for(let d=1;d<=last.getDate();d++){
@@ -1488,11 +1471,11 @@ function updateCounters(){
   });
   const uniEl=document.getElementById('eph-unified-list');
   if(uniEl)uniEl.innerHTML=uniHtml||'<div style="font-size:11px;color:var(--text3);padding:4px 0">Aucun rendu.</div>';
-  // Stock = total généré non expiré (avant toute déduction FIFO)
-  const totalStock=Object.keys(gen).map(Number).filter(ym=>getExpYm(ym)>TODAY_YM).reduce((s,ym)=>s+Object.values(gen[ym]).reduce((a,v)=>a+v,0),0);
+  const _mKPose=new Set(Object.keys(S.matelasKeys||{}));
+  const totalPose=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='rend'&&!_mKPose.has(k)).reduce((s,k)=>s+getDur(new Date(k+'T12:00:00')),0);
   const totalLibre=totalReal+totalPrev;
-  const stockEl=document.getElementById('eph-total-stock');
-  if(stockEl)stockEl.textContent=fmtMin(totalStock);
+  const poseEl=document.getElementById('eph-total-pose');
+  if(poseEl)poseEl.textContent=fmtMin(totalPose);
   const libreEl=document.getElementById('eph-total-libre');
   if(libreEl)libreEl.textContent=fmtMin(totalLibre);
   updateRecap();
@@ -2046,7 +2029,7 @@ function canPlaceRendu(newKeys){
     const _d=new Date(k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth(),_dur=getDur(_d);
     let _lft=_dur;
     Object.keys(_sim).map(Number).sort().forEach(function(_ym){
-      if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym)return;
+      if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym||_ym>_pym)return;
       const _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;
     });
     if(_newSet.has(k)&&_lft>0)deficit+=_lft;
