@@ -1049,12 +1049,8 @@ async function saveVac() {
   if (_editingVac && !window._forceSaveAllCycles) {
     const otherCycles = (_allVacs[_editingVac]?.cycleIds || []).filter(id => id !== _vacActiveTab);
     if (otherCycles.length > 0) {
-      const names = otherCycles.map(id => { const c = _allCycles.find(c => c.id === id); return c?.name || id; }).join(', ');
       window._pendingVacData = vacation;
-      errEl.innerHTML = `⚠️ Aussi dans : <b>${names}</b><br><div style="display:flex;gap:8px;margin-top:8px">
-        <button class="btn btn-sm btn-orange" onclick="saveVacForAll()">Modifier pour tous les cycles</button>
-        <button class="btn btn-sm btn-ghost" onclick="saveVacDuplicate()">Dupliquer pour ce cycle uniquement</button>
-      </div>`;
+      showVacCycleConflictModal(_editingVac, otherCycles);
       return;
     }
   }
@@ -1088,6 +1084,42 @@ async function saveVac() {
     closeVacForm();
     loadVacations();
   } catch(e) { errEl.textContent = 'Erreur réseau'; }
+}
+
+function showVacCycleConflictModal(vacName, otherCycleIds) {
+  const curCycle = _allCycles.find(c => c.id === _vacActiveTab);
+  const curName = curCycle?.name || _vacActiveTab || '(cycle actuel)';
+  const otherNames = otherCycleIds.map(id => { const c = _allCycles.find(c => c.id === id); return c?.name || id; });
+  const newCode = incrementVacCode(vacName);
+  const mc = document.getElementById('modal-content');
+  mc.innerHTML = `
+    <h2 style="margin-bottom:4px">Vacation partagée</h2>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:16px">
+      <b>${vacName}</b> est utilisée dans plusieurs cycles :
+    </p>
+    <div style="background:var(--bg2);border-radius:var(--r);padding:10px 14px;margin-bottom:20px;font-size:13px;display:flex;flex-direction:column;gap:4px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="width:8px;height:8px;border-radius:50%;background:var(--blue);flex-shrink:0"></span>
+        <span><b>${curName}</b> <span style="color:var(--text3);font-size:11px">(cycle actuel)</span></span>
+      </div>
+      ${otherNames.map(n => `<div style="display:flex;align-items:center;gap:8px">
+        <span style="width:8px;height:8px;border-radius:50%;background:var(--border2);flex-shrink:0"></span>
+        <span style="color:var(--text2)">${n}</span>
+      </div>`).join('')}
+    </div>
+    <p style="font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px">Que souhaitez-vous faire ?</p>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px">
+      <button class="btn btn-orange" style="text-align:left;display:flex;flex-direction:column;align-items:flex-start;padding:10px 14px;gap:2px" onclick="closeModal();saveVacForAll()">
+        <span style="font-weight:600">Modifier dans tous les cycles</span>
+        <span style="font-size:11px;font-weight:400;opacity:.8">Les changements s'appliquent à <b>${curName}</b> et à <b>${otherNames.join(', ')}</b></span>
+      </button>
+      <button class="btn" style="text-align:left;display:flex;flex-direction:column;align-items:flex-start;padding:10px 14px;gap:2px" onclick="closeModal();saveVacDuplicate()">
+        <span style="font-weight:600">Créer une copie <b>${newCode}</b> pour ${curName}</span>
+        <span style="font-size:11px;font-weight:400;opacity:.8"><b>${vacName}</b> reste inchangée dans ${otherNames.join(', ')}</span>
+      </button>
+    </div>
+    <div class="modal-btns"><button class="btn btn-ghost" onclick="closeModal()">Annuler</button></div>`;
+  document.getElementById('modal-bg').style.display = 'flex';
 }
 
 function saveVacForAll() {
