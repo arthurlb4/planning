@@ -477,13 +477,13 @@ body.modal-open .bloc.clk:hover,body.modal-open .ctr.clk:hover{background:var(--
       </div>
       <div class="eph-sol-sep"></div>
       <div class="eph-sol">
-        <div class="eph-sol-lbl">Dispo auj.</div>
-        <div id="eph-total-dispo" class="eph-sol-val"></div>
+        <div class="eph-sol-lbl">Stock</div>
+        <div id="eph-total-stock" class="eph-sol-val"></div>
       </div>
       <div class="eph-sol-sep"></div>
       <div class="eph-sol">
-        <div class="eph-sol-lbl" id="eph-prev-label">Dispo …</div>
-        <div id="eph-total-prev" class="eph-sol-val"></div>
+        <div class="eph-sol-lbl">Libre</div>
+        <div id="eph-total-libre" class="eph-sol-val"></div>
       </div>
     </div>
     <div id="eph-unified-list"></div>
@@ -1442,7 +1442,16 @@ function updateCounters(){
     <div class="ctr clk" onclick="openPaniersModal()"><div class="clbl">Paniers & Primes</div><div class="cval" style="color:var(--amber)">${panCount}</div><div class="csub" style="margin-bottom:6px">paniers</div><div style="border-top:0.5px solid var(--border2);padding-top:5px;display:flex;flex-direction:column;gap:1px"><div style="display:flex;justify-content:space-between;font-size:10px"><span style="color:var(--text2)">Antenne</span><b style="color:var(--amber)">${primes.antenne}</b></div><div style="display:flex;justify-content:space-between;font-size:10px"><span style="color:var(--text2)">Réal</span><b style="color:var(--amber)">${primes.reel}</b></div><div style="display:flex;justify-content:space-between;font-size:10px"><span style="color:var(--text2)">Coord</span><b style="color:var(--amber)">${primes.coord}</b></div></div></div>
     <div class="ctr wide clk" onclick="openDetailMois(${mym})"><div class="clbl">Créés ce mois</div><div class="ctr-wide-inner"><div><div class="cval" style="color:var(--rend-text)">${fmtMin(gt)}</div><div class="csub">${mym>TODAY_YM?'prévis.':'acquis'}</div></div><div class="ctr-detail">${det}</div></div></div>`;
 
-  // Unified eph table (créé + dispo + expiry per month)
+  // Global stock = total generated non-expired credits (before any FIFO deduction)
+  const _mKStock=new Set(Object.keys(S.matelasKeys||{}));
+  let totalStock=Object.keys(gen).map(Number).filter(ym=>getExpYm(ym)>TODAY_YM).reduce((s,ym)=>s+Object.values(gen[ym]).reduce((a,v)=>a+v,0),0);
+  const totalLibre=totalReal+totalPrev;
+  const stockEl=document.getElementById('eph-total-stock');
+  if(stockEl)stockEl.textContent=fmtMin(totalStock);
+  const libreEl=document.getElementById('eph-total-libre');
+  if(libreEl)libreEl.textContent=fmtMin(totalLibre);
+
+  // Unified eph table: créé + expiry per month (no per-row depleted avail)
   const allUYms=new Set();
   const extendedUsed=Object.keys(S.ephExtend||{}).map(Number).filter(ym=>ym<=TODAY_YM&&getExpYm(ym)>TODAY_YM);
   Object.keys(gen).map(Number).filter(ym=>ym<=TODAY_YM).sort().slice(-6).forEach(ym=>allUYms.add(ym));
@@ -1450,66 +1459,39 @@ function updateCounters(){
   Object.keys(realAvail).map(Number).filter(ym=>realAvail[ym]>0).forEach(ym=>allUYms.add(ym));
   Object.keys(prevEph).map(Number).filter(ym=>prevEph[ym]>0).sort().slice(0,3).forEach(ym=>allUYms.add(ym));
   extendedUsed.forEach(ym=>allUYms.add(ym));
-  let totalExisting=0;
-  // First pass: collect rows and compute maxVal for bar widths
   const uniRows=[];
   [...allUYms].sort().forEach(ym=>{
     const y2=Math.floor(ym/12),m2=ym%12;
     const orig=gen[ym]?Object.values(gen[ym]).reduce((s,v)=>s+v,0):0;
     const isFut=ym>TODAY_YM;
-    const avail=isFut?(prevEph[ym]||0):(realAvail[ym]||0);
     const hasActiveExt=!isFut&&getEphExtensions(ym)>0;
-    if(orig===0&&avail===0&&!hasActiveExt)return;
+    if(orig===0&&!hasActiveExt)return;
     const expYm=getExpYm(ym);
     const isExp=!isFut&&expYm<=TODAY_YM;
-    if(!isExp&&!isFut)totalExisting+=avail;
-    uniRows.push({ym,y2,m2,orig,avail,isFut,isExp,expYm});
+    uniRows.push({ym,y2,m2,orig,isFut,isExp,expYm});
   });
-  const maxVal=Math.max(...uniRows.map(r=>Math.max(r.orig,r.avail)),1);
-  // Second pass: render
+  const maxVal=Math.max(...uniRows.map(r=>r.orig),1);
   let uniHtml='';
-  uniRows.forEach(({ym,y2,m2,orig,avail,isFut,isExp,expYm})=>{
+  uniRows.forEach(({ym,y2,m2,orig,isFut,isExp,expYm})=>{
     const expY=Math.floor(expYm/12),expM=expYm%12;
     const moLeft=expYm-TODAY_YM;
     const isExtended=getEphExtensions(ym)>0;
     const extSpan=isExtended?'<span style="background:rgba(99,153,34,.35);border-radius:3px;padding:0 2px;color:var(--text)">'+MC[expM].slice(0,3)+' '+String(expY).slice(2)+'</span>':MC[expM].slice(0,3)+' '+String(expY).slice(2);
     const expLbl=isExp?'expiré':'→'+extSpan;
     const barColor=ephBarColor(moLeft,isExp);
-    const barVal=isFut?orig:avail;
-    const barPct=Math.round(barVal/maxVal*100);
-    const origPct=Math.round(orig/maxVal*100);
-    const availColor=isExp?'var(--text3)':isFut?'var(--text3)':moLeft<=1?'#e07830':moLeft<=2?'var(--gold)':'var(--blue)';
+    const barPct=Math.round(orig/maxVal*100);
+    const origColor=isExp?'var(--text3)':isFut?'var(--text3)':'var(--text2)';
     uniHtml+=`<div class="eph-urow${isExp?' expired':''}${isFut?' fut':''}">
       <div class="eph-u-mc">${MC[m2]+' '+String(y2).slice(2)}</div>
       <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
-        <div class="eph-u-flow">${orig>0?`<span class="eph-u-cre">${fmtMin(orig)}</span><span style="color:var(--text3);font-size:9px;margin:0 1px">→</span>`:''}<span class="eph-u-dispo" style="color:${availColor}">${isExp?'–':fmtMin(avail)}</span></div>
-        <div class="eph-bw"><div class="eph-b2" style="width:${origPct}%;background:var(--blue);opacity:.22"></div><div class="eph-b" style="width:${barPct}%;background:${barColor};opacity:${isFut?.4:1}"></div></div>
+        <div class="eph-u-flow"><span class="eph-u-cre" style="color:${origColor}">${isExp?'–':fmtMin(orig)}</span></div>
+        <div class="eph-bw"><div class="eph-b" style="width:${barPct}%;background:${barColor};opacity:${isFut?.4:1}"></div></div>
       </div>
       <div class="eph-u-exp">${expLbl}</div>
     </div>`;
   });
   const uniEl=document.getElementById('eph-unified-list');
   if(uniEl)uniEl.innerHTML=uniHtml||'<div style="font-size:11px;color:var(--text3);padding:4px 0">Aucun rendu.</div>';
-  const dispEl=document.getElementById('eph-total-dispo');
-  if(dispEl)dispEl.textContent=fmtMin(totalExisting);
-  // Counter: dispo pendant le mois affiché
-  const viewedYM=curY*12+curM;
-  let totalAtView=0;
-  // Acquis réels disponibles pendant le mois affiché (expYm >= viewedYM = encore valides ce mois)
-  Object.keys(realAvail).map(Number).forEach(function(ym){
-    if(realAvail[ym]>0&&getExpYm(ym)>=viewedYM)totalAtView+=realAvail[ym];
-  });
-  // Prévisionnels créés au plus tard fin du mois affiché, disponibles ce mois
-  Object.keys(prevEph).map(Number).forEach(function(ym){
-    if(prevEph[ym]>0&&ym<=viewedYM&&getExpYm(ym)>=viewedYM)totalAtView+=prevEph[ym];
-  });
-  const prevEl=document.getElementById('eph-total-prev');
-  const prevLblEl=document.getElementById('eph-prev-label');
-  if(prevEl)prevEl.textContent=fmtMin(totalAtView);
-  // Update label: show "fin mois affiché" only when different from today
-  if(prevLblEl){
-    prevLblEl.textContent='Dispo '+MC[curM].charAt(0).toUpperCase()+MC[curM].slice(1)+' '+curY;
-  }
   updateRecap();
 }
 
@@ -1735,7 +1717,7 @@ function openDay(key){
   if(!key)return;pendingKey=key;_lpk=key;
   var date=new Date(key+'T12:00:00'),VAC=getVAC(date),v2=getVac(date),vac=v2.vac,ov=v2.ov,fromSV=v2.fromSV,absent=v2.absent,echange=v2.echange,li=v2.li,cycleVac=v2.cycleVac;
   var isFer=FERIES.has(key),hasCg=(S.conges||{})[key],dur=getDur(date);
-  var cs=calcSoldes(),totalReal=cs.totalReal,matelas=cs.matelas,totalDispo=totalReal+Math.max(0,matelas);
+  var cs=calcSoldes(),totalReal=cs.totalReal,matelas=cs.matelas,totalDispo=totalReal+cs.totalPrev+Math.max(0,matelas);
   var cR=Math.max(0,getSoldeAnnee(date.getFullYear())-calcCongesUsedForYear(date.getFullYear()));
   var lbl=fmtDate(date),factor=renduFactor(date),ramee=isSemaineRamenée(getMonday(date)),hsW=calcHSWeek(getMonday(date)),sett=settingsForYM(date.getFullYear()*12+date.getMonth());
   var tt=vac&&vac!=='RH'?vLbl(vac,VAC):'';if(absent)tt='Absent';else if(isFer)tt=vac&&vac!=='RH'?vLbl(vac,VAC):'Férié';else if(!vac)tt='Repos';if(echange)tt+=' (echange)';
@@ -2041,6 +2023,34 @@ function calcDispoAtDate(targetDate){
   return dispo;
 }
 
+function canPlaceRendu(newKeys){
+  // FIFO simulation from scratch including newKeys — checks if all rendus (existing + new) are covered
+  const gen=buildGen();
+  const createdYM=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:2026*12;
+  const _sim={};
+  for(let ym=createdYM;ym<=TODAY_YM;ym++)_sim[ym]=0;
+  Object.keys(gen).forEach(function(ymStr){
+    const ym=Number(ymStr),total=Object.values(gen[ym]).reduce(function(s,v){return s+v;},0);
+    if(ym>TODAY_YM){_sim[ym]=total;return;}
+    _sim[ym]=getExpYm(ym)<=TODAY_YM?0:total;
+  });
+  const _mK=new Set(Object.keys(S.matelasKeys||{}));
+  const _newSet=new Set(newKeys);
+  const _existing=Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='rend'&&!_mK.has(k)&&!_newSet.has(k);});
+  const _all=[..._existing,...newKeys].sort();
+  let deficit=0;
+  _all.forEach(function(k){
+    const _d=new Date(k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth(),_dur=getDur(_d);
+    let _lft=_dur;
+    Object.keys(_sim).map(Number).sort().forEach(function(_ym){
+      if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym)return;
+      const _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;
+    });
+    if(_newSet.has(k)&&_lft>0)deficit+=_lft;
+  });
+  return deficit;
+}
+
 function _applyPoseMatelas(type,startKey,endKey){
   pushUndo();
   if(!S.conges)S.conges={};
@@ -2055,32 +2065,33 @@ function applyPose(type,startKey,unique){
   const start=new Date(startKey+'T12:00:00');
   const end=new Date(endKey+'T12:00:00');
 
-  // Validate rendus: check available hours at end date
+  // Validate rendus: full FIFO simulation including new days
   if(type==='rend'){
     var totalRend=0;
+    var _newKeys=[];
     var d0=new Date(start);
     while(d0<=end){
       const v2=getVac(d0);
-      if(v2.vac&&v2.vac!=='RH'&&!v2.absent)totalRend+=getDur(d0);
+      if(v2.vac&&v2.vac!=='RH'&&!v2.absent){totalRend+=getDur(d0);_newKeys.push(dk(d0));}
       d0.setDate(d0.getDate()+1);
     }
-    const dispo=calcDispoAtDate(end);
-    if(totalRend>dispo){
-      const manque=totalRend-dispo;
-      const matelasAvail=(S.profile&&S.profile.matelas)||0;
-      const canMatelas=matelasAvail>0&&totalRend<=dispo+matelasAvail;
-      const matelasBtn=canMatelas?'<button class="mb" style="background:rgba(220,160,30,.18);color:var(--amber);border-color:transparent;flex:1" onclick="_applyPoseMatelas(\''+type+'\',\''+startKey+'\',\''+endKey+'\')">Matelas <span style="font-size:11px;opacity:.8">('+fmtMin(matelasAvail)+')</span></button>':'';
-      const btnsRow=canMatelas
-        ?'<div style="display:flex;gap:8px">' +matelasBtn+'<button class="mb" style="flex:1" onclick="if(pendingKey)openDay(pendingKey);else closeModal()">Retour</button></div>'
-        :'<button class="mb wide" onclick="if(pendingKey)openDay(pendingKey);else closeModal()">Retour</button>';
-      document.getElementById('modal-root').innerHTML='<div class="overlay" style="z-index:400"><div class="sheet" style="max-height:260px"><div class="sh"></div>'
-        +'<div class="st" style="color:var(--rend-text)">Rendus insuffisants</div>'
-        +'<div class="ss" style="margin-bottom:16px">Il manque <b>'+fmtMin(manque)+'</b> pour poser cette période.<br>Disponible : '+fmtMin(dispo)+' · Nécessaire : '+fmtMin(totalRend)+'</div>'
-        +btnsRow
-        +'</div></div>';
-      return;
+    if(totalRend>0){
+      const deficit=canPlaceRendu(_newKeys);
+      if(deficit>0){
+        const matelasAvail=(S.profile&&S.profile.matelas)||0;
+        const canMatelas=matelasAvail>0&&deficit<=matelasAvail;
+        const matelasBtn=canMatelas?'<button class="mb" style="background:rgba(220,160,30,.18);color:var(--amber);border-color:transparent;flex:1" onclick="_applyPoseMatelas(\''+type+'\',\''+startKey+'\',\''+endKey+'\')">Matelas <span style="font-size:11px;opacity:.8">('+fmtMin(matelasAvail)+')</span></button>':'';
+        const btnsRow=canMatelas
+          ?'<div style="display:flex;gap:8px">'+matelasBtn+'<button class="mb" style="flex:1" onclick="if(pendingKey)openDay(pendingKey);else closeModal()">Retour</button></div>'
+          :'<button class="mb wide" onclick="if(pendingKey)openDay(pendingKey);else closeModal()">Retour</button>';
+        document.getElementById('modal-root').innerHTML='<div class="overlay" style="z-index:400"><div class="sheet" style="max-height:260px"><div class="sh"></div>'
+          +'<div class="st" style="color:var(--rend-text)">Rendus insuffisants</div>'
+          +'<div class="ss" style="margin-bottom:16px">Il manque <b>'+fmtMin(deficit)+'</b> pour poser cette période.<br>Nécessaire : '+fmtMin(totalRend)+'</div>'
+          +btnsRow
+          +'</div></div>';
+        return;
+      }
     }
-
   }
 
   pushUndo();
