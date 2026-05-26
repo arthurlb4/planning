@@ -507,11 +507,13 @@ function renderVacList() {
       const total = calcDur(fmtTimeToHHMM(v.deb||''), fmtTimeToHHMM(v.fin||''));
       const pause = v.dur && total > v.dur ? fmtVacDur(total - v.dur) : '—';
       const chk = _selectedVacs.has(name) ? 'checked' : '';
+      const lbl = (v.label||name).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      const lblAttr = (v.label||name).replace(/&/g,'&amp;').replace(/"/g,'&quot;');
       const unlinkBtn = (inCycle && _vacActiveTab && _vacActiveTab !== 'none')
         ? `<button class="btn btn-sm btn-ghost" title="Retirer du cycle" onclick="event.stopPropagation();unlinkFromCycle('${name}')">−</button>`
         : '';
       return `<tr style="cursor:pointer" onclick="editVac('${name}')">
-        <td onclick="event.stopPropagation()"><input type="checkbox" class="vac-chk" ${chk} onchange="toggleVacSelect('${name}',this)"></td>
+        <td onclick="event.stopPropagation()" style="white-space:nowrap;padding-right:0"><input type="checkbox" class="vac-chk" data-vac="${name}" data-lbl="${lblAttr}" ${chk} onchange="toggleVacSelect('${name}',this)"><span onclick="selectByLabel('${lbl}')" title="Sélectionner même ligne" style="cursor:pointer;color:var(--text3);font-size:8px;padding:0 1px;vertical-align:middle">⇄</span></td>
         <td style="max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><b>${v.label||name}</b>${v.label&&v.label!==name?` <span style="font-size:10px;color:var(--text3)">(${name})</span>`:''}</td>
         <td style="font-size:11px">${v.deb||'—'}</td>
         <td style="font-size:11px">${v.fin||'—'}</td>
@@ -523,12 +525,14 @@ function renderVacList() {
       </tr>`;
     }).join('');
   }
-  const TH = '<thead><tr><th></th><th>Nom</th><th>Deb</th><th>Fin</th><th>Dur</th><th>Pau</th><th style="text-align:center">P</th><th style="text-align:center">M</th><th></th></tr></thead>';
-
   // Fixed column widths — nom gets explicit 70px so other columns don't get squeezed
-  const COLS = `<colgroup><col style="width:18px"><col style="width:70px"><col style="width:38px"><col style="width:38px"><col style="width:34px"><col style="width:30px"><col style="width:18px"><col style="width:18px"><col style="width:52px"></colgroup>`;
+  const COLS = `<colgroup><col style="width:30px"><col style="width:70px"><col style="width:38px"><col style="width:38px"><col style="width:34px"><col style="width:30px"><col style="width:18px"><col style="width:18px"><col style="width:52px"></colgroup>`;
   function makeTable(rows, inCycle) {
     if (!rows.length) return '<p style="color:var(--text3);font-size:11px">—</p>';
+    const names = rows.map(([n]) => n);
+    const namesJson = JSON.stringify(names);
+    const allChk = names.every(n => _selectedVacs.has(n)) ? 'checked' : '';
+    const TH = `<thead><tr><th style="white-space:nowrap"><input type="checkbox" class="vac-sec-all" ${allChk} onchange="toggleAllVacsInSection(this,${namesJson})"></th><th>Nom</th><th>Deb</th><th>Fin</th><th>Dur</th><th>Pau</th><th style="text-align:center">P</th><th style="text-align:center">M</th><th></th></tr></thead>`;
     return `<div class="table-scroll"><table style="width:100%;table-layout:fixed">${COLS}${TH}<tbody>${makeRows(rows, inCycle)}</tbody></table></div>`;
   }
 
@@ -665,6 +669,18 @@ function toggleVacSelect(name, cb) {
 function clearVacSel() {
   _selectedVacs.clear();
   document.querySelectorAll('.vac-chk').forEach(cb => cb.checked = false);
+  document.querySelectorAll('.vac-sec-all').forEach(cb => cb.checked = false);
+  renderSelBar();
+}
+function toggleAllVacsInSection(cb, names) {
+  names.forEach(name => { if (cb.checked) _selectedVacs.add(name); else _selectedVacs.delete(name); });
+  document.querySelectorAll('.vac-chk').forEach(el => { if (names.includes(el.dataset.vac)) el.checked = cb.checked; });
+  renderSelBar();
+}
+function selectByLabel(lbl) {
+  document.querySelectorAll('.vac-chk').forEach(el => {
+    if (el.dataset.lbl === lbl) { el.checked = true; _selectedVacs.add(el.dataset.vac); }
+  });
   renderSelBar();
 }
 function renderSelBar() {
