@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>Planning</title>
-<meta name="app-version" content="v4.80">
+<meta name="app-version" content="v4.81">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -502,7 +502,7 @@ body.modal-open .bloc.clk:hover,body.modal-open .ctr.clk:hover{background:var(--
 <div id="cyc-tooltip"></div>
 
 <script>
-var _appVer='v4.80';
+var _appVer='v4.81';
 var GCAL_CLIENT_ID='669191513748-a40uvl9k46kqsmjatpqokhnhgvrc7mdt.apps.googleusercontent.com';
 var GCAL_REDIRECT_URI='https://arthurlb4.github.io/planning/app/';
 var GCAL_SCOPE='https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events';
@@ -1625,27 +1625,50 @@ function logH(detail,color,key){
   if(S.history.length>8)S.history.pop();saveState();
 }
 function removeHistoryForKey(key){if(!S.history)return;S.history=S.history.filter(h=>h.key!==key);saveState();}
+function _rhMonthSections(keys,type){
+  // Group by month → by week-monday, build expandable month rows
+  const MC2=['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
+  const byMonth={};
+  keys.forEach(function(k){
+    const d=new Date(k+'T12:00:00'),ym=d.getFullYear()*12+d.getMonth();
+    if(!byMonth[ym])byMonth[ym]={ym,weeks:{}};
+    const mon=getMonday(d),mk=dk(mon);
+    if(!byMonth[ym].weeks[mk])byMonth[ym].weeks[mk]={mon,n:0,min:0};
+    byMonth[ym].weeks[mk].n++;
+    byMonth[ym].weeks[mk].min+=getDur(d);
+  });
+  const color=type==='cg'?'var(--green)':'var(--rend-text)';
+  return Object.keys(byMonth).map(Number).sort().map(function(ym,i){
+    const{weeks}=byMonth[ym];
+    const y=Math.floor(ym/12),m=ym%12;
+    const wks=Object.keys(weeks).sort().map(function(mk){
+      const{mon,n,min}=weeks[mk];
+      const val=type==='cg'?n+'j':fmtMin(min);
+      return '<div class="recap-row" style="padding-left:10px"><span style="color:var(--text3)">S'+isoWeek(mon)+' · '+mon.getDate()+' '+MC2[mon.getMonth()]+'</span><b style="color:'+color+'">'+val+'</b></div>';
+    }).join('');
+    const total=type==='cg'?Object.values(weeks).reduce((s,w)=>s+w.n,0)+'j':fmtMin(Object.values(weeks).reduce((s,w)=>s+w.min,0));
+    const uid='rhm-'+type+'-'+ym;
+    return '<div onclick="var x=document.getElementById(\''+uid+'\');x.style.display=x.style.display===\'block\'?\'none\':\'block\'" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding:3px 0">'
+      +'<span style="font-size:11px;color:var(--text2)">'+MC2[m]+' '+y+'</span>'
+      +'<b style="font-size:11px;color:'+color+'">'+total+'</b>'
+      +'</div>'
+      +'<div id="'+uid+'" style="display:none">'+wks+'</div>';
+  }).join('');
+}
 function renderHistoryDropdown(){
   const el=document.getElementById('dd-history-content');if(!el)return;
-  // RECAP
   const usedCurY=calcCongesUsedForYear(NOW.getFullYear());
-  const restCurY=Math.max(0,getSoldeAnnee(NOW.getFullYear())-usedCurY);
   const rendusMin=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='rend').reduce((s,k)=>s+getDur(new Date(k+'T12:00:00')),0);
-  const MC2=['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
   const cgKeys=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='cg').sort();
-  const byWeek={};
-  cgKeys.forEach(function(k){const d=new Date(k+'T12:00:00'),mon=getMonday(d),mk=dk(mon);if(!byWeek[mk]){byWeek[mk]={mon,n:0};}byWeek[mk].n++;});
-  const weekRows=Object.keys(byWeek).sort().map(function(mk){
-    const{mon,n}=byWeek[mk];
-    return '<div class="recap-row"><span style="color:var(--text3)">S'+isoWeek(mon)+' · '+mon.getDate()+' '+MC2[mon.getMonth()]+'</span><b style="color:var(--green)">'+n+'j</b></div>';
-  }).join('');
-  const recapHtml='<div style="padding-bottom:8px;margin-bottom:8px;border-bottom:0.5px solid var(--border2)">'
-    +'<div class="recap-row"><span>Congés '+NOW.getFullYear()+' posés</span><b style="color:var(--green)">'+usedCurY+' j</b></div>'
-    +'<div class="recap-row" style="margin-bottom:'+(weekRows?'6':'0')+'px"><span>Rendus posés</span><b style="color:var(--rend-text)">'+fmtMin(rendusMin)+'</b></div>'
-    +(weekRows||'')
-    +'</div>';
-  // HISTORY
-  const h=S.history||[];
+  const rdKeys=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='rend').sort();
+  const cgSections=_rhMonthSections(cgKeys,'cg')||'<div style="font-size:11px;color:var(--text3);padding:2px 0">Aucun congé.</div>';
+  const rdSections=_rhMonthSections(rdKeys,'rend')||'<div style="font-size:11px;color:var(--text3);padding:2px 0">Aucun rendu.</div>';
+  const recapHtml=
+    '<div class="recap-row"><span>Congés '+NOW.getFullYear()+' posés</span><b style="color:var(--green)">'+usedCurY+' j</b></div>'
+    +'<div style="margin-bottom:8px">'+cgSections+'</div>'
+    +'<div class="recap-row"><span>Rendus posés</span><b style="color:var(--rend-text)">'+fmtMin(rendusMin)+'</b></div>'
+    +'<div style="margin-bottom:8px;padding-bottom:8px;border-bottom:0.5px solid var(--border2)">'+rdSections+'</div>';
+  const h=(S.history||[]).slice(0,8);
   const histHtml=h.length
     ?h.map(e=>'<div class="hrow"><div class="hdot" style="background:'+e.c+'"></div><span class="htime">'+e.t+'</span><span class="hdesc">'+e.d+'</span></div>').join('')
     :'<span style="font-size:11px;color:var(--text3)">Aucune modification.</span>';
