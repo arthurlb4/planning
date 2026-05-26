@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>Planning</title>
-<meta name="app-version" content="v4.78">
+<meta name="app-version" content="v4.79">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -502,7 +502,7 @@ body.modal-open .bloc.clk:hover,body.modal-open .ctr.clk:hover{background:var(--
 <div id="cyc-tooltip"></div>
 
 <script>
-var _appVer='v4.78';
+var _appVer='v4.79';
 var GCAL_CLIENT_ID='669191513748-a40uvl9k46kqsmjatpqokhnhgvrc7mdt.apps.googleusercontent.com';
 var GCAL_REDIRECT_URI='https://arthurlb4.github.io/planning/app/';
 var GCAL_SCOPE='https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events';
@@ -1622,23 +1622,32 @@ function openRecapModal(){
 function renderHistory(){}// No side panel history — use modal
 function logH(detail,color,key){
   if(!S.history)S.history=[];S.history.unshift({t:nowHHMM(),d:detail,c:color,key});
-  if(S.history.length>30)S.history.pop();saveState();
+  if(S.history.length>8)S.history.pop();saveState();
 }
 function removeHistoryForKey(key){if(!S.history)return;S.history=S.history.filter(h=>h.key!==key);saveState();}
 function renderHistoryDropdown(){
   const el=document.getElementById('dd-history-content');if(!el)return;
+  // RECAP
   const usedCurY=calcCongesUsedForYear(NOW.getFullYear());
   const restCurY=Math.max(0,getSoldeAnnee(NOW.getFullYear())-usedCurY);
   const rendusMin=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='rend').reduce((s,k)=>s+getDur(new Date(k+'T12:00:00')),0);
-  const cs=calcSoldes();
-  const recapHtml='<div style="padding-bottom:8px;margin-bottom:8px;border-bottom:0.5px solid var(--border);cursor:pointer" onclick="document.querySelectorAll(\'.dropdown\').forEach(d=>d.style.display=\'none\');openRecapModal()">'
-    +'<div class="recap-row"><span>Congés '+NOW.getFullYear()+'</span><b style="color:var(--green)">'+restCurY+' j</b></div>'
-    +'<div class="recap-row"><span>Rendus posés</span><b style="color:var(--rend-text)">'+fmtMin(rendusMin)+'</b></div>'
-    +'<div class="recap-row"><span>Éphem. dispo</span><b style="color:var(--blue)">'+fmtMin(cs.totalReal)+'</b></div>'
+  const MC2=['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
+  const cgKeys=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='cg').sort();
+  const byWeek={};
+  cgKeys.forEach(function(k){const d=new Date(k+'T12:00:00'),mon=getMonday(d),mk=dk(mon);if(!byWeek[mk]){byWeek[mk]={mon,n:0};}byWeek[mk].n++;});
+  const weekRows=Object.keys(byWeek).sort().map(function(mk){
+    const{mon,n}=byWeek[mk];
+    return '<div class="recap-row"><span style="color:var(--text3)">S'+isoWeek(mon)+' · '+mon.getDate()+' '+MC2[mon.getMonth()]+'</span><b style="color:var(--green)">'+n+'j</b></div>';
+  }).join('');
+  const recapHtml='<div style="padding-bottom:8px;margin-bottom:8px;border-bottom:0.5px solid var(--border2)">'
+    +'<div class="recap-row"><span>Congés '+NOW.getFullYear()+' restants</span><b style="color:var(--green)">'+restCurY+' j</b></div>'
+    +'<div class="recap-row" style="margin-bottom:'+(weekRows?'6':'0')+'px"><span>Rendus posés</span><b style="color:var(--rend-text)">'+fmtMin(rendusMin)+'</b></div>'
+    +(weekRows||'')
     +'</div>';
+  // HISTORY
   const h=S.history||[];
   const histHtml=h.length
-    ?h.slice(0,15).map(e=>'<div class="hrow"><div class="hdot" style="background:'+e.c+'"></div><span class="htime">'+e.t+'</span><span class="hdesc">'+e.d+'</span></div>').join('')
+    ?h.map(e=>'<div class="hrow"><div class="hdot" style="background:'+e.c+'"></div><span class="htime">'+e.t+'</span><span class="hdesc">'+e.d+'</span></div>').join('')
     :'<span style="font-size:11px;color:var(--text3)">Aucune modification.</span>';
   el.innerHTML='<div class="dd-title">Récapitulatif</div>'+recapHtml+'<div class="dd-title">Historique</div>'+histHtml;
 }
