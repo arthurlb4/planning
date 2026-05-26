@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>Planning</title>
-<meta name="app-version" content="v4.77">
+<meta name="app-version" content="v4.78">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -502,7 +502,7 @@ body.modal-open .bloc.clk:hover,body.modal-open .ctr.clk:hover{background:var(--
 <div id="cyc-tooltip"></div>
 
 <script>
-var _appVer='v4.77';
+var _appVer='v4.78';
 var GCAL_CLIENT_ID='669191513748-a40uvl9k46kqsmjatpqokhnhgvrc7mdt.apps.googleusercontent.com';
 var GCAL_REDIRECT_URI='https://arthurlb4.github.io/planning/app/';
 var GCAL_SCOPE='https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events';
@@ -1346,7 +1346,7 @@ function renderMonth(el_heads,el_cal){
   }
   // Don't add trailing empty cells
   const todayMon=dk(getMonday(NOW));let html='';
-  for(let r=0;r<cells.length/7;r++){
+  for(let r=0;r<Math.ceil(cells.length/7);r++){
     const row=cells.slice(r*7,(r+1)*7),firstReal=row.find(x=>x&&x.date);
     const wn=firstReal?isoWeek(firstReal.date):'';
     const rowMon=firstReal?dk(getMonday(firstReal.date)):'';
@@ -1627,11 +1627,20 @@ function logH(detail,color,key){
 function removeHistoryForKey(key){if(!S.history)return;S.history=S.history.filter(h=>h.key!==key);saveState();}
 function renderHistoryDropdown(){
   const el=document.getElementById('dd-history-content');if(!el)return;
+  const usedCurY=calcCongesUsedForYear(NOW.getFullYear());
+  const restCurY=Math.max(0,getSoldeAnnee(NOW.getFullYear())-usedCurY);
+  const rendusMin=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='rend').reduce((s,k)=>s+getDur(new Date(k+'T12:00:00')),0);
+  const cs=calcSoldes();
+  const recapHtml='<div style="padding-bottom:8px;margin-bottom:8px;border-bottom:0.5px solid var(--border);cursor:pointer" onclick="document.querySelectorAll(\'.dropdown\').forEach(d=>d.style.display=\'none\');openRecapModal()">'
+    +'<div class="recap-row"><span>Congés '+NOW.getFullYear()+'</span><b style="color:var(--green)">'+restCurY+' j</b></div>'
+    +'<div class="recap-row"><span>Rendus posés</span><b style="color:var(--rend-text)">'+fmtMin(rendusMin)+'</b></div>'
+    +'<div class="recap-row"><span>Éphem. dispo</span><b style="color:var(--blue)">'+fmtMin(cs.totalReal)+'</b></div>'
+    +'</div>';
   const h=S.history||[];
-  const html=h.length
+  const histHtml=h.length
     ?h.slice(0,15).map(e=>'<div class="hrow"><div class="hdot" style="background:'+e.c+'"></div><span class="htime">'+e.t+'</span><span class="hdesc">'+e.d+'</span></div>').join('')
     :'<span style="font-size:11px;color:var(--text3)">Aucune modification.</span>';
-  el.innerHTML='<div class="dd-title">Historique</div>'+html;
+  el.innerHTML='<div class="dd-title">Récapitulatif</div>'+recapHtml+'<div class="dd-title">Historique</div>'+histHtml;
 }
 function openHistoryModal(){
   const h=S.history||[];
