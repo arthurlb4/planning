@@ -939,7 +939,8 @@ function calcSoldes(){
   Object.keys(gen).forEach(ymStr=>{const ym=Number(ymStr),total=Object.values(gen[ym]).reduce((s,v)=>s+v,0),expYm=getExpYm(ym);if(ym>TODAY_YM){prevEph[ym]=total;return;}realEph[ym]=expYm<=TODAY_YM?0:total;});
   // FIFO: deduct all rendus (past AND future) from combined stock (realEph + prevEph)
   {
-    const _rendKeys=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='rend').sort();
+    const _mK=new Set(Object.keys(S.matelasKeys||{}));
+    const _rendKeys=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='rend'&&!_mK.has(k)).sort();
     // Build combined simulation: realEph + prevEph
     const _sim={};
     Object.keys(realEph).forEach(function(ym){_sim[ym]=realEph[ym];});
@@ -1297,7 +1298,8 @@ function renderMonth(el_heads,el_cal){
     const _stk={};
     Object.keys(_cs2.realAvail).map(Number).sort().forEach(function(ym){_stk[ym]=_cs2.realAvail[ym];});
     Object.keys(_cs2.prevEph).map(Number).sort().forEach(function(ym){_stk[ym]=(_stk[ym]||0)+(_cs2.prevEph[ym]||0);});
-    const _rks=Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='rend';}).sort();
+    const _mK2=new Set(Object.keys(S.matelasKeys||{}));
+    const _rks=Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='rend'&&!_mK2.has(k);}).sort();
     _rks.forEach(function(k){
       const _d=new Date(k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth(),_dur=getDur(_d);
       let _lft=_dur;
@@ -1780,6 +1782,22 @@ function openDay(key){
   vgHtml+='</div>';
 
 
+  var _inMatelas=!!(S.matelasKeys&&S.matelasKeys[key]!==undefined);
+  var _matelasAvail=(S.profile&&S.profile.matelas)||0;
+  var _isWarnedRend=false;
+  if(hasCg==='rend'&&!_inMatelas){
+    var _stk2={};
+    Object.keys(cs.realAvail).map(Number).sort().forEach(function(ym){_stk2[ym]=cs.realAvail[ym];});
+    Object.keys(cs.prevEph).map(Number).sort().forEach(function(ym){_stk2[ym]=(_stk2[ym]||0)+cs.prevEph[ym];});
+    var _rks2=Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='rend'&&!(S.matelasKeys&&S.matelasKeys[k]);}).sort();
+    for(var _ri=0;_ri<_rks2.length;_ri++){
+      var _rk=_rks2[_ri];
+      var _rd=new Date(_rk+'T12:00:00'),_rpym=_rd.getFullYear()*12+_rd.getMonth(),_rdur=getDur(_rd);
+      var _rlft=_rdur;
+      Object.keys(_stk2).map(Number).sort().forEach(function(_ym){if(_rlft<=0||_stk2[_ym]<=0||getExpYm(_ym)<_rpym)return;var _rtk=Math.min(_stk2[_ym],_rlft);_stk2[_ym]-=_rtk;_rlft-=_rtk;});
+      if(_rk===key){_isWarnedRend=_rlft>0;break;}
+    }
+  }
   var ah='';
   if((vac&&vac!=='RH'&&!absent)&&!hasCg){
     ah=`<div class="mbtns" style="grid-template-columns:repeat(4,1fr)">
@@ -1789,7 +1807,11 @@ function openDay(key){
       <button class="mb" style="background:var(--bg3);color:var(--text)" onclick="openPoseModal('absent')">Absent</button>
     </div>`;
   } else if(vac&&vac!=='RH'&&!absent&&hasCg){
-    ah=`<div class="mbtns"><button class="mb del wide" style="border:none" onclick="removeCongé()">Retirer</button></div>`;
+    if(_isWarnedRend&&_matelasAvail>0){
+      ah=`<div class="mbtns" style="grid-template-columns:1fr 1fr"><button class="mb del" style="border:none" onclick="removeCongé()">Retirer</button><button class="mb" style="background:rgba(220,160,30,.18);color:var(--amber);border-color:transparent" onclick="useMatelasForDay()">Matelas <span style="font-size:10px;opacity:.7">(${fmtMin(_matelasAvail)})</span></button></div>`;
+    } else {
+      ah=`<div class="mbtns"><button class="mb del wide" style="border:none" onclick="removeCongé()">Retirer</button></div>`;
+    }
   }
 
   document.getElementById('modal-root').innerHTML=`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="sh"></div><div class="st">${lbl}${tt?' - '+tt:''}</div>${vac&&vac!=='RH'&&!absent&&VAC[vac]?`<div class="ss">${VAC[vac].deb}→${VAC[vac].fin} · ${fmtMin(dur)}</div>`:''}${vgHtml}<div style="height:0.5px;background:var(--border);margin:16px 0;opacity:.5"></div>${ah}${echange?`<button class="mb del wide" style="font-size:11px;padding:8px;margin-bottom:4px" onclick="cancelExchange('${key}')">Annuler l'échange</button>`:ov?`<button class="mb wide ghost" style="font-size:11px;padding:8px;margin-bottom:4px" onclick="resetVac()">Remettre le cycle (${cycleVac?vLbl(cycleVac,VAC):'repos'})</button>`:''}<button class="mcancel" onclick="closeModal()">Fermer</button></div></div>`;
@@ -1850,6 +1872,53 @@ function poseConge(t){pushUndo();var date=new Date(pendingKey+'T12:00:00');if(!S
   var stored=t;
   if(t==='rend'){const createdYM=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:2026*12;const dateYM=date.getFullYear()*12+date.getMonth();if(dateYM<createdYM)stored='rend-hist';}
   S.conges[pendingKey]=stored;logH(fmtDate(date)+' -> '+(t==='cg'?'congé':stored==='rend-hist'?'rendu hist. '+fmtMin(getDur(date)):'rendu '+fmtMin(getDur(date))),t==='cg'?'#6a9878':'#88b862',pendingKey);saveState();closeModal();render();popCell(pendingKey);}
+function useMatelasForDay(){
+  var key=pendingKey;if(!key||!S.conges||S.conges[key]!=='rend')return;
+  var date=new Date(key+'T12:00:00'),dur=getDur(date);
+  var cs=calcSoldes();
+  var _stk={};
+  Object.keys(cs.realAvail).map(Number).sort().forEach(function(ym){_stk[ym]=cs.realAvail[ym];});
+  Object.keys(cs.prevEph).map(Number).sort().forEach(function(ym){_stk[ym]=(_stk[ym]||0)+cs.prevEph[ym];});
+  var _rks=Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='rend'&&!(S.matelasKeys&&S.matelasKeys[k]);}).sort();
+  var shortfall=dur;
+  for(var i=0;i<_rks.length;i++){
+    var k=_rks[i];
+    var _d=new Date(k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth(),_dur2=getDur(_d);
+    var _lft=_dur2;
+    Object.keys(_stk).map(Number).sort().forEach(function(_ym){if(_lft<=0||_stk[_ym]<=0||getExpYm(_ym)<_pym)return;var _tk=Math.min(_stk[_ym],_lft);_stk[_ym]-=_tk;_lft-=_tk;});
+    if(k===key){shortfall=_lft;break;}
+  }
+  if(shortfall<=0)return;
+  var avail=(S.profile&&S.profile.matelas)||0;if(avail<=0)return;
+  pushUndo();
+  if(!S.matelasKeys)S.matelasKeys={};
+  S.matelasKeys[key]=Math.min(shortfall,avail);
+  if(!S.profile)S.profile={};
+  S.profile.matelas=avail-Math.min(shortfall,avail);
+  saveState();closeModal();render();
+}
+function rebalanceMatelasKeys(){
+  if(!S.matelasKeys||Object.keys(S.matelasKeys).length===0)return;
+  var _saved=Object.assign({},S.matelasKeys);
+  S.matelasKeys={};
+  var _cs=calcSoldes();
+  var _stk={};
+  Object.keys(_cs.realAvail).map(Number).sort().forEach(function(ym){_stk[ym]=_cs.realAvail[ym];});
+  Object.keys(_cs.prevEph).map(Number).sort().forEach(function(ym){_stk[ym]=(_stk[ym]||0)+_cs.prevEph[ym];});
+  var _rks=Object.keys(S.conges||{}).filter(function(k){return (S.conges||{})[k]==='rend';}).sort();
+  var _warned=new Set();
+  _rks.forEach(function(k){
+    var _d=new Date(k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth(),_dur=getDur(_d);
+    var _lft=_dur;
+    Object.keys(_stk).map(Number).sort().forEach(function(_ym){if(_lft<=0||_stk[_ym]<=0||getExpYm(_ym)<_pym)return;var _tk=Math.min(_stk[_ym],_lft);_stk[_ym]-=_tk;_lft-=_tk;});
+    if(_lft>0)_warned.add(k);
+  });
+  S.matelasKeys={};
+  Object.keys(_saved).forEach(function(k){
+    if((S.conges||{})[k]==='rend'&&_warned.has(k)){S.matelasKeys[k]=_saved[k];}
+    else{if(!S.profile)S.profile={};S.profile.matelas=(S.profile.matelas||0)+_saved[k];}
+  });
+}
 function removeCongé(){
   const key=pendingKey;
   if(!S.conges||!key)return;
@@ -1890,6 +1959,7 @@ function removeCongé(){
     delete _stored2[k]; // clear stored IDs so sync re-creates correctly
   });
   localStorage.setItem('gcal_event_ids_'+_pid2,JSON.stringify(_stored2));
+  rebalanceMatelasKeys();
   saveState();closeModal();render();popCell(key);
   gcalTrigger();
 }
