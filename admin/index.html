@@ -169,7 +169,8 @@ textarea{width:100%;padding:9px 12px;background:var(--bg);border:0.5px solid var
 <!-- Vacation form modal -->
 <div id="vac-modal-bg" class="modal-bg" style="display:none" onclick="if(event.target===this)closeVacForm()">
   <div class="modal modal-wide" id="vac-form" style="max-height:90vh;overflow-y:auto">
-    <h2 style="font-size:15px;margin-bottom:16px" id="vac-form-title">Nouvelle vacation</h2>
+    <h2 style="font-size:15px;margin-bottom:12px" id="vac-form-title">Nouvelle vacation</h2>
+    <div id="vf-shared-banner" style="display:none;background:var(--amber-bg,#fff8e6);border:1px solid var(--amber,#f59e0b);border-radius:var(--r);padding:9px 12px;margin-bottom:12px;font-size:12px;line-height:1.5"></div>
 
     <!-- Row 1 : identité -->
     <div class="row">
@@ -219,14 +220,17 @@ textarea{width:100%;padding:9px 12px;background:var(--bg);border:0.5px solid var
 
     <!-- Cycles -->
     <div class="field" id="vf-cycles-field" style="display:none;margin-top:12px">
-      <label>Cycles</label>
-      <div id="vf-cycles" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px"></div>
+      <label style="display:flex;flex-direction:column;gap:1px">
+        <span>Cycles rattachés</span>
+        <span style="font-weight:400;font-size:10px;color:var(--text3)">Cocher = lier · Décocher = délier (sans modifier les autres cycles)</span>
+      </label>
+      <div id="vf-cycles" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px"></div>
     </div>
 
     <!-- Actions -->
     <div style="display:flex;gap:8px;margin-top:14px">
       <button class="btn btn-green" style="flex:2" onclick="saveVac()">Enregistrer</button>
-      <button class="btn btn-ghost" id="vf-dup-btn" style="display:none;flex:1" onclick="duplicateVac()">Dupliquer</button>
+      <button class="btn btn-ghost" id="vf-dup-btn" style="display:none;flex:1" onclick="duplicateVac()" title="Crée une nouvelle vacation indépendante basée sur celle-ci">Copier comme nouvelle</button>
       <button class="btn btn-ghost" style="flex:1" onclick="closeVacForm()">Annuler</button>
     </div>
     <div class="err" id="vf-err" style="margin-top:8px"></div>
@@ -991,12 +995,25 @@ function showVacForm(name, v) {
   [1,2,3,4,5].forEach(d => { document.getElementById('vf-day-'+d).checked = !_days.length || _days.includes(d); });
   updateVfDaysVisibility();
   document.getElementById('vf-err').textContent = '';
+  // Shared-cycle banner
+  const banner = document.getElementById('vf-shared-banner');
+  const linked = v ? (v.cycleIds || []) : [];
+  const sharedWith = name ? linked.filter(id => id !== _vacActiveTab) : [];
+  if (sharedWith.length) {
+    const sharedNames = sharedWith.map(id => { const c = _allCycles.find(c => c.id === id); return `<b>${c?.name || id}</b>`; }).join(', ');
+    const curName = _allCycles.find(c => c.id === _vacActiveTab)?.name || '';
+    banner.style.display = 'block';
+    banner.innerHTML = `⚠️ Cette vacation est aussi rattachée à ${sharedNames}.<br>`
+      + `<span style="color:var(--text2)">Enregistrer modifiera tous ces cycles. Pour n'affecter que ${curName ? '<b>'+curName+'</b>' : 'ce cycle'}, cliquez <b>Copier comme nouvelle</b> ou utilisez l'option au moment de sauvegarder.</span>`;
+  } else {
+    banner.style.display = 'none';
+    banner.innerHTML = '';
+  }
   // Cycle membership checkboxes (only when editing an existing vacation)
   const cycField = document.getElementById('vf-cycles-field');
   const cycDiv = document.getElementById('vf-cycles');
   if (name && _allCycles.length) {
     cycField.style.display = 'block';
-    const linked = v ? (v.cycleIds || []) : [];
     cycDiv.innerHTML = _allCycles.map(c =>
       `<label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer;white-space:nowrap">
         <input type="checkbox" data-cyc="${c.id}" ${linked.includes(c.id)?'checked':''}> ${c.name||c.id}
@@ -1018,7 +1035,7 @@ function duplicateVac() {
   showVacForm(null, { ...src, label: src.label || srcName });
   document.getElementById('vf-name').disabled = false;
   document.getElementById('vf-name').value = incrementVacCode(srcName);
-  document.getElementById('vac-form-title').textContent = 'Dupliquer — vérifiez le code';
+  document.getElementById('vac-form-title').textContent = 'Copier comme nouvelle vacation — vérifiez le code';
 }
 
 async function saveVac() {
