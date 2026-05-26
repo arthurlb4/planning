@@ -812,7 +812,7 @@ function calcHSWeek(monday){
   for(let i=0;i<7;i++){const d=new Date(monday);d.setDate(monday.getDate()+i);const key=dk(d);const{vac,absent,echange,ecSelf,cycleVac}=getVac(d);if(absent)continue;const _cg=(S.conges||{})[key];
     // Vacation posée (cg, rend, absent) ne contribue pas aux HS ni aux rendus
     // En semaine ramenée, les 7h fixes sont un bonus forfaitaire indépendant du weekWorked
-    if(_cg&&(_cg==='cg'||_cg==='rend'||_cg==='absent'))continue;
+    if(_cg&&(_cg==='cg'||_cg==='rend'||_cg==='rend-hist'||_cg==='absent'))continue;
     if(echange){
       const _ecOv=(S.overrides||{})[key];
       const _hsFlag=_ecOv&&_ecOv.hs;
@@ -910,7 +910,7 @@ function buildGen(){
     const ym=y*12+m;if(ym<createdYM||ym>TODAY_YM&&ym>maxYMDisplay)continue;
     const last=new Date(y,m+1,0).getDate();
     for(let d=1;d<=last;d++){const date=new Date(y,m,d),key=dk(date);const v2e=getVac(date);const{vac,absent,echange,ecSelf}=v2e;if(!vac||vac==='RH'||absent)continue;if(echange&&!ecSelf)continue;// ec2: I give away, no rendu for me
-const cKey=(S.conges||{})[key];if(cKey==='rend'||cKey==='cg'||cKey==='absent')continue;// vacation posée: pas de rendu dim/fer/RH
+const cKey=(S.conges||{})[key];if(cKey==='rend'||cKey==='rend-hist'||cKey==='cg'||cKey==='absent')continue;// vacation posée: pas de rendu dim/fer/RH
 const dur=VAC[vac]?VAC[vac].dur:0;
       const isFer2=FERIES.has(key),isDim2=date.getDay()===0,isRH2=isRHDay(date);
       const sett2b=settingsForYM(ym);
@@ -1163,7 +1163,7 @@ function getState(date){
   }
   if(FERIES.has(key)){
     if(c==='cg')return'cg-fer';
-    if(c==='rend')return'rend-fer';
+    if(c==='rend'||c==='rend-hist')return'rend-fer';
     if(absent)return'absent-fer';
     if(!ecSelf&&echange)return'ec2-fer';
     if(vac&&vac!=='RH')return fromSV?'sv-vac-fer':(tvSlot(vac)+'-fer');
@@ -1174,7 +1174,7 @@ function getState(date){
     return(_ovr&&_ovr.fromSV&&!_ovr.echange)?'sv-ov':'sv';
   }
   if(vac==='RH')return'rh';
-  if(c==='cg')return'cg';if(c==='rend')return'rend';
+  if(c==='cg')return'cg';if(c==='rend'||c==='rend-hist')return'rend';
   if(ov&&!fromSV&&vac&&vac!=='RH')return FERIES.has(key)?'tv-ov-fer':'tv-ov';
   return fromSV?'sv-vac':tvSlot(vac);
 }
@@ -1868,7 +1868,10 @@ function resetVac(){pushUndo();var _pk=pendingKey;removeHistoryForKey(_pk);if(!S
 function setAbsent(){pushUndo();var date=new Date(pendingKey+'T12:00:00');if(!S.overrides)S.overrides={};S.overrides[pendingKey]={absent:true};if(!S.conges)S.conges={};S.conges[pendingKey]='absent';logH(fmtDate(date)+' -> absent','#c88048',pendingKey);saveState();closeModal();render();gcalTrigger();}
 function resetAbsent(){pushUndo();removeHistoryForKey(pendingKey);if(!S.overrides)S.overrides={};delete S.overrides[pendingKey];if(!S.conges)S.conges={};delete S.conges[pendingKey];saveState();closeModal();render();gcalTrigger();}
 function popCell(key){var el=document.querySelector('.dci[data-key="'+key+'"]');if(el){el.classList.add('pop');el.addEventListener('animationend',function(){el.classList.remove('pop');},{once:true});}}
-function poseConge(t){pushUndo();var date=new Date(pendingKey+'T12:00:00');if(!S.conges)S.conges={};S.conges[pendingKey]=t;logH(fmtDate(date)+' -> '+(t==='cg'?'congé':'rendu '+fmtMin(getDur(date))),t==='cg'?'#6a9878':'#88b862',pendingKey);saveState();closeModal();render();popCell(pendingKey);}
+function poseConge(t){pushUndo();var date=new Date(pendingKey+'T12:00:00');if(!S.conges)S.conges={};
+  var stored=t;
+  if(t==='rend'){const createdYM=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:2026*12;const dateYM=date.getFullYear()*12+date.getMonth();if(dateYM<createdYM)stored='rend-hist';}
+  S.conges[pendingKey]=stored;logH(fmtDate(date)+' -> '+(t==='cg'?'congé':stored==='rend-hist'?'rendu hist. '+fmtMin(getDur(date)):'rendu '+fmtMin(getDur(date))),t==='cg'?'#6a9878':'#88b862',pendingKey);saveState();closeModal();render();popCell(pendingKey);}
 function removeCongé(){
   const key=pendingKey;
   if(!S.conges||!key)return;
