@@ -678,30 +678,56 @@ function renderSelBar() {
 }
 
 function showBulkModal() {
-  const sel = `style="width:100%;padding:8px;border:0.5px solid var(--border);border-radius:var(--r);background:var(--bg);color:var(--text);font-size:13px"`;
+  const sSel = `style="width:auto;padding:5px 8px;border:0.5px solid var(--border);border-radius:var(--r);background:var(--bg);color:var(--text);font-size:13px"`;
   const noChange = `<option value="">— Inchangé</option>`;
-  const cycleRows = _allCycles.map(c => `
-    <div style="display:flex;align-items:center;gap:8px;margin:4px 0">
-      <select data-bulkcyc="${c.id}" ${sel} style="width:auto;padding:5px 8px">
-        ${noChange}<option value="add">+ Ajouter</option><option value="remove">− Retirer</option>
-      </select>
-      <span style="font-size:13px">${c.name||c.id}</span>
-    </div>`).join('');
+  const yesNo = noChange + `<option value="1">✓ Oui</option><option value="0">✗ Non</option>`;
+  const lbl = `style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"`;
+  const secLbl = `style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin-bottom:6px"`;
+  const sep = `<div style="width:1px;background:var(--border);align-self:stretch;margin:0 4px"></div>`;
+  const fieldInline = `style="display:flex;flex-direction:column;gap:3px"`;
+
+  const cycleRows = _allCycles.length ? `
+    <div class="field" style="margin-bottom:16px">
+      <label>Cycles</label>
+      <div style="display:flex;flex-direction:column;gap:4px;margin-top:4px">
+        ${_allCycles.map(c => `
+          <div style="display:flex;align-items:center;gap:8px">
+            <select data-bulkcyc="${c.id}" ${sSel}>
+              ${noChange}<option value="add">+ Ajouter</option><option value="remove">− Retirer</option>
+            </select>
+            <span style="font-size:13px">${c.name||c.id}</span>
+          </div>`).join('')}
+      </div>
+    </div>` : '';
+
   document.getElementById('modal-content').innerHTML = `
-    <h2>Modifier ${_selectedVacs.size} vacation(s)</h2>
-    ${_allCycles.length ? `<div class="field"><label>Cycles</label>${cycleRows}</div>` : ''}
-    <div class="row">
-      <div class="flex1 field"><label>Panier repas</label>
-        <select id="bulk-panier" ${sel}>${noChange}<option value="1">✓ Oui</option><option value="0">✗ Non</option></select>
+    <h2 style="font-size:15px;margin-bottom:16px">Modifier ${_selectedVacs.size} vacation(s)</h2>
+    ${cycleRows}
+    <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start;background:var(--bg3);border-radius:var(--r);padding:10px 14px;margin-bottom:16px">
+      <div>
+        <div ${secLbl}>Type jour</div>
+        <div style="display:flex;gap:14px">
+          <label ${lbl}><input type="checkbox" id="bulk-type-week"> Semaine</label>
+          <label ${lbl}><input type="checkbox" id="bulk-type-sat"> Samedi</label>
+          <label ${lbl}><input type="checkbox" id="bulk-type-sun"> Dimanche</label>
+        </div>
+        <div style="font-size:10px;color:var(--text3);margin-top:5px">Non coché = inchangé</div>
       </div>
-      <div class="flex1 field"><label>Mixte</label>
-        <select id="bulk-mixte" ${sel}>${noChange}<option value="1">✓ Oui</option><option value="0">✗ Non</option></select>
+      ${sep}
+      <div>
+        <div ${secLbl}>Options</div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap">
+          <div ${fieldInline}><span style="font-size:11px;color:var(--text3)">Panier</span><select id="bulk-panier" ${sSel}>${yesNo}</select></div>
+          <div ${fieldInline}><span style="font-size:11px;color:var(--text3)">Mixte</span><select id="bulk-mixte" ${sSel}>${yesNo}</select></div>
+        </div>
       </div>
-      <div class="flex1 field"><label>Type jour</label>
-        <div style="display:flex;flex-direction:column;gap:5px;padding-top:4px">
-          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" id="bulk-type-week"> Semaine</label>
-          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" id="bulk-type-sat"> Samedi</label>
-          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" id="bulk-type-sun"> Dimanche</label>
+      ${sep}
+      <div>
+        <div ${secLbl}>Primes</div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap">
+          <div ${fieldInline}><span style="font-size:11px;color:var(--text3)">Antenne</span><select id="bulk-prime-antenne" ${sSel}>${yesNo}</select></div>
+          <div ${fieldInline}><span style="font-size:11px;color:var(--text3)">Réal</span><select id="bulk-prime-reel" ${sSel}>${yesNo}</select></div>
+          <div ${fieldInline}><span style="font-size:11px;color:var(--text3)">Coord</span><select id="bulk-prime-coord" ${sSel}>${yesNo}</select></div>
         </div>
       </div>
     </div>
@@ -715,27 +741,38 @@ function showBulkModal() {
 async function applyBulkEdit() {
   const panier = document.getElementById('bulk-panier').value;
   const mixte  = document.getElementById('bulk-mixte').value;
+  const primeAntenne = document.getElementById('bulk-prime-antenne').value;
+  const primeReel    = document.getElementById('bulk-prime-reel').value;
+  const primeCoord   = document.getElementById('bulk-prime-coord').value;
   const bulkTypeChecks = ['week','sat','sun'].filter(t => document.getElementById('bulk-type-'+t).checked);
   const type = bulkTypeChecks.length > 0 ? bulkTypeChecks.join(',') : '';
   const cycleChanges = [...document.querySelectorAll('[data-bulkcyc]')]
     .map(s => ({ cycleId: s.dataset.bulkcyc, action: s.value }))
     .filter(c => c.action);
   const names = [..._selectedVacs];
-  const saveAttrs = panier !== '' || mixte !== '' || type !== '';
+  const hasPrimeChange = primeAntenne !== '' || primeReel !== '' || primeCoord !== '';
+  const saveAttrs = panier !== '' || mixte !== '' || type !== '' || hasPrimeChange;
   try {
     // Sequential to avoid KV race conditions (parallel writes overwrite each other)
     for (const name of names) {
       const v = _allVacs[name] || {};
       if (saveAttrs) {
+        const curPrimes = v.primes || { antenne: false, reel: false, coord: false };
         const updated = { ...v, name,
           ...(panier !== '' ? { panier: panier === '1' } : {}),
           ...(mixte  !== '' ? { mixte:  mixte  === '1' } : {}),
           ...(type   !== '' ? { type } : {}),
+          ...(hasPrimeChange ? { primes: {
+            antenne: primeAntenne !== '' ? primeAntenne === '1' : !!curPrimes.antenne,
+            reel:    primeReel    !== '' ? primeReel    === '1' : !!curPrimes.reel,
+            coord:   primeCoord   !== '' ? primeCoord   === '1' : !!curPrimes.coord,
+          }} : {}),
         };
         await fetch(API + '/admin/vacation/save', { method:'POST', headers:adminHeaders(), body:JSON.stringify({vacation:updated}) });
         if (panier !== '') _allVacs[name].panier = panier === '1';
         if (mixte  !== '') _allVacs[name].mixte  = mixte  === '1';
         if (type   !== '') _allVacs[name].type   = type;
+        if (hasPrimeChange) _allVacs[name].primes = updated.primes;
       }
       for (const { cycleId, action } of cycleChanges) {
         const ep = action === 'add' ? '/admin/vacation/addcycle' : '/admin/vacation/removecycle';
