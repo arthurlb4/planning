@@ -1871,30 +1871,28 @@ function popCell(key){var el=document.querySelector('.dci[data-key="'+key+'"]');
 function poseConge(t){pushUndo();var date=new Date(pendingKey+'T12:00:00');if(!S.conges)S.conges={};
   var stored=t;
   if(t==='rend'){const createdYM=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:2026*12;const dateYM=date.getFullYear()*12+date.getMonth();if(dateYM<createdYM)stored='rend-hist';}
-  S.conges[pendingKey]=stored;logH(fmtDate(date)+' -> '+(t==='cg'?'congé':stored==='rend-hist'?'rendu hist. '+fmtMin(getDur(date)):'rendu '+fmtMin(getDur(date))),t==='cg'?'#6a9878':'#88b862',pendingKey);saveState();closeModal();render();popCell(pendingKey);}
+  S.conges[pendingKey]=stored;logH(fmtDate(date)+' -> '+(t==='cg'?'congé':stored==='rend-hist'?'rendu hist. '+fmtMin(getDur(date)):'rendu '+fmtMin(getDur(date))),t==='cg'?'#6a9878':'#88b862',pendingKey);
+  saveState();closeModal();render();popCell(pendingKey);}
+function _autoMatelasKey(key){
+  var _avail=(S.profile&&S.profile.matelas)||0;if(_avail<=0)return;
+  if(S.matelasKeys&&S.matelasKeys[key]!==undefined)return;
+  var _cs=calcSoldes();
+  var _stk={};
+  Object.keys(_cs.realAvail).map(Number).sort().forEach(function(ym){_stk[ym]=_cs.realAvail[ym];});
+  Object.keys(_cs.prevEph).map(Number).sort().forEach(function(ym){_stk[ym]=(_stk[ym]||0)+_cs.prevEph[ym];});
+  var _rks=Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='rend'&&!(S.matelasKeys&&S.matelasKeys[k]);}).sort();
+  for(var _i=0;_i<_rks.length;_i++){
+    var _k=_rks[_i];
+    var _d=new Date(_k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth(),_kdur=getDur(_d);
+    var _lft=_kdur;
+    Object.keys(_stk).map(Number).sort().forEach(function(_ym){if(_lft<=0||_stk[_ym]<=0||getExpYm(_ym)<_pym)return;var _tk=Math.min(_stk[_ym],_lft);_stk[_ym]-=_tk;_lft-=_tk;});
+    if(_k===key){if(_lft>0){var _use=Math.min(_lft,_avail);if(!S.matelasKeys)S.matelasKeys={};S.matelasKeys[key]=_use;S.profile.matelas=_avail-_use;}break;}
+  }
+}
 function useMatelasForDay(){
   var key=pendingKey;if(!key||!S.conges||S.conges[key]!=='rend')return;
-  var date=new Date(key+'T12:00:00'),dur=getDur(date);
-  var cs=calcSoldes();
-  var _stk={};
-  Object.keys(cs.realAvail).map(Number).sort().forEach(function(ym){_stk[ym]=cs.realAvail[ym];});
-  Object.keys(cs.prevEph).map(Number).sort().forEach(function(ym){_stk[ym]=(_stk[ym]||0)+cs.prevEph[ym];});
-  var _rks=Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='rend'&&!(S.matelasKeys&&S.matelasKeys[k]);}).sort();
-  var shortfall=dur;
-  for(var i=0;i<_rks.length;i++){
-    var k=_rks[i];
-    var _d=new Date(k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth(),_dur2=getDur(_d);
-    var _lft=_dur2;
-    Object.keys(_stk).map(Number).sort().forEach(function(_ym){if(_lft<=0||_stk[_ym]<=0||getExpYm(_ym)<_pym)return;var _tk=Math.min(_stk[_ym],_lft);_stk[_ym]-=_tk;_lft-=_tk;});
-    if(k===key){shortfall=_lft;break;}
-  }
-  if(shortfall<=0)return;
-  var avail=(S.profile&&S.profile.matelas)||0;if(avail<=0)return;
   pushUndo();
-  if(!S.matelasKeys)S.matelasKeys={};
-  S.matelasKeys[key]=Math.min(shortfall,avail);
-  if(!S.profile)S.profile={};
-  S.profile.matelas=avail-Math.min(shortfall,avail);
+  _autoMatelasKey(key);
   saveState();closeModal();render();
 }
 function rebalanceMatelasKeys(){
@@ -2043,6 +2041,15 @@ function calcDispoAtDate(targetDate){
   return dispo;
 }
 
+function _applyPoseMatelas(type,startKey,endKey){
+  pushUndo();
+  if(!S.conges)S.conges={};
+  var _s=new Date(startKey+'T12:00:00'),_e=new Date(endKey+'T12:00:00'),_d=new Date(_s);
+  var _label=type==='rend'?'rendu':'congé';
+  while(_d<=_e){var k=dk(_d);var v2=getVac(_d);if(v2.vac&&v2.vac!=='RH'&&!v2.absent){S.conges[k]=type;if(type==='rend')_autoMatelasKey(k);}_d.setDate(_d.getDate()+1);}
+  logH(fmtDate(_s)+' -> '+_label+(_s<_e?' au '+fmtDate(_e):''),'#88b862',startKey);
+  saveState();closeModal();render();gcalTrigger();
+}
 function applyPose(type,startKey,unique){
   const endKey=unique?startKey:(document.getElementById('pose-until').value||startKey);
   const start=new Date(startKey+'T12:00:00');
@@ -2060,9 +2067,13 @@ function applyPose(type,startKey,unique){
     const dispo=calcDispoAtDate(end);
     if(totalRend>dispo){
       const manque=totalRend-dispo;
-      document.getElementById('modal-root').innerHTML='<div class="overlay" style="z-index:400"><div class="sheet" style="max-height:220px"><div class="sh"></div>'
+      const matelasAvail=(S.profile&&S.profile.matelas)||0;
+      const canMatelas=matelasAvail>0&&totalRend<=dispo+matelasAvail;
+      const matelasBtn=canMatelas?'<button class="mb wide" style="background:rgba(220,160,30,.18);color:var(--amber);border-color:transparent;margin-bottom:8px" onclick="_applyPoseMatelas(\''+type+'\',\''+startKey+'\',\''+endKey+'\')">Utiliser le matelas <span style="font-size:11px;opacity:.8">('+fmtMin(matelasAvail)+' dispo)</span></button>':'';
+      document.getElementById('modal-root').innerHTML='<div class="overlay" style="z-index:400"><div class="sheet" style="max-height:280px"><div class="sh"></div>'
         +'<div class="st" style="color:var(--rend-text)">Rendus insuffisants</div>'
         +'<div class="ss" style="margin-bottom:16px">Il manque <b>'+fmtMin(manque)+'</b> pour poser cette période.<br>Disponible : '+fmtMin(dispo)+' · Nécessaire : '+fmtMin(totalRend)+'</div>'
+        +matelasBtn
         +'<button class="mb wide" onclick="if(pendingKey)openDay(pendingKey);else closeModal()">Retour</button>'
         +'</div></div>';
       return;
