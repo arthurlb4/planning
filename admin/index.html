@@ -170,67 +170,82 @@ textarea{width:100%;padding:9px 12px;background:var(--bg);border:0.5px solid var
 <div id="vac-modal-bg" class="modal-bg" style="display:none" onclick="if(event.target===this)closeVacForm()">
   <div class="modal modal-wide" id="vac-form" style="max-height:90vh;overflow-y:auto">
     <h2 style="font-size:15px;margin-bottom:12px" id="vac-form-title">Nouvelle vacation</h2>
-    <div id="vf-shared-banner" style="display:none;background:var(--amber-bg,#fff8e6);border:1px solid var(--amber,#f59e0b);border-radius:var(--r);padding:9px 12px;margin-bottom:12px;font-size:12px;line-height:1.5"></div>
 
-    <!-- Row 1 : identité -->
-    <div class="row">
-      <div class="flex1 field"><label>Code système</label><input type="text" id="vf-name" placeholder="ex : A1b"></div>
-      <div class="flex1 field"><label>Label affiché</label><input type="text" id="vf-label" placeholder="ex : A1 (vide = code)"></div>
-      <div class="flex1 field"><label>Début</label><input type="time" id="vf-deb" step="900" oninput="onVfTimeChange()"></div>
-      <div class="flex1 field"><label>Fin</label><input type="time" id="vf-fin" step="900" oninput="onVfTimeChange()"></div>
-      <div class="flex1 field"><label>Durée</label><input type="text" id="vf-dur" placeholder="9h30" oninput="onVfDurChange()"></div>
-      <div class="flex1 field"><label>Pause</label><input type="text" id="vf-pause" placeholder="0h30" oninput="onVfPauseChange()"></div>
+    <!-- Scope picker: shown before editing when vacation is shared between cycles -->
+    <div id="vf-scope-bar" style="display:none;border:1px solid var(--border2);border-radius:var(--r);margin-bottom:14px;overflow:hidden">
+      <div style="padding:8px 12px;background:var(--bg2);font-size:12px;color:var(--text2)">
+        Partagée avec <b id="vf-scope-other-cycles"></b> — que voulez-vous modifier ?
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr">
+        <button id="vf-scope-btn-all" onclick="setVacScope('all')" style="border:none;border-right:1px solid var(--border2);background:var(--bg);padding:10px 12px;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:2px;transition:background .12s">
+          <span style="font-size:13px;font-weight:600;color:var(--text)">Tous les cycles</span>
+          <span style="font-size:11px;color:var(--text3)">Les changements s'appliquent partout</span>
+        </button>
+        <button id="vf-scope-btn-copy" onclick="setVacScope('copy')" style="border:none;background:var(--bg);padding:10px 12px;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:2px;transition:background .12s">
+          <span style="font-size:13px;font-weight:600;color:var(--text)">Copier pour <span id="vf-scope-cur-cycle"></span> uniquement</span>
+          <span style="font-size:11px;color:var(--text3)">Nouveau code : <b id="vf-scope-newcode"></b> · <span id="vf-scope-orig-cycle-names"></span> reste inchangée</span>
+        </button>
+      </div>
     </div>
 
-    <!-- Row 2 : cases à cocher alignées -->
-    <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start;background:var(--bg3);border-radius:var(--r);padding:10px 14px;margin-top:4px">
-      <div>
-        <div style="font-size:11px;color:var(--text3);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Type jour</div>
-        <div style="display:flex;gap:14px">
-          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-type-week" onchange="updateVfDaysVisibility()"> Semaine</label>
-          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-type-sat"> Samedi</label>
-          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-type-sun"> Dimanche</label>
-        </div>
+    <!-- Fields wrapper: grayed until scope is chosen (when shared) -->
+    <div id="vf-fields">
+      <!-- Row 1 : identité -->
+      <div class="row">
+        <div class="flex1 field"><label>Code système</label><input type="text" id="vf-name" placeholder="ex : A1b"></div>
+        <div class="flex1 field"><label>Label affiché</label><input type="text" id="vf-label" placeholder="ex : A1 (vide = code)"></div>
+        <div class="flex1 field"><label>Début</label><input type="time" id="vf-deb" step="900" oninput="onVfTimeChange()"></div>
+        <div class="flex1 field"><label>Fin</label><input type="time" id="vf-fin" step="900" oninput="onVfTimeChange()"></div>
+        <div class="flex1 field"><label>Durée</label><input type="text" id="vf-dur" placeholder="9h30" oninput="onVfDurChange()"></div>
+        <div class="flex1 field"><label>Pause</label><input type="text" id="vf-pause" placeholder="0h30" oninput="onVfPauseChange()"></div>
       </div>
-      <div id="vf-days-wrap" style="display:none;align-items:flex-start;gap:0">
-        <div style="width:1px;background:var(--border);align-self:stretch;margin:0 12px 0 4px"></div>
+
+      <!-- Row 2 : cases à cocher alignées -->
+      <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start;background:var(--bg3);border-radius:var(--r);padding:10px 14px;margin-top:4px">
         <div>
-          <div style="font-size:11px;color:var(--text3);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Jours</div>
-          <div style="display:flex;gap:10px">
-            <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-day-1"> L</label>
-            <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-day-2"> M</label>
-            <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-day-3"> Me</label>
-            <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-day-4"> J</label>
-            <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-day-5"> V</label>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Type jour</div>
+          <div style="display:flex;gap:14px">
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-type-week" onchange="updateVfDaysVisibility()"> Semaine</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-type-sat"> Samedi</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-type-sun"> Dimanche</label>
+          </div>
+        </div>
+        <div id="vf-days-wrap" style="display:none;align-items:flex-start;gap:0">
+          <div style="width:1px;background:var(--border);align-self:stretch;margin:0 12px 0 4px"></div>
+          <div>
+            <div style="font-size:11px;color:var(--text3);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Jours</div>
+            <div style="display:flex;gap:10px">
+              <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-day-1"> L</label>
+              <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-day-2"> M</label>
+              <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-day-3"> Me</label>
+              <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-day-4"> J</label>
+              <label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-day-5"> V</label>
+            </div>
+          </div>
+        </div>
+        <div style="width:1px;background:var(--border);align-self:stretch;margin:0 4px"></div>
+        <div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Options</div>
+          <div style="display:flex;gap:14px">
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-panier"> Panier repas</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-mixte"> Mixte</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-prime-antenne"> Prime Antenne</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-prime-reel"> Prime Réal</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-prime-coord"> Prime Coord</label>
           </div>
         </div>
       </div>
-      <div style="width:1px;background:var(--border);align-self:stretch;margin:0 4px"></div>
-      <div>
-        <div style="font-size:11px;color:var(--text3);margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.04em">Options</div>
-        <div style="display:flex;gap:14px">
-          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-panier"> Panier repas</label>
-          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-mixte"> Mixte</label>
-          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-prime-antenne"> Prime Antenne</label>
-          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-prime-reel"> Prime Réal</label>
-          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-prime-coord"> Prime Coord</label>
-        </div>
-      </div>
-    </div>
 
-    <!-- Cycles -->
-    <div class="field" id="vf-cycles-field" style="display:none;margin-top:12px">
-      <label style="display:flex;flex-direction:column;gap:1px">
-        <span>Cycles rattachés</span>
-        <span style="font-weight:400;font-size:10px;color:var(--text3)">Cocher = lier · Décocher = délier (sans modifier les autres cycles)</span>
-      </label>
-      <div id="vf-cycles" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px"></div>
-    </div>
+      <!-- Cycles -->
+      <div class="field" id="vf-cycles-field" style="display:none;margin-top:12px">
+        <label>Cycles rattachés</label>
+        <div id="vf-cycles" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px"></div>
+      </div>
+    </div><!-- /vf-fields -->
 
     <!-- Actions -->
     <div style="display:flex;gap:8px;margin-top:14px">
-      <button class="btn btn-green" style="flex:2" onclick="saveVac()">Enregistrer</button>
-      <button class="btn btn-ghost" id="vf-dup-btn" style="display:none;flex:1" onclick="duplicateVac()" title="Crée une nouvelle vacation indépendante basée sur celle-ci">Copier comme nouvelle</button>
+      <button class="btn btn-green" id="vf-save-btn" style="flex:2" onclick="saveVac()">Enregistrer</button>
       <button class="btn btn-ghost" style="flex:1" onclick="closeVacForm()">Annuler</button>
     </div>
     <div class="err" id="vf-err" style="margin-top:8px"></div>
@@ -876,12 +891,21 @@ async function quickAddToCycle(name) {
 
 function incrementVacCode(code) {
   if (!code) return code;
+  // If it's a known vacation, it's a base name — append 'b' and find first unused code
+  if (_allVacs && _allVacs[code]) {
+    let candidate = code + 'b';
+    while (_allVacs[candidate]) {
+      const l = candidate[candidate.length - 1];
+      candidate = (l >= 'a' && l < 'z') ? candidate.slice(0,-1) + String.fromCharCode(l.charCodeAt(0)+1) : candidate + 'b';
+    }
+    return candidate;
+  }
+  // Otherwise increment the trailing suffix letter
   const last = code[code.length - 1];
   if (last >= 'a' && last < 'z') return code.slice(0, -1) + String.fromCharCode(last.charCodeAt(0) + 1);
   if (last === 'z') return code + '2';
   if (last >= 'A' && last < 'Z') return code.slice(0, -1) + String.fromCharCode(last.charCodeAt(0) + 1);
   if (last === 'Z') return code + 'b';
-  // ends with digit — append 'b'
   return code + 'b';
 }
 
@@ -995,21 +1019,38 @@ function showVacForm(name, v) {
   [1,2,3,4,5].forEach(d => { document.getElementById('vf-day-'+d).checked = !_days.length || _days.includes(d); });
   updateVfDaysVisibility();
   document.getElementById('vf-err').textContent = '';
-  // Shared-cycle banner
-  const banner = document.getElementById('vf-shared-banner');
+  window._vacSaveScope = null;
   const linked = v ? (v.cycleIds || []) : [];
   const sharedWith = name ? linked.filter(id => id !== _vacActiveTab) : [];
+  const scopeBar = document.getElementById('vf-scope-bar');
+  const fieldsWrap = document.getElementById('vf-fields');
+  const saveBtn = document.getElementById('vf-save-btn');
   if (sharedWith.length) {
-    const sharedNames = sharedWith.map(id => { const c = _allCycles.find(c => c.id === id); return `<b>${c?.name || id}</b>`; }).join(', ');
-    const curName = _allCycles.find(c => c.id === _vacActiveTab)?.name || '';
-    banner.style.display = 'block';
-    banner.innerHTML = `⚠️ Cette vacation est aussi rattachée à ${sharedNames}.<br>`
-      + `<span style="color:var(--text2)">Enregistrer modifiera tous ces cycles. Pour n'affecter que ${curName ? '<b>'+curName+'</b>' : 'ce cycle'}, cliquez <b>Copier comme nouvelle</b> ou utilisez l'option au moment de sauvegarder.</span>`;
+    const curCycle = _allCycles.find(c => c.id === _vacActiveTab);
+    const curName = curCycle?.name || 'ce cycle';
+    const otherNames = sharedWith.map(id => { const c = _allCycles.find(c => c.id === id); return c?.name || id; }).join(', ');
+    const newCode = incrementVacCode(name);
+    document.getElementById('vf-scope-other-cycles').textContent = otherNames;
+    document.getElementById('vf-scope-cur-cycle').textContent = curName;
+    document.getElementById('vf-scope-newcode').textContent = newCode;
+    document.getElementById('vf-scope-orig-cycle-names').textContent = otherNames;
+    window._vacScopeOrigName = name;
+    window._vacScopeCopyCode = newCode;
+    scopeBar.style.display = 'block';
+    // Reset scope button styles
+    document.getElementById('vf-scope-btn-all').style.background = 'var(--bg)';
+    document.getElementById('vf-scope-btn-copy').style.background = 'var(--bg)';
+    // Lock fields until scope chosen
+    fieldsWrap.style.opacity = '0.4';
+    fieldsWrap.style.pointerEvents = 'none';
+    saveBtn.disabled = true;
   } else {
-    banner.style.display = 'none';
-    banner.innerHTML = '';
+    scopeBar.style.display = 'none';
+    fieldsWrap.style.opacity = '';
+    fieldsWrap.style.pointerEvents = '';
+    saveBtn.disabled = false;
   }
-  // Cycle membership checkboxes (only when editing an existing vacation)
+  // Cycle membership checkboxes (only when editing an existing vacation, and not in copy scope)
   const cycField = document.getElementById('vf-cycles-field');
   const cycDiv = document.getElementById('vf-cycles');
   if (name && _allCycles.length) {
@@ -1023,19 +1064,32 @@ function showVacForm(name, v) {
     cycField.style.display = 'none';
     cycDiv.innerHTML = '';
   }
-  document.getElementById('vf-dup-btn').style.display = name ? 'block' : 'none';
 }
 
 function editVac(name) { showVacForm(name, _allVacs[name]); }
 
-function duplicateVac() {
-  const src = _allVacs[_editingVac];
-  if (!src) return;
-  const srcName = _editingVac;
-  showVacForm(null, { ...src, label: src.label || srcName });
-  document.getElementById('vf-name').disabled = false;
-  document.getElementById('vf-name').value = incrementVacCode(srcName);
-  document.getElementById('vac-form-title').textContent = 'Copier comme nouvelle vacation — vérifiez le code';
+function setVacScope(scope) {
+  window._vacSaveScope = scope;
+  const btnAll  = document.getElementById('vf-scope-btn-all');
+  const btnCopy = document.getElementById('vf-scope-btn-copy');
+  const activeStyle = 'var(--blue-bg,#eff6ff)';
+  btnAll.style.background  = scope === 'all'  ? activeStyle : 'var(--bg)';
+  btnCopy.style.background = scope === 'copy' ? activeStyle : 'var(--bg)';
+  const fieldsWrap = document.getElementById('vf-fields');
+  fieldsWrap.style.opacity = '';
+  fieldsWrap.style.pointerEvents = '';
+  document.getElementById('vf-save-btn').disabled = false;
+  if (scope === 'copy') {
+    document.getElementById('vf-name').value = window._vacScopeCopyCode;
+    document.getElementById('vf-name').disabled = false;
+    document.getElementById('vac-form-title').textContent = 'Copier comme nouvelle vacation';
+    document.getElementById('vf-cycles-field').style.display = 'none';
+  } else {
+    document.getElementById('vf-name').value = window._vacScopeOrigName;
+    document.getElementById('vf-name').disabled = true;
+    document.getElementById('vac-form-title').textContent = `Modifier ${window._vacScopeOrigName}`;
+    document.getElementById('vf-cycles-field').style.display = 'block';
+  }
 }
 
 async function saveVac() {
@@ -1062,16 +1116,12 @@ async function saveVac() {
   if (!dur) { errEl.textContent = 'Durée invalide.'; return; }
   const vacation = { name, ...(label ? {label} : {}), deb: fmtHHMMToH(deb), fin: fmtHHMMToH(fin), dur, panier, mixte: mixte || false, primes, type, ...(days.length ? {days} : {}) };
 
-  // If editing a vacation linked to other cycles, ask what to do
-  if (_editingVac && !window._forceSaveAllCycles) {
-    const otherCycles = (_allVacs[_editingVac]?.cycleIds || []).filter(id => id !== _vacActiveTab);
-    if (otherCycles.length > 0) {
-      window._pendingVacData = vacation;
-      showVacCycleConflictModal(_editingVac, otherCycles);
-      return;
-    }
+  // Scope: 'copy' = create new vacation for this cycle only
+  if (_editingVac && window._vacSaveScope === 'copy') {
+    window._duplicateUnlinkOld = _editingVac;
+    _editingVac = null;
   }
-  window._forceSaveAllCycles = false;
+  window._vacSaveScope = null;
 
   try {
     const res = await fetch(API + '/admin/vacation/save', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ vacation }) });
