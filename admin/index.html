@@ -512,7 +512,7 @@ function renderVacList() {
       const unlinkBtn = (inCycle && _vacActiveTab && _vacActiveTab !== 'none')
         ? `<button class="btn btn-sm btn-ghost" title="Retirer du cycle" onclick="event.stopPropagation();unlinkFromCycle('${name}')">−</button>`
         : '';
-      return `<tr style="cursor:pointer" onclick="editVac('${name}')">
+      return `<tr data-vac="${name}" style="cursor:pointer" onclick="rowClick(event,'${name}')">
         <td onclick="event.stopPropagation()" style="white-space:nowrap;padding-right:0"><input type="checkbox" class="vac-chk" data-vac="${name}" data-lbl="${lblAttr}" ${chk} onchange="toggleVacSelect('${name}',this)"><span onclick="selectByLabel(this,'${lbl}')" title="Sélectionner même ligne" style="cursor:pointer;color:var(--text3);font-size:8px;padding:0 1px;vertical-align:middle">⇄</span></td>
         <td style="max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><b>${v.label||name}</b>${v.label&&v.label!==name?` <span style="font-size:10px;color:var(--text3)">(${name})</span>`:''}</td>
         <td style="font-size:11px">${v.deb||'—'}</td>
@@ -661,7 +661,39 @@ function _toMinAdmin(t) {
 
 // ── Multi-sélection ──────────────────────────────────────────
 var _selectedVacs = new Set();
+var _lastClickedVac = null;
 
+function rowClick(event, name) {
+  if (event.ctrlKey || event.metaKey) {
+    event.preventDefault();
+    if (_selectedVacs.has(name)) _selectedVacs.delete(name); else _selectedVacs.add(name);
+    const chk = event.currentTarget.querySelector('.vac-chk');
+    if (chk) chk.checked = _selectedVacs.has(name);
+    _lastClickedVac = name;
+    renderSelBar();
+  } else if (event.shiftKey && _lastClickedVac) {
+    event.preventDefault();
+    const table = event.currentTarget.closest('table');
+    if (table) {
+      const rows = [...table.querySelectorAll('tr[data-vac]')];
+      const lastIdx = rows.findIndex(r => r.dataset.vac === _lastClickedVac);
+      const currIdx = rows.findIndex(r => r.dataset.vac === name);
+      if (lastIdx !== -1 && currIdx !== -1) {
+        const [s, e] = [Math.min(lastIdx, currIdx), Math.max(lastIdx, currIdx)];
+        for (let i = s; i <= e; i++) {
+          const n = rows[i].dataset.vac;
+          _selectedVacs.add(n);
+          const chk = rows[i].querySelector('.vac-chk');
+          if (chk) chk.checked = true;
+        }
+        renderSelBar();
+      }
+    }
+  } else {
+    _lastClickedVac = name;
+    editVac(name);
+  }
+}
 function toggleVacSelect(name, cb) {
   if (cb.checked) _selectedVacs.add(name); else _selectedVacs.delete(name);
   renderSelBar();
