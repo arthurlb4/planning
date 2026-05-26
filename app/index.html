@@ -55,7 +55,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .app-outer{max-width:1440px;margin:0 auto;padding:0 20px;height:calc(100vh - 60px);overflow:hidden;}
 @media (orientation:portrait){body{padding-top:68px;}.app-outer{height:calc(100vh - 68px);}}
 .layout{display:flex;gap:14px;align-items:stretch;height:100%;}
-.cal-col{flex:1;min-width:0;position:relative;overflow-y:auto;padding:10px 0 20px;display:flex;flex-direction:column;align-items:center;}
+.cal-col{flex:1;min-width:0;position:relative;overflow-y:auto;overflow-x:hidden;padding:10px 0 20px;display:flex;flex-direction:column;align-items:center;}
 .col-sep{display:none;}
 .side-col{width:380px;flex-shrink:0;display:flex;flex-direction:column;gap:8px;padding-top:38px;overflow-y:auto;padding-bottom:20px;}
 @media(max-width:720px){.app-outer{height:auto;overflow-x:hidden;}.layout{flex-direction:column;align-items:stretch;height:auto;}.cal-col,.side-col{overflow-y:visible;}.side-col{width:100%;padding-top:0;}.col-sep{display:none;}}
@@ -1285,10 +1285,10 @@ function render(){
   const el_ml=document.getElementById('mtit'),el_heads=document.getElementById('heads'),el_cal=document.getElementById('cal');
   if(!el_ml)return;
   if(annualOpen){el_ml.textContent=String(curY);renderAnnual();}
-  else{el_ml.textContent=ML[curM]+' '+curY;renderMonth(el_heads,el_cal);}
+  else{_fitCalendar();el_ml.textContent=ML[curM]+' '+curY;renderMonth(el_heads,el_cal);}
   updateCounters();renderHistory();
 
-  syncWknHeight();_fitCalendar();
+  syncWknHeight();
 }
 
 function renderMonth(el_heads,el_cal){
@@ -3352,29 +3352,29 @@ function signOut(){
   window.location.href='/planning/';
 }
 
+function _calNRows(y,m){
+  const first=new Date(y,m,1),last=new Date(y,m+1,0);
+  const startDay=(first.getDay()+6)%7;
+  return Math.ceil((startDay+last.getDate())/7);
+}
 function _fitCalendar(){
   const mv=document.getElementById('month-view');
   if(!mv)return;
   if(window.innerWidth<720){mv.style.width='';return;}
-  setTimeout(function(){
-    const col=document.querySelector('.cal-col');
-    const calEl=document.getElementById('cal');
-    if(!col||!calEl)return;
-    const nRows=calEl.querySelectorAll('tr').length;
-    if(!nRows)return;
-    const mbar=col.querySelector('.mbar');
-    const leg=mv.querySelector('.leg');
-    const headsEl=mv.querySelector('.cal-wrap table');
-    const mbarH=mbar?mbar.offsetHeight+6:0;
-    const legH=leg?leg.offsetHeight+8:0;
-    const headsH=headsEl?headsEl.offsetHeight:22;
-    const availW=col.clientWidth;
-    const availH=col.clientHeight-mbarH-legH-headsH-20;
-    const cellByW=availW/8;
-    const cellByH=availH/nRows;
-    const cell=Math.min(cellByW,cellByH);
-    mv.style.width=Math.min(cell*8,availW)+'px';
-  },30);
+  const col=document.querySelector('.cal-col');
+  if(!col)return;
+  const nRows=_calNRows(curY,curM);
+  const mbar=col.querySelector('.mbar');
+  const leg=mv.querySelector('.leg');
+  const headsEl=mv.querySelector('.cal-wrap table');
+  const mbarH=mbar?mbar.offsetHeight+6:0;
+  const legH=leg?leg.offsetHeight+8:0;
+  const headsH=headsEl?headsEl.offsetHeight:22;
+  const availW=col.clientWidth;
+  const availH=col.clientHeight-mbarH-legH-headsH-20;
+  if(!availW||!availH)return;
+  const cell=Math.min(availW/8,availH/nRows);
+  mv.style.width=Math.min(cell*8,availW)+'px';
 }
 window.addEventListener('resize',_fitCalendar);
 
