@@ -339,12 +339,19 @@ export default {
       if (!vac || !vac.name) return resp({ error: 'Champs manquants' }, 400);
       var vacs = await env.PLANNING_DB.get('global:vacations', { type: 'json' }) || {};
       var existing = vacs[vac.name] || {};
+      var existingPrimes = existing.primes || { antenne: false, reel: false, coord: false };
+      var newPrimes = vac.primes !== undefined ? {
+        antenne: !!vac.primes.antenne,
+        reel: !!vac.primes.reel,
+        coord: !!vac.primes.coord
+      } : existingPrimes;
       vacs[vac.name] = {
         deb: vac.deb || existing.deb || '',
         fin: vac.fin || existing.fin || '',
         dur: vac.dur !== undefined ? vac.dur : (existing.dur || 0),
         panier: vac.panier !== undefined ? !!vac.panier : !!existing.panier,
         mixte: vac.mixte !== undefined ? !!vac.mixte : !!existing.mixte,
+        primes: newPrimes,
         type: vac.type || existing.type || 'week',
         cycleIds: existing.cycleIds || [],
         ...(vac.label ? { label: vac.label } : existing.label ? { label: existing.label } : {}),

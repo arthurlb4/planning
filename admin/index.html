@@ -210,6 +210,9 @@ textarea{width:100%;padding:9px 12px;background:var(--bg);border:0.5px solid var
         <div style="display:flex;gap:14px">
           <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-panier"> Panier repas</label>
           <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-mixte"> Mixte</label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-prime-antenne"> Prime Antenne</label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-prime-reel"> Prime Réal</label>
+          <label style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"><input type="checkbox" id="vf-prime-coord"> Prime Coord</label>
         </div>
       </div>
     </div>
@@ -896,6 +899,9 @@ function showVacForm(name, v) {
   document.getElementById('vf-pause').value = v && v.dur && _total > v.dur ? fmtVacDur(_total - v.dur) : '';
   document.getElementById('vf-panier').checked = v ? !!v.panier : false;
   document.getElementById('vf-mixte').checked = v ? !!v.mixte : false;
+  document.getElementById('vf-prime-antenne').checked = v ? !!(v.primes && v.primes.antenne) : false;
+  document.getElementById('vf-prime-reel').checked = v ? !!(v.primes && v.primes.reel) : false;
+  document.getElementById('vf-prime-coord').checked = v ? !!(v.primes && v.primes.coord) : false;
   const _types = v ? (v.type||'week').split(',') : ['week'];
   const _isAll = _types.includes('all');
   document.getElementById('vf-type-week').checked = _isAll || _types.includes('week');
@@ -943,6 +949,11 @@ async function saveVac() {
   const durInput = document.getElementById('vf-dur').value;
   const panier = document.getElementById('vf-panier').checked;
   const mixte = document.getElementById('vf-mixte').checked;
+  const primes = {
+    antenne: document.getElementById('vf-prime-antenne').checked,
+    reel: document.getElementById('vf-prime-reel').checked,
+    coord: document.getElementById('vf-prime-coord').checked
+  };
   const typeChecks = ['week','sat','sun'].filter(t => document.getElementById('vf-type-'+t).checked);
   const type = typeChecks.length === 0 ? 'week' : typeChecks.join(',');
   const weekDayChecked = [1,2,3,4,5].filter(d => document.getElementById('vf-day-'+d).checked);
@@ -952,7 +963,7 @@ async function saveVac() {
   const parsedDur = durInput ? parseVacDur(durInput) : null;
   const dur = parsedDur !== null ? parsedDur : calcDur(deb, fin);
   if (!dur) { errEl.textContent = 'Durée invalide.'; return; }
-  const vacation = { name, ...(label ? {label} : {}), deb: fmtHHMMToH(deb), fin: fmtHHMMToH(fin), dur, panier, mixte: mixte || false, type, ...(days.length ? {days} : {}) };
+  const vacation = { name, ...(label ? {label} : {}), deb: fmtHHMMToH(deb), fin: fmtHHMMToH(fin), dur, panier, mixte: mixte || false, primes, type, ...(days.length ? {days} : {}) };
 
   // If editing a vacation linked to other cycles, ask what to do
   if (_editingVac && !window._forceSaveAllCycles) {
@@ -2072,8 +2083,10 @@ async function _saveVacationsAndLink(cycleId, vacs, rename, existing) {
   for (const [vname, v] of Object.entries(vacs)) {
     const fn = rename[vname];
     if (!existing[fn]) {
+      const vacLabel = fn !== vname ? vname : fn;
+      const defaultPrimes = { antenne: vacLabel !== 'P423', reel: false, coord: false };
       await fetch(API+'/admin/vacation/save', { method:'POST', headers:adminHeaders(),
-        body: JSON.stringify({ vacation: { name:fn, ...(fn!==vname?{label:vname}:{}), deb:v.deb||'', fin:v.fin||'', dur:v.dur||0, panier:_calcPanier(v.deb,v.fin,v.dur), type:'week' } }) });
+        body: JSON.stringify({ vacation: { name:fn, ...(fn!==vname?{label:vname}:{}), deb:v.deb||'', fin:v.fin||'', dur:v.dur||0, panier:_calcPanier(v.deb,v.fin,v.dur), primes:defaultPrimes, type:'week' } }) });
     }
     await fetch(API+'/admin/vacation/addcycle', { method:'POST', headers:adminHeaders(), body: JSON.stringify({ name:fn, cycleId }) });
     if (fn !== vname) renamed.push(vname + ' → ' + fn);

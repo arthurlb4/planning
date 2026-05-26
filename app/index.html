@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>Planning</title>
-<meta name="app-version" content="v4.85">
+<meta name="app-version" content="v4.86">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -501,7 +501,7 @@ body.modal-open .bloc.clk:hover,body.modal-open .ctr.clk:hover{background:var(--
 <div id="cyc-tooltip"></div>
 
 <script>
-var _appVer='v4.85';
+var _appVer='v4.86';
 var GCAL_CLIENT_ID='669191513748-a40uvl9k46kqsmjatpqokhnhgvrc7mdt.apps.googleusercontent.com';
 var GCAL_REDIRECT_URI='https://arthurlb4.github.io/planning/app/';
 var GCAL_SCOPE='https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events';
@@ -1445,7 +1445,7 @@ function updateCounters(){
     else{hsTotal+=hsW.rawLow+hsW.rawHigh;hsTotalLow+=hsW.rawLow;hsTotalHigh+=hsW.rawHigh;}
   }}
   const mym=curY*12+curM,gm=gen[mym]||{};const gt=((gm.dim||0)+(gm.rh||0)+(gm.fer||0)+(gm.hs||0)+(gm.ram||0));// excludes solde initial
-  const panCount=calcPaniersMois(curY,curM);
+  const panCount=calcPaniersMois(curY,curM);const primes=calcPrimesMois(curY,curM);
   const el=document.getElementById('ctr-main');if(!el)return;
   // Detail dots for "Créés ce mois"
   function detRow(color,val){return val>0?'<div class="ctr-dot-row"><span class="rdot" style="background:'+color+'"></span>'+fmtMin(val)+'</div>':'';}
@@ -1455,7 +1455,7 @@ function updateCounters(){
   el.innerHTML=`
     <div class="ctr clk" onclick="openCongesModal()"><div class="clbl">Congés</div><div class="cval" style="color:var(--green)">${cRest} j</div></div>
     <div class="ctr clk" onclick="openHSModal(${mym})"><div class="clbl">HS ce mois</div><div class="cval" style="color:var(--blue)">${fmtMin(hsTotal)}</div><div class="csub">${useHSRendu?'rendus':'payés'}</div></div>
-    <div class="ctr"><div class="clbl">Paniers</div><div class="cval" style="color:var(--amber)">${panCount}</div><div class="csub">ce mois</div></div>
+    <div class="ctr"><div class="clbl">Paniers & Primes</div><div class="cval" style="color:var(--amber)">${panCount}</div><div class="csub" style="margin-bottom:6px">paniers</div><div style="border-top:0.5px solid var(--border2);padding-top:5px;display:flex;flex-direction:column;gap:1px"><div style="display:flex;justify-content:space-between;font-size:10px"><span style="color:var(--text2)">Antenne</span><b style="color:var(--amber)">${primes.antenne}</b></div><div style="display:flex;justify-content:space-between;font-size:10px"><span style="color:var(--text2)">Réal</span><b style="color:var(--amber)">${primes.reel}</b></div><div style="display:flex;justify-content:space-between;font-size:10px"><span style="color:var(--text2)">Coord</span><b style="color:var(--amber)">${primes.coord}</b></div></div></div>
     <div class="ctr wide clk" onclick="openDetailMois(${mym})"><div class="clbl">Créés ce mois</div><div class="ctr-wide-inner"><div><div class="cval" style="color:var(--rend-text)">${fmtMin(gt)}</div><div class="csub">${mym>TODAY_YM?'prévis.':'acquis'}</div></div><div class="ctr-detail">${det}</div></div></div>`;
 
   // Unified eph table (créé + dispo + expiry per month)
@@ -1548,6 +1548,11 @@ function calcPaniersMois(y,m){
   let c=0;const last=new Date(y,m+1,0).getDate();
   for(let d=1;d<=last;d++){const date=new Date(y,m,d),key=dk(date);if(isPanier(date)&&!(S.conges||{})[key])c++;}
   return c;
+}
+function calcPrimesMois(y,m){
+  let antenne=0,reel=0,coord=0;const last=new Date(y,m+1,0).getDate();const VAC=getVAC();
+  for(let d=1;d<=last;d++){const date=new Date(y,m,d),key=dk(date);if((S.conges||{})[key])continue;const{vac,absent}=getVac(date);if(absent)continue;if(!vac||vac==='RH')continue;const v=VAC[vac];if(!v||!v.primes)continue;if(v.primes.antenne)antenne++;if(v.primes.reel)reel++;if(v.primes.coord)coord++;}
+  return{antenne,reel,coord};
 }
 
 function reportEph(ym){
