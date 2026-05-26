@@ -158,7 +158,10 @@ textarea{width:100%;padding:9px 12px;background:var(--bg);border:0.5px solid var
   <div class="section" id="tab-vacations">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px;flex-wrap:wrap">
       <div id="vac-tabs" style="display:flex;gap:4px;flex-wrap:wrap;background:var(--bg2);border-radius:var(--r);padding:3px;"></div>
-      <button class="btn btn-sm btn-green" onclick="showVacForm()">+ Ajouter</button>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm btn-ghost" onclick="purgeStaleVacationCycleIds()" title="Supprimer les liens vers des cycles supprimés">Purger liens</button>
+        <button class="btn btn-sm btn-green" onclick="showVacForm()">+ Ajouter</button>
+      </div>
     </div>
     <div id="vac-list"></div>
     <div id="vac-sel-bar" style="display:none;position:sticky;bottom:0;background:var(--bg2);border-top:0.5px solid var(--border);padding:10px 0;margin-top:12px;display:none;align-items:center;gap:8px;flex-wrap:wrap;z-index:10"></div>
@@ -172,23 +175,21 @@ textarea{width:100%;padding:9px 12px;background:var(--bg);border:0.5px solid var
     <h2 style="font-size:15px;margin-bottom:12px" id="vac-form-title">Nouvelle vacation</h2>
 
     <!-- Scope picker: shown before editing when vacation is shared between cycles -->
-    <div id="vf-scope-bar" style="display:none;border:1px solid var(--border2);border-radius:var(--r);margin-bottom:14px;overflow:hidden">
-      <div style="padding:8px 12px;background:var(--bg2);font-size:12px;color:var(--text2)">
-        Partagée avec <b id="vf-scope-other-cycles"></b> — que voulez-vous modifier ?
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr">
-        <button id="vf-scope-btn-all" onclick="setVacScope('all')" style="border:none;border-right:1px solid var(--border2);background:var(--bg);padding:10px 12px;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:2px;transition:background .12s">
+    <div id="vf-scope-bar" style="display:none;margin-bottom:16px">
+      <p style="font-size:12px;color:var(--text2);margin:0 0 10px 0">Partagée avec <b id="vf-scope-other-cycles"></b> — que voulez-vous modifier ?</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <button id="vf-scope-btn-all" onclick="setVacScope('all')" style="border:1.5px solid var(--border2);border-radius:10px;background:var(--bg);padding:12px 14px;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:4px;transition:border-color .15s,background .15s">
           <span style="font-size:13px;font-weight:600;color:var(--text)">Tous les cycles</span>
           <span style="font-size:11px;color:var(--text3)">Les changements s'appliquent partout</span>
         </button>
-        <button id="vf-scope-btn-copy" onclick="setVacScope('copy')" style="border:none;background:var(--bg);padding:10px 12px;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:2px;transition:background .12s">
-          <span style="font-size:13px;font-weight:600;color:var(--text)">Copier pour <span id="vf-scope-cur-cycle"></span> uniquement</span>
+        <button id="vf-scope-btn-copy" onclick="setVacScope('copy')" style="border:1.5px solid var(--border2);border-radius:10px;background:var(--bg);padding:12px 14px;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:4px;transition:border-color .15s,background .15s">
+          <span style="font-size:13px;font-weight:600;color:var(--text)">Copier pour <span id="vf-scope-cur-cycle"></span></span>
           <span style="font-size:11px;color:var(--text3)">Nouveau code : <b id="vf-scope-newcode"></b> · <span id="vf-scope-orig-cycle-names"></span> reste inchangée</span>
         </button>
       </div>
     </div>
 
-    <!-- Fields wrapper: grayed until scope is chosen (when shared) -->
+    <!-- Fields wrapper: hidden until scope is chosen (when shared) -->
     <div id="vf-fields">
       <!-- Row 1 : identité -->
       <div class="row">
@@ -1040,16 +1041,16 @@ function showVacForm(name, v) {
     window._vacScopeCopyCode = newCode;
     scopeBar.style.display = 'block';
     // Reset scope button styles
-    document.getElementById('vf-scope-btn-all').style.background = 'var(--bg)';
-    document.getElementById('vf-scope-btn-copy').style.background = 'var(--bg)';
-    // Lock fields until scope chosen
-    fieldsWrap.style.opacity = '0.4';
-    fieldsWrap.style.pointerEvents = 'none';
-    saveBtn.disabled = true;
+    const _sbtnStyle = 'border:1.5px solid var(--border2);border-radius:10px;background:var(--bg);padding:12px 14px;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:4px;transition:border-color .15s,background .15s';
+    document.getElementById('vf-scope-btn-all').style.cssText = _sbtnStyle;
+    document.getElementById('vf-scope-btn-copy').style.cssText = _sbtnStyle;
+    // Hide fields and save btn until scope chosen
+    fieldsWrap.style.display = 'none';
+    saveBtn.style.display = 'none';
   } else {
     scopeBar.style.display = 'none';
-    fieldsWrap.style.opacity = '';
-    fieldsWrap.style.pointerEvents = '';
+    fieldsWrap.style.display = '';
+    saveBtn.style.display = '';
     saveBtn.disabled = false;
   }
   // Cycle membership checkboxes (only when editing an existing vacation, and not in copy scope)
@@ -1074,13 +1075,14 @@ function setVacScope(scope) {
   window._vacSaveScope = scope;
   const btnAll  = document.getElementById('vf-scope-btn-all');
   const btnCopy = document.getElementById('vf-scope-btn-copy');
-  const activeStyle = 'var(--blue-bg,#eff6ff)';
-  btnAll.style.background  = scope === 'all'  ? activeStyle : 'var(--bg)';
-  btnCopy.style.background = scope === 'copy' ? activeStyle : 'var(--bg)';
+  const base = 'border-radius:10px;padding:12px 14px;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:4px;transition:border-color .15s,background .15s;border:1.5px solid ';
+  btnAll.style.cssText  = base + (scope === 'all'  ? 'var(--blue,#3b82f6);background:var(--blue-bg,#eff6ff)' : 'var(--border2);background:var(--bg)');
+  btnCopy.style.cssText = base + (scope === 'copy' ? 'var(--blue,#3b82f6);background:var(--blue-bg,#eff6ff)' : 'var(--border2);background:var(--bg)');
   const fieldsWrap = document.getElementById('vf-fields');
-  fieldsWrap.style.opacity = '';
-  fieldsWrap.style.pointerEvents = '';
-  document.getElementById('vf-save-btn').disabled = false;
+  const saveBtn = document.getElementById('vf-save-btn');
+  fieldsWrap.style.display = '';
+  saveBtn.style.display = '';
+  saveBtn.disabled = false;
   if (scope === 'copy') {
     document.getElementById('vf-name').value = window._vacScopeCopyCode;
     document.getElementById('vf-name').disabled = false;
@@ -1230,6 +1232,23 @@ async function deleteVac(name) {
   if (!confirm(`Supprimer la vacation "${name}" ?`)) return;
   const res = await fetch(API + '/admin/vacation/delete', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ name }) });
   if (res.ok) loadVacations();
+}
+
+async function purgeStaleVacationCycleIds() {
+  const validIds = new Set(_allCycles.map(c => c.id));
+  const toRemove = [];
+  for (const [name, v] of Object.entries(_allVacs)) {
+    for (const id of (v.cycleIds || [])) {
+      if (!validIds.has(id)) toRemove.push({ name, cycleId: id });
+    }
+  }
+  if (!toRemove.length) { alert('Aucune référence obsolète trouvée.'); return; }
+  if (!confirm(`Purger ${toRemove.length} lien(s) vers des cycles supprimés ?`)) return;
+  for (const { name, cycleId } of toRemove) {
+    await fetch(API + '/admin/vacation/removecycle', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ name, cycleId }) });
+  }
+  await loadVacations();
+  alert(`${toRemove.length} lien(s) supprimé(s).`);
 }
 
 
