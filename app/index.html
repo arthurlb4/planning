@@ -1284,8 +1284,9 @@ function render(){
   const _hpn2=document.getElementById('hdr-profile-name');if(_hpn2)_hpn2.textContent=capitalize((S.profile&&S.profile.name)||'Profil');
   const el_ml=document.getElementById('mtit'),el_heads=document.getElementById('heads'),el_cal=document.getElementById('cal');
   if(!el_ml)return;
-  if(annualOpen){el_ml.textContent=String(curY);renderAnnual();}
+  if(annualOpen){el_ml.textContent=String(curY);}
   else{_fitCalendar();el_ml.textContent=ML[curM]+' '+curY;renderMonth(el_heads,el_cal);}
+  renderAnnual();
   updateCounters();renderHistory();
 
   syncWknHeight();
@@ -1631,27 +1632,29 @@ function logH(detail,color,key){
 }
 function removeHistoryForKey(key){if(!S.history)return;S.history=S.history.filter(h=>h.key!==key);saveState();}
 function _rhMonthSections(keys,type){
-  // Group by month → by week-monday, build expandable month rows
   const MC2=['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
+  const allCgKeys=type==='cg'?Object.keys(S.conges||{}).filter(k=>S.conges[k]==='cg').sort():null;
   const byMonth={};
   keys.forEach(function(k){
-    const d=new Date(k+'T12:00:00'),ym=d.getFullYear()*12+d.getMonth();
+    const d=new Date(k+'T12:00:00'),mon=getMonday(d),mk=dk(mon);
+    const ym=mon.getFullYear()*12+mon.getMonth(); // group by Monday's month so cross-month weeks appear once
     if(!byMonth[ym])byMonth[ym]={ym,weeks:{}};
-    const mon=getMonday(d),mk=dk(mon);
-    if(!byMonth[ym].weeks[mk])byMonth[ym].weeks[mk]={mon,n:0,min:0};
-    byMonth[ym].weeks[mk].n++;
+    if(!byMonth[ym].weeks[mk])byMonth[ym].weeks[mk]={mon,keys:[],min:0};
+    byMonth[ym].weeks[mk].keys.push(k);
     byMonth[ym].weeks[mk].min+=getDur(d);
   });
   const color=type==='cg'?'var(--green)':'var(--rend-text)';
-  return Object.keys(byMonth).map(Number).sort().map(function(ym,i){
+  return Object.keys(byMonth).map(Number).sort().map(function(ym){
     const{weeks}=byMonth[ym];
     const y=Math.floor(ym/12),m=ym%12;
     const wks=Object.keys(weeks).sort().map(function(mk){
-      const{mon,n,min}=weeks[mk];
-      const val=type==='cg'?n+'j':fmtMin(min);
+      const{mon,keys:wkKeys,min}=weeks[mk];
+      const val=type==='cg'?calcCongesUsedForKeys(wkKeys,allCgKeys)+'j':fmtMin(min);
       return '<div class="recap-row" style="padding-left:10px"><span style="color:var(--text3)">S'+isoWeek(mon)+' · '+mon.getDate()+' '+MC2[mon.getMonth()]+'</span><b style="color:'+color+'">'+val+'</b></div>';
     }).join('');
-    const total=type==='cg'?Object.values(weeks).reduce((s,w)=>s+w.n,0)+'j':fmtMin(Object.values(weeks).reduce((s,w)=>s+w.min,0));
+    const total=type==='cg'
+      ?Object.values(weeks).reduce((s,w)=>s+calcCongesUsedForKeys(w.keys,allCgKeys),0)+'j'
+      :fmtMin(Object.values(weeks).reduce((s,w)=>s+w.min,0));
     const uid='rhm-'+type+'-'+ym;
     return '<div onclick="var x=document.getElementById(\''+uid+'\');x.style.display=x.style.display===\'block\'?\'none\':\'block\'" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding:3px 0">'
       +'<span style="font-size:11px;color:var(--text2)">'+MC2[m]+' '+y+'</span>'
@@ -3382,8 +3385,8 @@ function syncWknHeight(){
   setTimeout(function(){
     const dayCell=document.querySelector('.dc');
     if(!dayCell)return;
-    const h=dayCell.getBoundingClientRect().height;
-    if(!h||h<10)return;
+    const sampleTd=document.querySelector('.cal td:not(.wkn)');
+    const tdPad=sampleTd?Math.round(parseFloat(getComputedStyle(sampleTd).paddingTop))||7:7;
     document.querySelectorAll('td.wkn').forEach(function(td){
       const num=td.getAttribute('data-wn')||td.textContent.trim();
       if(!td.getAttribute('data-wn'))td.setAttribute('data-wn',num);
@@ -3409,7 +3412,7 @@ function syncWknHeight(){
       td.style.position='relative';
       td.style.padding='0';
       td.style.background=cellBg;
-      td.innerHTML='<div style="position:absolute;top:0;bottom:0;left:0;width:calc(100% - 4px);display:flex;align-items:center;justify-content:center;font-size:9px;border-radius:0 var(--r) var(--r) 0;background:'+bg+';color:'+color+';font-weight:'+fw+';z-index:1;box-sizing:border-box">'+num+'</div>';
+      td.innerHTML='<div style="position:absolute;top:'+tdPad+'px;bottom:'+tdPad+'px;left:0;width:calc(100% - 4px);display:flex;align-items:center;justify-content:center;font-size:9px;border-radius:0 var(--r) var(--r) 0;background:'+bg+';color:'+color+';font-weight:'+fw+';z-index:1;box-sizing:border-box">'+num+'</div>';
     });
   },0);
 }
