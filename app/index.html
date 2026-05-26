@@ -83,6 +83,14 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .slide-in-right{animation:slideInRight .2s ease forwards;}
 @keyframes slideInLeft{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:translateX(0)}}
 @keyframes slideInRight{from{opacity:0;transform:translateX(-28px)}to{opacity:1;transform:translateX(0)}}
+.side-out-fwd{animation:sideOutFwd .18s ease forwards;}
+.side-out-bwd{animation:sideOutBwd .18s ease forwards;}
+.side-in-fwd{animation:sideInFwd .22s ease forwards;}
+.side-in-bwd{animation:sideInBwd .22s ease forwards;}
+@keyframes sideOutFwd{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(-12px)}}
+@keyframes sideOutBwd{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(12px)}}
+@keyframes sideInFwd{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+@keyframes sideInBwd{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:translateY(0)}}
 
 /* Month view */
 #month-view{transition:opacity .2s ease,transform .2s ease;}
@@ -289,7 +297,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 @keyframes overlayIn{from{opacity:0}to{opacity:1}}
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:flex;align-items:flex-end;justify-content:center;animation:overlayIn .2s ease;}
 .overlay.behind{z-index:100;}
-.sheet{background:var(--bg2);border-radius:20px 20px 0 0;padding:16px 16px 44px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;touch-action:pan-x;user-select:none;animation:sheetUp .32s cubic-bezier(.32,.72,0,1);}
+.sheet{background:var(--bg2);border-radius:20px 20px 0 0;padding:16px 16px 44px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;touch-action:pan-y;overscroll-behavior:contain;user-select:none;animation:sheetUp .32s cubic-bezier(.32,.72,0,1);}
 .sh{width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 14px;}
 .st{font-size:15px;font-weight:600;margin-bottom:3px;}
 .ss{font-size:12px;color:var(--text2);margin-bottom:12px;}
@@ -1248,19 +1256,21 @@ function navDir(d){
   if(mv){
     const outCls=d<0?'slide-right':'slide-left';
     const inCls=d<0?'slide-in-right':'slide-in-left';
+    const sideOutCls=d>0?'side-out-fwd':'side-out-bwd';
+    const sideInCls=d>0?'side-in-fwd':'side-in-bwd';
     mv.classList.add(outCls);
-    if(sideBelow)sc.classList.add(outCls);
+    if(sideBelow)sc.classList.add(sideOutCls);
     setTimeout(function(){
       mv.classList.remove('slide-left','slide-right');
       mv.style.opacity='0';
-      if(sideBelow){sc.classList.remove('slide-left','slide-right');sc.style.opacity='0';}
+      if(sideBelow){sc.classList.remove('side-out-fwd','side-out-bwd');sc.style.opacity='0';}
       curM+=d;if(curM<0){curM=11;curY--;}if(curM>11){curM=0;curY++;}
       render();
       mv.classList.add(inCls);
-      if(sideBelow)sc.classList.add(inCls);
+      if(sideBelow)sc.classList.add(sideInCls);
       setTimeout(function(){
         mv.classList.remove('slide-in-left','slide-in-right');mv.style.opacity='';
-        if(sideBelow){sc.classList.remove('slide-in-left','slide-in-right');sc.style.opacity='';}
+        if(sideBelow){sc.classList.remove('side-in-fwd','side-in-bwd');sc.style.opacity='';}
       },220);
     },180);
   } else {
@@ -1449,7 +1459,7 @@ function updateCounters(){
   el.innerHTML=`
     <div class="ctr clk" onclick="openCongesModal()"><div class="clbl">Congés</div><div class="cval" style="color:var(--green)">${cRest} j</div></div>
     <div class="ctr clk" onclick="openHSModal(${mym})"><div class="clbl">HS ce mois</div><div class="cval" style="color:var(--blue)">${fmtMin(hsTotal)}</div><div class="csub">${useHSRendu?'rendus':'payés'}</div></div>
-    <div class="ctr"><div class="clbl">Paniers & Primes</div><div class="cval" style="color:var(--amber)">${panCount}</div><div class="csub" style="margin-bottom:6px">paniers</div><div style="border-top:0.5px solid var(--border2);padding-top:5px;display:flex;flex-direction:column;gap:1px"><div style="display:flex;justify-content:space-between;font-size:10px"><span style="color:var(--text2)">Antenne</span><b style="color:var(--amber)">${primes.antenne}</b></div><div style="display:flex;justify-content:space-between;font-size:10px"><span style="color:var(--text2)">Réal</span><b style="color:var(--amber)">${primes.reel}</b></div><div style="display:flex;justify-content:space-between;font-size:10px"><span style="color:var(--text2)">Coord</span><b style="color:var(--amber)">${primes.coord}</b></div></div></div>
+    <div class="ctr clk" onclick="openPaniersModal()"><div class="clbl">Paniers & Primes</div><div class="cval" style="color:var(--amber)">${panCount}</div><div class="csub" style="margin-bottom:6px">paniers</div><div style="border-top:0.5px solid var(--border2);padding-top:5px;display:flex;flex-direction:column;gap:1px"><div style="display:flex;justify-content:space-between;font-size:10px"><span style="color:var(--text2)">Antenne</span><b style="color:var(--amber)">${primes.antenne}</b></div><div style="display:flex;justify-content:space-between;font-size:10px"><span style="color:var(--text2)">Réal</span><b style="color:var(--amber)">${primes.reel}</b></div><div style="display:flex;justify-content:space-between;font-size:10px"><span style="color:var(--text2)">Coord</span><b style="color:var(--amber)">${primes.coord}</b></div></div></div>
     <div class="ctr wide clk" onclick="openDetailMois(${mym})"><div class="clbl">Créés ce mois</div><div class="ctr-wide-inner"><div><div class="cval" style="color:var(--rend-text)">${fmtMin(gt)}</div><div class="csub">${mym>TODAY_YM?'prévis.':'acquis'}</div></div><div class="ctr-detail">${det}</div></div></div>`;
 
   // Unified eph table (créé + dispo + expiry per month)
@@ -1549,6 +1559,43 @@ function calcPrimesMois(y,m){
   return{antenne,reel,coord};
 }
 
+function openPaniersModal(){
+  document.querySelectorAll('[onclick*="openPaniersModal"]').forEach(el=>el.classList.add('active'));
+  document.body.classList.add('modal-open');
+  const VAC=getVAC();
+  const MC=['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
+  const JOURS=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+  const last=new Date(curY,curM+1,0).getDate();
+  const paniers=[],pa=[],pr=[],pc=[];
+  for(let d=1;d<=last;d++){
+    const date=new Date(curY,curM,d),key=dk(date);
+    if((S.conges||{})[key])continue;
+    const{vac,absent,echange,ecSelf}=getVac(date);
+    if(absent||!vac||vac==='RH'||(echange&&!ecSelf))continue;
+    const v=VAC[vac];if(!v)continue;
+    const jidx=date.getDay();
+    const lbl=d+' '+MC[curM]+' <span style="color:var(--text3)">'+JOURS[jidx===0?6:jidx-1]+'</span>';
+    const row='<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:4px 0;border-bottom:0.5px solid var(--border2)"><span>'+lbl+'</span><b style="color:var(--amber)">'+vac+'</b></div>';
+    if(v.panier)paniers.push(row);
+    if(v.primes){if(v.primes.antenne)pa.push(row);if(v.primes.reel)pr.push(row);if(v.primes.coord)pc.push(row);}
+  }
+  function sec(title,rows,count){
+    if(!count)return'';
+    return'<div class="btit" style="margin-top:14px;margin-bottom:4px">'+title+' <span style="font-weight:400;color:var(--text3)">('+count+')</span></div>'+rows.join('');
+  }
+  const noData='<div style="font-size:11px;color:var(--text3);padding:6px 0">Aucun ce mois.</div>';
+  let html=sec('Paniers',paniers,paniers.length)
+    +sec('Prime antenne',pa,pa.length)
+    +sec('Prime réal',pr,pr.length)
+    +sec('Prime coord',pc,pc.length);
+  if(!html)html=noData;
+  document.getElementById('modal-root').innerHTML=
+    '<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet">'
+    +'<div class="sh"></div><div class="st">Paniers & Primes — '+MC[curM]+' '+curY+'</div>'
+    +html
+    +'<button class="mcancel" onclick="closeModal()">Fermer</button>'
+    +'</div></div>';
+}
 function reportEph(ym){
   if(!S.ephExtend)S.ephExtend={};
   const cur=getEphExtensions(ym);if(cur>=3)return;S.ephExtend[ym]=cur+1;
@@ -2117,13 +2164,13 @@ function openRestantsModal(){
   const{realAvail,prevEph}=calcSoldes();
   const ML=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
   // Combine real + 12 future months
-  const allReal=Object.keys(realAvail).map(Number).filter(ym=>realAvail[ym]>0);
-  const allPrev=Object.keys(prevEph).map(Number).filter(ym=>prevEph[ym]>0).sort().slice(0,12);
+  const allReal=Object.keys(realAvail).map(Number).filter(ym=>realAvail[ym]>0).sort().slice(-6);
+  const allPrev=Object.keys(prevEph).map(Number).filter(ym=>prevEph[ym]>0).sort().slice(0,3);
   const extendedUsedM=Object.keys(S.ephExtend||{}).map(Number).filter(ym=>ym<=TODAY_YM&&getExpYm(ym)>TODAY_YM);
-  const yms=[...new Set([...allReal,...allPrev,...extendedUsedM])].sort();
+  const yms=[...new Set([...allReal,...allPrev,...extendedUsedM])].sort().slice(-8);
   const maxV=Math.max(...yms.map(ym=>ym>TODAY_YM?(prevEph[ym]||0):(realAvail[ym]||0)),1);
   let rows='';
-  const btnS='font-size:9px;padding:2px 5px;border:0.5px solid var(--border);border-radius:4px;background:transparent;cursor:pointer;';
+  const btnS='font-size:12px;padding:6px 11px;border:0.5px solid var(--border);border-radius:6px;background:transparent;cursor:pointer;min-width:46px;';
   yms.forEach(function(ym){
     const isFut=ym>TODAY_YM;
     const avail=isFut?(prevEph[ym]||0):(realAvail[ym]||0);
@@ -2363,10 +2410,11 @@ function closeModal(){document.getElementById('modal-root').innerHTML='';pending
     var dy=e.touches[0].clientY-startY;
     // Only swipe down when at top of scroll
     if(dy>0&&sheet.scrollTop<=0){
+      e.preventDefault();
       sheet.style.transform='translateY('+Math.min(dy,300)+'px)';
       if(overlay)overlay.style.background='rgba(0,0,0,'+Math.max(0,.45-dy/400)+')';
     }
-  },{passive:true});
+  },{passive:false});
   document.addEventListener('touchend',function(e){
     if(!dragging||!sheet)return;
     dragging=false;
