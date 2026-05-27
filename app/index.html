@@ -65,7 +65,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 @media(max-width:480px){.hdr{padding:12px 10px;}.hdr-ver{display:none;}.ibtn-lbl{display:none;}}
 
 /* HEADER */
-.hdr{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;left:0;right:0;width:100%;background:var(--bg2);border-bottom:0.5px solid var(--border);position:fixed;top:0;z-index:200;}
+.hdr{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;left:0;right:0;width:100%;background:var(--bg2);border-bottom:0.5px solid var(--border);box-shadow:0 2px 12px rgba(0,0,0,.18);position:fixed;top:0;z-index:200;}
 
 .hdr-btns{display:flex;gap:5px;align-items:center;margin-left:auto;}
 .hdr-sep{width:1px;height:18px;background:var(--border);margin:0 3px;flex-shrink:0;}
@@ -441,8 +441,7 @@ body.modal-open .bloc.clk:hover,body.modal-open .ctr.clk:hover{background:var(--
 </div>
 
 <div class="side-col">
-  <div class="bloc clk" id="eph-rest-bloc" onclick="openRestantsModal()">
-    <div class="btit">Rendus</div>
+  <div class="bloc clk" id="eph-rest-bloc" onclick="openMergedRenduCgModal()">
     <div class="eph-soldes">
       <div class="eph-sol">
         <div class="eph-sol-lbl">Matelas</div>
@@ -450,14 +449,18 @@ body.modal-open .bloc.clk:hover,body.modal-open .ctr.clk:hover{background:var(--
       </div>
       <div class="eph-sol-sep"></div>
       <div class="eph-sol">
-        <div class="eph-sol-lbl">Posé</div>
-        <div id="eph-total-pose" class="eph-sol-val"></div>
+        <div class="eph-sol-lbl">Solde</div>
+        <div id="eph-total-solde" class="eph-sol-val"></div>
       </div>
       <div class="eph-sol-sep"></div>
       <div class="eph-sol">
         <div class="eph-sol-lbl" id="eph-libre-lbl">Dispo</div>
         <div id="eph-total-libre" class="eph-sol-val"></div>
       </div>
+    </div>
+    <div style="border-top:0.5px solid var(--border2);margin:7px 0 4px;padding-top:6px;display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:11px;color:var(--text2)">Congés</span>
+      <b id="eph-cg-rest" style="color:var(--green);font-size:13px"></b>
     </div>
     <div id="eph-unified-list"></div>
   </div>
@@ -1079,8 +1082,7 @@ function adjSoldeAnnee(year,delta){
   // Refresh just the cell
   const el=document.getElementById('cpa-solde-'+year);
   if(el)el.textContent=nv+' j';
-  // Also refresh the used/rest cell (re-render whole modal is simpler)
-  openCongesModal();
+  openMergedRenduCgModal();
 }
 
 function adjCET(delta){
@@ -1100,7 +1102,7 @@ function adjCET(delta){
     S.profile.congesCET=Math.max(0,cet-1);
   }
   saveState();
-  openCongesModal();
+  openMergedRenduCgModal();
   updateCounters();
 }
 
@@ -1394,11 +1396,28 @@ function updateCounters(){
   const det=detRow('#9c80e0',gm.dim||0)+detRow('#7b9ce0',gm.rh||0)+detRow('var(--gold)',gm.fer||0)+detRow('var(--gold-dark)',gm.ram||0)+detRow('var(--blue)',gm.hs||0)||'<div class="ctr-dot-row" style="color:var(--text3)">-</div>';
   const matEl=document.getElementById('eph-total-mat');
   if(matEl)matEl.textContent=fmtMin(Math.max(0,matelas));
-  el.innerHTML=`
-    <div class="ctr clk" onclick="openCongesModal()"><div class="clbl">Congés</div><div class="cval" style="color:var(--green)">${cRest} j</div></div>
-    <div class="ctr clk" onclick="openHSModal(${mym})"><div class="clbl">HS ce mois</div><div class="cval" style="color:var(--blue)">${fmtMin(hsTotal)}</div><div class="csub">${useHSRendu?'rendus':'payés'}</div></div>
-    <div class="ctr clk" onclick="openPaniersModal()"><div class="clbl">Paniers & Primes</div><div class="cval" style="color:var(--amber)">${panCount}</div><div class="csub" style="margin-bottom:6px">paniers</div><div style="border-top:0.5px solid var(--border2);padding-top:5px;display:flex;flex-direction:column;gap:1px">${primes.antenne?`<div style="display:flex;justify-content:space-between;font-size:10px"><span style="color:var(--text2)">Antenne</span><b style="color:var(--amber)">${primes.antenne}</b></div>`:''} ${primes.reel?`<div style="display:flex;justify-content:space-between;font-size:10px"><span style="color:var(--text2)">Réal</span><b style="color:var(--amber)">${primes.reel}</b></div>`:''} ${primes.coord?`<div style="display:flex;justify-content:space-between;font-size:10px"><span style="color:var(--text2)">Coord</span><b style="color:var(--amber)">${primes.coord}</b></div>`:''}</div></div>
-    <div class="ctr wide clk" onclick="openDetailMois(${mym})"><div class="clbl">Créés ce mois</div><div class="ctr-wide-inner"><div><div class="cval" style="color:var(--rend-text)">${fmtMin(gt)}</div><div class="csub">${mym>TODAY_YM?'prévis.':'acquis'}</div></div><div class="ctr-detail">${det}</div></div></div>`;
+  const cgRestEl=document.getElementById('eph-cg-rest');
+  if(cgRestEl)cgRestEl.textContent=cRest+' j';
+  el.innerHTML=`<div class="bloc clk" onclick="openMergedMoisModal(${mym})" style="grid-column:1/-1;margin-top:0">
+    <div class="btit">${MC[curM]} ${curY}</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0">
+      <span style="font-size:11px;color:var(--text2)">Paniers</span><b style="color:var(--amber)">${panCount}</b>
+    </div>
+    ${primes.antenne?`<div style="display:flex;justify-content:space-between;font-size:10px;padding:1px 0"><span style="color:var(--text3)">Antenne</span><b style="color:var(--amber)">${primes.antenne}</b></div>`:''}
+    ${primes.reel?`<div style="display:flex;justify-content:space-between;font-size:10px;padding:1px 0"><span style="color:var(--text3)">Réal</span><b style="color:var(--amber)">${primes.reel}</b></div>`:''}
+    ${primes.coord?`<div style="display:flex;justify-content:space-between;font-size:10px;padding:1px 0"><span style="color:var(--text3)">Coord</span><b style="color:var(--amber)">${primes.coord}</b></div>`:''}
+    <div class="sep" style="margin:5px 0"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0">
+      <span style="font-size:11px;color:var(--text2)">Heures supp.</span><b style="color:var(--blue)">${fmtMin(hsTotal)}</b>
+    </div>
+    <div style="font-size:10px;color:var(--text3);text-align:right">${useHSRendu?'rendus':'payés'}</div>
+    <div class="sep" style="margin:5px 0"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0">
+      <span style="font-size:11px;color:var(--text2)">Créés</span><b style="color:var(--rend-text)">${fmtMin(gt)}</b>
+    </div>
+    <div style="font-size:10px;color:var(--text3);text-align:right">${mym>TODAY_YM?'prévis.':'acquis'}</div>
+    <div style="margin-top:4px">${det}</div>
+  </div>`;
 
   // Unified eph table (créé + dispo + expiry per month)
   const allUYms=new Set();
@@ -1446,12 +1465,10 @@ function updateCounters(){
   });
   const uniEl=document.getElementById('eph-unified-list');
   if(uniEl)uniEl.innerHTML=uniHtml||'<div style="font-size:11px;color:var(--text3);padding:4px 0">Aucun rendu.</div>';
-  const _mKPose=new Set(Object.keys(S.matelasKeys||{}));
-  const totalPose=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='rend'&&!_mKPose.has(k)).reduce((s,k)=>s+getDur(new Date(k+'T12:00:00')),0);
   const viewedYM=curY*12+curM;
   const dispAtView=calcTrueDispo(viewedYM);
-  const poseEl=document.getElementById('eph-total-pose');
-  if(poseEl)poseEl.textContent=fmtMin(totalPose);
+  const soldeEl=document.getElementById('eph-total-solde');
+  if(soldeEl)soldeEl.textContent=fmtMin(totalReal);
   const libreEl=document.getElementById('eph-total-libre');
   if(libreEl){
     libreEl.textContent=fmtMin(dispAtView);
@@ -2284,6 +2301,90 @@ function openRestantsModal(){
     +'</div></div>';
 }
 
+function openMergedRenduCgModal(){
+  document.body.classList.add('modal-open');
+  // === Rendus éphémères ===
+  const{realAvail,prevEph}=calcSoldes();
+  const ML2=['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
+  const allReal2=Object.keys(realAvail).map(Number).filter(ym=>realAvail[ym]>0).sort().slice(-6);
+  const allPrev2=Object.keys(prevEph).map(Number).filter(ym=>prevEph[ym]>0).sort().slice(0,3);
+  const extM=Object.keys(S.ephExtend||{}).map(Number).filter(ym=>ym<=TODAY_YM&&getExpYm(ym)>TODAY_YM);
+  const yms=[...new Set([...allReal2,...allPrev2,...extM])].sort().slice(-8);
+  const maxV=Math.max(...yms.map(ym=>ym>TODAY_YM?(prevEph[ym]||0):(realAvail[ym]||0)),1);
+  let rendRows='';
+  const btnS='font-size:12px;padding:6px 11px;border:0.5px solid var(--border);border-radius:6px;background:transparent;cursor:pointer;min-width:46px;';
+  yms.forEach(function(ym){
+    const isFut=ym>TODAY_YM,avail=isFut?(prevEph[ym]||0):(realAvail[ym]||0);
+    const y=Math.floor(ym/12),m=ym%12,expYm=getExpYm(ym),expY=Math.floor(expYm/12),expM=expYm%12;
+    const isExp=expYm<=TODAY_YM,ext=getEphExtensions(ym);
+    const canAdd=!isExp&&!isFut&&ext<3,canSub=!isExp&&!isFut&&ext>0;
+    if(avail<=0&&!canSub)return;
+    const moLeft=expYm-TODAY_YM,barColor=ephBarColor(moLeft,isExp);
+    const pct=Math.round(avail/maxV*100);
+    const expColor=isExp?'var(--rend-text)':'var(--text3)';
+    const isExtended=getEphExtensions(ym)>0;
+    const extSpan=isExtended?'<span style="background:rgba(99,153,34,.35);border-radius:3px;padding:0 2px;color:var(--text)">'+ML2[expM]+' '+String(expY).slice(2)+'</span>':ML2[expM]+' '+String(expY).slice(2);
+    const minusBtn='<button onclick="undoEph('+ym+');openMergedRenduCgModal()" style="'+btnS+'color:'+(canSub?'var(--text3)':'var(--border2)')+';pointer-events:'+(canSub?'auto':'none')+'">-3m</button>';
+    const plusBtn='<button onclick="reportEph('+ym+');openMergedRenduCgModal()" style="'+btnS+'color:'+(canAdd?'var(--text3)':'var(--border2)')+';pointer-events:'+(canAdd?'auto':'none')+'">+3m</button>';
+    rendRows+='<div style="display:flex;align-items:center;padding:5px 0;border-bottom:0.5px solid var(--border2);gap:6px'+(isExp?';opacity:.4':'')+'">'
+      +'<div style="width:52px;flex-shrink:0"><div style="font-size:11px;color:var(--text'+(isExp||isFut?'3':'2')+')">'+ML2[m]+' '+String(y).slice(2)+'</div>'
+      +'<div style="font-size:9px;color:'+expColor+'">'+(isExp?'expiré':'→'+extSpan)+'</div></div>'
+      +'<div style="flex:1"><div style="height:6px;background:var(--bg3);border-radius:3px;overflow:hidden"><div style="width:'+pct+'%;height:100%;background:'+barColor+';opacity:'+(isFut?.5:1)+'"></div></div></div>'
+      +'<div style="width:44px;text-align:right;font-size:12px;font-weight:600;color:'+(isFut?'var(--text3)':'var(--text)')+'">'+fmtMin(avail)+'</div>'
+      +'<div style="display:flex;gap:2px">'+minusBtn+plusBtn+'</div>'
+      +'</div>';
+  });
+  // === Congés ===
+  const allCgKeys2=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='cg').sort();
+  const nowY=NOW.getFullYear();
+  const minY2=allCgKeys2.length?Math.min(parseInt(allCgKeys2[0].slice(0,4)),nowY):nowY;
+  const years2=[];for(let y2=minY2;y2<=nowY+1;y2++)years2.push(y2);
+  const cet=getCET();
+  let cgRows='';
+  years2.forEach(function(y2){
+    const solde=getSoldeAnnee(y2),used=calcCongesUsedForYear(y2),rest=Math.max(0,solde-used);
+    const isPast=y2<nowY;
+    cgRows+=`<tr style="${isPast?'opacity:.6':''}">
+      <td style="padding:7px 8px;font-size:13px;font-weight:${y2===nowY?'600':'400'};color:${y2===nowY?'var(--text)':'var(--text2)'}">${y2}</td>
+      <td style="padding:7px 8px;text-align:center"><div style="display:flex;align-items:center;justify-content:center;gap:4px">
+        <button onclick="adjSoldeAnnee(${y2},-1)" style="width:22px;height:22px;border-radius:50%;border:0.5px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center">−</button>
+        <span id="cpa-solde-${y2}" style="font-size:13px;font-weight:500;min-width:28px;text-align:center">${solde} j</span>
+        <button onclick="adjSoldeAnnee(${y2},+1)" style="width:22px;height:22px;border-radius:50%;border:0.5px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center">+</button>
+      </div></td>
+      <td style="padding:7px 8px;text-align:center;font-size:13px;color:var(--rend-text)">${used} j</td>
+      <td style="padding:7px 8px;text-align:center;font-size:13px;font-weight:500;color:${rest>0?'var(--green)':'var(--text3)'}">${rest} j</td>
+    </tr>`;
+  });
+  const cetSection=`<div style="margin-top:16px;padding:12px;background:var(--bg3);border-radius:var(--r);border:0.5px solid var(--border)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <span style="font-size:12px;font-weight:600;color:var(--amber)">CET — Compte Épargne Temps</span>
+      <span style="font-size:14px;font-weight:700;color:var(--amber)" id="cet-val">${cet} j</span>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Jours mis en réserve depuis le solde annuel</div>
+    <div style="display:flex;gap:6px;align-items:center">
+      <button onclick="adjCET(-1)" style="flex:1;padding:8px;border:0.5px solid var(--border);border-radius:var(--r);background:transparent;color:var(--text2);cursor:pointer;font-size:12px">− 1 j</button>
+      <button onclick="adjCET(+1)" style="flex:1;padding:8px;border:0.5px solid var(--border2);border-radius:var(--r);background:rgba(224,152,48,.12);color:var(--amber);cursor:pointer;font-size:12px;font-weight:500">+ 1 j CET</button>
+    </div>
+    <div style="font-size:10px;color:var(--text3);margin-top:6px;text-align:center">Mettre en CET retire 1 j du solde de l'année en cours (${nowY})</div>
+  </div>`;
+  document.getElementById('modal-root').innerHTML=
+    '<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet">'
+    +'<div class="sh"></div>'
+    +(rendRows||'<div style="font-size:11px;color:var(--text3)">Aucun rendu disponible.</div>')
+    +'<div class="sep" style="margin:12px 0"></div>'
+    +'<div class="btit" style="margin-bottom:8px">Congés annuels</div>'
+    +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'
+    +'<thead><tr>'
+    +'<th style="padding:4px 8px;font-size:10px;color:var(--text3);text-align:left;text-transform:uppercase;letter-spacing:.05em">Année</th>'
+    +'<th style="padding:4px 8px;font-size:10px;color:var(--text3);text-align:center;text-transform:uppercase;letter-spacing:.05em">Solde</th>'
+    +'<th style="padding:4px 8px;font-size:10px;color:var(--text3);text-align:center;text-transform:uppercase;letter-spacing:.05em">Posés</th>'
+    +'<th style="padding:4px 8px;font-size:10px;color:var(--text3);text-align:center;text-transform:uppercase;letter-spacing:.05em">Restants</th>'
+    +'</tr></thead><tbody>'+cgRows+'</tbody></table></div>'
+    +cetSection
+    +'<button class="mcancel" onclick="closeModal()">Fermer</button>'
+    +'</div></div>';
+}
+
 function openPrevisMois(){
   document.querySelectorAll('[onclick*="openPrevisMois"]').forEach(el=>el.classList.add('active'));document.body.classList.add('modal-open');
   setTimeout(function(){if(document.documentElement.classList.contains('touch')){const _t=document.createElement('button');_t.style.cssText='position:fixed;opacity:0;pointer-events:none;top:0;left:0';document.body.appendChild(_t);_t.focus();document.body.removeChild(_t);}},50);
@@ -2462,6 +2563,108 @@ function openDetailMois(mym){
   document.getElementById('modal-root').innerHTML=
     '<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet">'    +'<div class="sh"></div>'    +'<div class="st">Créés — '+ML[m].toLowerCase()+' '+y+'</div>'    +'<div class="ss">'+fmtMin(gt)+' acquis</div>'    +'<div style="margin-bottom:10px">'+rows.map(r=>
       '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0">'      +'<div style="display:flex;align-items:center;gap:6px"><span class="rdot" style="background:'+r.color+'"></span><span style="font-size:12px;color:var(--text2)">'+r.label+'</span></div>'      +'<b style="font-size:13px;color:var(--text)">'+fmtMin(r.val)+'</b></div>'    ).join('')+'</div>'    +(hsRows?'<div class="sep"></div><div class="btit" style="margin-bottom:4px">Détail par semaine</div>'+hsRows:'')    +'<button class="mcancel" onclick="closeModal()">Fermer</button>'    +'</div></div>';
+}
+
+function openMergedMoisModal(mym){
+  document.querySelectorAll('[onclick*="openMergedMoisModal"]').forEach(el=>el.classList.add('active'));
+  document.body.classList.add('modal-open');
+  const VAC=getVAC();
+  const y=Math.floor(mym/12),m=mym%12;
+  const MLf=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+  const MCf=['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
+  const JOURS=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+  const last=new Date(y,m+1,0).getDate();
+
+  // === Paniers & Primes ===
+  const paniers=[],pa=[],pr=[],pc=[];
+  for(let d=1;d<=last;d++){
+    const date=new Date(y,m,d),key=dk(date);
+    if((S.conges||{})[key])continue;
+    const{vac,absent,echange,ecSelf}=getVac(date);
+    if(absent||!vac||vac==='RH'||(echange&&!ecSelf))continue;
+    const v=VAC[vac];if(!v)continue;
+    const jidx=date.getDay();
+    const lbl=d+' '+MCf[m]+' <span style="color:var(--text3)">'+JOURS[jidx===0?6:jidx-1]+'</span>';
+    const row='<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:4px 0;border-bottom:0.5px solid var(--border2)"><span>'+lbl+'</span><b style="color:var(--amber)">'+vac+'</b></div>';
+    if(v.panier)paniers.push(row);
+    if(v.primes){if(v.primes.antenne)pa.push(row);if(v.primes.reel)pr.push(row);if(v.primes.coord)pc.push(row);}
+  }
+  function pSec(title,rows,count){if(!count)return'';return'<div class="btit" style="margin-top:10px;margin-bottom:4px">'+title+' <span style="font-weight:400;color:var(--text3)">('+count+')</span></div>'+rows.join('');}
+  let paniersHtml=pSec('Paniers',paniers,paniers.length)+pSec('Prime antenne',pa,pa.length)+pSec('Prime réal',pr,pr.length)+pSec('Prime coord',pc,pc.length);
+  if(!paniersHtml)paniersHtml='<div style="font-size:11px;color:var(--text3);padding:6px 0">Aucun ce mois.</div>';
+
+  // === Heures sup. ===
+  const sett2=settingsForYM(mym),useRendu2=sett2.hsRendu;
+  const seenW=new Set();let hsRows='';let tot=0,totLow=0,totHigh=0,totRawLow=0,totRawHigh=0;
+  function makeHSRow(mon){
+    const hsW=calcHSWeek(mon);if(hsW.surplus<=0)return;
+    const sett=settingsForYM(mym),useRendu=sett.hsRendu;
+    const rowTotal=useRendu?hsW.rendusMin:(hsW.rawLow+hsW.rawHigh);
+    const low=useRendu?Math.min(hsW.surplus,480)*1.25:hsW.rawLow;
+    const high=useRendu?Math.max(0,hsW.surplus-480)*1.5:hsW.rawHigh;
+    tot+=rowTotal;totLow+=low;totHigh+=high;totRawLow+=hsW.rawLow;totRawHigh+=hsW.rawHigh;
+    hsRows+='<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0">'
+      +'<span style="font-size:11px;color:var(--text2)">Semaine '+getISOWeek(mon)+(hsW.isRam?' <span style="font-size:9px;color:var(--text3)">(dont ramenée 7h)</span>':'')+'</span>'
+      +'<div style="display:flex;gap:16px;align-items:center">'
+      +(useRendu2?'<b style="font-size:11px;width:52px;text-align:right;color:var(--text3)">'+fmtMin(hsW.rawLow+hsW.rawHigh)+'</b>':'')
+      +'<b style="font-size:11px;width:52px;text-align:right">'+fmtMin(rowTotal)+'</b></div></div>';
+  }
+  for(let dd=-14;dd<1;dd++){const date=new Date(y,m,1);date.setDate(date.getDate()+dd);const mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;if(mon.getFullYear()*12+mon.getMonth()===mym)continue;if(!isSemaineRamenée(mon))continue;let ferYm2=mon.getFullYear()*12+mon.getMonth();for(let fi=0;fi<7;fi++){const fd=new Date(mon);fd.setDate(mon.getDate()+fi);if(FERIES.has(dk(fd))){ferYm2=fd.getFullYear()*12+fd.getMonth();break;}}if(ferYm2!==mym)continue;seenW.add(mk);makeHSRow(mon);}
+  for(let d=1;d<=last;d++){const date=new Date(y,m,d),mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);if(mon.getFullYear()*12+mon.getMonth()!==mym)continue;makeHSRow(mon);}
+  const hsSummary=useRendu2?(
+    (totRawLow>0?'<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0"><span style="font-size:11px;color:var(--text3)">HS≤8h</span><div style="margin-left:auto;display:flex;gap:16px"><b style="font-size:11px;width:52px;text-align:right;color:var(--text3)">'+fmtMin(totRawLow)+'</b><b style="font-size:11px;width:52px;text-align:right;color:var(--blue)">'+fmtMin(totLow)+'</b></div></div>':'')+
+    (totRawHigh>0?'<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0"><span style="font-size:11px;color:var(--text3)">HS>8h</span><div style="margin-left:auto;display:flex;gap:16px"><b style="font-size:11px;width:52px;text-align:right;color:var(--text3)">'+fmtMin(totRawHigh)+'</b><b style="font-size:11px;width:52px;text-align:right;color:var(--blue)">'+fmtMin(totHigh)+'</b></div></div>':'')+
+    '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-top:0.5px solid var(--border)"><span style="font-size:15px;font-weight:600">Total</span><div style="margin-left:auto;display:flex;gap:16px"><b style="font-size:15px;width:52px;text-align:right;color:var(--text3)">'+fmtMin(totRawLow+totRawHigh)+'</b><b style="font-size:15px;width:52px;text-align:right;color:var(--blue)">'+fmtMin(tot)+'</b></div></div>'
+  ):(
+    (totRawLow>0?'<div style="display:flex;justify-content:space-between;padding:3px 0"><span style="font-size:15px;font-weight:600">HS≤8h</span><b style="font-size:15px;color:var(--blue)">'+fmtMin(totRawLow)+'</b></div>':'')+
+    (totRawHigh>0?'<div style="display:flex;justify-content:space-between;padding:3px 0"><span style="font-size:15px;font-weight:600">HS>8h</span><b style="font-size:15px;color:var(--blue)">'+fmtMin(totRawHigh)+'</b></div>':'')
+  );
+  const hsColHdr=hsRows?(useRendu2?'<div style="display:flex;justify-content:space-between;padding:2px 0 4px"><span></span><div style="margin-left:auto;display:flex;gap:16px"><span style="font-size:10px;color:var(--text3);width:52px;text-align:right">brutes</span><span style="font-size:10px;color:var(--text3);width:52px;text-align:right">'+(useRendu2?'rendues':'payés')+'</span></div></div>':''):'';
+  const hsSection=hsRows?(hsColHdr+hsRows+'<div class="sep" style="margin:6px 0"></div>'+hsSummary):'<div style="font-size:11px;color:var(--text3);padding:8px 0">Aucune heure supplémentaire ce mois.</div>';
+
+  // === Créés ce mois ===
+  const{gen:gen2}=calcSoldes();const gm=gen2[mym]||{};
+  const seenW2=new Set();let crRows='';
+  function makeWeekRow2(mon,note){
+    const hsW=calcHSWeek(mon);
+    let weekDim=0,weekRH=0,weekFer=0;
+    for(let i=0;i<7;i++){
+      const d=new Date(mon);d.setDate(mon.getDate()+i);const key=dk(d);
+      const v2=getVac(d);const{vac,absent,echange,ecSelf}=v2;
+      if(!vac||vac==='RH'||absent)continue;if(echange&&!ecSelf)continue;
+      const cKey=(S.conges||{})[key];if(cKey==='rend')continue;
+      const dur=VAC[vac]?VAC[vac].dur:0;
+      const isFer3=FERIES.has(key),isDim3=d.getDay()===0,isRH3=isRHDay(d);
+      const sett3=settingsForYM(d.getFullYear()*12+d.getMonth());
+      const ferF3=isFer3&&sett3.ferRendu?2.0:0,dimF3=isDim3&&sett3.dimRendu?0.5:0,rhF3=(!v2.echange&&!isDim3&&isRH3&&sett3.rhRendu)?0.5:0;
+      if(ferF3+dimF3+rhF3===0)continue;
+      if(ferF3>0)weekFer+=Math.round(dur*ferF3/60*100)/100*60;
+      if(dimF3>0)weekDim+=Math.round(dur*dimF3/60*100)/100*60;
+      if(rhF3>0)weekRH+=Math.round(dur*rhF3/60*100)/100*60;
+    }
+    const total=hsW.rendusMinHS+hsW.rendusMinRam+weekDim+weekRH+weekFer;
+    if(total<=0)return'';
+    const partRows=[{label:'Dimanches',val:weekDim,color:'#9c80e0'},{label:'RH',val:weekRH,color:'#7b9ce0'},{label:'Fériés',val:weekFer,color:'var(--gold)'},{label:'Heures supp.',val:hsW.rendusMinHS,color:'var(--blue)'},{label:'Ramenée',val:hsW.rendusMinRam,color:'var(--gold-dark)'}].filter(r=>r.val>0);
+    return'<div style="font-size:11px;padding:5px 0;border-bottom:0.5px solid var(--border2)"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-weight:500;color:var(--text)">Semaine '+getISOWeek(mon)+(note?' <span style="font-size:10px;font-weight:400;color:var(--text3)">'+note+'</span>':'')+'</span><b style="color:var(--text2)">+'+fmtMin(total)+'</b></div>'+partRows.map(r=>'<div style="display:flex;justify-content:space-between;padding:1px 0 1px 8px"><span style="color:var(--text3)">'+r.label+'</span><span style="color:'+r.color+'">+'+fmtMin(r.val)+'</span></div>').join('')+'</div>';
+  }
+  for(let dd=-14;dd<0;dd++){const date=new Date(y,m,1);date.setDate(date.getDate()+dd);const mon=getMonday(date),mk=dk(mon);if(seenW2.has(mk))continue;seenW2.add(mk);if(!isSemaineRamenée(mon))continue;let ferYm2=mon.getFullYear()*12+mon.getMonth();for(let fi=0;fi<7;fi++){const fd=new Date(mon);fd.setDate(mon.getDate()+fi);if(FERIES.has(dk(fd))){ferYm2=fd.getFullYear()*12+fd.getMonth();break;}}if(ferYm2!==mym)continue;crRows+=makeWeekRow2(mon,'← mois préc.');}
+  for(let d=1;d<=last;d++){const date=new Date(y,m,d),mon=getMonday(date),mk=dk(mon);if(seenW2.has(mk))continue;seenW2.add(mk);if(mon.getFullYear()*12+mon.getMonth()!==mym)continue;crRows+=makeWeekRow2(mon,'');}
+  const crTotRows=[{label:'Dimanches',val:gm.dim,color:'#9c80e0'},{label:'RH',val:gm.rh,color:'#7b9ce0'},{label:'Fériés travaillés',val:gm.fer,color:'var(--gold)'},{label:'Heures supp.',val:gm.hs,color:'var(--blue)'},{label:'Semaines ramenées',val:gm.ram,color:'var(--gold-dark)'},{label:'Solde initial',val:gm.solde,color:'var(--text2)'}].filter(r=>r.val>0);
+  const gt2=(gm.dim||0)+(gm.rh||0)+(gm.fer||0)+(gm.hs||0)+(gm.ram||0);
+  const crSection='<div class="ss">'+fmtMin(gt2)+' '+(mym>TODAY_YM?'prévis.':'acquis')+'</div>'
+    +'<div style="margin-bottom:10px">'+crTotRows.map(r=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0"><div style="display:flex;align-items:center;gap:6px"><span class="rdot" style="background:'+r.color+'"></span><span style="font-size:12px;color:var(--text2)">'+r.label+'</span></div><b style="font-size:13px;color:var(--text)">'+fmtMin(r.val)+'</b></div>').join('')+'</div>'
+    +(crRows?'<div class="sep"></div><div class="btit" style="margin-bottom:4px">Détail par semaine</div>'+crRows:'');
+
+  document.getElementById('modal-root').innerHTML=
+    '<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet">'
+    +'<div class="sh"></div><div class="st">'+MLf[m].toLowerCase()+' '+y+'</div>'
+    +'<div class="btit" style="margin-bottom:6px">Paniers & Primes</div>'+paniersHtml
+    +'<div class="sep" style="margin:12px 0"></div>'
+    +'<div class="btit" style="margin-bottom:6px">Heures supplémentaires</div>'+hsSection
+    +'<div class="sep" style="margin:12px 0"></div>'
+    +'<div class="btit" style="margin-bottom:6px">Créés ce mois</div>'+crSection
+    +'<button class="mcancel" onclick="closeModal()">Fermer</button>'
+    +'</div></div>';
 }
 
 function closeModal(){document.getElementById('modal-root').innerHTML='';pendingKey=null;document.querySelectorAll('.bloc.active,.ctr.active').forEach(el=>el.classList.remove('active'));document.body.classList.remove('modal-open');
