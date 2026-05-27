@@ -1850,16 +1850,24 @@ function poseConge(t){pushUndo();var date=new Date(pendingKey+'T12:00:00');if(!S
 function _autoMatelasKey(key){
   var _avail=(S.profile&&S.profile.matelas)||0;if(_avail<=0)return;
   if(S.matelasKeys&&S.matelasKeys[key]!==undefined)return;
-  var _cs=calcSoldes();
-  var _stk={};
-  Object.keys(_cs.realAvail).map(Number).sort().forEach(function(ym){_stk[ym]=_cs.realAvail[ym];});
-  Object.keys(_cs.prevEph).map(Number).sort().forEach(function(ym){_stk[ym]=(_stk[ym]||0)+_cs.prevEph[ym];});
-  var _rks=Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='rend'&&!(S.matelasKeys&&S.matelasKeys[k]);}).sort();
+  // Rebuild credit pool from buildGen (same as canPlaceRendu) with correct _ym<=_pym constraint
+  var gen=buildGen();
+  var createdYM=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:2026*12;
+  var _sim={};
+  for(var ym=createdYM;ym<=TODAY_YM;ym++)_sim[ym]=0;
+  Object.keys(gen).forEach(function(ymStr){
+    var _ym=Number(ymStr),total=Object.values(gen[_ym]).reduce(function(s,v){return s+v;},0);
+    if(_ym>TODAY_YM){_sim[_ym]=total;return;}
+    _sim[_ym]=getExpYm(_ym)<=TODAY_YM?0:total;
+  });
+  var _mK=new Set(Object.keys(S.matelasKeys||{}));
+  var _rks=Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='rend'&&!_mK.has(k);}).sort();
+  var _syms=Object.keys(_sim).map(Number).sort();
   for(var _i=0;_i<_rks.length;_i++){
     var _k=_rks[_i];
     var _d=new Date(_k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth(),_kdur=getDur(_d);
     var _lft=_kdur;
-    Object.keys(_stk).map(Number).sort().forEach(function(_ym){if(_lft<=0||_stk[_ym]<=0||getExpYm(_ym)<_pym)return;var _tk=Math.min(_stk[_ym],_lft);_stk[_ym]-=_tk;_lft-=_tk;});
+    _syms.forEach(function(_ym){if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym||_ym>_pym)return;var _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;});
     if(_k===key){if(_lft>0){var _use=Math.min(_lft,_avail);if(!S.matelasKeys)S.matelasKeys={};S.matelasKeys[key]=_use;S.profile.matelas=_avail-_use;}break;}
   }
 }
