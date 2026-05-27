@@ -1881,19 +1881,24 @@ function rebalanceMatelasKeys(){
   if(!S.matelasKeys||Object.keys(S.matelasKeys).length===0)return;
   var _saved=Object.assign({},S.matelasKeys);
   S.matelasKeys={};
-  var _cs=calcSoldes();
-  var _stk={};
-  Object.keys(_cs.realAvail).map(Number).sort().forEach(function(ym){_stk[ym]=_cs.realAvail[ym];});
-  Object.keys(_cs.prevEph).map(Number).sort().forEach(function(ym){_stk[ym]=(_stk[ym]||0)+_cs.prevEph[ym];});
+  var gen=buildGen();
+  var createdYM=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:2026*12;
+  var _sim={};
+  for(var ym=createdYM;ym<=TODAY_YM;ym++)_sim[ym]=0;
+  Object.keys(gen).forEach(function(ymStr){
+    var _ym=Number(ymStr),total=Object.values(gen[_ym]).reduce(function(s,v){return s+v;},0);
+    if(_ym>TODAY_YM){_sim[_ym]=total;return;}
+    _sim[_ym]=getExpYm(_ym)<=TODAY_YM?0:total;
+  });
+  var _syms=Object.keys(_sim).map(Number).sort();
   var _rks=Object.keys(S.conges||{}).filter(function(k){return (S.conges||{})[k]==='rend';}).sort();
   var _warned=new Set();
   _rks.forEach(function(k){
     var _d=new Date(k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth(),_dur=getDur(_d);
     var _lft=_dur;
-    Object.keys(_stk).map(Number).sort().forEach(function(_ym){if(_lft<=0||_stk[_ym]<=0||getExpYm(_ym)<_pym)return;var _tk=Math.min(_stk[_ym],_lft);_stk[_ym]-=_tk;_lft-=_tk;});
+    _syms.forEach(function(_ym){if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym||_ym>_pym)return;var _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;});
     if(_lft>0)_warned.add(k);
   });
-  S.matelasKeys={};
   Object.keys(_saved).forEach(function(k){
     if((S.conges||{})[k]==='rend'&&_warned.has(k)){S.matelasKeys[k]=_saved[k];}
     else{if(!S.profile)S.profile={};S.profile.matelas=(S.profile.matelas||0)+_saved[k];}
