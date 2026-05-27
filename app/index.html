@@ -1474,7 +1474,7 @@ function updateCounters(){
   const _mKPose=new Set(Object.keys(S.matelasKeys||{}));
   const totalPose=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='rend'&&!_mKPose.has(k)).reduce((s,k)=>s+getDur(new Date(k+'T12:00:00')),0);
   const viewedYM=curY*12+curM;
-  const dispAtView=calcDispoAtMonth(viewedYM);
+  const dispAtView=calcTrueDispo(viewedYM);
   const poseEl=document.getElementById('eph-total-pose');
   if(poseEl)poseEl.textContent=fmtMin(totalPose);
   const libreEl=document.getElementById('eph-total-libre');
@@ -2015,9 +2015,10 @@ function calcDispoAtDate(targetDate){
   return dispo;
 }
 
-// Returns available ephemeral minutes for a given month, running FIFO only for rendus ≤ viewedYM.
-// extraKeys: additional rendu date-keys to include in the simulation (e.g. to preview post-placement dispo).
-function calcDispoAtMonth(viewedYM, extraKeys){
+// Returns truly free ephemeral minutes for a given viewed month:
+// credits accessible to M-rendus (after existing ≤M FIFO) minus what future rendus
+// cannot cover from their own (> M) credits and will inevitably pull from ≤M credits.
+function calcTrueDispo(viewedYM){
   const gen=buildGen();
   const createdYM=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:2026*12;
   const _sim={};
@@ -2028,56 +2029,68 @@ function calcDispoAtMonth(viewedYM, extraKeys){
     _sim[ym]=getExpYm(ym)<=TODAY_YM?0:total;
   });
   const _mK=new Set(Object.keys(S.matelasKeys||{}));
-  const _extra=new Set(extraKeys||[]);
-  const _existing=Object.keys(S.conges||{}).filter(function(k){
-    if(S.conges[k]!=='rend'||_mK.has(k)||_extra.has(k))return false;
-    const d=new Date(k+'T12:00:00');
-    return d.getFullYear()*12+d.getMonth()<=viewedYM;
-  });
-  const _all=[..._existing,...(extraKeys||[]).filter(function(k){
-    const d=new Date(k+'T12:00:00');return d.getFullYear()*12+d.getMonth()<=viewedYM;
-  })].sort();
-  _all.forEach(function(k){
-    const _d=new Date(k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth(),_dur=getDur(_d);
-    let _lft=_dur;
-    Object.keys(_sim).map(Number).sort().forEach(function(_ym){
-      if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym||_ym>_pym)return;
-      const _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;
+  const _all=Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='rend'&&!_mK.has(k);}).sort();
+  // Step 1: FIFO for rendus ≤ viewedYM (they have priority)
+  _all.filter(function(k){const d=new Date(k+'T12:00:00');return d.getFullYear()*12+d.getMonth()<=viewedYM;})
+    .forEach(function(k){
+      const _d=new Date(k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth(),_dur=getDur(_d);
+      let _lft=_dur;
+      Object.keys(_sim).map(Number).sort().forEach(function(_ym){
+        if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym||_ym>_pym)return;
+        const _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;
+      });
     });
-  });
-  let dispo=0;
-  Object.keys(_sim).map(Number).forEach(function(ym){
-    if(ym<=viewedYM&&getExpYm(ym)>=viewedYM)dispo+=(_sim[ym]||0);
-  });
-  return dispo;
+  // Step 2: credits eligible for viewedYM rendus after priority FIFO
+  let mEligible=0;
+  Object.keys(_sim).map(Number).forEach(function(ym){if(ym<=viewedYM&&getExpYm(ym)>=viewedYM)mEligible+=(_sim[ym]||0);});
+  // Step 3: run future rendus (>viewedYM) restricted to credits >viewedYM only
+  // whatever they can't cover = they'll inevitably pull from ≤viewedYM credits
+  let futureUncovered=0;
+  _all.filter(function(k){const d=new Date(k+'T12:00:00');return d.getFullYear()*12+d.getMonth()>viewedYM;})
+    .forEach(function(k){
+      const _d=new Date(k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth(),_dur=getDur(_d);
+      let _lft=_dur;
+      Object.keys(_sim).map(Number).sort().forEach(function(_ym){
+        if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym||_ym>_pym||_ym<=viewedYM)return;
+        const _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;
+      });
+      futureUncovered+=_lft;
+    });
+  return Math.max(0,mEligible-futureUncovered);
 }
 
 function canPlaceRendu(newKeys){
-  // FIFO simulation from scratch including newKeys — checks if all rendus (existing + new) are covered
-  const gen=buildGen();
-  const createdYM=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:2026*12;
-  const _sim={};
-  for(let ym=createdYM;ym<=TODAY_YM;ym++)_sim[ym]=0;
-  Object.keys(gen).forEach(function(ymStr){
-    const ym=Number(ymStr),total=Object.values(gen[ym]).reduce(function(s,v){return s+v;},0);
-    if(ym>TODAY_YM){_sim[ym]=total;return;}
-    _sim[ym]=getExpYm(ym)<=TODAY_YM?0:total;
-  });
+  // Double FIFO: compare existing-only deficit vs existing+new deficit.
+  // Blocks if new keys are uncovered OR if they increase existing rendus' deficit.
+  function _fifo(allKeys,trackSet){
+    const gen=buildGen();
+    const createdYM=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:2026*12;
+    const _sim={};
+    for(let ym=createdYM;ym<=TODAY_YM;ym++)_sim[ym]=0;
+    Object.keys(gen).forEach(function(ymStr){
+      const ym=Number(ymStr),total=Object.values(gen[ym]).reduce(function(s,v){return s+v;},0);
+      if(ym>TODAY_YM){_sim[ym]=total;return;}
+      _sim[ym]=getExpYm(ym)<=TODAY_YM?0:total;
+    });
+    let tracked=0,other=0;
+    allKeys.forEach(function(k){
+      const _d=new Date(k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth(),_dur=getDur(_d);
+      let _lft=_dur;
+      Object.keys(_sim).map(Number).sort().forEach(function(_ym){
+        if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym||_ym>_pym)return;
+        const _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;
+      });
+      if(_lft>0){if(trackSet&&trackSet.has(k))tracked+=_lft;else other+=_lft;}
+    });
+    return{tracked,other};
+  }
   const _mK=new Set(Object.keys(S.matelasKeys||{}));
   const _newSet=new Set(newKeys);
-  const _existing=Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='rend'&&!_mK.has(k)&&!_newSet.has(k);});
-  const _all=[..._existing,...newKeys].sort();
-  let deficit=0;
-  _all.forEach(function(k){
-    const _d=new Date(k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth(),_dur=getDur(_d);
-    let _lft=_dur;
-    Object.keys(_sim).map(Number).sort().forEach(function(_ym){
-      if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym||_ym>_pym)return;
-      const _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;
-    });
-    if(_newSet.has(k)&&_lft>0)deficit+=_lft;
-  });
-  return deficit;
+  const _existing=Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='rend'&&!_mK.has(k)&&!_newSet.has(k);}).sort();
+  const baseline=_fifo(_existing,null);
+  const withNew=_fifo([..._existing,...newKeys].sort(),_newSet);
+  // Deficit = uncovered new keys + additional burden placed on existing rendus
+  return withNew.tracked+Math.max(0,withNew.other-baseline.other);
 }
 
 function _applyPoseMatelas(type,startKey,endKey){
@@ -2123,9 +2136,8 @@ function applyPose(type,startKey,unique){
       // Soft warning: placement OK but exhausts available hours for the placement month
       const lastKeyDate=new Date(_newKeys[_newKeys.length-1]+'T12:00:00');
       const poseYM=lastKeyDate.getFullYear()*12+lastKeyDate.getMonth();
-      const dispoBefore=calcDispoAtMonth(poseYM);
-      const dispoAfter=calcDispoAtMonth(poseYM,_newKeys);
-      if(dispoBefore>0&&dispoAfter<=0&&!window._warnedEphExhaust){
+      const dispoBefore=calcTrueDispo(poseYM);
+      if(dispoBefore>0&&dispoBefore<=totalRend&&!window._warnedEphExhaust){
         window._warnedEphExhaust=true;
         const moisLbl=MC[lastKeyDate.getMonth()]+' '+lastKeyDate.getFullYear();
         document.getElementById('modal-root').innerHTML='<div class="overlay" style="z-index:400"><div class="sheet" style="max-height:260px"><div class="sh"></div>'
