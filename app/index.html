@@ -1473,15 +1473,15 @@ function updateCounters(){
   if(uniEl)uniEl.innerHTML=uniHtml||'<div style="font-size:11px;color:var(--text3);padding:4px 0">Aucun rendu.</div>';
   const _mKPose=new Set(Object.keys(S.matelasKeys||{}));
   const totalPose=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='rend'&&!_mKPose.has(k)).reduce((s,k)=>s+getDur(new Date(k+'T12:00:00')),0);
-  // Dispo for viewed month: credits generated in months ≤ viewedYM that haven't expired by viewedYM
   const viewedYM=curY*12+curM;
-  let dispAtView=0;
-  Object.keys(realAvail).map(Number).forEach(function(ym){if(ym<=viewedYM&&getExpYm(ym)>=viewedYM)dispAtView+=(realAvail[ym]||0);});
-  Object.keys(prevEph).map(Number).forEach(function(ym){if(ym<=viewedYM&&getExpYm(ym)>=viewedYM)dispAtView+=(prevEph[ym]||0);});
+  const dispAtView=calcDispoAtMonth(viewedYM);
   const poseEl=document.getElementById('eph-total-pose');
   if(poseEl)poseEl.textContent=fmtMin(totalPose);
   const libreEl=document.getElementById('eph-total-libre');
-  if(libreEl)libreEl.textContent=fmtMin(dispAtView);
+  if(libreEl){
+    libreEl.textContent=fmtMin(dispAtView);
+    libreEl.style.color=dispAtView<=0?'var(--red)':dispAtView<120?'var(--amber)':'var(--rend-text)';
+  }
   const libreLbl=document.getElementById('eph-libre-lbl');
   if(libreLbl)libreLbl.textContent='Dispo '+MC[curM].slice(0,3);
   updateRecap();
@@ -2015,6 +2015,43 @@ function calcDispoAtDate(targetDate){
   return dispo;
 }
 
+// Returns available ephemeral minutes for a given month, running FIFO only for rendus ≤ viewedYM.
+// extraKeys: additional rendu date-keys to include in the simulation (e.g. to preview post-placement dispo).
+function calcDispoAtMonth(viewedYM, extraKeys){
+  const gen=buildGen();
+  const createdYM=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:2026*12;
+  const _sim={};
+  for(let ym=createdYM;ym<=TODAY_YM;ym++)_sim[ym]=0;
+  Object.keys(gen).forEach(function(ymStr){
+    const ym=Number(ymStr),total=Object.values(gen[ym]).reduce(function(s,v){return s+v;},0);
+    if(ym>TODAY_YM){_sim[ym]=total;return;}
+    _sim[ym]=getExpYm(ym)<=TODAY_YM?0:total;
+  });
+  const _mK=new Set(Object.keys(S.matelasKeys||{}));
+  const _extra=new Set(extraKeys||[]);
+  const _existing=Object.keys(S.conges||{}).filter(function(k){
+    if(S.conges[k]!=='rend'||_mK.has(k)||_extra.has(k))return false;
+    const d=new Date(k+'T12:00:00');
+    return d.getFullYear()*12+d.getMonth()<=viewedYM;
+  });
+  const _all=[..._existing,...(extraKeys||[]).filter(function(k){
+    const d=new Date(k+'T12:00:00');return d.getFullYear()*12+d.getMonth()<=viewedYM;
+  })].sort();
+  _all.forEach(function(k){
+    const _d=new Date(k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth(),_dur=getDur(_d);
+    let _lft=_dur;
+    Object.keys(_sim).map(Number).sort().forEach(function(_ym){
+      if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym||_ym>_pym)return;
+      const _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;
+    });
+  });
+  let dispo=0;
+  Object.keys(_sim).map(Number).forEach(function(ym){
+    if(ym<=viewedYM&&getExpYm(ym)>=viewedYM)dispo+=(_sim[ym]||0);
+  });
+  return dispo;
+}
+
 function canPlaceRendu(newKeys){
   // FIFO simulation from scratch including newKeys — checks if all rendus (existing + new) are covered
   const gen=buildGen();
@@ -2083,6 +2120,24 @@ function applyPose(type,startKey,unique){
           +'</div></div>';
         return;
       }
+      // Soft warning: placement OK but exhausts available hours for the placement month
+      const lastKeyDate=new Date(_newKeys[_newKeys.length-1]+'T12:00:00');
+      const poseYM=lastKeyDate.getFullYear()*12+lastKeyDate.getMonth();
+      const dispoBefore=calcDispoAtMonth(poseYM);
+      const dispoAfter=calcDispoAtMonth(poseYM,_newKeys);
+      if(dispoBefore>0&&dispoAfter<=0&&!window._warnedEphExhaust){
+        window._warnedEphExhaust=true;
+        const moisLbl=MC[lastKeyDate.getMonth()]+' '+lastKeyDate.getFullYear();
+        document.getElementById('modal-root').innerHTML='<div class="overlay" style="z-index:400"><div class="sheet" style="max-height:260px"><div class="sh"></div>'
+          +'<div class="st" style="color:var(--amber)">Heures épuisées</div>'
+          +'<div class="ss" style="margin-bottom:16px">Cette pose utilise toutes les heures éphémères disponibles en <b>'+moisLbl+'</b>.<br>Il ne restera plus rien pour ce mois.</div>'
+          +'<div style="display:flex;gap:8px">'
+          +'<button class="mb" style="flex:1;background:var(--rend-l);color:var(--rend-text);border-color:transparent" onclick="window._warnedEphExhaust=false;applyPose(\''+type+'\',\''+startKey+'\','+(unique?'true':'false')+')">Confirmer</button>'
+          +'<button class="mb" style="flex:1" onclick="window._warnedEphExhaust=false;if(pendingKey)openDay(pendingKey);else closeModal()">Annuler</button>'
+          +'</div></div></div>';
+        return;
+      }
+      window._warnedEphExhaust=false;
     }
 
   }
