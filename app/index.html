@@ -624,10 +624,10 @@ function getProfiles(){
 // ================================================================
 // UNDO / REDO
 // ================================================================
-function snap(){return JSON.stringify({ov:S.overrides,co:S.conges,hi:S.history});}
+function snap(){return JSON.stringify({ov:S.overrides,co:S.conges,hi:S.history,mat:(S.profile&&S.profile.matelas)||0,mk:JSON.parse(JSON.stringify(S.matelasKeys||{}))});}
 function pushUndo(){_us.push(snap());if(_us.length>30)_us.shift();_rs=[];updateUrBtns();}
-function undoAction(){if(!_us.length)return;_rs.push(snap());const p=JSON.parse(_us.pop());S.overrides=p.ov;S.conges=p.co;S.history=p.hi;saveState();render();updateUrBtns();}
-function redoAction(){if(!_rs.length)return;_us.push(snap());const n=JSON.parse(_rs.pop());S.overrides=n.ov;S.conges=n.co;S.history=n.hi;saveState();render();updateUrBtns();}
+function undoAction(){if(!_us.length)return;_rs.push(snap());const p=JSON.parse(_us.pop());S.overrides=p.ov;S.conges=p.co;S.history=p.hi;if(S.profile)S.profile.matelas=p.mat||0;S.matelasKeys=p.mk||{};saveState();render();updateUrBtns();}
+function redoAction(){if(!_rs.length)return;_us.push(snap());const n=JSON.parse(_rs.pop());S.overrides=n.ov;S.conges=n.co;S.history=n.hi;if(S.profile)S.profile.matelas=n.mat||0;S.matelasKeys=n.mk||{};saveState();render();updateUrBtns();}
 function updateUrBtns(){const u=document.getElementById('undo-btn'),r=document.getElementById('redo-btn');if(u)u.disabled=!_us.length;if(r)r.disabled=!_rs.length;}
 
 // ================================================================
@@ -1847,10 +1847,10 @@ function poseConge(t){pushUndo();var date=new Date(pendingKey+'T12:00:00');if(!S
   if(t==='rend'){const createdYM=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:2026*12;const dateYM=date.getFullYear()*12+date.getMonth();if(dateYM<createdYM)stored='rend-hist';}
   S.conges[pendingKey]=stored;logH(fmtDate(date)+' -> '+(t==='cg'?'congé':stored==='rend-hist'?'rendu hist. '+fmtMin(getDur(date)):'rendu '+fmtMin(getDur(date))),t==='cg'?'#6a9878':'#88b862',pendingKey);
   saveState();closeModal();render();popCell(pendingKey);}
-function _autoMatelasKey(key){
+function recalcAllMatelas(){
+  // Return all current matelas allocations to balance
+  if(S.matelasKeys){Object.values(S.matelasKeys).forEach(function(v){if(S.profile)S.profile.matelas=(S.profile.matelas||0)+v;});S.matelasKeys={};}
   var _avail=(S.profile&&S.profile.matelas)||0;if(_avail<=0)return;
-  if(S.matelasKeys&&S.matelasKeys[key]!==undefined)return;
-  // Rebuild credit pool from buildGen (same as canPlaceRendu) with correct _ym<=_pym constraint
   var gen=buildGen();
   var createdYM=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:2026*12;
   var _sim={};
@@ -1860,49 +1860,20 @@ function _autoMatelasKey(key){
     if(_ym>TODAY_YM){_sim[_ym]=total;return;}
     _sim[_ym]=getExpYm(_ym)<=TODAY_YM?0:total;
   });
-  var _mK=new Set(Object.keys(S.matelasKeys||{}));
-  var _rks=Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='rend'&&!_mK.has(k);}).sort();
   var _syms=Object.keys(_sim).map(Number).sort();
-  for(var _i=0;_i<_rks.length;_i++){
-    var _k=_rks[_i];
-    var _d=new Date(_k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth(),_kdur=getDur(_d);
+  var _rks=Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='rend';}).sort();
+  _rks.forEach(function(k){
+    var _d=new Date(k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth(),_kdur=getDur(_d);
     var _lft=_kdur;
     _syms.forEach(function(_ym){if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym||_ym>_pym)return;var _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;});
-    if(_k===key){if(_lft>0){var _use=Math.min(_lft,_avail);if(!S.matelasKeys)S.matelasKeys={};S.matelasKeys[key]=_use;S.profile.matelas=_avail-_use;}break;}
-  }
+    if(_lft>0){var _use=Math.min(_lft,_avail);if(!S.matelasKeys)S.matelasKeys={};S.matelasKeys[k]=_use;S.profile.matelas=_avail-_use;_avail=S.profile.matelas;}
+  });
 }
 function useMatelasForDay(){
   var key=pendingKey;if(!key||!S.conges||S.conges[key]!=='rend')return;
   pushUndo();
-  _autoMatelasKey(key);
+  recalcAllMatelas();
   saveState();closeModal();render();
-}
-function rebalanceMatelasKeys(){
-  if(!S.matelasKeys||Object.keys(S.matelasKeys).length===0)return;
-  var _saved=Object.assign({},S.matelasKeys);
-  S.matelasKeys={};
-  var gen=buildGen();
-  var createdYM=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:2026*12;
-  var _sim={};
-  for(var ym=createdYM;ym<=TODAY_YM;ym++)_sim[ym]=0;
-  Object.keys(gen).forEach(function(ymStr){
-    var _ym=Number(ymStr),total=Object.values(gen[_ym]).reduce(function(s,v){return s+v;},0);
-    if(_ym>TODAY_YM){_sim[_ym]=total;return;}
-    _sim[_ym]=getExpYm(_ym)<=TODAY_YM?0:total;
-  });
-  var _syms=Object.keys(_sim).map(Number).sort();
-  var _rks=Object.keys(S.conges||{}).filter(function(k){return (S.conges||{})[k]==='rend';}).sort();
-  var _warned=new Set();
-  _rks.forEach(function(k){
-    var _d=new Date(k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth(),_dur=getDur(_d);
-    var _lft=_dur;
-    _syms.forEach(function(_ym){if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym||_ym>_pym)return;var _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;});
-    if(_lft>0)_warned.add(k);
-  });
-  Object.keys(_saved).forEach(function(k){
-    if((S.conges||{})[k]==='rend'&&_warned.has(k)){S.matelasKeys[k]=_saved[k];}
-    else{if(!S.profile)S.profile={};S.profile.matelas=(S.profile.matelas||0)+_saved[k];}
-  });
 }
 function removeCongé(){
   const key=pendingKey;
@@ -1944,7 +1915,7 @@ function removeCongé(){
     delete _stored2[k]; // clear stored IDs so sync re-creates correctly
   });
   localStorage.setItem('gcal_event_ids_'+_pid2,JSON.stringify(_stored2));
-  rebalanceMatelasKeys();
+  recalcAllMatelas();
   saveState();closeModal();render();popCell(key);
   gcalTrigger();
 }
@@ -2114,8 +2085,8 @@ function _applyPoseMatelas(type,startKey,endKey){
   if(!S.conges)S.conges={};
   var _s=new Date(startKey+'T12:00:00'),_e=new Date(endKey+'T12:00:00'),_d=new Date(_s);
   var _label=type==='rend'?'rendu':'congé';
-  while(_d<=_e){var k=dk(_d);var v2=getVac(_d);if(v2.vac&&v2.vac!=='RH'&&!v2.absent){S.conges[k]=type;if(type==='rend')_autoMatelasKey(k);}_d.setDate(_d.getDate()+1);}
-  if(type==='rend'){calcSoldes().warnKeys.forEach(function(k){_autoMatelasKey(k);});}
+  while(_d<=_e){var k=dk(_d);var v2=getVac(_d);if(v2.vac&&v2.vac!=='RH'&&!v2.absent){S.conges[k]=type;}_d.setDate(_d.getDate()+1);}
+  if(type==='rend')recalcAllMatelas();
   logH(fmtDate(_s)+' -> '+_label+(_s<_e?' au '+fmtDate(_e):''),'#88b862',startKey);
   saveState();closeModal();render();gcalTrigger();
 }
