@@ -2015,9 +2015,10 @@ function calcDispoAtDate(targetDate){
   return dispo;
 }
 
-// Returns truly free ephemeral minutes for a given viewed month:
-// credits accessible to M-rendus (after existing ≤M FIFO) minus what future rendus
-// cannot cover from their own (> M) credits and will inevitably pull from ≤M credits.
+// Returns truly free ephemeral minutes for a given viewed month.
+// Future rendus run with >viewedYM credits preferred first; they only fall back
+// to ≤viewedYM credits when those are actually accessible (expiry >= their poseYm).
+// Remaining ≤viewedYM eligible credits after all passes = dispo.
 function calcTrueDispo(viewedYM){
   const gen=buildGen();
   const createdYM=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:2026*12;
@@ -2030,33 +2031,37 @@ function calcTrueDispo(viewedYM){
   });
   const _mK=new Set(Object.keys(S.matelasKeys||{}));
   const _all=Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='rend'&&!_mK.has(k);}).sort();
-  // Step 1: FIFO for rendus ≤ viewedYM (they have priority)
+  const _sortedYms=Object.keys(_sim).map(Number).sort();
+  // Step 1: FIFO for rendus ≤ viewedYM (they have priority, use all ≤ their month)
   _all.filter(function(k){const d=new Date(k+'T12:00:00');return d.getFullYear()*12+d.getMonth()<=viewedYM;})
     .forEach(function(k){
       const _d=new Date(k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth(),_dur=getDur(_d);
       let _lft=_dur;
-      Object.keys(_sim).map(Number).sort().forEach(function(_ym){
+      _sortedYms.forEach(function(_ym){
         if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym||_ym>_pym)return;
         const _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;
       });
     });
-  // Step 2: credits eligible for viewedYM rendus after priority FIFO
-  let mEligible=0;
-  Object.keys(_sim).map(Number).forEach(function(ym){if(ym<=viewedYM&&getExpYm(ym)>=viewedYM)mEligible+=(_sim[ym]||0);});
-  // Step 3: run future rendus (>viewedYM) restricted to credits >viewedYM only
-  // whatever they can't cover = they'll inevitably pull from ≤viewedYM credits
-  let futureUncovered=0;
+  // Step 2: Future rendus — prefer >viewedYM credits first, then fall back to ≤viewedYM
   _all.filter(function(k){const d=new Date(k+'T12:00:00');return d.getFullYear()*12+d.getMonth()>viewedYM;})
     .forEach(function(k){
       const _d=new Date(k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth(),_dur=getDur(_d);
       let _lft=_dur;
-      Object.keys(_sim).map(Number).sort().forEach(function(_ym){
+      _sortedYms.forEach(function(_ym){
         if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym||_ym>_pym||_ym<=viewedYM)return;
         const _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;
       });
-      futureUncovered+=_lft;
+      if(_lft>0){
+        _sortedYms.forEach(function(_ym){
+          if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym||_ym>_pym||_ym>viewedYM)return;
+          const _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;
+        });
+      }
     });
-  return Math.max(0,mEligible-futureUncovered);
+  // Step 3: remaining ≤viewedYM credits with expiry ≥viewedYM = what's genuinely free
+  let dispo=0;
+  _sortedYms.forEach(function(ym){if(ym<=viewedYM&&getExpYm(ym)>=viewedYM)dispo+=(_sim[ym]||0);});
+  return Math.max(0,dispo);
 }
 
 function canPlaceRendu(newKeys){
