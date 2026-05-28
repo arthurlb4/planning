@@ -1444,15 +1444,15 @@ function updateCounters(){
     const extSpan=isExtended?'<span style="background:rgba(99,153,34,.35);border-radius:3px;padding:0 2px;color:var(--text)">'+MC[expM].slice(0,3)+' '+String(expY).slice(2)+'</span>':MC[expM].slice(0,3)+' '+String(expY).slice(2);
     const expLbl=isExp?'expiré':'→'+extSpan;
     const barColor=ephBarColor(moLeft,isExp);
-    const barVal=isFut?orig:avail;
-    const barPct=Math.round(barVal/maxVal*100);
+    const barPct=Math.round(avail/maxVal*100);
     const origPct=Math.round(orig/maxVal*100);
-    const availColor=isExp?'var(--text3)':isFut?'var(--text3)':moLeft<=1?'#e07830':moLeft<=2?'var(--gold)':'var(--blue)';
+    const barOpacity=isExp?'.15':isFut?'1':'.5';
+    const availColor=isExp?'var(--text3)':'var(--blue)';
     uniHtml+=`<div class="eph-urow${isExp?' expired':''}${isFut?' fut':''}">
       <div class="eph-u-mc">${MC[m2]+' '+String(y2).slice(2)}</div>
       <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
         <div class="eph-u-flow">${orig>0?`<span class="eph-u-cre">${fmtMin(orig)}</span><span style="color:var(--text3);font-size:9px;margin:0 1px">→</span>`:''}<span class="eph-u-dispo" style="color:${availColor}">${isExp?'–':fmtMin(avail)}</span></div>
-        <div class="eph-bw"><div class="eph-b2" style="width:${origPct}%;background:var(--blue);opacity:.22"></div><div class="eph-b" style="width:${barPct}%;background:${barColor};opacity:${isFut?.4:1}"></div></div>
+        <div class="eph-bw"><div class="eph-b2" style="width:${origPct}%;background:var(--blue);opacity:.22"></div><div class="eph-b" style="width:${barPct}%;background:var(--blue);opacity:${barOpacity}"></div></div>
       </div>
       <div class="eph-u-exp">${expLbl}</div>
     </div>`;
@@ -2277,40 +2277,47 @@ function openRestantsModal(){
     +'</div></div>';
 }
 
-function openMergedRenduCgModal(){
+function openMergedRenduCgModal(limit){
+  limit=limit||8;
   const _modalWasOpen=document.body.classList.contains('modal-open');
   document.body.classList.add('modal-open');
   // === Rendus éphémères ===
-  const{realAvail,prevEph}=calcSoldes();
+  const{gen,realAvail,prevEph}=calcSoldes();
   const ML2=['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
-  const allReal2=Object.keys(realAvail).map(Number).filter(ym=>realAvail[ym]>0).sort().slice(-6);
-  const allPrev2=Object.keys(prevEph).map(Number).filter(ym=>prevEph[ym]>0).sort().slice(0,3);
+  const allReal2=Object.keys(realAvail).map(Number).filter(ym=>realAvail[ym]>0).sort().slice(-24);
+  const allPrev2=Object.keys(prevEph).map(Number).filter(ym=>prevEph[ym]>0).sort().slice(0,6);
   const extM=Object.keys(S.ephExtend||{}).map(Number).filter(ym=>ym<=TODAY_YM&&getExpYm(ym)>TODAY_YM);
-  const yms=[...new Set([...allReal2,...allPrev2,...extM])].sort().slice(-8);
+  const allYms=[...new Set([...allReal2,...allPrev2,...extM])].sort();
+  const hasMore=allYms.length>limit;
+  const yms=allYms.slice(-limit);
   const maxV=Math.max(...yms.map(ym=>ym>TODAY_YM?(prevEph[ym]||0):(realAvail[ym]||0)),1);
   let rendRows='';
-  const btnS='font-size:12px;padding:6px 11px;border:0.5px solid var(--border);border-radius:6px;background:transparent;cursor:pointer;min-width:46px;';
+  const btnS='font-size:11px;padding:4px 8px;border:0.5px solid var(--border);border-radius:6px;background:transparent;cursor:pointer;min-width:36px;';
   yms.forEach(function(ym){
     const isFut=ym>TODAY_YM,avail=isFut?(prevEph[ym]||0):(realAvail[ym]||0);
     const y=Math.floor(ym/12),m=ym%12,expYm=getExpYm(ym),expY=Math.floor(expYm/12),expM=expYm%12;
     const isExp=expYm<=TODAY_YM,ext=getEphExtensions(ym);
     const canAdd=!isExp&&!isFut&&ext<3,canSub=!isExp&&!isFut&&ext>0;
     if(avail<=0&&!canSub)return;
-    const moLeft=expYm-TODAY_YM,barColor=ephBarColor(moLeft,isExp);
-    const pct=Math.round(avail/maxV*100);
-    const expColor=isExp?'var(--rend-text)':'var(--text3)';
+    const orig=(gen[ym]?Object.values(gen[ym]).reduce(function(s,v){return s+v;},0):0);
+    const origPct=Math.round(orig/maxV*100);
+    const barPct=Math.round(avail/maxV*100);
+    const barOpacity=isExp?'.15':isFut?'1':'.5';
     const isExtended=getEphExtensions(ym)>0;
     const extSpan=isExtended?'<span style="background:rgba(99,153,34,.35);border-radius:3px;padding:0 2px;color:var(--text)">'+ML2[expM]+' '+String(expY).slice(2)+'</span>':ML2[expM]+' '+String(expY).slice(2);
-    const minusBtn='<button onclick="undoEph('+ym+');openMergedRenduCgModal()" style="'+btnS+'color:'+(canSub?'var(--text3)':'var(--border2)')+';pointer-events:'+(canSub?'auto':'none')+'">-3m</button>';
-    const plusBtn='<button onclick="reportEph('+ym+');openMergedRenduCgModal()" style="'+btnS+'color:'+(canAdd?'var(--text3)':'var(--border2)')+';pointer-events:'+(canAdd?'auto':'none')+'">+3m</button>';
-    rendRows+='<div style="display:flex;align-items:center;padding:5px 0;border-bottom:0.5px solid var(--border2);gap:6px'+(isExp?';opacity:.4':'')+'">'
-      +'<div style="width:52px;flex-shrink:0"><div style="font-size:11px;color:var(--text'+(isExp||isFut?'3':'2')+')">'+ML2[m]+' '+String(y).slice(2)+'</div>'
-      +'<div style="font-size:9px;color:'+expColor+'">'+(isExp?'expiré':'→'+extSpan)+'</div></div>'
-      +'<div style="flex:1"><div style="height:6px;background:var(--bg3);border-radius:3px;overflow:hidden"><div style="width:'+pct+'%;height:100%;background:'+barColor+';opacity:'+(isFut?.5:1)+'"></div></div></div>'
-      +'<div style="width:44px;text-align:right;font-size:12px;font-weight:600;color:'+(isFut?'var(--text3)':'var(--text)')+'">'+fmtMin(avail)+'</div>'
-      +'<div style="display:flex;gap:2px">'+minusBtn+plusBtn+'</div>'
+    const expLbl=isExp?'expiré':'→'+extSpan;
+    const minusBtn='<button onclick="undoEph('+ym+');openMergedRenduCgModal('+limit+')" style="'+btnS+'color:'+(canSub?'var(--text3)':'var(--border2)')+';pointer-events:'+(canSub?'auto':'none')+'">−3m</button>';
+    const plusBtn='<button onclick="reportEph('+ym+');openMergedRenduCgModal('+limit+')" style="'+btnS+'color:'+(canAdd?'var(--text3)':'var(--border2)')+';pointer-events:'+(canAdd?'auto':'none')+'">+3m</button>';
+    rendRows+='<div class="eph-urow'+(isExp?' expired':'')+(isFut?' fut':'')+'">'
+      +'<div class="eph-u-mc">'+ML2[m]+' '+String(y).slice(2)+'</div>'
+      +'<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">'
+      +'<div class="eph-u-flow"><span style="color:var(--blue);font-weight:500">'+fmtMin(avail)+'</span><span style="color:var(--text3);font-size:9px;margin-left:auto">'+expLbl+'</span></div>'
+      +'<div class="eph-bw"><div class="eph-b2" style="width:'+origPct+'%;background:var(--blue);opacity:.22"></div><div class="eph-b" style="width:'+barPct+'%;background:var(--blue);opacity:'+barOpacity+'"></div></div>'
+      +'</div>'
+      +'<div style="display:flex;gap:2px;flex-shrink:0">'+minusBtn+plusBtn+'</div>'
       +'</div>';
   });
+  const moreBtn=hasMore?'<button onclick="openMergedRenduCgModal('+(limit+4)+')" style="width:100%;margin-top:4px;padding:5px;font-size:11px;color:var(--text3);background:transparent;border:0.5px solid var(--border);border-radius:var(--r);cursor:pointer">+ voir plus</button>':'';
   // === Congés ===
   const allCgKeys2=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='cg').sort();
   const nowY=NOW.getFullYear();
@@ -2342,6 +2349,7 @@ function openMergedRenduCgModal(){
     '<div class="overlay"'+(_modalWasOpen?' style="animation:none"':'')+' onclick="if(event.target===this)closeModal()"><div class="sheet"'+(_modalWasOpen?' style="animation:none"':'')+'>'
     +'<div class="sh"></div>'
     +(rendRows||'<div style="font-size:11px;color:var(--text3)">Aucun rendu disponible.</div>')
+    +moreBtn
     +'<div class="sep" style="margin:12px 0"></div>'
     +'<div class="btit" style="margin-bottom:8px">Congés annuels</div>'
     +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'
