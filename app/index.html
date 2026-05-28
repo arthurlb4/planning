@@ -886,17 +886,19 @@ const dur=VAC[vac]?VAC[vac].dur:0;
   for(let y=2025;y<=2030;y++)for(let m=0;m<12;m++){
     const ym=y*12+m;if(ym<createdYM||ym>TODAY_YM&&ym>maxYM)continue;
     const last=new Date(y,m+1,0).getDate();
-    for(let d=1;d<=last;d++){const date=new Date(y,m,d),mon=getMonday(date),mk2=dk(mon);if(seenHS.has(mk2))continue;seenHS.add(mk2);const mym=mon.getFullYear()*12+mon.getMonth();
-      // Compute ferYm early — for ramenée weeks the ferie might be in the next month
-      let ferYm=mym;
+    for(let d=1;d<=last;d++){const date=new Date(y,m,d),mon=getMonday(date),mk2=dk(mon);if(seenHS.has(mk2))continue;seenHS.add(mk2);
+      // HS attribuées au dimanche (dernier jour de la semaine), pas au lundi
+      const _sun=new Date(mon.getTime()+6*864e5);
+      const mym_sun=_sun.getFullYear()*12+_sun.getMonth();
+      // Ramenée attribuée au jour du férié
+      let ferYm=mym_sun;
       for(let fi=0;fi<7;fi++){const fd2=new Date(mon);fd2.setDate(mon.getDate()+fi);if(FERIES.has(dk(fd2))){ferYm=fd2.getFullYear()*12+fd2.getMonth();break;}}
-      // Skip if neither the week's month nor the ferie month is in scope
-      const weekInScope=mym>=createdYM&&(mym<=TODAY_YM||mym<=maxYM);
+      const weekInScope=mym_sun>=createdYM&&(mym_sun<=TODAY_YM||mym_sun<=maxYM);
       const ferInScope=ferYm>=createdYM&&(ferYm<=TODAY_YM||ferYm<=maxYM);
       if(!weekInScope&&!ferInScope)continue;
-      const sett=settingsForYM(weekInScope?mym:ferYm);if(!sett.hsRendu)continue;
+      const sett=settingsForYM(weekInScope?mym_sun:ferYm);if(!sett.hsRendu)continue;
       const hsW=calcHSWeek(mon);if(hsW.rendusMin>0){
-        if(hsW.rendusMinHS>0&&weekInScope)add(mym,'hs',hsW.rendusMinHS);
+        if(hsW.rendusMinHS>0&&weekInScope)add(mym_sun,'hs',hsW.rendusMinHS);
         if(hsW.rendusMinRam>0&&ferInScope)add(ferYm,'ram',hsW.rendusMinRam);
       }}
   }
