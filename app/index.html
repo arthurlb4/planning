@@ -2233,14 +2233,17 @@ function openHSModal(mym){
     if(mon.getFullYear()*12+mon.getMonth()!==mym)continue;
     const hsW=calcHSWeek(mon);if(hsW.surplus<=0)continue;
     let _fym=mon.getFullYear()*12+mon.getMonth();for(let _fi=0;_fi<7;_fi++){const _fd=new Date(mon);_fd.setDate(mon.getDate()+_fi);if(FERIES.has(dk(_fd))){_fym=_fd.getFullYear()*12+_fd.getMonth();break;}}
-    if(hsW.isRam&&_fym!==mym)continue;
+    const _crossMonth=hsW.isRam&&_fym!==mym;
+    if(_crossMonth&&hsW.rendusMinHS<=0)continue;
     const sett=settingsForYM(mym);const useRendu=sett.hsRendu;
-    const low=useRendu?Math.min(hsW.surplus,480)*1.25:hsW.rawLow;
-    const high=useRendu?Math.max(0,hsW.surplus-480)*1.5:hsW.rawHigh;
-    const rowTotal=useRendu?hsW.rendusMin:(hsW.rawLow+hsW.rawHigh);
-    tot+=rowTotal;totLow+=low;totHigh+=high;totRawLow+=hsW.rawLow;totRawHigh+=hsW.rawHigh;if(hsW.isRam)totRam+=7*60;
+    const _sur=_crossMonth?Math.max(0,hsW.surplus-7*60):hsW.surplus;
+    const _rawL=Math.min(_sur,480),_rawH=Math.max(0,_sur-480);
+    const low=useRendu?_rawL*1.25:_rawL;
+    const high=useRendu?_rawH*1.5:_rawH;
+    const rowTotal=_crossMonth?hsW.rendusMinHS:(useRendu?hsW.rendusMin:(_rawL+_rawH));
+    tot+=rowTotal;totLow+=low;totHigh+=high;totRawLow+=_rawL;totRawHigh+=_rawH;if(hsW.isRam&&!_crossMonth)totRam+=7*60;
     const li=lineIdx(mon);
-    rows+='<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0">'      +'<span style="font-size:11px;color:var(--text2)">Semaine '+getISOWeek(mon)+(hsW.isRam?' <span style="font-size:9px;color:var(--text3)">(dont ramenée 7h)</span>':'')+'</span>'      +'<div style="display:flex;gap:16px;align-items:center">'      +(useRendu2?'<b style="font-size:11px;width:52px;text-align:right;color:var(--text3)">'+fmtMin(hsW.rawLow+hsW.rawHigh)+'</b>':'')      +'<b style="font-size:11px;width:52px;text-align:right">'+fmtMin(rowTotal)+'</b>'      +'</div></div>';
+    rows+='<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0">'      +'<span style="font-size:11px;color:var(--text2)">Semaine '+getISOWeek(mon)+(hsW.isRam&&!_crossMonth?' <span style="font-size:9px;color:var(--text3)">(dont ramenée 7h)</span>':'')+'</span>'      +'<div style="display:flex;gap:16px;align-items:center">'      +(useRendu2?'<b style="font-size:11px;width:52px;text-align:right;color:var(--text3)">'+fmtMin(_rawL+_rawH)+'</b>':'')      +'<b style="font-size:11px;width:52px;text-align:right">'+fmtMin(rowTotal)+'</b>'      +'</div></div>';
   }
   document.getElementById('modal-root').innerHTML=
     '<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet">'
