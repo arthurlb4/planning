@@ -1446,13 +1446,13 @@ function updateCounters(){
     const barColor=ephBarColor(moLeft,isExp);
     const barPct=Math.round(avail/maxVal*100);
     const origPct=Math.round(orig/maxVal*100);
-    const barOpacity=isExp?'.15':isFut?'1':'.5';
-    const availColor=isExp?'var(--text3)':'var(--blue)';
+    const greenOpacity=isExp?'.15':isFut?'.35':'1';
+    const availColor=isExp?'var(--text3)':isFut?'var(--text3)':'var(--rend-text)';
     uniHtml+=`<div class="eph-urow${isExp?' expired':''}${isFut?' fut':''}">
       <div class="eph-u-mc">${MC[m2]+' '+String(y2).slice(2)}</div>
       <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
-        <div class="eph-u-flow">${orig>0?`<span class="eph-u-cre">${fmtMin(orig)}</span><span style="color:var(--text3);font-size:9px;margin:0 1px">→</span>`:''}<span class="eph-u-dispo" style="color:${availColor}">${isExp?'–':fmtMin(avail)}</span></div>
-        <div class="eph-bw"><div class="eph-b2" style="width:${origPct}%;background:var(--blue);opacity:.22"></div><div class="eph-b" style="width:${barPct}%;background:var(--blue);opacity:${barOpacity}"></div></div>
+        <div class="eph-u-flow">${orig>0?`<span class="eph-u-cre" style="color:var(--blue)">${fmtMin(orig)}</span><span style="color:var(--text3);font-size:9px;margin:0 1px">→</span>`:''}<span class="eph-u-dispo" style="color:${availColor}">${isExp?'0':fmtMin(avail)}</span></div>
+        <div class="eph-bw"><div class="eph-b2" style="width:${origPct}%;background:var(--blue);opacity:${isFut?'.2':'.4'}"></div><div class="eph-b" style="width:${barPct}%;background:var(--rend);opacity:${greenOpacity}"></div></div>
       </div>
       <div class="eph-u-exp">${expLbl}</div>
     </div>`;
@@ -2278,19 +2278,19 @@ function openRestantsModal(){
 }
 
 function openMergedRenduCgModal(limit){
-  limit=limit||8;
+  limit=limit||6;
   const _modalWasOpen=document.body.classList.contains('modal-open');
   document.body.classList.add('modal-open');
   // === Rendus éphémères ===
   const{gen,realAvail,prevEph}=calcSoldes();
   const ML2=['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
-  const allReal2=Object.keys(realAvail).map(Number).filter(ym=>realAvail[ym]>0).sort().slice(-24);
+  const genPast=Object.keys(gen).map(Number).filter(ym=>ym<=TODAY_YM).sort().slice(-24);
   const allPrev2=Object.keys(prevEph).map(Number).filter(ym=>prevEph[ym]>0).sort().slice(0,6);
   const extM=Object.keys(S.ephExtend||{}).map(Number).filter(ym=>ym<=TODAY_YM&&getExpYm(ym)>TODAY_YM);
-  const allYms=[...new Set([...allReal2,...allPrev2,...extM])].sort();
+  const allYms=[...new Set([...genPast,...allPrev2,...extM])].sort();
   const hasMore=allYms.length>limit;
   const yms=allYms.slice(-limit);
-  const maxV=Math.max(...yms.map(ym=>ym>TODAY_YM?(prevEph[ym]||0):(realAvail[ym]||0)),1);
+  const maxV=Math.max(...yms.map(ym=>{const o=gen[ym]?Object.values(gen[ym]).reduce(function(s,v){return s+v;},0):0;return Math.max(o,ym>TODAY_YM?(prevEph[ym]||0):(realAvail[ym]||0));}),1);
   let rendRows='';
   const btnS='font-size:11px;padding:4px 8px;border:0.5px solid var(--border);border-radius:6px;background:transparent;cursor:pointer;min-width:36px;';
   yms.forEach(function(ym){
@@ -2298,11 +2298,13 @@ function openMergedRenduCgModal(limit){
     const y=Math.floor(ym/12),m=ym%12,expYm=getExpYm(ym),expY=Math.floor(expYm/12),expM=expYm%12;
     const isExp=expYm<=TODAY_YM,ext=getEphExtensions(ym);
     const canAdd=!isExp&&!isFut&&ext<3,canSub=!isExp&&!isFut&&ext>0;
-    if(avail<=0&&!canSub)return;
     const orig=(gen[ym]?Object.values(gen[ym]).reduce(function(s,v){return s+v;},0):0);
+    if(orig<=0&&avail<=0&&!canSub)return;
     const origPct=Math.round(orig/maxV*100);
     const barPct=Math.round(avail/maxV*100);
-    const barOpacity=isExp?'.15':isFut?'1':'.5';
+    const greenOpacity=isExp?'.15':isFut?'.35':'1';
+    const blueOpacity=isFut?'.2':'.4';
+    const availColor=isExp?'var(--text3)':isFut?'var(--text3)':'var(--rend-text)';
     const isExtended=getEphExtensions(ym)>0;
     const extSpan=isExtended?'<span style="background:rgba(99,153,34,.35);border-radius:3px;padding:0 2px;color:var(--text)">'+ML2[expM]+' '+String(expY).slice(2)+'</span>':ML2[expM]+' '+String(expY).slice(2);
     const expLbl=isExp?'expiré':'→'+extSpan;
@@ -2311,13 +2313,13 @@ function openMergedRenduCgModal(limit){
     rendRows+='<div class="eph-urow'+(isExp?' expired':'')+(isFut?' fut':'')+'">'
       +'<div class="eph-u-mc">'+ML2[m]+' '+String(y).slice(2)+'</div>'
       +'<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">'
-      +'<div class="eph-u-flow"><span style="color:var(--blue);font-weight:500">'+fmtMin(avail)+'</span><span style="color:var(--text3);font-size:9px;margin-left:auto">'+expLbl+'</span></div>'
-      +'<div class="eph-bw"><div class="eph-b2" style="width:'+origPct+'%;background:var(--blue);opacity:.22"></div><div class="eph-b" style="width:'+barPct+'%;background:var(--blue);opacity:'+barOpacity+'"></div></div>'
+      +'<div class="eph-u-flow"><span style="color:var(--blue);font-size:9px">'+fmtMin(orig)+'</span><span style="color:var(--text3);font-size:9px;margin:0 2px">→</span><span style="font-weight:500;color:'+availColor+'">'+fmtMin(avail)+'</span><span style="color:var(--text3);font-size:9px;margin-left:auto">'+expLbl+'</span></div>'
+      +'<div class="eph-bw"><div class="eph-b2" style="width:'+origPct+'%;background:var(--blue);opacity:'+blueOpacity+'"></div><div class="eph-b" style="width:'+barPct+'%;background:var(--rend);opacity:'+greenOpacity+'"></div></div>'
       +'</div>'
       +'<div style="display:flex;gap:2px;flex-shrink:0">'+minusBtn+plusBtn+'</div>'
       +'</div>';
   });
-  const moreBtn=hasMore?'<button onclick="openMergedRenduCgModal('+(limit+4)+')" style="width:100%;margin-top:4px;padding:5px;font-size:11px;color:var(--text3);background:transparent;border:0.5px solid var(--border);border-radius:var(--r);cursor:pointer">+ voir plus</button>':'';
+  const moreBtn=hasMore?'<button onclick="openMergedRenduCgModal('+(limit+4)+')" style="width:100%;margin-top:6px;padding:6px;font-size:12px;color:var(--blue);background:transparent;border:0.5px solid var(--border);border-radius:var(--r);cursor:pointer">＋ voir plus</button>':'';
   // === Congés ===
   const allCgKeys2=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='cg').sort();
   const nowY=NOW.getFullYear();
