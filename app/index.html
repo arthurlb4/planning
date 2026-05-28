@@ -2559,21 +2559,20 @@ function openMergedMoisModal(mym){
   // === Heures sup. ===
   const sett2=settingsForYM(mym),useRendu2=sett2.hsRendu;
   const seenW=new Set();let hsRows='';let tot=0,totLow=0,totHigh=0,totRawLow=0,totRawHigh=0;
-  function makeHSRow(mon){
+  function makeHSRow(mon,prevMois){
     const hsW=calcHSWeek(mon);if(hsW.surplus<=0)return;
     const sett=settingsForYM(mym),useRendu=sett.hsRendu;
     const rowTotal=useRendu?hsW.rendusMin:(hsW.rawLow+hsW.rawHigh);
-    const low=useRendu?Math.min(hsW.surplus,480)*1.25:hsW.rawLow;
-    const high=useRendu?Math.max(0,hsW.surplus-480)*1.5:hsW.rawHigh;
+    const low=useRendu?hsW.rawLow*1.25:hsW.rawLow;
+    const high=useRendu?hsW.rawHigh*1.5:hsW.rawHigh;
     tot+=rowTotal;totLow+=low;totHigh+=high;totRawLow+=hsW.rawLow;totRawHigh+=hsW.rawHigh;
     hsRows+='<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0">'
-      +'<span style="font-size:11px;color:var(--text2)">Semaine '+getISOWeek(mon)+(hsW.isRam?' <span style="font-size:9px;color:var(--text3)">(dont ramenée 7h)</span>':'')+'</span>'
+      +'<span style="font-size:11px;color:var(--text2)">Semaine '+getISOWeek(mon)+(prevMois?' <span style="font-size:9px;color:var(--text3)">(mois précédent)</span>':'')+(hsW.isRam?' <span style="font-size:9px;color:var(--text3)">(dont ramenée 7h)</span>':'')+'</span>'
       +'<div style="display:flex;gap:16px;align-items:center">'
       +(useRendu2?'<b style="font-size:11px;width:52px;text-align:right;color:var(--text3)">'+fmtMin(hsW.rawLow+hsW.rawHigh)+'</b>':'')
       +'<b style="font-size:11px;width:52px;text-align:right">'+fmtMin(rowTotal)+'</b></div></div>';
   }
-  for(let dd=-14;dd<1;dd++){const date=new Date(y,m,1);date.setDate(date.getDate()+dd);const mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;if(mon.getFullYear()*12+mon.getMonth()===mym)continue;if(!isSemaineRamenée(mon))continue;let ferYm2=mon.getFullYear()*12+mon.getMonth();for(let fi=0;fi<7;fi++){const fd=new Date(mon);fd.setDate(mon.getDate()+fi);if(FERIES.has(dk(fd))){ferYm2=fd.getFullYear()*12+fd.getMonth();break;}}if(ferYm2!==mym)continue;seenW.add(mk);makeHSRow(mon);}
-  for(let d=1;d<=last;d++){const date=new Date(y,m,d),mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);if(mon.getFullYear()*12+mon.getMonth()!==mym)continue;makeHSRow(mon);}
+  for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd);const mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);const sun=new Date(mon);sun.setDate(mon.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mym)continue;const prevMois2=mon.getFullYear()*12+mon.getMonth()!==mym;makeHSRow(mon,prevMois2);}
   const hsSummary=useRendu2?(
     (totRawLow>0?'<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0"><span style="font-size:11px;color:var(--text3)">HS≤8h</span><div style="margin-left:auto;display:flex;gap:16px"><b style="font-size:11px;width:52px;text-align:right;color:var(--text3)">'+fmtMin(totRawLow)+'</b><b style="font-size:11px;width:52px;text-align:right;color:var(--blue)">'+fmtMin(totLow)+'</b></div></div>':'')+
     (totRawHigh>0?'<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0"><span style="font-size:11px;color:var(--text3)">HS>8h</span><div style="margin-left:auto;display:flex;gap:16px"><b style="font-size:11px;width:52px;text-align:right;color:var(--text3)">'+fmtMin(totRawHigh)+'</b><b style="font-size:11px;width:52px;text-align:right;color:var(--blue)">'+fmtMin(totHigh)+'</b></div></div>':'')+
@@ -2590,28 +2589,33 @@ function openMergedMoisModal(mym){
   const seenW2=new Set();let crRows='';
   function makeWeekRow2(mon,note){
     const hsW=calcHSWeek(mon);
+    const sun2=new Date(mon);sun2.setDate(mon.getDate()+6);
+    const sunYm2=sun2.getFullYear()*12+sun2.getMonth();
     let weekDim=0,weekRH=0,weekFer=0;
     for(let i=0;i<7;i++){
-      const d=new Date(mon);d.setDate(mon.getDate()+i);const key=dk(d);
+      const d=new Date(mon);d.setDate(mon.getDate()+i);
+      if(d.getFullYear()*12+d.getMonth()!==mym)continue;
+      const key=dk(d);
       const v2=getVac(d);const{vac,absent,echange,ecSelf}=v2;
       if(!vac||vac==='RH'||absent)continue;if(echange&&!ecSelf)continue;
       const cKey=(S.conges||{})[key];if(cKey==='rend')continue;
       const dur=VAC[vac]?VAC[vac].dur:0;
       const isFer3=FERIES.has(key),isDim3=d.getDay()===0,isRH3=isRHDay(d);
-      const sett3=settingsForYM(d.getFullYear()*12+d.getMonth());
+      const sett3=settingsForYM(mym);
       const ferF3=isFer3&&sett3.ferRendu?2.0:0,dimF3=isDim3&&sett3.dimRendu?0.5:0,rhF3=(!v2.echange&&!isDim3&&isRH3&&sett3.rhRendu)?0.5:0;
       if(ferF3+dimF3+rhF3===0)continue;
       if(ferF3>0)weekFer+=Math.round(dur*ferF3/60*100)/100*60;
       if(dimF3>0)weekDim+=Math.round(dur*dimF3/60*100)/100*60;
       if(rhF3>0)weekRH+=Math.round(dur*rhF3/60*100)/100*60;
     }
-    const total=hsW.rendusMinHS+hsW.rendusMinRam+weekDim+weekRH+weekFer;
+    const hsHS2=sunYm2===mym?hsW.rendusMinHS:0;
+    const hsRam2=sunYm2===mym?hsW.rendusMinRam:0;
+    const total=hsHS2+hsRam2+weekDim+weekRH+weekFer;
     if(total<=0)return'';
-    const partRows=[{label:'Dimanches',val:weekDim,color:'#9c80e0'},{label:'RH',val:weekRH,color:'#7b9ce0'},{label:'Fériés',val:weekFer,color:'var(--gold)'},{label:'Heures supp.',val:hsW.rendusMinHS,color:'var(--blue)'},{label:'Ramenée',val:hsW.rendusMinRam,color:'var(--gold-dark)'}].filter(r=>r.val>0);
+    const partRows=[{label:'Dimanches',val:weekDim,color:'#9c80e0'},{label:'RH',val:weekRH,color:'#7b9ce0'},{label:'Fériés',val:weekFer,color:'var(--gold)'},{label:'Heures supp.',val:hsHS2,color:'var(--blue)'},{label:'Ramenée',val:hsRam2,color:'var(--gold-dark)'}].filter(r=>r.val>0);
     return'<div style="font-size:11px;padding:5px 0;border-bottom:0.5px solid var(--border2)"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-weight:500;color:var(--text)">Semaine '+getISOWeek(mon)+(note?' <span style="font-size:10px;font-weight:400;color:var(--text3)">'+note+'</span>':'')+'</span><b style="color:var(--text2)">+'+fmtMin(total)+'</b></div>'+partRows.map(r=>'<div style="display:flex;justify-content:space-between;padding:1px 0 1px 8px"><span style="color:var(--text3)">'+r.label+'</span><span style="color:'+r.color+'">+'+fmtMin(r.val)+'</span></div>').join('')+'</div>';
   }
-  for(let dd=-14;dd<0;dd++){const date=new Date(y,m,1);date.setDate(date.getDate()+dd);const mon=getMonday(date),mk=dk(mon);if(seenW2.has(mk))continue;seenW2.add(mk);if(!isSemaineRamenée(mon))continue;let ferYm2=mon.getFullYear()*12+mon.getMonth();for(let fi=0;fi<7;fi++){const fd=new Date(mon);fd.setDate(mon.getDate()+fi);if(FERIES.has(dk(fd))){ferYm2=fd.getFullYear()*12+fd.getMonth();break;}}if(ferYm2!==mym)continue;crRows+=makeWeekRow2(mon,'← mois préc.');}
-  for(let d=1;d<=last;d++){const date=new Date(y,m,d),mon=getMonday(date),mk=dk(mon);if(seenW2.has(mk))continue;seenW2.add(mk);if(mon.getFullYear()*12+mon.getMonth()!==mym)continue;crRows+=makeWeekRow2(mon,'');}
+  for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd);const mon=getMonday(date),mk=dk(mon);if(seenW2.has(mk))continue;seenW2.add(mk);const note=mon.getFullYear()*12+mon.getMonth()!==mym?'← mois préc.':'';crRows+=makeWeekRow2(mon,note);}
   const crTotRows=[{label:'Dimanches',val:gm.dim,color:'#9c80e0'},{label:'RH',val:gm.rh,color:'#7b9ce0'},{label:'Fériés travaillés',val:gm.fer,color:'var(--gold)'},{label:'Heures supp.',val:gm.hs,color:'var(--blue)'},{label:'Semaines ramenées',val:gm.ram,color:'var(--gold-dark)'},{label:'Solde initial',val:gm.solde,color:'var(--text2)'}].filter(r=>r.val>0);
   const gt2=(gm.dim||0)+(gm.rh||0)+(gm.fer||0)+(gm.hs||0)+(gm.ram||0);
   const crSection='<div class="ss">'+fmtMin(gt2)+' '+(mym>TODAY_YM?'prévis.':'acquis')+'</div>'
