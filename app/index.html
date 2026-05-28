@@ -800,14 +800,13 @@ function calcHSWeek(monday){
   if(isRam){
     const ramMin=7*60;
     const normalSurplus=Math.max(0,weekWorked-weekBase);
-    const surplusTotal=ramMin+normalSurplus;
-    const rendusTotal=hsRenduFromSurplus(surplusTotal);
+    const rendusRam=hsRenduFromSurplus(ramMin);   // forfait fixe 7h×1.25 indépendant des HS
     const rendusPure=hsRenduFromSurplus(normalSurplus);
-    const rendusRam=rendusTotal-rendusPure;
+    const surplusTotal=ramMin+normalSurplus;
     const rawLow=Math.min(surplusTotal,480);
     const rawHigh=Math.max(0,surplusTotal-480);
     return{surplus:surplusTotal,weekBase,weekWorked:weekBase+surplusTotal,
-      rendusMin:rendusTotal,rendusH:Math.round(rendusTotal/60*100)/100,
+      rendusMin:rendusPure+rendusRam,rendusH:Math.round((rendusPure+rendusRam)/60*100)/100,
       rendusMinHS:rendusPure,rendusMinRam:rendusRam,isRam,rawLow,rawHigh};
   }
   const surplusTotal=Math.max(0,weekWorked-weekBase);
@@ -2206,19 +2205,43 @@ function openHSModal(mym){
   const sett2=settingsForYM(mym);const useRendu2=sett2.hsRendu;
   const seenW=new Set();let rows='';
   let tot=0,totLow=0,totHigh=0,totRawLow=0,totRawHigh=0,totRam=0;
+  // Semaines du mois précédent dont la ramenée appartient à ce mois (férié ici)
+  for(let dd=-13;dd<0;dd++){
+    const date=new Date(y,m,1);date.setDate(date.getDate()+dd);
+    const mon=getMonday(date),mk=dk(mon);
+    if(seenW.has(mk))continue;
+    if(mon.getFullYear()*12+mon.getMonth()===mym)continue;
+    if(!isSemaineRamenée(mon))continue;
+    let _fym2=mon.getFullYear()*12+mon.getMonth();
+    for(let fi=0;fi<7;fi++){const fd=new Date(mon);fd.setDate(mon.getDate()+fi);if(FERIES.has(dk(fd))){_fym2=fd.getFullYear()*12+fd.getMonth();break;}}
+    if(_fym2!==mym)continue;
+    seenW.add(mk);
+    const hsW=calcHSWeek(mon);if(hsW.rendusMinRam<=0)continue;
+    const sett=settingsForYM(mym);const useRendu=sett.hsRendu;
+    const rowTotal=useRendu?hsW.rendusMinRam:7*60;
+    tot+=rowTotal;totLow+=rowTotal;totHigh+=0;totRawLow+=7*60;totRawHigh+=0;totRam+=7*60;
+    rows+='<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0">'      +'<span style="font-size:11px;color:var(--text2)">Semaine '+getISOWeek(mon)+' <span style="font-size:9px;color:var(--text3)">(ramenée ← S. préc.)</span></span>'      +'<div style="display:flex;gap:16px;align-items:center">'      +(useRendu2?'<b style="font-size:11px;width:52px;text-align:right;color:var(--text3)">'+fmtMin(7*60)+'</b>':'')      +'<b style="font-size:11px;width:52px;text-align:right">'+fmtMin(rowTotal)+'</b>'      +'</div></div>';
+  }
   // Semaines dont le lundi est dans ce mois (règle standard : HS → mois du lundi)
   for(let d=1;d<=new Date(y,m+1,0).getDate();d++){
     const date=new Date(y,m,d),mon=getMonday(date),mk=dk(mon);
     if(seenW.has(mk))continue;seenW.add(mk);
     if(mon.getFullYear()*12+mon.getMonth()!==mym)continue;
     const hsW=calcHSWeek(mon);if(hsW.surplus<=0)continue;
+    // Ferié cross-mois : la ramenée va au mois du férié, pas à celui du lundi
+    let _fym=mym;for(let _fi=0;_fi<7;_fi++){const _fd=new Date(mon);_fd.setDate(mon.getDate()+_fi);if(FERIES.has(dk(_fd))){_fym=_fd.getFullYear()*12+_fd.getMonth();break;}}
+    const _cross=hsW.isRam&&_fym!==mym;
+    if(_cross&&hsW.rendusMinHS<=0)continue; // tout va au mois suivant
     const sett=settingsForYM(mym);const useRendu=sett.hsRendu;
-    const low=useRendu?Math.min(hsW.surplus,480)*1.25:hsW.rawLow;
-    const high=useRendu?Math.max(0,hsW.surplus-480)*1.5:hsW.rawHigh;
-    const rowTotal=useRendu?hsW.rendusMin:(hsW.rawLow+hsW.rawHigh);
-    tot+=rowTotal;totLow+=low;totHigh+=high;totRawLow+=hsW.rawLow;totRawHigh+=hsW.rawHigh;if(hsW.isRam)totRam+=7*60;
+    const _sur=_cross?Math.max(0,hsW.surplus-7*60):hsW.surplus;
+    const _rawL=_cross?Math.min(_sur,480):hsW.rawLow;
+    const _rawH=_cross?Math.max(0,_sur-480):hsW.rawHigh;
+    const low=useRendu?_rawL*1.25:_rawL;
+    const high=useRendu?_rawH*1.5:_rawH;
+    const rowTotal=_cross?hsW.rendusMinHS:(useRendu?hsW.rendusMin:(_rawL+_rawH));
+    tot+=rowTotal;totLow+=low;totHigh+=high;totRawLow+=_rawL;totRawHigh+=_rawH;if(hsW.isRam&&!_cross)totRam+=7*60;
     const li=lineIdx(mon);
-    rows+='<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0">'      +'<span style="font-size:11px;color:var(--text2)">Semaine '+getISOWeek(mon)+(hsW.isRam?' <span style="font-size:9px;color:var(--text3)">(dont ramenée 7h)</span>':'')+'</span>'      +'<div style="display:flex;gap:16px;align-items:center">'      +(useRendu2?'<b style="font-size:11px;width:52px;text-align:right;color:var(--text3)">'+fmtMin(hsW.rawLow+hsW.rawHigh)+'</b>':'')      +'<b style="font-size:11px;width:52px;text-align:right">'+fmtMin(rowTotal)+'</b>'      +'</div></div>';
+    rows+='<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0">'      +'<span style="font-size:11px;color:var(--text2)">Semaine '+getISOWeek(mon)+(hsW.isRam&&!_cross?' <span style="font-size:9px;color:var(--text3)">(dont ramenée 7h)</span>':'')+'</span>'      +'<div style="display:flex;gap:16px;align-items:center">'      +(useRendu2?'<b style="font-size:11px;width:52px;text-align:right;color:var(--text3)">'+fmtMin(_rawL+_rawH)+'</b>':'')      +'<b style="font-size:11px;width:52px;text-align:right">'+fmtMin(rowTotal)+'</b>'      +'</div></div>';
   }
   document.getElementById('modal-root').innerHTML=
     '<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet">'
