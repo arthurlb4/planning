@@ -824,7 +824,7 @@ function calcHSWeek(monday){
 }
 function isSemaineRamenée(monday){
   let hasFérié=false,hasWork=false,allPosed=true,hasAbsent=false;
-  for(let i=0;i<6;i++){const d=new Date(monday);d.setDate(monday.getDate()+i);const key=dk(d),{vac,absent,echange,ecSelf}=getVac(d);if(FERIES.has(key))hasFérié=true;if(absent)hasAbsent=true;const isGivenAway=echange&&!ecSelf;if(vac&&vac!=='RH'&&!absent&&!isGivenAway){hasWork=true;const _p=(S.conges||{})[key];if(_p!=='cg'&&_p!=='absent')allPosed=false;}}
+  for(let i=0;i<7;i++){const d=new Date(monday);d.setDate(monday.getDate()+i);const key=dk(d),{vac,absent,echange,ecSelf}=getVac(d);if(FERIES.has(key))hasFérié=true;if(i<6){if(absent)hasAbsent=true;const isGivenAway=echange&&!ecSelf;if(vac&&vac!=='RH'&&!absent&&!isGivenAway){hasWork=true;const _p=(S.conges||{})[key];if(_p!=='cg'&&_p!=='absent')allPosed=false;}}}
   // Semaine ramenée si: contient un férié, a des jours travaillés, pas tous posés (cg/rend/absent), et pas d'absent
   return hasFérié&&hasWork&&!allPosed&&!hasAbsent;
 }
@@ -1138,7 +1138,7 @@ function getState(date){
 }
 function buildRameeSet(y,m){
   const set=new Set(),seen=new Set(),last=new Date(y,m+1,0).getDate();
-  for(let d=1;d<=last;d++){const date=new Date(y,m,d),mon=getMonday(date),mk=dk(mon);if(seen.has(mk))continue;seen.add(mk);if(isSemaineRamenée(mon)){for(let i=0;i<7;i++){const dd=new Date(mon);dd.setDate(mon.getDate()+i);set.add(dk(dd));}}}
+  for(let d=1;d<=last;d++){const date=new Date(y,m,d),mon=getMonday(date),mk=dk(mon);if(seen.has(mk))continue;seen.add(mk);if(!isSemaineRamenée(mon))continue;let ferHere=false;for(let i=0;i<7;i++){const dd=new Date(mon);dd.setDate(mon.getDate()+i);if(FERIES.has(dk(dd))&&dd.getFullYear()===y&&dd.getMonth()===m){ferHere=true;break;}}if(!ferHere)continue;for(let i=0;i<7;i++){const dd=new Date(mon);dd.setDate(mon.getDate()+i);set.add(dk(dd));}}
   return set;
 }
 
@@ -2236,7 +2236,7 @@ function openHSModal(mym){
     const low=useRendu?Math.min(hsW.surplus,480)*1.25:hsW.rawLow;
     const high=useRendu?Math.max(0,hsW.surplus-480)*1.5:hsW.rawHigh;
     const rowTotal=useRendu?hsW.rendusMin:(hsW.rawLow+hsW.rawHigh);
-    tot+=rowTotal;totLow+=low;totHigh+=high;totRawLow+=hsW.rawLow;totRawHigh+=hsW.rawHigh;if(hsW.isRam)totRam+=7*60;
+    tot+=rowTotal;totLow+=low;totHigh+=high;totRawLow+=hsW.rawLow;totRawHigh+=hsW.rawHigh;if(hsW.isRam){let _fym=mon.getFullYear()*12+mon.getMonth();for(let _fi=0;_fi<7;_fi++){const _fd=new Date(mon);_fd.setDate(mon.getDate()+_fi);if(FERIES.has(dk(_fd))){_fym=_fd.getFullYear()*12+_fd.getMonth();break;}}if(_fym===mym)totRam+=7*60;}
     const li=lineIdx(mon);
     rows+='<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0">'      +'<span style="font-size:11px;color:var(--text2)">Semaine '+getISOWeek(mon)+(hsW.isRam?' <span style="font-size:9px;color:var(--text3)">(dont ramenée 7h)</span>':'')+'</span>'      +'<div style="display:flex;gap:16px;align-items:center">'      +(useRendu2?'<b style="font-size:11px;width:52px;text-align:right;color:var(--text3)">'+fmtMin(hsW.rawLow+hsW.rawHigh)+'</b>':'')      +'<b style="font-size:11px;width:52px;text-align:right">'+fmtMin(rowTotal)+'</b>'      +'</div></div>';
   }
