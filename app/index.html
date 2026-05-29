@@ -144,6 +144,10 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 /* Week number - base */
 .wkn{font-size:9px;color:var(--text3);text-align:center;vertical-align:middle;width:20px;padding:1px 2px;border-radius:4px;}
 /* New cycle start */
+.cyc-badge{position:absolute;left:0;right:0;z-index:50;pointer-events:none;border-top:3px solid rgba(192,57,43,.55);display:flex;align-items:flex-start;transform:translateY(-1.5px);}
+[data-theme=light] .cyc-badge{border-top-color:rgba(160,30,20,.4);}
+.cyc-label{margin-left:20px;background:rgba(192,57,43,.55);color:rgba(255,255,255,.92);font-size:8px;font-weight:600;padding:1px 7px 3px;border-radius:0 0 4px 4px;letter-spacing:.04em;white-space:nowrap;flex-shrink:0;}
+[data-theme=light] .cyc-label{background:rgba(160,30,20,.45);}
 /* Exchange given-away days */
 .s-ec2 .dn,.s-ec2 .dv{color:var(--red);}
 /* Today outline */
@@ -1288,8 +1292,9 @@ function renderMonth(el_heads,el_cal){
     const isFullCG=firstReal&&isWeekFullCG(getMonday(firstReal.date));
     // Wkn color: ramenee > plein CG > semaine courante
     const wknCls=rowRamee?'wram':isFullCG?'wcg':isCurWeek?'wcur':'';
-    const rowCls=(isCurWeek?'curweek':isFullCG?'cgweek':'');
-    html+=`<tr class="${rowCls.trim()}"><td class="wkn ${wknCls}" data-wn="${wn}">${wn}</td>`;
+    const cycleStartName=rowMon?_newCycleWeeks[rowMon]:'';
+    const rowCls=(isCurWeek?'curweek':isFullCG?'cgweek':'')+(cycleStartName?' new-cycle-row':'');
+    html+=`<tr class="${rowCls.trim()}"><td class="wkn ${wknCls}" data-wn="${wn}"${cycleStartName?` data-cyc="${cycleStartName}"`:''}>${wn}</td>`;
     row.forEach(cell=>{
       if(!cell){html+='<td></td>';return;}
       html+=`<td><div class="dc s-${cell.st}${cell.today?' today':''}" style="position:relative;">${cell.warnDot}<div class="dci" data-key="${cell.key}" onclick="openDay('${cell.key}')"><span class="dn">${cell.d}</span><span class="dv">${cell.lbl}</span></div>${cell.panDot}</div></td>`;
@@ -1297,10 +1302,45 @@ function renderMonth(el_heads,el_cal){
     html+='</tr>';
   }
   el_cal.innerHTML=html;
+  requestAnimationFrame(function(){_renderCycBadges(el_cal);});
   // Update header warn icon
   updateWarnIcon(_warnKeys);
 }
 
+function _renderCycBadges(calEl){
+  const calWrap=calEl?calEl.closest('.cal-wrap'):document.querySelector('.cal-wrap');
+  if(!calWrap)return;
+  calWrap.querySelectorAll('.cyc-badge').forEach(function(b){b.remove();});
+  const wrapRect=calWrap.getBoundingClientRect();
+  const _tbl=calEl||calWrap.querySelector('#cal');
+  if(!_tbl)return;
+  _tbl.querySelectorAll('td.wkn[data-cyc]').forEach(function(td){
+    const rect=td.getBoundingClientRect();
+    const badge=document.createElement('div');
+    badge.className='cyc-badge';
+    const lbl=document.createElement('span');
+    lbl.className='cyc-label';
+    lbl.textContent=td.dataset.cyc;
+    badge.appendChild(lbl);
+    badge.style.top=(rect.top-wrapRect.top)+'px';
+    calWrap.appendChild(badge);
+  });
+  if(!calWrap._cycRO&&window.ResizeObserver){
+    let _raf=0;
+    calWrap._cycRO=new ResizeObserver(function(){
+      cancelAnimationFrame(_raf);
+      _raf=requestAnimationFrame(function(){_renderCycBadges(null);});
+    });
+    calWrap._cycRO.observe(calWrap);
+  }
+}
+(function(){
+  let _raf=0;
+  window.addEventListener('resize',function(){
+    cancelAnimationFrame(_raf);
+    _raf=requestAnimationFrame(function(){_renderCycBadges(null);});
+  });
+})();
 
 // ================================================================
 // ANNUAL VIEW
