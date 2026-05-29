@@ -62,7 +62,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .col-sep{display:none;}
 .side-col{width:clamp(200px,26vw,360px);flex-shrink:0;display:flex;flex-direction:column;gap:16px;padding-top:0;padding-bottom:20px;padding-left:12px;position:relative;z-index:1;}
 @media(max-width:720px){.layout{flex-direction:column;align-items:stretch;}.side-col{width:100%;padding-left:0;}.col-sep{display:none;}}
-@media(max-width:480px){.hdr{padding:12px 10px;}.hdr-ver{display:none;}.ibtn-lbl{display:none;}}
+@media(max-width:480px){.hdr{padding:12px 10px;}.hdr-ver{display:none;}.ibtn-lbl{display:none;}.det-mob{display:none;}}
 
 /* HEADER */
 .hdr{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;left:0;right:0;width:100%;background:var(--bg2);border-bottom:0.5px solid var(--border);box-shadow:0 2px 12px rgba(0,0,0,.18);position:fixed;top:0;z-index:200;}
@@ -1421,7 +1421,7 @@ function updateCounters(){
         <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">Rendus</div>
         <div style="font-size:16px;font-weight:600;color:var(--rend-text)">${fmtMin(gt)}</div>
         <div style="font-size:10px;color:var(--text3)">${mym>TODAY_YM?'prévis.':'acquis'}</div>
-        <div style="margin-top:8px;width:100%">${det}</div>
+        <div class="det-mob" style="margin-top:8px;width:100%">${det}</div>
       </div>
       <div style="width:0.5px;background:var(--border2);flex-shrink:0;margin:2px 0"></div>
       <div style="flex:1;display:flex;flex-direction:column;align-items:center;padding:4px 6px;gap:2px;min-width:0" onclick="event.stopPropagation();openMergedMoisModal(${mym},1)">
@@ -2413,12 +2413,13 @@ function openMergedRenduCgModal(limit,tab){
     +'<button id="rcp-1" onclick="rcgTab(1)" style="'+tabBtnS+'background:transparent;font-weight:400;color:var(--text3)">Congés</button>'
     +'<button id="rcp-2" onclick="rcgTab(2)" style="'+tabBtnS+'background:transparent;font-weight:400;color:var(--text3)">Récap</button>'
     +'</div>'
+    +'<div id="rcc-wrap">'
     +'<div id="rcc-0">'
     +rendSoldeHeader
     +(rendRows||'<div style="font-size:11px;color:var(--text3)">Aucun rendu disponible.</div>')
     +moreBtn
     +'</div>'
-    +'<div id="rcc-1" style="display:none">'
+    +'<div id="rcc-1">'
     +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'
     +'<thead><tr>'
     +'<th style="padding:4px 8px;font-size:10px;color:var(--text3);text-align:left;text-transform:uppercase;letter-spacing:.05em">Année</th>'
@@ -2428,10 +2429,14 @@ function openMergedRenduCgModal(limit,tab){
     +'</tr></thead><tbody>'+cgRows+'</tbody></table></div>'
     +cetSection
     +'</div>'
-    +'<div id="rcc-2" style="display:none">'+recapRows+'</div>'
+    +'<div id="rcc-2">'+recapRows+'</div>'
+    +'</div>'
     +'<button class="mcancel" onclick="closeModal()">Fermer</button>'
     +'</div></div>';
   requestAnimationFrame(function(){
+    var rccWrap=document.getElementById('rcc-wrap');
+    var rc0=document.getElementById('rcc-0'),rc1=document.getElementById('rcc-1'),rc2=document.getElementById('rcc-2');
+    if(rccWrap&&rc0&&rc1&&rc2){rccWrap.style.minHeight=Math.max(rc0.offsetHeight,rc1.offsetHeight,rc2.offsetHeight)+'px';}
     rcgTab(tab||0);
     var _sh=document.querySelector('#modal-root .sheet');
     if(_sh){
@@ -2658,7 +2663,7 @@ function openMergedMoisModal(mym,tab){
     const high=useRendu?hsW.rawHigh*1.5:hsW.rawHigh;
     tot+=rowTotal;totLow+=low;totHigh+=high;totRawLow+=hsW.rawLow;totRawHigh+=hsW.rawHigh;
     hsRows+='<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0">'
-      +'<span style="font-size:11px;color:var(--text2)">Semaine '+getISOWeek(mon)+(prevMois?' <span style="font-size:9px;color:var(--text3)">(mois précédent)</span>':'')+(hsW.isRam?' <span style="font-size:9px;color:var(--text3)">(dont ramenée 7h)</span>':'')+'</span>'
+      +'<span style="font-size:11px;font-weight:500;color:var(--text)">Semaine '+getISOWeek(mon)+(hsW.isRam?' <span style="font-size:9px;font-weight:400;color:var(--text3)">dont 7h de ramenée</span>':'')+(prevMois?' <span style="font-size:9px;font-weight:400;color:var(--text3)">← mois préc.</span>':'')+'</span>'
       +'<div style="display:flex;gap:16px;align-items:center">'
       +(useRendu2?'<b style="font-size:11px;width:52px;text-align:right;color:var(--text3)">'+fmtMin(hsW.rawLow+hsW.rawHigh)+'</b>':'')
       +'<b style="font-size:11px;width:52px;text-align:right">'+fmtMin(rowTotal)+'</b></div></div>';
@@ -2705,7 +2710,7 @@ function openMergedMoisModal(mym,tab){
     const total=hsHS2+hsRam2+weekDim+weekRH+weekFer;
     if(total<=0)return'';
     const partRows=[{label:'Dimanches',val:weekDim,color:'#9c80e0'},{label:'RH',val:weekRH,color:'#7b9ce0'},{label:'Fériés',val:weekFer,color:'var(--gold)'},{label:'Heures supp.',val:hsHS2,color:'var(--blue)'},{label:'Ramenée',val:hsRam2,color:'var(--gold-dark)'}].filter(r=>r.val>0);
-    return'<div style="font-size:11px;padding:5px 0;border-bottom:0.5px solid var(--border2)"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-weight:500;color:var(--text)">Semaine '+getISOWeek(mon)+(note?' <span style="font-size:10px;font-weight:400;color:var(--text3)">'+note+'</span>':'')+'</span><b style="color:var(--text2)">+'+fmtMin(total)+'</b></div>'+partRows.map(r=>'<div style="display:flex;justify-content:space-between;padding:1px 0 1px 8px"><span style="color:var(--text3)">'+r.label+'</span><span style="color:'+r.color+'">+'+fmtMin(r.val)+'</span></div>').join('')+'</div>';
+    return'<div style="font-size:11px;padding:5px 0;border-bottom:0.5px solid var(--border2)"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-weight:500;color:var(--text)">Semaine '+getISOWeek(mon)+(note?' <span style="font-size:10px;font-weight:400;color:var(--text3)">'+note+'</span>':'')+'</span><b style="color:var(--text2)">'+fmtMin(total)+'</b></div>'+partRows.map(r=>'<div style="display:flex;justify-content:space-between;padding:1px 0 1px 8px"><span style="color:var(--text3)">'+r.label+'</span><span style="color:'+r.color+'">'+fmtMin(r.val)+'</span></div>').join('')+'</div>';
   }
   for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd);const mon=getMonday(date),mk=dk(mon);if(seenW2.has(mk))continue;seenW2.add(mk);const note=mon.getFullYear()*12+mon.getMonth()!==mym?'← mois préc.':'';crRows+=makeWeekRow2(mon,note);}
   const crTotRows=[{label:'Dimanches',val:gm.dim,color:'#9c80e0'},{label:'RH',val:gm.rh,color:'#7b9ce0'},{label:'Fériés travaillés',val:gm.fer,color:'var(--gold)'},{label:'Heures supp.',val:gm.hs,color:'var(--blue)'},{label:'Semaines ramenées',val:gm.ram,color:'var(--gold-dark)'},{label:'Solde initial',val:gm.solde,color:'var(--text2)'}].filter(r=>r.val>0);
@@ -2778,7 +2783,7 @@ function closeModal(){document.getElementById('modal-root').innerHTML='';pending
 
 // Swipe down to close modal
 (function(){
-  var startY=0,startX=0,startScroll=0,sheet=null,overlay=null,dragging=false;
+  var startY=0,startX=0,startScroll=0,sheet=null,overlay=null,dragging=false,dirLocked=null;
   document.addEventListener('touchstart',function(e){
     var el=e.target.closest('.sheet');
     if(!el)return;
@@ -2787,7 +2792,7 @@ function closeModal(){document.getElementById('modal-root').innerHTML='';pending
     startY=e.touches[0].clientY;
     startX=e.touches[0].clientX;
     startScroll=sheet.scrollTop;
-    dragging=true;
+    dragging=true;dirLocked=null;
     sheet.style.transition='none';
   },{passive:true});
   document.addEventListener('touchmove',function(e){
@@ -2798,8 +2803,13 @@ function closeModal(){document.getElementById('modal-root').innerHTML='';pending
     if(!dragging||!sheet)return;
     var dx=Math.abs(e.touches[0].clientX-startX);
     var dy=e.touches[0].clientY-startY;
-    // Cancel drag-to-close if horizontal swipe dominates (tab swipe)
-    if(dx>Math.abs(dy)&&dx>20){dragging=false;sheet.style.transform='';sheet.style.transition='';return;}
+    var dyAbs=Math.abs(dy);
+    // Lock direction on first decisive movement
+    if(!dirLocked){
+      if(dx>10||dyAbs>10) dirLocked=dx>dyAbs?'h':'v';
+      else return;
+    }
+    if(dirLocked==='h'){dragging=false;sheet.style.transform='';sheet.style.transition='';if(overlay)overlay.style.background='';return;}
     // Only swipe down when at top of scroll
     if(dy>0&&sheet.scrollTop<=0){
       e.preventDefault();
