@@ -2674,7 +2674,7 @@ function openMergedMoisModal(mym,tab){
     (totRawHigh>0?'<div style="display:flex;justify-content:space-between;padding:3px 0"><span style="font-size:11px;color:var(--text3)">HS>8h</span><b style="font-size:11px;color:var(--blue)">'+fmtMin(totRawHigh)+'</b></div>':'')
   );
   const hsColHdr=hsRows?(useRendu2?'<div style="display:flex;justify-content:space-between;padding:2px 0 4px"><span></span><div style="margin-left:auto;display:flex;gap:16px"><span style="font-size:10px;color:var(--text3);width:52px;text-align:right">brutes</span><span style="font-size:10px;color:var(--text3);width:52px;text-align:right">rendus</span></div></div>':''):'';
-  const hsSection=hsRows?(hsColHdr+hsSummary+'<div class="sep" style="margin:6px 0"></div>'+hsRows):'<div style="font-size:11px;color:var(--text3);padding:8px 0">Aucune heure supplémentaire ce mois.</div>';
+  const hsSection=hsRows?(hsColHdr+hsSummary+'<div class="sep" style="margin:6px 0"></div>'+'<div class="btit" style="margin-bottom:4px">Détail par semaine</div>'+hsRows):'<div style="font-size:11px;color:var(--text3);padding:8px 0">Aucune heure supplémentaire ce mois.</div>';
 
   // === Créés ce mois ===
   const{gen:gen2}=calcSoldes();const gm=gen2[mym]||{};
@@ -2778,13 +2778,14 @@ function closeModal(){document.getElementById('modal-root').innerHTML='';pending
 
 // Swipe down to close modal
 (function(){
-  var startY=0,startScroll=0,sheet=null,overlay=null,dragging=false;
+  var startY=0,startX=0,startScroll=0,sheet=null,overlay=null,dragging=false;
   document.addEventListener('touchstart',function(e){
     var el=e.target.closest('.sheet');
     if(!el)return;
     if(e.target.closest('select,input,textarea,button'))return;
     sheet=el;overlay=el.closest('.overlay');
     startY=e.touches[0].clientY;
+    startX=e.touches[0].clientX;
     startScroll=sheet.scrollTop;
     dragging=true;
     sheet.style.transition='none';
@@ -2795,7 +2796,10 @@ function closeModal(){document.getElementById('modal-root').innerHTML='';pending
       e.preventDefault();return;
     }
     if(!dragging||!sheet)return;
+    var dx=Math.abs(e.touches[0].clientX-startX);
     var dy=e.touches[0].clientY-startY;
+    // Cancel drag-to-close if horizontal swipe dominates (tab swipe)
+    if(dx>Math.abs(dy)&&dx>20){dragging=false;sheet.style.transform='';sheet.style.transition='';return;}
     // Only swipe down when at top of scroll
     if(dy>0&&sheet.scrollTop<=0){
       e.preventDefault();
@@ -3070,11 +3074,12 @@ function renderProfilesDropdown(){
       actD='<div id="ps-panel" class="ps-panel">'
         // ── SECTION PROFIL ──
         +'<div '+'style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;margin-top:12px;padding-bottom:4px;border-bottom:0.5px solid var(--border)"'+'>Profil</div>'
-        +'<div style="margin-bottom:6px"><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:4px">Nom</label>'
-        +'<div style="display:flex;align-items:stretch;gap:6px">'
-        +'<input id="ps-name" value="'+(pr.profile.name||'')+'" '+'style="flex:1;height:36px;box-sizing:border-box;padding:6px 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:12px;background:var(--bg2);color:var(--text)"'+' >'
-        +'<button class="mb" style="height:36px;font-size:11px;background:var(--bg2);color:var(--text);border:0.5px solid var(--border);padding:0 10px;flex-shrink:0;white-space:nowrap" data-pid="'+p.id+'" onclick="openChangeLigneModal(this.dataset.pid)">Changer de ligne</button>'
-        +'</div></div>'
+        +'<div style="display:flex;align-items:flex-end;gap:6px;margin-bottom:6px">'
+        +'<div style="flex:1"><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:4px">Nom</label>'
+        +'<input id="ps-name" value="'+(pr.profile.name||'')+'" '+'style="width:100%;height:36px;box-sizing:border-box;padding:6px 8px;border:0.5px solid var(--border);border-radius:var(--r);font-size:12px;background:var(--bg2);color:var(--text)"'+' ></div>'
+        +'<div style="flex:1"><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:4px">Ligne</label>'
+        +'<button class="mb" style="width:100%;height:36px;font-size:11px;background:var(--bg2);color:var(--text);border:0.5px solid var(--border);border-radius:var(--r);box-sizing:border-box" data-pid="'+p.id+'" onclick="openChangeLigneModal(this.dataset.pid)">Changer de ligne</button></div>'
+        +'</div>'
         +'<div style="display:flex;align-items:flex-end;gap:6px;margin-bottom:6px">'
         +'<div style="flex:1"><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:4px">Matelas</label>'
         +'<input id="ps-matelas" value="'+fmtMin(pr.profile.matelas||0)+'" onfocus="if(this.value)this.select()" '+'style="width:100%;height:36px;box-sizing:border-box;padding:6px 8px;border:0.5px solid var(--border);border-radius:var(--r);font-size:12px;background:var(--bg2);color:var(--text)"'+' ></div>'
