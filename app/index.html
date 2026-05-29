@@ -1418,20 +1418,20 @@ function updateCounters(){
   el.innerHTML=`<div class="bloc clk" onclick="openMergedMoisModal(${mym})" style="grid-column:1/-1;margin-top:0">
     <div class="btit" style="text-align:center;margin-bottom:10px">${ML[curM]} ${curY}</div>
     <div style="display:flex;align-items:stretch;gap:0">
-      <div style="flex:1;display:flex;flex-direction:column;align-items:center;padding:4px 6px;min-width:0">
-        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:7px">Rendus</div>
-        <div style="display:flex;align-items:baseline;gap:3px"><span style="font-size:9px;color:var(--text3);font-style:italic">${mym>TODAY_YM?'prévis.':'acquis'}</span><span style="font-size:13px;font-weight:600;color:var(--rend-text)">${fmtMin(gt)}</span></div>
-        <div style="margin-top:auto;padding-top:6px;width:100%">${det}</div>
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;padding:4px 6px;gap:2px;min-width:0">
+        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">Rendus</div>
+        <div style="font-size:16px;font-weight:600;color:var(--rend-text)">${fmtMin(gt)}</div>
+        <div style="font-size:10px;color:var(--text3)">${mym>TODAY_YM?'prévis.':'acquis'}</div>
+        <div style="margin-top:8px;width:100%">${det}</div>
       </div>
       <div style="width:0.5px;background:var(--border2);flex-shrink:0;margin:2px 0"></div>
-      <div style="flex:1;display:flex;flex-direction:column;align-items:center;padding:4px 6px;min-width:0" onclick="event.stopPropagation();openMergedMoisModal(${mym},1)">
-        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:7px">HS</div>
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;padding:4px 6px;gap:2px;min-width:0" onclick="event.stopPropagation();openMergedMoisModal(${mym},1)">
+        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">HS</div>
         <div style="font-size:16px;font-weight:600;color:var(--blue)">${fmtMin(hsTotal)}</div>
-        <div style="font-size:10px;color:var(--text3)">${useHSRendu?'total':'payés'}</div>
-        <div style="margin-top:auto;padding-top:6px;display:flex;flex-direction:column;align-items:center;width:100%">
-          ${rawLowTotal>0?`<div style="font-size:10px;color:var(--text3)">≤8h ${fmtMin(rawLowTotal)}</div>`:''}
-          ${rawHighTotal>0?`<div style="font-size:10px;color:var(--text3)">>8h ${fmtMin(rawHighTotal)}</div>`:''}
-        </div>
+        <div style="font-size:10px;color:var(--text3)">${useHSRendu?'rendus':'brutes'}</div>
+        ${rawLowTotal>0?`<div style="font-size:10px;color:var(--text3);margin-top:8px">≤8h ${fmtMin(rawLowTotal)}</div>`:''}
+        ${rawHighTotal>0?`<div style="font-size:10px;color:var(--text3)">>8h ${fmtMin(rawHighTotal)}</div>`:''}
+
       </div>
       <div style="width:0.5px;background:var(--border2);flex-shrink:0;margin:2px 0"></div>
       <div style="flex:1;display:flex;flex-direction:column;padding:4px 6px;gap:3px;min-width:0;overflow:hidden" onclick="event.stopPropagation();openMergedMoisModal(${mym},2)">
@@ -2381,13 +2381,32 @@ function openMergedRenduCgModal(limit){
     <button onclick="adjCET(-1)" style="padding:4px 10px;border:0.5px solid var(--border);border-radius:6px;background:transparent;color:var(--text2);cursor:pointer;font-size:11px">−</button>
     <button onclick="adjCET(+1)" style="padding:4px 10px;border:0.5px solid var(--border2);border-radius:6px;background:rgba(224,152,48,.12);color:var(--amber);cursor:pointer;font-size:11px;font-weight:500">+</button>
   </div>`;
+  const totalRendusDispo=Object.values(realAvail).reduce(function(s,v){return s+v;},0)+Object.keys(prevEph).map(Number).reduce(function(s,ym){return s+(prevEph[ym]||0);},0);
+  const cgRestant=Math.max(0,getSoldeAnnee(nowY)-calcCongesUsedForYear(nowY));
+  const recapRows=''
+    +'<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:0.5px solid var(--border2)">'
+    +'<span style="font-size:13px;color:var(--text2)">Rendus éphémères</span>'
+    +'<b style="font-size:15px;color:var(--rend-text)">'+fmtMin(totalRendusDispo)+'</b></div>'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:0.5px solid var(--border2)">'
+    +'<span style="font-size:13px;color:var(--text2)">Congés restants '+nowY+'</span>'
+    +'<b style="font-size:15px;color:var(--green)">'+cgRestant+' j</b></div>'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0">'
+    +'<span style="font-size:13px;color:var(--text2)">CET</span>'
+    +'<b style="font-size:15px;color:var(--amber)">'+cet+' j</b></div>';
+  const tabBtnS='flex:1;padding:8px 6px;font-size:12px;border:none;cursor:pointer;border-radius:8px;';
   document.getElementById('modal-root').innerHTML=
     '<div class="overlay"'+(_modalWasOpen?' style="animation:none"':'')+' onclick="if(event.target===this)closeModal()"><div class="sheet"'+(_modalWasOpen?' style="animation:none"':'')+'>'
     +'<div class="sh"></div>'
+    +'<div style="display:flex;margin:0 0 16px;background:var(--bg3);border-radius:10px;padding:3px;gap:2px">'
+    +'<button id="rcp-0" onclick="rcgTab(0)" style="'+tabBtnS+'background:var(--bg2);box-shadow:0 1px 3px rgba(0,0,0,.2);font-weight:600;color:var(--text)">Rendus</button>'
+    +'<button id="rcp-1" onclick="rcgTab(1)" style="'+tabBtnS+'background:transparent;font-weight:400;color:var(--text3)">Congés</button>'
+    +'<button id="rcp-2" onclick="rcgTab(2)" style="'+tabBtnS+'background:transparent;font-weight:400;color:var(--text3)">Récap</button>'
+    +'</div>'
+    +'<div id="rcc-0">'
     +(rendRows||'<div style="font-size:11px;color:var(--text3)">Aucun rendu disponible.</div>')
     +moreBtn
-    +'<div class="sep" style="margin:12px 0"></div>'
-    +'<div class="btit" style="margin-bottom:8px">Congés annuels</div>'
+    +'</div>'
+    +'<div id="rcc-1" style="display:none">'
     +'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">'
     +'<thead><tr>'
     +'<th style="padding:4px 8px;font-size:10px;color:var(--text3);text-align:left;text-transform:uppercase;letter-spacing:.05em">Année</th>'
@@ -2396,6 +2415,8 @@ function openMergedRenduCgModal(limit){
     +'<th style="padding:4px 8px;font-size:10px;color:var(--text3);text-align:center;text-transform:uppercase;letter-spacing:.05em">Restants</th>'
     +'</tr></thead><tbody>'+cgRows+'</tbody></table></div>'
     +cetSection
+    +'</div>'
+    +'<div id="rcc-2" style="display:none">'+recapRows+'</div>'
     +'<button class="mcancel" onclick="closeModal()">Fermer</button>'
     +'</div></div>';
 }
@@ -2709,6 +2730,13 @@ function openMergedMoisModal(mym,tab){
 function moisTab(idx){
   for(let i=0;i<3;i++){
     const btn=document.getElementById('mtp-'+i),tab=document.getElementById('mtc-'+i);
+    if(btn){btn.style.background=i===idx?'var(--bg2)':'transparent';btn.style.boxShadow=i===idx?'0 1px 3px rgba(0,0,0,.2)':'none';btn.style.fontWeight=i===idx?'600':'400';btn.style.color=i===idx?'var(--text)':'var(--text3)';}
+    if(tab)tab.style.display=i===idx?'':'none';
+  }
+}
+function rcgTab(idx){
+  for(let i=0;i<3;i++){
+    const btn=document.getElementById('rcp-'+i),tab=document.getElementById('rcc-'+i);
     if(btn){btn.style.background=i===idx?'var(--bg2)':'transparent';btn.style.boxShadow=i===idx?'0 1px 3px rgba(0,0,0,.2)':'none';btn.style.fontWeight=i===idx?'600':'400';btn.style.color=i===idx?'var(--text)':'var(--text3)';}
     if(tab)tab.style.display=i===idx?'':'none';
   }
