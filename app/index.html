@@ -1374,41 +1374,44 @@ function updateCounters(){
   // HS for current month (respect toggle and temporal settings)
   const settHS=settingsForYM(curY*12+curM);
   const useHSRendu=settHS.hsRendu;
-  let hsTotal=0,hsTotalLow=0,hsTotalHigh=0;
+  let hsTotal=0,hsTotalLow=0,hsTotalHigh=0,rawLowTotal=0,rawHighTotal=0;
   {const seenHSm=new Set(),mymHS=curY*12+curM;for(let dd=-6;dd<new Date(curY,curM+1,0).getDate();dd++){const date=new Date(curY,curM,1+dd),mon=getMonday(date),mk=dk(mon);if(seenHSm.has(mk))continue;seenHSm.add(mk);const sun=new Date(mon);sun.setDate(mon.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mymHS)continue;const hsW=calcHSWeek(mon);if(hsW.surplus<=0)continue;
     if(useHSRendu){hsTotal+=hsW.rendusMin;hsTotalLow+=hsW.rawLow*1.25;hsTotalHigh+=hsW.rawHigh*1.5;}
     else{hsTotal+=hsW.rawLow+hsW.rawHigh;hsTotalLow+=hsW.rawLow;hsTotalHigh+=hsW.rawHigh;}
+    rawLowTotal+=hsW.rawLow;rawHighTotal+=hsW.rawHigh;
   }}
   const mym=curY*12+curM,gm=gen[mym]||{};const gt=((gm.dim||0)+(gm.rh||0)+(gm.fer||0)+(gm.hs||0)+(gm.ram||0));// excludes solde initial
   const panCount=calcPaniersMois(curY,curM);const primes=calcPrimesMois(curY,curM);
   const el=document.getElementById('ctr-main');if(!el)return;
   // Detail dots for "Créés ce mois"
-  function detRow(color,val,lbl){return val>0?'<div class="ctr-dot-row" style="width:100%"><span class="rdot" style="background:'+color+'"></span><span style="flex:1">'+lbl+'</span><span>'+fmtMin(val)+'</span></div>':'';}
-  const det=detRow('#9c80e0',gm.dim||0,'Dim')+detRow('#7b9ce0',gm.rh||0,'RH')+detRow('var(--gold)',gm.fer||0,'Fér')+detRow('var(--gold-dark)',gm.ram||0,'Ram')+detRow('var(--blue)',gm.hs||0,'HS')||'<div class="ctr-dot-row">-</div>';
+  function detRow(color,val,lbl){return val>0?'<div style="display:flex;align-items:center;width:100%;line-height:1.7"><span class="rdot" style="background:'+color+';flex-shrink:0"></span><span style="flex:1;text-align:right;font-size:10px;color:var(--text2);padding-right:3px">'+lbl+'</span><span style="width:0.5px;height:9px;background:var(--border2);flex-shrink:0"></span><span style="flex:1;text-align:left;padding-left:3px;font-size:10px;color:var(--text2)">'+fmtMin(val)+'</span></div>':'';}
+  const det=detRow('#9c80e0',gm.dim||0,'Dim')+detRow('#7b9ce0',gm.rh||0,'RH')+detRow('var(--gold)',gm.fer||0,'Fér')+detRow('var(--gold-dark)',gm.ram||0,'Ram')+detRow('var(--blue)',gm.hs||0,'HS')||'<div style="font-size:10px;color:var(--text3)">-</div>';
   const matEl=document.getElementById('eph-total-mat');
   if(matEl)matEl.textContent=fmtMin(Math.max(0,matelas));
   el.innerHTML=`<div class="bloc clk" onclick="openMergedMoisModal(${mym})" style="grid-column:1/-1;margin-top:0">
     <div class="btit" style="text-align:center;margin-bottom:10px">${ML[curM]} ${curY}</div>
     <div style="display:flex;align-items:stretch;gap:0">
       <div style="flex:1.2;display:flex;flex-direction:column;align-items:center;padding:4px 6px;gap:2px;min-width:0">
-        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:1px">Créés</div>
+        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">Créés</div>
         <div style="font-size:12px;font-weight:600;color:var(--rend-text)">${fmtMin(gt)}</div>
         <div style="font-size:10px;color:var(--text3)">${mym>TODAY_YM?'prévis.':'acquis'}</div>
-        <div style="margin-top:5px">${det}</div>
+        <div style="margin-top:8px;width:100%">${det}</div>
       </div>
       <div style="width:0.5px;background:var(--border2);flex-shrink:0;margin:2px 0"></div>
       <div style="flex:1;display:flex;flex-direction:column;align-items:center;padding:4px 6px;gap:2px;min-width:0">
-        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:1px">HS</div>
+        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">HS</div>
         <div style="font-size:12px;font-weight:600;color:var(--blue)">${fmtMin(hsTotal)}</div>
         <div style="font-size:10px;color:var(--text3)">${useHSRendu?'rendus':'payés'}</div>
+        ${rawLowTotal>0?`<div style="font-size:9px;color:var(--text3);margin-top:2px">≤8h ${fmtMin(rawLowTotal)}</div>`:''}
+        ${rawHighTotal>0?`<div style="font-size:9px;color:var(--text3)">>8h ${fmtMin(rawHighTotal)}</div>`:''}
       </div>
       <div style="width:0.5px;background:var(--border2);flex-shrink:0;margin:2px 0"></div>
-      <div style="flex:1.2;display:flex;flex-direction:column;align-items:center;padding:4px 6px;gap:1px;min-width:0;overflow:hidden">
-        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:1px">Primes</div>
-        ${panCount?`<div style="font-size:10px;color:var(--text3);white-space:nowrap">Paniers&nbsp;<b style="color:var(--amber);font-size:12px">${panCount}</b></div>`:''}
-        ${primes.antenne?`<div style="font-size:10px;color:var(--text3);white-space:nowrap">Antenne&nbsp;<b style="color:var(--amber);font-size:12px">${primes.antenne}</b></div>`:''}
-        ${primes.reel?`<div style="font-size:10px;color:var(--text3);white-space:nowrap">Réal&nbsp;<b style="color:var(--amber);font-size:12px">${primes.reel}</b></div>`:''}
-        ${primes.coord?`<div style="font-size:10px;color:var(--text3);white-space:nowrap">Coord&nbsp;<b style="color:var(--amber);font-size:12px">${primes.coord}</b></div>`:''}
+      <div style="flex:1.2;display:flex;flex-direction:column;padding:4px 6px;gap:3px;min-width:0;overflow:hidden">
+        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;text-align:center;margin-bottom:3px">Primes</div>
+        ${panCount?`<div style="display:flex;align-items:center;width:100%"><span style="flex:1;text-align:right;font-size:10px;color:var(--text3);padding-right:4px">Paniers</span><span style="width:0.5px;height:9px;background:var(--border2);flex-shrink:0"></span><span style="flex:1;text-align:left;padding-left:4px;color:var(--amber);font-size:12px;font-weight:700">${panCount}</span></div>`:''}
+        ${primes.antenne?`<div style="display:flex;align-items:center;width:100%"><span style="flex:1;text-align:right;font-size:10px;color:var(--text3);padding-right:4px">Antenne</span><span style="width:0.5px;height:9px;background:var(--border2);flex-shrink:0"></span><span style="flex:1;text-align:left;padding-left:4px;color:var(--amber);font-size:12px;font-weight:700">${primes.antenne}</span></div>`:''}
+        ${primes.reel?`<div style="display:flex;align-items:center;width:100%"><span style="flex:1;text-align:right;font-size:10px;color:var(--text3);padding-right:4px">Réal</span><span style="width:0.5px;height:9px;background:var(--border2);flex-shrink:0"></span><span style="flex:1;text-align:left;padding-left:4px;color:var(--amber);font-size:12px;font-weight:700">${primes.reel}</span></div>`:''}
+        ${primes.coord?`<div style="display:flex;align-items:center;width:100%"><span style="flex:1;text-align:right;font-size:10px;color:var(--text3);padding-right:4px">Coord</span><span style="width:0.5px;height:9px;background:var(--border2);flex-shrink:0"></span><span style="flex:1;text-align:left;padding-left:4px;color:var(--amber);font-size:12px;font-weight:700">${primes.coord}</span></div>`:''}
       </div>
     </div>
   </div>`;
@@ -2593,7 +2596,7 @@ function openMergedMoisModal(mym){
     (totRawLow>0?'<div style="display:flex;justify-content:space-between;padding:3px 0"><span style="font-size:15px;font-weight:600">HS≤8h</span><b style="font-size:15px;color:var(--blue)">'+fmtMin(totRawLow)+'</b></div>':'')+
     (totRawHigh>0?'<div style="display:flex;justify-content:space-between;padding:3px 0"><span style="font-size:15px;font-weight:600">HS>8h</span><b style="font-size:15px;color:var(--blue)">'+fmtMin(totRawHigh)+'</b></div>':'')
   );
-  const hsColHdr=hsRows?(useRendu2?'<div style="display:flex;justify-content:space-between;padding:2px 0 4px"><span></span><div style="margin-left:auto;display:flex;gap:16px"><span style="font-size:10px;color:var(--text3);width:52px;text-align:right">brutes</span><span style="font-size:10px;color:var(--text3);width:52px;text-align:right">'+(useRendu2?'rendues':'payés')+'</span></div></div>':''):'';
+  const hsColHdr=hsRows?(useRendu2?'<div style="display:flex;justify-content:space-between;padding:2px 0 4px"><span></span><div style="margin-left:auto;display:flex;gap:16px"><span style="font-size:10px;color:var(--text3);width:52px;text-align:right">brutes</span><span style="font-size:10px;color:var(--text3);width:52px;text-align:right"></span></div></div>':''):'';
   const hsSection=hsRows?(hsColHdr+hsRows+'<div class="sep" style="margin:6px 0"></div>'+hsSummary):'<div style="font-size:11px;color:var(--text3);padding:8px 0">Aucune heure supplémentaire ce mois.</div>';
 
   // === Créés ce mois ===
@@ -2630,8 +2633,7 @@ function openMergedMoisModal(mym){
   for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd);const mon=getMonday(date),mk=dk(mon);if(seenW2.has(mk))continue;seenW2.add(mk);const note=mon.getFullYear()*12+mon.getMonth()!==mym?'← mois préc.':'';crRows+=makeWeekRow2(mon,note);}
   const crTotRows=[{label:'Dimanches',val:gm.dim,color:'#9c80e0'},{label:'RH',val:gm.rh,color:'#7b9ce0'},{label:'Fériés travaillés',val:gm.fer,color:'var(--gold)'},{label:'Heures supp.',val:gm.hs,color:'var(--blue)'},{label:'Semaines ramenées',val:gm.ram,color:'var(--gold-dark)'},{label:'Solde initial',val:gm.solde,color:'var(--text2)'}].filter(r=>r.val>0);
   const gt2=(gm.dim||0)+(gm.rh||0)+(gm.fer||0)+(gm.hs||0)+(gm.ram||0);
-  const crSection='<div class="ss">'+fmtMin(gt2)+' '+(mym>TODAY_YM?'prévis.':'acquis')+'</div>'
-    +'<div style="margin-bottom:10px">'+crTotRows.map(r=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0"><div style="display:flex;align-items:center;gap:6px"><span class="rdot" style="background:'+r.color+'"></span><span style="font-size:12px;color:var(--text2)">'+r.label+'</span></div><b style="font-size:13px;color:var(--text)">'+fmtMin(r.val)+'</b></div>').join('')+'</div>'
+  const crSection='<div style="margin-bottom:10px">'+crTotRows.map(r=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0"><div style="display:flex;align-items:center;gap:6px"><span class="rdot" style="background:'+r.color+'"></span><span style="font-size:12px;color:var(--text2)">'+r.label+'</span></div><b style="font-size:13px;color:var(--text)">'+fmtMin(r.val)+'</b></div>').join('')+'</div>'
     +(crRows?'<div class="sep"></div><div class="btit" style="margin-bottom:4px">Détail par semaine</div>'+crRows:'');
 
   document.getElementById('modal-root').innerHTML=
@@ -2801,17 +2803,17 @@ function renderExchangeModal(){
     let exVgHtml='<div style="display:grid;grid-template-columns:repeat('+exGridCols+',1fr);gap:8px;margin-bottom:6px">';
     allExVns.forEach(function(vn){
       if(vn==='Autre'){
-        exVgHtml+='<button style="padding:8px 4px;border:0.5px solid var(--border);border-radius:var(--r);background:var(--bg2);color:var(--text);cursor:pointer;text-align:center;font-weight:500;" onclick="_lpk=_exState.targetKey;pendingKey=_exState.targetKey;openAutreVacModal()">Autre</button>';
+        exVgHtml+='<button style="padding:8px 4px;border:0.5px solid var(--border2);border-radius:var(--r);background:var(--bg0);color:var(--text2);cursor:pointer;text-align:center;font-weight:700;" onclick="_lpk=_exState.targetKey;pendingKey=_exState.targetKey;openAutreVacModal()">Autre</button>';
       } else if(vn==='Vac. perso'){
-        exVgHtml+='<button style="padding:8px 4px;border:0.5px solid var(--border);border-radius:var(--r);background:var(--bg2);color:var(--text);cursor:pointer;text-align:center;font-weight:500;" onclick="openCustomVacModal()">Perso</button>';
+        exVgHtml+='<button style="padding:8px 4px;border:0.5px solid var(--border2);border-radius:var(--r);background:var(--bg0);color:var(--text2);cursor:pointer;text-align:center;font-weight:700;" onclick="openCustomVacModal()">Perso</button>';
       } else if(vn==='SV'){
-        exVgHtml+='<button style="padding:8px 4px;border:0.5px solid var(--border);border-radius:var(--r);background:var(--bg2);color:var(--text);cursor:pointer;text-align:center;font-weight:500;" data-exvac="SV">SV</button>';
+        exVgHtml+='<button style="padding:8px 4px;border:0.5px solid var(--border2);border-radius:var(--r);background:var(--bg0);color:var(--text2);cursor:pointer;text-align:center;font-weight:700;" data-exvac="SV">SV</button>';
       } else {
         const vi=VAC[vn],dur=vi?vi.dur:0;
         if(vi&&vi.mixte)return;
-        const bg=vi&&vi.dur>0?'var(--blue-l)':'var(--bg2)',cl=vi&&vi.dur>0?'var(--blue)':'var(--text)';
-        const durLbl=vi&&vi.dur>0?'<div style="font-size:9px;opacity:.7">'+fmtMin(dur)+'</div>':'';
-        exVgHtml+='<button class="mb" style="background:'+bg+';color:'+cl+'" data-exvac="'+vn+'"><div>'+vLbl(vn,VAC)+'</div>'+durLbl+'</button>';
+        const bg=vi&&vi.dur>0?'var(--blue-l)':'var(--bg2)',cl='var(--text)';
+        const durLbl=vi&&vi.dur>0?'<div style="font-size:9px;opacity:.7;font-weight:400">'+fmtMin(dur)+'</div>':'';
+        exVgHtml+='<button class="mb" style="background:'+bg+';color:'+cl+'" data-exvac="'+vn+'"><div style="font-weight:700">'+vLbl(vn,VAC)+'</div>'+durLbl+'</button>';
       }
     });
     exVgHtml+='</div>';
