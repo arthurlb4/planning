@@ -144,8 +144,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 /* Week number - base */
 .wkn{font-size:9px;color:var(--text3);text-align:center;vertical-align:middle;width:20px;padding:1px 2px;border-radius:4px;}
 /* New cycle start */
-.cal tr.new-cycle-row>td{border-top:3px solid transparent;}
-.cyc-badge{position:absolute;left:0;right:0;z-index:50;pointer-events:none;border-top:3px solid rgba(192,57,43,.55);display:flex;align-items:flex-start;}
+.cyc-badge{position:absolute;left:0;right:0;z-index:50;pointer-events:none;border-top:3px solid rgba(192,57,43,.55);display:flex;align-items:flex-start;transform:translateY(-1.5px);}
 [data-theme=light] .cyc-badge{border-top-color:rgba(160,30,20,.4);}
 .cyc-label{margin-left:20px;background:rgba(192,57,43,.55);color:rgba(255,255,255,.92);font-size:8px;font-weight:600;padding:1px 7px 3px;border-radius:0 0 4px 4px;letter-spacing:.04em;white-space:nowrap;flex-shrink:0;}
 [data-theme=light] .cyc-label{background:rgba(160,30,20,.45);}
@@ -153,7 +152,6 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .s-ec2 .dn,.s-ec2 .dv{color:var(--red);}
 /* Today outline */
 .dc.today{box-shadow:inset 0 0 0 1.5px var(--blue);}
-#cyc-tooltip{position:fixed;background:var(--bg3);color:var(--text);font-size:11px;font-weight:500;padding:5px 10px;border-radius:8px;white-space:nowrap;border:0.5px solid var(--border);z-index:500;pointer-events:none;box-shadow:0 4px 16px rgba(0,0,0,.4);display:none;}
 /* Colored week numbers */
 
 .wkn.wcur{background:var(--blue-l);color:var(--blue);font-weight:600;}.wkn.wram{}.wkn.wcg{}
@@ -176,8 +174,8 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .s-tv-ov .dci,.s-sv-vac .dci,.s-ec .dci{background:var(--blue-l);cursor:pointer;}
 [data-theme=light] .s-tv-ov .dci,[data-theme=light] .s-sv-vac .dci,[data-theme=light] .s-ec .dci{background:var(--blue-m);}
 /* Texte turquoise pour les modifs */
-.s-tv-ov .dn,.s-tv-ov .dv,.s-sv-vac .dn,.s-sv-vac .dv,.s-ec .dn,.s-ec .dv{color:var(--teal);}
-.s-tv-ov-fer .dn,.s-tv-ov-fer .dv,.s-sv-vac-fer .dn,.s-sv-vac-fer .dv,.s-ec-fer .dn,.s-ec-fer .dv{color:var(--teal);}
+.s-tv-ov .dn,.s-tv-ov .dv,.s-sv-vac .dn,.s-sv-vac .dv{color:var(--red);}.s-ec .dn,.s-ec .dv{color:var(--teal);}
+.s-tv-ov-fer .dn,.s-tv-ov-fer .dv,.s-sv-vac-fer .dn,.s-sv-vac-fer .dv{color:var(--red);}.s-ec-fer .dn,.s-ec-fer .dv{color:var(--teal);}
 /* Congés et rendus : fond coloré */
 .s-cg .dci{background:var(--green-l);cursor:pointer;}
 .s-rend .dci{background:var(--rend-l);cursor:pointer;}
@@ -472,7 +470,6 @@ body.modal-open .bloc.clk:hover,body.modal-open .ctr.clk:hover{background:var(--
 </div>
 </div></div>
 <div id="modal-root"></div>
-<div id="cyc-tooltip"></div>
 
 <script>
 var _appVer='v4.87';
@@ -1306,18 +1303,6 @@ function renderMonth(el_heads,el_cal){
   }
   el_cal.innerHTML=html;
   requestAnimationFrame(function(){_renderCycBadges(el_cal);});
-  // Cycle-start tooltip (JS, avoids table cell clipping)
-  const _tip=document.getElementById('cyc-tooltip');
-  el_cal.querySelectorAll('.wkn[data-cyc]').forEach(function(td){
-    td.addEventListener('mouseenter',function(){
-      _tip.textContent=td.dataset.cyc;
-      _tip.style.display='block';
-      const r=td.getBoundingClientRect();
-      _tip.style.left=(r.right+8)+'px';
-      _tip.style.top=(r.top+r.height/2-_tip.offsetHeight/2)+'px';
-    });
-    td.addEventListener('mouseleave',function(){_tip.style.display='none';});
-  });
   // Update header warn icon
   updateWarnIcon(_warnKeys);
 }
@@ -1496,7 +1481,7 @@ function updateCounters(){
       <div class="eph-u-mc">${MC[m2]+' '+String(y2).slice(2)}</div>
       <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
         <div class="eph-u-flow">${orig>0?`<span class="eph-u-cre" style="color:var(--blue)">${fmtMin(orig)}</span><span style="color:var(--text3);font-size:9px;margin:0 1px">→</span>`:''}<span class="eph-u-dispo" style="color:${availColor}">${isExp?'0':fmtMin(avail)}</span></div>
-        <div class="eph-bw"><div class="eph-b2" style="width:${origPct}%;background:var(--blue);opacity:${isFut?'.2':'.4'}"></div><div class="eph-b" style="width:${barPct}%;background:var(--rend-bar);opacity:${greenOpacity}"></div></div>
+        <div class="eph-bw"><div class="eph-b2" style="width:${origPct}%;background:var(--blue);opacity:${isFut?'.2':'.4'}"></div><div class="eph-b" style="width:${barPct}%;background:var(--rend-text);opacity:${greenOpacity}"></div></div>
       </div>
       <div class="eph-u-exp">${expLbl}</div>
     </div>`;
@@ -1520,14 +1505,14 @@ function updateCounters(){
 function ephBarColor(moLeft,isExp){
   if(isExp)return'#555';
   if(moLeft<=0)return'#E24B4A';
-  if(moLeft>=3)return'var(--rend-bar)';
+  if(moLeft>=3)return'var(--rend-text)';
   if(moLeft<=1){
     const t=moLeft;
     const r=Math.round(226+(186-226)*t);const g=Math.round(75+(152-75)*t);const b=Math.round(74+(23-74)*t);
     return'rgb('+r+','+g+','+b+')';
   } else {
     const t=(moLeft-1)/2;
-    const r=Math.round(186+(122-186)*t);const g=Math.round(152+(184-152)*t);const b=Math.round(23+(58-23)*t);
+    const r=Math.round(186+(168-186)*t);const g=Math.round(152+(191-152)*t);const b=Math.round(23+(122-23)*t);
     return'rgb('+r+','+g+','+b+')';
   }
 }
@@ -2361,7 +2346,7 @@ function openMergedRenduCgModal(limit){
       +'<div class="eph-u-mc">'+ML2[m]+' '+String(y).slice(2)+'</div>'
       +'<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">'
       +'<div class="eph-u-flow"><span style="color:var(--blue);font-size:9px">'+fmtMin(orig)+'</span><span style="color:var(--text3);font-size:9px;margin:0 2px">→</span><span style="font-weight:500;color:'+availColor+'">'+fmtMin(avail)+'</span><span style="color:var(--text3);font-size:9px;margin-left:auto">'+expLbl+'</span></div>'
-      +'<div class="eph-bw"><div class="eph-b2" style="width:'+origPct+'%;background:var(--blue);opacity:'+blueOpacity+'"></div><div class="eph-b" style="width:'+barPct+'%;background:var(--rend-bar);opacity:'+greenOpacity+'"></div></div>'
+      +'<div class="eph-bw"><div class="eph-b2" style="width:'+origPct+'%;background:var(--blue);opacity:'+blueOpacity+'"></div><div class="eph-b" style="width:'+barPct+'%;background:var(--rend-text);opacity:'+greenOpacity+'"></div></div>'
       +'</div>'
       +'<div style="display:flex;gap:2px;flex-shrink:0">'+minusBtn+plusBtn+'</div>'
       +'</div>';
