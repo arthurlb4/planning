@@ -914,7 +914,9 @@ function calcSoldes(){
     const _mK=new Set(Object.keys(S.matelasKeys||{}));
     const _rendKeys=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='rend').sort();
     const _sim={};
-    Object.keys(realEph).forEach(function(ym){_sim[ym]=realEph[ym];});
+    // Use historical gen totals (not expiry-zeroed realEph) so past rendu days consume the correct month's stock.
+    // Per-day expiry is enforced by the getExpYm(_ym)<_poseYm check in the loop below.
+    Object.keys(realEph).forEach(function(ym){var ymN=Number(ym);_sim[ymN]=gen[ymN]?Object.values(gen[ymN]).reduce(function(s,v){return s+v;},0):0;});
     Object.keys(prevEph).forEach(function(ym){_sim[ym]=(_sim[ym]||0)+prevEph[ym];});
     _rendKeys.forEach(function(k){
       const _d=new Date(k+'T12:00:00'),_poseYm=_d.getFullYear()*12+_d.getMonth(),_dur=getDur(_d);
@@ -927,7 +929,8 @@ function calcSoldes(){
       }
       if(_left>0&&!_mK.has(k))_fifoWarnKeys.add(k);
     });
-    Object.keys(realEph).forEach(function(ym){realEph[ym]=Math.max(0,_sim[ym]||0);});
+    // Apply expiry after FIFO: expired months are 0 regardless of remaining sim balance
+    Object.keys(realEph).forEach(function(ym){var ymN=Number(ym);realEph[ymN]=getExpYm(ymN)<TODAY_YM?0:Math.max(0,_sim[ymN]||0);});
     Object.keys(prevEph).forEach(function(ym){prevEph[ym]=Math.max(0,(_sim[ym]||0));});
   }
   let toDeduct=0;
@@ -1939,7 +1942,7 @@ function recalcAllMatelas(){
   Object.keys(gen).forEach(function(ymStr){
     var _ym=Number(ymStr),total=Object.values(gen[_ym]).reduce(function(s,v){return s+v;},0);
     if(_ym>TODAY_YM){_sim[_ym]=total;return;}
-    _sim[_ym]=getExpYm(_ym)<TODAY_YM?0:total;
+    _sim[_ym]=total; // per-day getExpYm check (line below) handles expiry per rendu day
   });
   var _syms=Object.keys(_sim).map(Number).sort();
   var _rks=Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='rend';}).sort();
