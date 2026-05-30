@@ -1547,6 +1547,20 @@ function updateCounters(){
 // silently extend by 1 month. Warning phase (month before): green color only.
 function autoReportEph(){
   if(!S.autoReport1m)S.autoReport1m={};
+  // Migrate old true-format entries: temporarily remove them so getExpYm returns base expiry,
+  // then calcSoldes gives us the correct preExpiry balance without the extension.
+  const trueYms=Object.keys(S.autoReport1m).filter(function(k){return S.autoReport1m[k]===true;}).map(Number);
+  if(trueYms.length){
+    trueYms.forEach(function(ym){delete S.autoReport1m[ym];});
+    const migrPE=calcSoldes().preExpiry;
+    let migChanged=false;
+    trueYms.forEach(function(ym){
+      const baseExp=ym+3+getEphExtensions(ym)*3;
+      if(baseExp<TODAY_YM){S.autoReport1m[ym]=migrPE[ym]||0;migChanged=true;}
+      else S.autoReport1m[ym]=true; // not yet past expiry, restore
+    });
+    if(migChanged){recalcAllMatelas();saveState();}
+  }
   // calcSoldes calls getExpYm which reads autoReport1m — unset months use base expiry
   const{realAvail,preExpiry}=calcSoldes();
   let changed=false;
@@ -1554,13 +1568,12 @@ function autoReportEph(){
   const allYms=new Set([...Object.keys(realAvail).map(Number),...Object.keys(preExpiry).map(Number)]);
   allYms.forEach(function(ym){
     if(ym>TODAY_YM)return;
-    if(typeof S.autoReport1m[ym]==='number')return; // already stored as numeric balance, skip
-    const baseExp=getExpYm(ym); // without the +1 since autoReport1m[ym] is not set yet
+    if(S.autoReport1m[ym]!==undefined)return; // already processed (number or true still in valid phase)
+    const baseExp=ym+3+getEphExtensions(ym)*3; // base expiry without autoReport1m +1
     if(baseExp>=TODAY_YM)return; // only once we've passed the last valid month
-    // For expired months use pre-expiry balance; for valid months use realAvail
-    const avail=baseExp<TODAY_YM?(preExpiry[ym]||0):(realAvail[ym]||0);
+    const avail=preExpiry[ym]||0;
     if(avail<=0||avail>420)return; // only 0 < avail ≤ 7h00
-    S.autoReport1m[ym]=avail; // store balance at time of report (not just true)
+    S.autoReport1m[ym]=avail; // store balance at time of report
     changed=true;
   });
   if(changed){recalcAllMatelas();saveState();}
