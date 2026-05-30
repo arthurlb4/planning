@@ -1561,7 +1561,8 @@ function openPaniersModal(){
   document.body.classList.add('modal-open');
   const VAC=getVAC();
   const MC=['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
-  const JOURS=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+  const ML2=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+  const JOURS_L2=['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche'];
   const last=new Date(curY,curM+1,0).getDate();
   const paniers=[],pa=[],pr=[],pc=[];
   for(let d=1;d<=last;d++){
@@ -1571,7 +1572,7 @@ function openPaniersModal(){
     if(absent||!vac||vac==='RH'||(echange&&!ecSelf))continue;
     const v=VAC[vac];if(!v)continue;
     const jidx=date.getDay();
-    const lbl=d+' '+MC[curM]+' <span style="color:var(--text3)">'+JOURS[jidx===0?6:jidx-1]+'</span>';
+    const lbl=JOURS_L2[jidx===0?6:jidx-1]+' '+d+' '+ML2[curM];
     const row='<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:4px 0;border-bottom:0.5px solid var(--border2)"><span>'+lbl+'</span><b style="color:var(--amber)">'+vac+'</b></div>';
     if(v.panier)paniers.push(row);
     if(v.primes){if(v.primes.antenne)pa.push(row);if(v.primes.reel)pr.push(row);if(v.primes.coord)pc.push(row);}
@@ -2659,7 +2660,7 @@ function openMergedMoisModal(mym,tab){
   const y=Math.floor(mym/12),m=mym%12;
   const MLf=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
   const MCf=['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
-  const JOURS=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
+  const JOURS_L=['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche'];
   const last=new Date(y,m+1,0).getDate();
 
   // === Paniers & Primes ===
@@ -2671,7 +2672,7 @@ function openMergedMoisModal(mym,tab){
     if(absent||!vac||vac==='RH'||(echange&&!ecSelf))continue;
     const v=VAC[vac];if(!v)continue;
     const jidx=date.getDay();
-    const lbl=d+' '+MCf[m]+' <span style="color:var(--text3)">'+JOURS[jidx===0?6:jidx-1]+'</span>';
+    const lbl=JOURS_L[jidx===0?6:jidx-1]+' '+d+' '+MLf[m].toLowerCase();
     const row='<div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:4px 0;border-bottom:0.5px solid var(--border2)"><span>'+lbl+'</span><b style="color:var(--amber)">'+vac+'</b></div>';
     if(v.panier)paniers.push(row);
     if(v.primes){if(v.primes.antenne)pa.push(row);if(v.primes.reel)pr.push(row);if(v.primes.coord)pc.push(row);}
@@ -2760,18 +2761,14 @@ function openMergedMoisModal(mym,tab){
     +'<button id="mtp-1" onclick="moisTab(1)" style="flex:1;padding:8px 4px;font-size:12px;font-weight:400;color:var(--text3);background:transparent;border-radius:8px;border:none;cursor:pointer;font-family:var(--font)">HS</button>'
     +'<button id="mtp-2" onclick="moisTab(2)" style="flex:1;padding:8px 4px;font-size:12px;font-weight:400;color:var(--text3);background:transparent;border-radius:8px;border:none;cursor:pointer;font-family:var(--font)">Primes</button>'
     +'</div>'
-    +'<div id="mtp-wrap">'
-    +'<div id="mtc-0">'+crSection+'</div>'
-    +'<div id="mtc-1">'+hsSection+'</div>'
-    +'<div id="mtc-2">'+paniersHtml+'</div>'
+    +'<div id="mtp-wrap" style="display:grid">'
+    +'<div id="mtc-0" style="grid-area:1/1">'+crSection+'</div>'
+    +'<div id="mtc-1" style="grid-area:1/1;visibility:hidden;pointer-events:none">'+hsSection+'</div>'
+    +'<div id="mtc-2" style="grid-area:1/1;visibility:hidden;pointer-events:none">'+paniersHtml+'</div>'
     +'</div>'
     +'<button class="mcancel" onclick="closeModal()">Fermer</button>'
     +'</div></div>';
-  // Lock wrapper to tallest single tab before hiding others
   requestAnimationFrame(function(){
-    const wrap=document.getElementById('mtp-wrap');
-    const t0=document.getElementById('mtc-0'),t1=document.getElementById('mtc-1'),t2=document.getElementById('mtc-2');
-    if(wrap&&t0&&t1&&t2){wrap.style.minHeight=Math.max(t0.offsetHeight,t1.offsetHeight,t2.offsetHeight)+'px';}
     moisTab(tab||0);
     if(wrap){
       var _sxM=0,_syM=0;
@@ -2779,7 +2776,7 @@ function openMergedMoisModal(mym,tab){
       wrap.addEventListener('touchend',function(e){
         var dx=e.changedTouches[0].clientX-_sxM,dy=Math.abs(e.changedTouches[0].clientY-_syM);
         if(Math.abs(dx)<50||dy>80)return;
-        var cur=0;for(var i=0;i<3;i++){var t=document.getElementById('mtc-'+i);if(t&&t.style.display!=='none')cur=i;}
+        var cur=0;for(var i=0;i<3;i++){var t=document.getElementById('mtc-'+i);if(t&&t.style.visibility!=='hidden')cur=i;}
         moisTab(dx<0?Math.min(2,cur+1):Math.max(0,cur-1));
       },{passive:true});
     }
@@ -2790,7 +2787,7 @@ function moisTab(idx){
   for(let i=0;i<3;i++){
     const btn=document.getElementById('mtp-'+i),tab=document.getElementById('mtc-'+i);
     if(btn){btn.style.background=i===idx?'var(--bg2)':'transparent';btn.style.boxShadow=i===idx?'0 1px 3px rgba(0,0,0,.2)':'none';btn.style.fontWeight=i===idx?'600':'400';btn.style.color=i===idx?'var(--text)':'var(--text3)';}
-    if(tab)tab.style.display=i===idx?'':'none';
+    if(tab){tab.style.visibility=i===idx?'':'hidden';tab.style.pointerEvents=i===idx?'':'none';}
   }
 }
 function rcgTab(idx){
@@ -2815,10 +2812,10 @@ function closeModal(){document.getElementById('modal-root').innerHTML='';pending
   document.addEventListener('touchstart',function(e){
     var el=e.target.closest('.sheet');
     if(!el)return;
+    startY=e.touches[0].clientY;  // Always track for boundary detection
+    startX=e.touches[0].clientX;
     if(e.target.closest('select,input,textarea,button'))return;
     sheet=el;overlay=el.closest('.overlay');
-    startY=e.touches[0].clientY;
-    startX=e.touches[0].clientX;
     startScroll=sheet.scrollTop;
     dragging=true;dirLocked=null;
     sheet.style.transition='none';
@@ -2827,6 +2824,15 @@ function closeModal(){document.getElementById('modal-root').innerHTML='';pending
     // Block body scroll through overlay without overflow:hidden (keeps keyboard working)
     if(document.body.classList.contains('modal-open')&&!e.target.closest('.sheet')){
       e.preventDefault();return;
+    }
+    // Prevent boundary overscroll even when touch started on a button (dragging=false)
+    if(document.body.classList.contains('modal-open')&&!dragging){
+      var sh=e.target.closest('.sheet');
+      if(sh){var dy0=e.touches[0].clientY-startY;
+        if(dy0>0&&sh.scrollTop<=0){e.preventDefault();return;}
+        if(dy0<0&&sh.scrollTop+sh.clientHeight>=sh.scrollHeight-2){e.preventDefault();return;}
+      }
+      return;
     }
     if(!dragging||!sheet)return;
     var dx=Math.abs(e.touches[0].clientX-startX);
