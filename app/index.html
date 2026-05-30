@@ -929,6 +929,9 @@ function calcSoldes(){
       }
       if(_left>0&&!_mK.has(k))_fifoWarnKeys.add(k);
     });
+    // Capture pre-expiry balance for expired months before zeroing (needed for auto-report check)
+    const preExpiry={};
+    Object.keys(realEph).forEach(function(ym){var ymN=Number(ym);if(getExpYm(ymN)<TODAY_YM)preExpiry[ymN]=Math.max(0,_sim[ymN]||0);});
     // Apply expiry after FIFO: expired months are 0 regardless of remaining sim balance
     Object.keys(realEph).forEach(function(ym){var ymN=Number(ym);realEph[ymN]=getExpYm(ymN)<TODAY_YM?0:Math.max(0,_sim[ymN]||0);});
     Object.keys(prevEph).forEach(function(ym){prevEph[ym]=Math.max(0,(_sim[ym]||0));});
@@ -937,7 +940,7 @@ function calcSoldes(){
   const realAvail={};Object.keys(realEph).map(Number).sort().forEach(ym=>realAvail[ym]=realEph[ym]);
   for(const ym of Object.keys(realAvail).map(Number).sort()){if(toDeduct<=0)break;const take=Math.min(realAvail[ym],toDeduct);realAvail[ym]-=take;toDeduct-=take;}
   let matelas=(S.profile&&S.profile.matelas)||0;if(toDeduct>0)matelas-=toDeduct;
-  return{gen,realEph,realAvail,prevEph,matelas,warnKeys:_fifoWarnKeys,totalReal:Object.values(realAvail).reduce((s,v)=>s+v,0),totalPrev:Object.keys(prevEph).map(Number).filter(ym=>ym<=CUR_YEAR*12+11).reduce((s,ym)=>s+(prevEph[ym]||0),0)};
+  return{gen,realEph,realAvail,prevEph,preExpiry,matelas,warnKeys:_fifoWarnKeys,totalReal:Object.values(realAvail).reduce((s,v)=>s+v,0),totalPrev:Object.keys(prevEph).map(Number).filter(ym=>ym<=CUR_YEAR*12+11).reduce((s,ym)=>s+(prevEph[ym]||0),0)};
 }
 
 // ================================================================
@@ -1543,13 +1546,16 @@ function updateCounters(){
 function autoReportEph(){
   if(!S.autoReport1m)S.autoReport1m={};
   // calcSoldes calls getExpYm which reads autoReport1m — unset months use base expiry
-  const{realAvail}=calcSoldes();
+  const{realAvail,preExpiry}=calcSoldes();
   let changed=false;
-  Object.keys(realAvail).map(Number).forEach(function(ym){
+  // Check both current (non-expired) and just-expired months via preExpiry
+  const allYms=new Set([...Object.keys(realAvail).map(Number),...Object.keys(preExpiry).map(Number)]);
+  allYms.forEach(function(ym){
     if(ym>TODAY_YM||S.autoReport1m[ym])return; // skip future or already done
     const baseExp=getExpYm(ym); // without the +1 since autoReport1m[ym] is not set yet
     if(baseExp>=TODAY_YM)return; // only once we've passed the last valid month
-    const avail=realAvail[ym]||0;
+    // For expired months use pre-expiry balance; for valid months use realAvail
+    const avail=baseExp<TODAY_YM?(preExpiry[ym]||0):(realAvail[ym]||0);
     if(avail<=0||avail>420)return; // only 0 < avail ≤ 7h00
     S.autoReport1m[ym]=true;
     changed=true;
