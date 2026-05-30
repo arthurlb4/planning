@@ -1547,34 +1547,30 @@ function updateCounters(){
 // silently extend by 1 month. Warning phase (month before): green color only.
 function autoReportEph(){
   if(!S.autoReport1m)S.autoReport1m={};
-  // Migrate old true-format entries: temporarily remove them so getExpYm returns base expiry,
-  // then calcSoldes gives us the correct preExpiry balance without the extension.
-  const trueYms=Object.keys(S.autoReport1m).filter(function(k){return S.autoReport1m[k]===true;}).map(Number);
-  if(trueYms.length){
-    trueYms.forEach(function(ym){delete S.autoReport1m[ym];});
-    const migrPE=calcSoldes().preExpiry;
-    let migChanged=false;
-    trueYms.forEach(function(ym){
-      const baseExp=ym+3+getEphExtensions(ym)*3;
-      if(baseExp<TODAY_YM){const bal=migrPE[ym]||0;if(bal>0&&bal<=420)S.autoReport1m[ym]=bal;/* else: delete (already done), let main loop re-report if conditions met */migChanged=true;}
-      else S.autoReport1m[ym]=true; // not yet past expiry, restore
-    });
-    if(migChanged){recalcAllMatelas();saveState();}
-  }
-  // calcSoldes calls getExpYm which reads autoReport1m — unset months use base expiry
-  const{realAvail,preExpiry}=calcSoldes();
+  // Always re-evaluate: save flags, clear them so getExpYm returns base expiry,
+  // then recalculate preExpiry accurately and re-decide for each expired month.
+  const saved=Object.assign({},S.autoReport1m);
+  Object.keys(S.autoReport1m).forEach(function(k){delete S.autoReport1m[k];});
+  const{preExpiry}=calcSoldes();
   let changed=false;
-  // Check both current (non-expired) and just-expired months via preExpiry
-  const allYms=new Set([...Object.keys(realAvail).map(Number),...Object.keys(preExpiry).map(Number)]);
+  const allYms=new Set([...Object.keys(saved).map(Number),...Object.keys(preExpiry).map(Number)]);
   allYms.forEach(function(ym){
     if(ym>TODAY_YM)return;
-    if(S.autoReport1m[ym]!==undefined)return; // already processed (number or true still in valid phase)
-    const baseExp=ym+3+getEphExtensions(ym)*3; // base expiry without autoReport1m +1
-    if(baseExp>=TODAY_YM)return; // only once we've passed the last valid month
+    const baseExp=ym+3+getEphExtensions(ym)*3;
+    if(baseExp>=TODAY_YM){
+      // Still in warning/active phase — restore flag as-is
+      if(saved[ym]!==undefined){S.autoReport1m[ym]=saved[ym];}
+      return;
+    }
+    // Past expiry: re-evaluate based on current FIFO balance
     const avail=preExpiry[ym]||0;
-    if(avail<=0||avail>420)return; // only 0 < avail ≤ 7h00
-    S.autoReport1m[ym]=avail; // store balance at time of report
-    changed=true;
+    if(avail>0&&avail<=420){
+      S.autoReport1m[ym]=avail;
+      if(saved[ym]!==avail)changed=true;
+    } else {
+      // Balance 0 or >7h: hours expire, no report
+      if(saved[ym]!==undefined)changed=true;
+    }
   });
   if(changed){recalcAllMatelas();saveState();}
 }
