@@ -523,7 +523,7 @@ const CYCLE=[
 ];
 const FERIES=new Set(['2025-01-01','2025-04-21','2025-05-01','2025-05-08','2025-05-29','2025-06-09','2025-07-14','2025-08-15','2025-11-01','2025-11-11','2025-12-25','2026-01-01','2026-04-06','2026-05-01','2026-05-08','2026-05-14','2026-05-25','2026-07-14','2026-08-15','2026-11-01','2026-11-11','2026-12-25','2027-01-01','2027-03-29','2027-05-01','2027-05-08','2027-05-13','2027-05-24','2027-07-14','2027-08-15','2027-11-01','2027-11-11','2027-12-25','2028-01-01','2028-04-17','2028-05-01','2028-05-08','2028-05-25','2028-06-05','2028-07-14','2028-08-15','2028-11-01','2028-11-11','2028-12-25','2029-01-01','2029-04-02','2029-05-01','2029-05-08','2029-05-10','2029-05-21','2029-07-14','2029-08-15','2029-11-01','2029-11-11','2029-12-25','2030-01-01','2030-04-22','2030-05-01','2030-05-08','2030-05-30','2030-06-10','2030-07-14','2030-08-15','2030-11-01','2030-11-11','2030-12-25']);
 const ANCHOR=new Date(2026,4,4),ANCHOR_L=8;
-const NOW=new Date('2026-08-01'),TODAY_YM=NOW.getFullYear()*12+NOW.getMonth(),CUR_YEAR=NOW.getFullYear();
+const NOW=new Date(),TODAY_YM=NOW.getFullYear()*12+NOW.getMonth(),CUR_YEAR=NOW.getFullYear();
 const MC=['jan','fev','mar','avr','mai','jun','jui','aou','sep','oct','nov','dec'];
 const ML=['Janvier','Fevrier','Mars','Avril','Mai','Juin','Juillet','Aout','Septembre','Octobre','Novembre','Decembre'];
 const JN=['dim.','lun.','mar.','mer.','jeu.','ven.','sam.'];
@@ -1506,7 +1506,7 @@ function updateCounters(){
     const expY=Math.floor(expYm/12),expM=expYm%12;
     const moLeft=expYm-TODAY_YM;
     const isExtended=getEphExtensions(ym)>0;
-    const isAutoRep=!!(S.autoReport1m&&S.autoReport1m[ym]);
+    const isAutoRep=!!(S.autoReport1m&&S.autoReport1m[ym]>0);
     const baseExpYm=ym+3+getEphExtensions(ym)*3; // expiry without auto-report
     const isWarn=!isExp&&!isFut&&!isAutoRep&&avail>0&&avail<=420&&baseExpYm===TODAY_YM;
     const autoNote=isAutoRep?'<span style="color:var(--rend-text);font-size:9px">↻ </span>':'';
@@ -1556,7 +1556,7 @@ function autoReportEph(){
     let migChanged=false;
     trueYms.forEach(function(ym){
       const baseExp=ym+3+getEphExtensions(ym)*3;
-      if(baseExp<TODAY_YM){S.autoReport1m[ym]=migrPE[ym]||0;migChanged=true;}
+      if(baseExp<TODAY_YM){const bal=migrPE[ym]||0;if(bal>0&&bal<=420)S.autoReport1m[ym]=bal;/* else: delete (already done), let main loop re-report if conditions met */migChanged=true;}
       else S.autoReport1m[ym]=true; // not yet past expiry, restore
     });
     if(migChanged){recalcAllMatelas();saveState();}
