@@ -87,6 +87,10 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .slide-in-right{animation:slideInRight .2s ease forwards;}
 @keyframes slideInLeft{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:translateX(0)}}
 @keyframes slideInRight{from{opacity:0;transform:translateX(-28px)}to{opacity:1;transform:translateX(0)}}
+@keyframes tileRowsGrow{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes tileRowsShrink{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.tile-rows-grow{animation:tileRowsGrow .25s ease forwards;}
+.tile-rows-shrink{animation:tileRowsShrink .25s ease forwards;}
 
 /* Month view */
 #month-view{transition:opacity .2s ease,transform .2s ease;}
@@ -96,12 +100,12 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .ann-wrap.open{pointer-events:all;opacity:1;display:block;visibility:visible;overflow:visible;position:relative;}
 .annual-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px;width:100%;box-sizing:border-box;}
 @media(max-width:600px){.annual-grid{grid-template-columns:repeat(3,1fr);}}
-.ann-month{background:var(--bg0);border:2px solid transparent;border-radius:var(--r);padding:6px;cursor:pointer;transition:background .1s;}
+.ann-month{background:var(--bg0);border:1px solid var(--border2);border-radius:var(--r);padding:6px;cursor:pointer;transition:background .1s;}
 [data-theme=light] .ann-month{background:var(--bg3);}
-.ann-month.sel{border-color:rgba(255,255,255,.25);}
-[data-theme=light] .ann-month.sel{border-color:rgba(0,0,0,.22);}
-.ann-month.cur-month{border-color:rgba(98,170,220,.5);}
-[data-theme=light] .ann-month.cur-month{border-color:rgba(42,94,138,.55);}
+.ann-month.sel{border-color:rgba(255,255,255,.38);}
+[data-theme=light] .ann-month.sel{border-color:rgba(0,0,0,.3);}
+.ann-month.cur-month{border-color:rgba(98,170,220,.6);}
+[data-theme=light] .ann-month.cur-month{border-color:rgba(42,94,138,.65);}
 .ann-mname{font-size:12px;font-weight:500;color:var(--text);margin-bottom:5px;}
 .ann-mini{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;}
 .ann-day{width:100%;height:var(--ann-d-h,auto);border-radius:3px;}
@@ -116,16 +120,16 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .ann-day.tv-fer{background:var(--blue-l);outline:1.5px solid var(--gold);}
 .ann-day.ec{background:var(--teal-l);}
 .ann-day.ec-fer{background:var(--teal-l);outline:1.5px solid var(--gold);}
-.ann-day.tv-ov{background:var(--teal-l);}
-.ann-day.tv-ov-fer{background:var(--teal-l);outline:1.5px solid var(--gold);}
-.ann-day.ec2{background:var(--bg3);}
-.ann-day.ec2-fer{background:var(--bg3);}
+.ann-day.tv-ov{background:rgba(192,57,43,.3);}
+.ann-day.tv-ov-fer{background:rgba(192,57,43,.3);outline:1.5px solid var(--gold);}
+.ann-day.ec2{background:transparent;}
+.ann-day.ec2-fer{background:transparent;outline:1.5px solid var(--gold);}
 .ann-day.cg-fer{background:var(--green-l);outline:1.5px solid var(--gold);}
 .ann-day.rend-fer{background:var(--rend-l);outline:1.5px solid var(--gold);}
 .ann-day.absent-fer{background:var(--bg3);outline:1.5px solid var(--gold);}
 .ann-day.absent{background:var(--bg3);}
-.ann-day.sv-vac{background:var(--teal-l);}
-.ann-day.sv-vac-fer{background:var(--teal-l);outline:1.5px solid var(--gold);}
+.ann-day.sv-vac{background:rgba(192,57,43,.3);}
+.ann-day.sv-vac-fer{background:rgba(192,57,43,.3);outline:1.5px solid var(--gold);}
 .ann-day.sv,.ann-day.rh{background:transparent;outline:none;}
 
 /* Calendar */
@@ -1208,6 +1212,9 @@ function navDir(d){
   if(mv){
     const outCls=d<0?'slide-right':'slide-left';
     const inCls=d<0?'slide-in-right':'slide-in-left';
+    const oldRows=_calNRows(curY,curM);
+    let newY=curY,newM=curM+d;if(newM<0){newM=11;newY--;}if(newM>11){newM=0;newY++;}
+    const newRows=_calNRows(newY,newM);
     mv.classList.add(outCls);
     setTimeout(function(){
       mv.classList.remove('slide-left','slide-right');
@@ -1215,6 +1222,16 @@ function navDir(d){
       curM+=d;if(curM<0){curM=11;curY--;}if(curM>11){curM=0;curY++;}
       render();
       mv.classList.add(inCls);
+      if(oldRows!==newRows){
+        const ctr=document.getElementById('ctr-main');
+        if(ctr){
+          const cls=newRows>oldRows?'tile-rows-grow':'tile-rows-shrink';
+          ctr.classList.remove('tile-rows-grow','tile-rows-shrink');
+          void ctr.offsetWidth;
+          ctr.classList.add(cls);
+          ctr.addEventListener('animationend',function(){ctr.classList.remove(cls);},{once:true});
+        }
+      }
       setTimeout(function(){
         mv.classList.remove('slide-in-left','slide-in-right');mv.style.opacity='';
       },220);
@@ -2250,15 +2267,15 @@ function openHSModal(mym){
     '<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet">'
     +'<div class="sh"></div>'
     +'<div class="st">Heures supp. – '+MC[m]+' '+y+'</div>'
-    +(rows?'<div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0 4px"><span style="font-size:10px;color:var(--text3)"></span><div style="margin-left:auto;display:flex;gap:16px">'+(useRendu2?'<span style="font-size:10px;color:var(--text3);width:52px;text-align:right">brutes</span>':'')+'<span style="font-size:10px;color:var(--text3);width:52px;text-align:right">'+(useRendu2?'rendues':'payés')+'</span></div></div>'+rows:'')
+    +'<div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0 4px"><span style="font-size:10px;color:var(--text3)"></span><div style="margin-left:auto;display:flex;gap:16px">'+(useRendu2?'<span style="font-size:10px;color:var(--text3);width:52px;text-align:right">brutes</span>':'')+'<span style="font-size:10px;color:var(--text3);width:52px;text-align:right">'+(useRendu2?'rendues':'payés')+'</span></div></div>'+(rows||'')
     +'<div class="sep"></div>'    +(useRendu2?(
-      (totRawLow>0?'<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0"><span style="font-size:11px;color:var(--text3)">HS≤8h'+'</span><div style="margin-left:auto;display:flex;gap:16px"><b style="font-size:11px;width:52px;text-align:right;color:var(--text3)">'+fmtMin(totRawLow)+'</b><b style="font-size:11px;width:52px;text-align:right;color:var(--blue)">'+fmtMin(totLow)+'</b></div></div>':'')+
-      (totRawHigh>0?'<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0"><span style="font-size:11px;color:var(--text3)">HS>8h</span><div style="margin-left:auto;display:flex;gap:16px"><b style="font-size:11px;width:52px;text-align:right;color:var(--text3)">'+fmtMin(totRawHigh)+'</b><b style="font-size:11px;width:52px;text-align:right;color:var(--blue)">'+fmtMin(totHigh)+'</b></div></div>':'')+
+      '<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0"><span style="font-size:11px;color:var(--text3)">HS≤8h'+'</span><div style="margin-left:auto;display:flex;gap:16px"><b style="font-size:11px;width:52px;text-align:right;color:var(--text3)">'+fmtMin(totRawLow)+'</b><b style="font-size:11px;width:52px;text-align:right;color:var(--blue)">'+fmtMin(totLow)+'</b></div></div>'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0"><span style="font-size:11px;color:var(--text3)">HS>8h</span><div style="margin-left:auto;display:flex;gap:16px"><b style="font-size:11px;width:52px;text-align:right;color:var(--text3)">'+fmtMin(totRawHigh)+'</b><b style="font-size:11px;width:52px;text-align:right;color:var(--blue)">'+fmtMin(totHigh)+'</b></div></div>'+
       '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-top:0.5px solid var(--border)"><span style="font-size:15px;font-weight:600">Total</span><div style="margin-left:auto;display:flex;gap:16px"><b style="font-size:15px;width:52px;text-align:right;color:var(--text3)">'+fmtMin(totRawLow+totRawHigh)+'</b><b style="font-size:15px;width:52px;text-align:right;color:var(--blue)">'+fmtMin(tot)+'</b></div></div>'
     ):(
-      (totRawLow>0?'<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0"><span style="font-size:15px;font-weight:600">HS≤8h'+'</span><div style="margin-left:auto;display:flex;gap:16px"><b style="font-size:15px;width:52px;text-align:right;color:var(--blue)">'+fmtMin(totRawLow)+'</b></div></div>':'')+
-      (totRawHigh>0?'<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0"><span style="font-size:15px;font-weight:600">HS>8h</span><div style="margin-left:auto;display:flex;gap:16px"><b style="font-size:15px;width:52px;text-align:right;color:var(--blue)">'+fmtMin(totRawHigh)+'</b></div></div>':'')+
-      (!totRawLow&&!totRawHigh?'<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0"><span style="font-size:15px;font-weight:600">Total</span><b style="font-size:15px;text-align:right;color:var(--blue)">0h</b></div>':'')
+      '<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0"><span style="font-size:15px;font-weight:600">HS≤8h'+'</span><div style="margin-left:auto;display:flex;gap:16px"><b style="font-size:15px;width:52px;text-align:right;color:var(--blue)">'+fmtMin(totRawLow)+'</b></div></div>'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0"><span style="font-size:15px;font-weight:600">HS>8h</span><div style="margin-left:auto;display:flex;gap:16px"><b style="font-size:15px;width:52px;text-align:right;color:var(--blue)">'+fmtMin(totRawHigh)+'</b></div></div>'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-top:0.5px solid var(--border)"><span style="font-size:15px;font-weight:600">Total</span><b style="font-size:15px;text-align:right;color:var(--blue)">'+fmtMin(totRawLow+totRawHigh)+'</b></div>'
     ))    +'<button class="mcancel" onclick="closeModal()">Fermer</button>'
     +'</div></div>';
 }
@@ -2670,15 +2687,15 @@ function openMergedMoisModal(mym,tab){
   for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd);const mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);const sun=new Date(mon);sun.setDate(mon.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mym)continue;const prevMois2=mon.getFullYear()*12+mon.getMonth()!==mym;makeHSRow(mon,prevMois2);}
   const hsSummary=useRendu2?(
     '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;margin-bottom:4px"><span style="font-size:11px;color:var(--text3)">total</span><div style="margin-left:auto;display:flex;gap:16px"><b style="font-size:15px;width:52px;text-align:right;color:var(--text3)">'+fmtMin(totRawLow+totRawHigh)+'</b><b style="font-size:15px;width:52px;text-align:right;color:var(--blue)">'+fmtMin(tot)+'</b></div></div>'
-    +(totRawLow>0?'<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0"><span style="font-size:11px;color:var(--text3)">HS≤8h</span><div style="margin-left:auto;display:flex;gap:16px"><b style="font-size:11px;width:52px;text-align:right;color:var(--text3)">'+fmtMin(totRawLow)+'</b><b style="font-size:11px;width:52px;text-align:right;color:var(--blue)">'+fmtMin(totLow)+'</b></div></div>':'')+
-    (totRawHigh>0?'<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0"><span style="font-size:11px;color:var(--text3)">HS>8h</span><div style="margin-left:auto;display:flex;gap:16px"><b style="font-size:11px;width:52px;text-align:right;color:var(--text3)">'+fmtMin(totRawHigh)+'</b><b style="font-size:11px;width:52px;text-align:right;color:var(--blue)">'+fmtMin(totHigh)+'</b></div></div>':'')
+    +'<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0"><span style="font-size:11px;color:var(--text3)">HS≤8h</span><div style="margin-left:auto;display:flex;gap:16px"><b style="font-size:11px;width:52px;text-align:right;color:var(--text3)">'+fmtMin(totRawLow)+'</b><b style="font-size:11px;width:52px;text-align:right;color:var(--blue)">'+fmtMin(totLow)+'</b></div></div>'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0"><span style="font-size:11px;color:var(--text3)">HS>8h</span><div style="margin-left:auto;display:flex;gap:16px"><b style="font-size:11px;width:52px;text-align:right;color:var(--text3)">'+fmtMin(totRawHigh)+'</b><b style="font-size:11px;width:52px;text-align:right;color:var(--blue)">'+fmtMin(totHigh)+'</b></div></div>'
   ):(
     '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;margin-bottom:4px"><span style="font-size:11px;color:var(--text3)">total</span><b style="font-size:15px;color:var(--blue)">'+fmtMin(totRawLow+totRawHigh)+'</b></div>'
-    +(totRawLow>0?'<div style="display:flex;justify-content:space-between;padding:3px 0"><span style="font-size:11px;color:var(--text3)">HS≤8h</span><b style="font-size:11px;color:var(--blue)">'+fmtMin(totRawLow)+'</b></div>':'')+
-    (totRawHigh>0?'<div style="display:flex;justify-content:space-between;padding:3px 0"><span style="font-size:11px;color:var(--text3)">HS>8h</span><b style="font-size:11px;color:var(--blue)">'+fmtMin(totRawHigh)+'</b></div>':'')
+    +'<div style="display:flex;justify-content:space-between;padding:3px 0"><span style="font-size:11px;color:var(--text3)">HS≤8h</span><b style="font-size:11px;color:var(--blue)">'+fmtMin(totRawLow)+'</b></div>'+
+    '<div style="display:flex;justify-content:space-between;padding:3px 0"><span style="font-size:11px;color:var(--text3)">HS>8h</span><b style="font-size:11px;color:var(--blue)">'+fmtMin(totRawHigh)+'</b></div>'
   );
-  const hsColHdr=hsRows?(useRendu2?'<div style="display:flex;justify-content:space-between;padding:2px 0 4px"><span></span><div style="margin-left:auto;display:flex;gap:16px"><span style="font-size:10px;color:var(--text3);width:52px;text-align:right">brutes</span><span style="font-size:10px;color:var(--text3);width:52px;text-align:right">rendus</span></div></div>':''):'';
-  const hsSection=hsRows?(hsColHdr+hsSummary+'<div class="sep" style="margin:6px 0"></div>'+'<div class="btit" style="margin-bottom:4px">Détail par semaine</div>'+hsRows):hsSummary;
+  const hsColHdr=useRendu2?'<div style="display:flex;justify-content:space-between;padding:2px 0 4px"><span></span><div style="margin-left:auto;display:flex;gap:16px"><span style="font-size:10px;color:var(--text3);width:52px;text-align:right">brutes</span><span style="font-size:10px;color:var(--text3);width:52px;text-align:right">rendus</span></div></div>':'';
+  const hsSection=hsRows?(hsColHdr+hsSummary+'<div class="sep" style="margin:6px 0"></div>'+'<div class="btit" style="margin-bottom:4px">Détail par semaine</div>'+hsRows):(hsColHdr+hsSummary);
 
   // === Créés ce mois ===
   const{gen:gen2}=calcSoldes();const gm=gen2[mym]||{};
