@@ -554,6 +554,8 @@ function loadState(){
   // Ensure profile fields exist
   if(!S.profile)S.profile={};
   if(S.profile.ephSoldeCreatedYM===undefined)S.profile.ephSoldeCreatedYM=TODAY_YM;
+  // Migrate: old autoReportEph incorrectly incremented ephExtend — undo it
+  if(S.autoReported&&S.ephExtend){Object.keys(S.autoReported).forEach(function(ym){if(S.ephExtend[ym]>0){S.ephExtend[ym]--;if(S.ephExtend[ym]<=0)delete S.ephExtend[ym];}});delete S.autoReported;}
   // Mark all existing customVacs as hidden (not shown in grid)
   if(S.customVacs){Object.keys(S.customVacs).forEach(k=>{S.customVacs[k].hidden=true;});}
 }
@@ -855,7 +857,7 @@ function getEphExtensions(ym){
   if(v===true)return 1;
   return typeof v==='number'?v:0;
 }
-function getExpYm(ym){return ym+3+getEphExtensions(ym)*3;}
+function getExpYm(ym){return ym+3+getEphExtensions(ym)*3+((S.autoReport1m&&S.autoReport1m[ym])?1:0);}
 
 // BUILD GEN
 // ================================================================
@@ -1496,14 +1498,17 @@ function updateCounters(){
     const expY=Math.floor(expYm/12),expM=expYm%12;
     const moLeft=expYm-TODAY_YM;
     const isExtended=getEphExtensions(ym)>0;
+    const isAutoRep=!!(S.autoReport1m&&S.autoReport1m[ym]);
+    const baseExpYm=ym+3+getEphExtensions(ym)*3; // expiry without auto-report
+    const isWarn=!isExp&&!isFut&&!isAutoRep&&avail>0&&avail<=420&&baseExpYm===TODAY_YM+1;
+    const autoNote=isAutoRep?'<span style="color:var(--rend-text);font-size:9px">↻ </span>':'';
     const extSpan=isExtended?'<span style="background:rgba(99,153,34,.35);border-radius:3px;padding:0 2px;color:var(--text)">'+MC[expM].slice(0,3)+' '+String(expY).slice(2)+'</span>':MC[expM].slice(0,3)+' '+String(expY).slice(2);
-    const expLbl=isExp?'expiré':'→'+extSpan;
+    const expLbl=isExp?'expiré':autoNote+'→'+extSpan;
     const barColor=ephBarColor(moLeft,isExp);
     const barPct=Math.round(avail/maxVal*100);
     const origPct=Math.round(orig/maxVal*100);
     const greenOpacity=isExp?'.15':isFut?'.35':'1';
-    const isAutoRep=!!(S.autoReported&&S.autoReported[ym]);
-    const availColor=isExp?'var(--text3)':isFut?'var(--text3)':isAutoRep?'var(--rend-text)':'var(--text2)';
+    const availColor=isExp?'var(--text3)':isFut?'var(--text3)':(isAutoRep||isWarn)?'var(--rend-text)':'var(--text2)';
     uniHtml+=`<div class="eph-urow${isExp?' expired':''}${isFut?' fut':''}">
       <div class="eph-u-mc">${MC[m2]+' '+String(y2).slice(2)}</div>
       <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
@@ -1529,21 +1534,20 @@ function updateCounters(){
   updateRecap();
 }
 
+// Auto-report: at the start of the expiry month, if remaining balance ≤7h,
+// silently extend by 1 month. Warning phase (month before): green color only.
 function autoReportEph(){
-  if(!S.autoReported)S.autoReported={};
+  if(!S.autoReport1m)S.autoReport1m={};
+  // calcSoldes calls getExpYm which reads autoReport1m — unset months use base expiry
   const{realAvail}=calcSoldes();
   let changed=false;
   Object.keys(realAvail).map(Number).forEach(function(ym){
-    if(ym>TODAY_YM)return;
-    const expYm=getExpYm(ym);
-    if(expYm!==TODAY_YM)return;
+    if(ym>TODAY_YM||S.autoReport1m[ym])return; // skip future or already done
+    const baseExp=getExpYm(ym); // without the +1 since autoReport1m[ym] is not set yet
+    if(baseExp!==TODAY_YM)return; // only when we're in the expiry month
     const avail=realAvail[ym]||0;
-    if(avail<=0||avail>420)return;
-    const cur=getEphExtensions(ym);
-    if(cur>=3)return;
-    if(!S.ephExtend)S.ephExtend={};
-    S.ephExtend[ym]=(S.ephExtend[ym]||0)+1;
-    S.autoReported[ym]=true;
+    if(avail<=0||avail>420)return; // only 0 < avail ≤ 7h00
+    S.autoReport1m[ym]=true;
     changed=true;
   });
   if(changed)saveState();
@@ -2342,19 +2346,23 @@ function openRestantsModal(){
     const y=Math.floor(ym/12),m=ym%12;
     const expYm=getExpYm(ym),expY=Math.floor(expYm/12),expM=expYm%12;
     const isExp=expYm<=TODAY_YM,ext=getEphExtensions(ym);
+    const isAutoRepR=!!(S.autoReport1m&&S.autoReport1m[ym]);
+    const baseExpYmR=ym+3+ext*3;
+    const isWarnR=!isExp&&!isFut&&!isAutoRepR&&avail>0&&avail<=420&&baseExpYmR===TODAY_YM+1;
     // canSub: allowed whenever ext>0
     const canAdd=!isExp&&!isFut&&ext<3;
     const canSub=!isExp&&!isFut&&ext>0;
     if(avail<=0&&!canSub)return;
     const moLeft=expYm-TODAY_YM;
-    const expColor=isExp?'var(--rend-text)':'var(--text3)';
+    const autoNoteR=isAutoRepR?'↻ ':'';
+    const expColor=isExp?'var(--rend-text)':(isAutoRepR||isWarnR)?'var(--rend-text)':'var(--text3)';
     const barColor=ephBarColor(moLeft,isExp);
     const pct=Math.round(avail/maxV*100);
     const minusBtn='<button onclick="undoEph('+ym+');openRestantsModal()" style="'+btnS+'color:'+(canSub?'var(--text3)':'var(--border2)')+';pointer-events:'+(canSub?'auto':'none')+'">-3m</button>';
     const plusBtn='<button onclick="reportEph('+ym+');openRestantsModal()" style="'+btnS+'color:'+(canAdd?'var(--text3)':'var(--border2)')+';pointer-events:'+(canAdd?'auto':'none')+'">+3m</button>';
     rows+='<div style="display:flex;align-items:center;padding:5px 0;border-bottom:0.5px solid var(--border2);gap:6px'+(isExp?';opacity:.4':'')+'">'
       +'<div style="width:52px;flex-shrink:0"><div style="font-size:11px;color:var(--text'+(isExp||isFut?'3':'2')+')">'+ML[m].slice(0,4)+' '+String(y).slice(2)+'</div>'
-      +'<div style="font-size:9px;color:'+expColor+'">→'+ML[expM].slice(0,4)+' '+String(expY).slice(2)+'</div></div>'
+      +'<div style="font-size:9px;color:'+expColor+'">'+autoNoteR+'→'+ML[expM].slice(0,4)+' '+String(expY).slice(2)+'</div></div>'
       +'<div style="flex:1"><div style="height:6px;background:var(--bg3);border-radius:3px;overflow:hidden"><div style="width:'+pct+'%;height:100%;background:'+barColor+';opacity:'+(isFut?.5:1)+'"></div></div></div>'
       +'<div style="width:44px;text-align:right;font-size:12px;font-weight:600;color:'+(isFut?'var(--text3)':'var(--text)')+'">'+fmtMin(avail)+'</div>'
       +'<div style="display:flex;gap:2px">'+minusBtn+plusBtn+'</div>'
@@ -2397,10 +2405,14 @@ function openMergedRenduCgModal(limit,tab){
     const barPct=Math.round(avail/maxV*100);
     const greenOpacity=isExp?'.15':isFut?'.35':'1';
     const blueOpacity=isFut?'.2':'.4';
-    const availColor=isExp?'var(--text3)':isFut?'var(--text3)':'var(--text2)';
+    const isAutoRepM=!!(S.autoReport1m&&S.autoReport1m[ym]);
+    const baseExpYmM=ym+3+getEphExtensions(ym)*3;
+    const isWarnM=!isExp&&!isFut&&!isAutoRepM&&avail>0&&avail<=420&&baseExpYmM===TODAY_YM+1;
+    const availColor=isExp?'var(--text3)':isFut?'var(--text3)':(isAutoRepM||isWarnM)?'var(--rend-text)':'var(--text2)';
     const isExtended=getEphExtensions(ym)>0;
+    const autoNoteM=isAutoRepM?'<span style="color:var(--rend-text);font-size:9px">↻ </span>':'';
     const extSpan=isExtended?'<span style="background:rgba(99,153,34,.35);border-radius:3px;padding:0 2px;color:var(--text)">'+ML2[expM]+' '+String(expY).slice(2)+'</span>':ML2[expM]+' '+String(expY).slice(2);
-    const expLbl=isExp?'expiré':'→'+extSpan;
+    const expLbl=isExp?'expiré':autoNoteM+'→'+extSpan;
     const minusBtn='<button onclick="undoEph('+ym+');openMergedRenduCgModal('+limit+')" style="'+btnS+'color:'+(canSub?'var(--text3)':'var(--border2)')+';pointer-events:'+(canSub?'auto':'none')+'">−3m</button>';
     const plusBtn='<button onclick="reportEph('+ym+');openMergedRenduCgModal('+limit+')" style="'+btnS+'color:'+(canAdd?'var(--text3)':'var(--border2)')+';pointer-events:'+(canAdd?'auto':'none')+'">+3m</button>';
     rendRows+='<div class="eph-urow'+(isExp?' expired':'')+(isFut?' fut':'')+'">'
@@ -3692,6 +3704,7 @@ function init(){
   // Load from cloud FIRST, then render (KV is source of truth)
   cloudLoadAll().then(function(){
     applyTheme();
+    autoReportEph();
     render();
     const hpn=document.getElementById('hdr-profile-name');
     if(hpn&&S&&S.profile)hpn.textContent=S.profile.name||'Profil';
