@@ -87,10 +87,6 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .slide-in-right{animation:slideInRight .2s ease forwards;}
 @keyframes slideInLeft{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:translateX(0)}}
 @keyframes slideInRight{from{opacity:0;transform:translateX(-28px)}to{opacity:1;transform:translateX(0)}}
-@keyframes tileRowsGrow{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
-@keyframes tileRowsShrink{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
-.tile-rows-grow{animation:tileRowsGrow .25s ease forwards;}
-.tile-rows-shrink{animation:tileRowsShrink .25s ease forwards;}
 
 /* Month view */
 #month-view{transition:opacity .2s ease,transform .2s ease;}
@@ -1215,6 +1211,9 @@ function navDir(d){
     const oldRows=_calNRows(curY,curM);
     let newY=curY,newM=curM+d;if(newM<0){newM=11;newY--;}if(newM>11){newM=0;newY++;}
     const newRows=_calNRows(newY,newM);
+    const rowsChanged=oldRows!==newRows;
+    // Fade out tiles immediately alongside calendar slide-out
+    if(rowsChanged){const ctr=document.getElementById('ctr-main');if(ctr){ctr.style.transition='opacity .18s ease';ctr.style.opacity='0';}}
     mv.classList.add(outCls);
     setTimeout(function(){
       mv.classList.remove('slide-left','slide-right');
@@ -1222,14 +1221,16 @@ function navDir(d){
       curM+=d;if(curM<0){curM=11;curY--;}if(curM>11){curM=0;curY++;}
       render();
       mv.classList.add(inCls);
-      if(oldRows!==newRows){
+      if(rowsChanged){
         const ctr=document.getElementById('ctr-main');
         if(ctr){
-          const cls=newRows>oldRows?'tile-rows-grow':'tile-rows-shrink';
-          ctr.classList.remove('tile-rows-grow','tile-rows-shrink');
-          void ctr.offsetWidth;
-          ctr.classList.add(cls);
-          ctr.addEventListener('animationend',function(){ctr.classList.remove(cls);},{once:true});
+          const dy=newRows>oldRows?-20:20;
+          ctr.style.transition='none';ctr.style.transform='translateY('+dy+'px)';ctr.style.opacity='0';
+          requestAnimationFrame(function(){requestAnimationFrame(function(){
+            ctr.style.transition='opacity .28s ease,transform .28s ease';
+            ctr.style.opacity='1';ctr.style.transform='translateY(0)';
+            ctr.addEventListener('transitionend',function(){ctr.style.transition=ctr.style.transform=ctr.style.opacity='';},{once:true});
+          });});
         }
       }
       setTimeout(function(){
@@ -1378,10 +1379,12 @@ function toggleAnnual(){
     aw.style.opacity='0';aw.style.transition='opacity .2s ease';
     requestAnimationFrame(()=>{aw.style.opacity='1';});
   }else{
+    // Restore month-view layout immediately to prevent sidebar from jumping
+    mv.style.visibility='visible';mv.style.height='';mv.style.overflow='';mv.style.opacity='0';mv.style.transition='none';
     aw.style.transition='opacity .12s ease';aw.style.opacity='0';
     setTimeout(()=>{
       aw.classList.remove('open');
-      mv.style.visibility='visible';mv.style.height='';mv.style.overflow='';mv.style.opacity='0';mv.style.transition='opacity .2s ease';
+      mv.style.transition='opacity .2s ease';
       requestAnimationFrame(()=>{mv.style.opacity='1';});
     },130);
   }
@@ -1402,8 +1405,15 @@ function renderAnnual(){
 }
 function goToMonth(m){
   curM=m;annualOpen=false;const aw=document.getElementById('ann-wrap'),mv=document.getElementById('month-view');
-  aw.classList.remove('open');aw.style.transition='opacity .12s ease';aw.style.opacity='0';
-  setTimeout(()=>{aw.style.display='none';mv.style.display='block';mv.style.visibility='visible';mv.style.height='';mv.style.overflow='';mv.style.opacity='0';mv.style.transform='scale(.98)';mv.style.transition='opacity .2s ease,transform .2s ease';requestAnimationFrame(()=>{mv.style.opacity='1';mv.style.transform='scale(1)';});render();},130);
+  // Restore month-view layout immediately to prevent sidebar from jumping up
+  mv.style.visibility='visible';mv.style.height='';mv.style.overflow='';mv.style.opacity='0';mv.style.transition='none';
+  aw.style.transition='opacity .12s ease';aw.style.opacity='0';
+  setTimeout(()=>{
+    aw.classList.remove('open');
+    mv.style.transform='scale(.98)';mv.style.transition='opacity .2s ease,transform .2s ease';
+    render();
+    requestAnimationFrame(()=>{mv.style.opacity='1';mv.style.transform='scale(1)';});
+  },130);
 }
 
 // ================================================================
