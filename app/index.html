@@ -366,6 +366,7 @@ input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-
 .bloc.clk:active{background:var(--bg3);}
 .ctr.clk:active{background:var(--bg3);}
 body.modal-open .bloc.clk:hover,body.modal-open .ctr.clk:hover{background:var(--bg2) !important;}
+body.modal-open{overscroll-behavior:none;}
 @media (hover:hover){
 .bloc.clk:hover{background:var(--bg3);}
 .ctr.clk:hover{background:var(--bg3);}
@@ -1212,8 +1213,9 @@ function navDir(d){
     let newY=curY,newM=curM+d;if(newM<0){newM=11;newY--;}if(newM>11){newM=0;newY++;}
     const newRows=_calNRows(newY,newM);
     const rowsChanged=oldRows!==newRows;
-    // Fade out tiles immediately alongside calendar slide-out
-    if(rowsChanged){const ctr=document.getElementById('ctr-main');if(ctr){ctr.style.transition='opacity .18s ease';ctr.style.opacity='0';}}
+    const _tileIds=['eph-rest-bloc','ctr-main'];
+    // Fade out both tiles immediately alongside calendar slide-out
+    if(rowsChanged){_tileIds.forEach(function(id){const el=document.getElementById(id);if(el){el.style.transition='opacity .18s ease';el.style.opacity='0';}});}
     mv.classList.add(outCls);
     setTimeout(function(){
       mv.classList.remove('slide-left','slide-right');
@@ -1222,16 +1224,16 @@ function navDir(d){
       render();
       mv.classList.add(inCls);
       if(rowsChanged){
-        const ctr=document.getElementById('ctr-main');
-        if(ctr){
-          const dy=newRows>oldRows?-20:20;
-          ctr.style.transition='none';ctr.style.transform='translateY('+dy+'px)';ctr.style.opacity='0';
+        const dy=newRows>oldRows?-20:20;
+        _tileIds.forEach(function(id){
+          const el=document.getElementById(id);if(!el)return;
+          el.style.transition='none';el.style.transform='translateY('+dy+'px)';el.style.opacity='0';
           requestAnimationFrame(function(){requestAnimationFrame(function(){
-            ctr.style.transition='opacity .28s ease,transform .28s ease';
-            ctr.style.opacity='1';ctr.style.transform='translateY(0)';
-            ctr.addEventListener('transitionend',function(){ctr.style.transition=ctr.style.transform=ctr.style.opacity='';},{once:true});
+            el.style.transition='opacity .28s ease,transform .28s ease';
+            el.style.opacity='1';el.style.transform='translateY(0)';
+            el.addEventListener('transitionend',function(){el.style.transition=el.style.transform=el.style.opacity='';},{once:true});
           });});
-        }
+        });
       }
       setTimeout(function(){
         mv.classList.remove('slide-in-left','slide-in-right');mv.style.opacity='';
@@ -2721,7 +2723,7 @@ function openMergedMoisModal(mym,tab){
       const key=dk(d);
       const v2=getVac(d);const{vac,absent,echange,ecSelf}=v2;
       if(!vac||vac==='RH'||absent)continue;if(echange&&!ecSelf)continue;
-      const cKey=(S.conges||{})[key];if(cKey==='rend')continue;
+      const cKey=(S.conges||{})[key];if(cKey==='rend'||cKey==='cg'||cKey==='absent')continue;
       const dur=VAC[vac]?VAC[vac].dur:0;
       const isFer3=FERIES.has(key),isDim3=d.getDay()===0,isRH3=isRHDay(d);
       const sett3=settingsForYM(mym);
@@ -2836,11 +2838,13 @@ function closeModal(){document.getElementById('modal-root').innerHTML='';pending
       else return;
     }
     if(dirLocked==='h'){dragging=false;sheet.style.transform='';sheet.style.transition='';if(overlay)overlay.style.background='';return;}
-    // Only swipe down when at top of scroll
+    // Swipe down at top = close gesture; swipe up at bottom = prevent body overscroll
     if(dy>0&&sheet.scrollTop<=0){
       e.preventDefault();
       sheet.style.transform='translateY('+Math.min(dy,300)+'px)';
       if(overlay)overlay.style.background='rgba(0,0,0,'+Math.max(0,.45-dy/400)+')';
+    }else if(dy<0&&sheet.scrollTop+sheet.clientHeight>=sheet.scrollHeight-1){
+      e.preventDefault();
     }
   },{passive:false});
   document.addEventListener('touchend',function(e){
