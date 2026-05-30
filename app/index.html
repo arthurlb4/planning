@@ -907,7 +907,7 @@ function calcSoldes(){
   const gen=buildGen(),createdYM=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:2026*12;
   const realEph={},prevEph={};
   for(let ym=createdYM;ym<=TODAY_YM;ym++)realEph[ym]=0;
-  Object.keys(gen).forEach(ymStr=>{const ym=Number(ymStr),total=Object.values(gen[ym]).reduce((s,v)=>s+v,0),expYm=getExpYm(ym);if(ym>TODAY_YM){prevEph[ym]=total;return;}realEph[ym]=expYm<=TODAY_YM?0:total;});
+  Object.keys(gen).forEach(ymStr=>{const ym=Number(ymStr),total=Object.values(gen[ym]).reduce((s,v)=>s+v,0),expYm=getExpYm(ym);if(ym>TODAY_YM){prevEph[ym]=total;return;}realEph[ym]=expYm<TODAY_YM?0:total;});
   // FIFO: deduct all rendus from combined stock — credit month must be <= rendu month (no borrowing from future months)
   const _fifoWarnKeys=new Set();
   {
@@ -1489,7 +1489,7 @@ function updateCounters(){
     const hasActiveExt=!isFut&&getEphExtensions(ym)>0;
     if(orig===0&&avail===0&&!hasActiveExt)return;
     const expYm=getExpYm(ym);
-    const isExp=!isFut&&expYm<=TODAY_YM;
+    const isExp=!isFut&&expYm<TODAY_YM;
     uniRows.push({ym,y2,m2,orig,avail,isFut,isExp,expYm});
   });
   const maxVal=Math.max(...uniRows.map(r=>Math.max(r.orig,r.avail)),1);
@@ -1501,7 +1501,7 @@ function updateCounters(){
     const isExtended=getEphExtensions(ym)>0;
     const isAutoRep=!!(S.autoReport1m&&S.autoReport1m[ym]);
     const baseExpYm=ym+3+getEphExtensions(ym)*3; // expiry without auto-report
-    const isWarn=!isExp&&!isFut&&!isAutoRep&&avail>0&&avail<=420&&baseExpYm===TODAY_YM+1;
+    const isWarn=!isExp&&!isFut&&!isAutoRep&&avail>0&&avail<=420&&baseExpYm===TODAY_YM;
     const autoNote=isAutoRep?'<span style="color:var(--rend-text);font-size:9px">↻ </span>':'';
     const extSpan=isExtended?'<span style="background:rgba(99,153,34,.35);border-radius:3px;padding:0 2px;color:var(--text)">'+MC[expM].slice(0,3)+' '+String(expY).slice(2)+'</span>':MC[expM].slice(0,3)+' '+String(expY).slice(2);
     const expLbl=isExp?'expiré':autoNote+'→'+extSpan;
@@ -1545,7 +1545,7 @@ function autoReportEph(){
   Object.keys(realAvail).map(Number).forEach(function(ym){
     if(ym>TODAY_YM||S.autoReport1m[ym])return; // skip future or already done
     const baseExp=getExpYm(ym); // without the +1 since autoReport1m[ym] is not set yet
-    if(baseExp!==TODAY_YM)return; // only when we're in the expiry month
+    if(baseExp>=TODAY_YM)return; // only once we've passed the last valid month
     const avail=realAvail[ym]||0;
     if(avail<=0||avail>420)return; // only 0 < avail ≤ 7h00
     S.autoReport1m[ym]=true;
@@ -1939,7 +1939,7 @@ function recalcAllMatelas(){
   Object.keys(gen).forEach(function(ymStr){
     var _ym=Number(ymStr),total=Object.values(gen[_ym]).reduce(function(s,v){return s+v;},0);
     if(_ym>TODAY_YM){_sim[_ym]=total;return;}
-    _sim[_ym]=getExpYm(_ym)<=TODAY_YM?0:total;
+    _sim[_ym]=getExpYm(_ym)<TODAY_YM?0:total;
   });
   var _syms=Object.keys(_sim).map(Number).sort();
   var _rks=Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='rend';}).sort();
@@ -2346,10 +2346,10 @@ function openRestantsModal(){
     const avail=isFut?(prevEph[ym]||0):(realAvail[ym]||0);
     const y=Math.floor(ym/12),m=ym%12;
     const expYm=getExpYm(ym),expY=Math.floor(expYm/12),expM=expYm%12;
-    const isExp=expYm<=TODAY_YM,ext=getEphExtensions(ym);
+    const isExp=expYm<TODAY_YM,ext=getEphExtensions(ym);
     const isAutoRepR=!!(S.autoReport1m&&S.autoReport1m[ym]);
     const baseExpYmR=ym+3+ext*3;
-    const isWarnR=!isExp&&!isFut&&!isAutoRepR&&avail>0&&avail<=420&&baseExpYmR===TODAY_YM+1;
+    const isWarnR=!isExp&&!isFut&&!isAutoRepR&&avail>0&&avail<=420&&baseExpYmR===TODAY_YM;
     // canSub: allowed whenever ext>0
     const canAdd=!isExp&&!isFut&&ext<3;
     const canSub=!isExp&&!isFut&&ext>0;
@@ -2398,7 +2398,7 @@ function openMergedRenduCgModal(limit,tab){
   yms.forEach(function(ym){
     const isFut=ym>TODAY_YM,avail=isFut?(prevEph[ym]||0):(realAvail[ym]||0);
     const y=Math.floor(ym/12),m=ym%12,expYm=getExpYm(ym),expY=Math.floor(expYm/12),expM=expYm%12;
-    const isExp=expYm<=TODAY_YM,ext=getEphExtensions(ym);
+    const isExp=expYm<TODAY_YM,ext=getEphExtensions(ym);
     const canAdd=!isExp&&!isFut&&ext<3,canSub=!isExp&&!isFut&&ext>0;
     const orig=(gen[ym]?Object.values(gen[ym]).reduce(function(s,v){return s+v;},0):0);
     if(orig<=0&&avail<=0&&!canSub)return;
@@ -2408,7 +2408,7 @@ function openMergedRenduCgModal(limit,tab){
     const blueOpacity=isFut?'.2':'.4';
     const isAutoRepM=!!(S.autoReport1m&&S.autoReport1m[ym]);
     const baseExpYmM=ym+3+getEphExtensions(ym)*3;
-    const isWarnM=!isExp&&!isFut&&!isAutoRepM&&avail>0&&avail<=420&&baseExpYmM===TODAY_YM+1;
+    const isWarnM=!isExp&&!isFut&&!isAutoRepM&&avail>0&&avail<=420&&baseExpYmM===TODAY_YM;
     const availColor=isExp?'var(--text3)':isFut?'var(--text3)':(isAutoRepM||isWarnM)?'var(--rend-text)':'var(--text2)';
     const isExtended=getEphExtensions(ym)>0;
     const autoNoteM=isAutoRepM?'<span style="color:var(--rend-text);font-size:9px">↻ </span>':'';
