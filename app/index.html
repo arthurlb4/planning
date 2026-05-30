@@ -1502,7 +1502,8 @@ function updateCounters(){
     const barPct=Math.round(avail/maxVal*100);
     const origPct=Math.round(orig/maxVal*100);
     const greenOpacity=isExp?'.15':isFut?'.35':'1';
-    const availColor=isExp?'var(--text3)':isFut?'var(--text3)':'var(--text2)';
+    const isAutoRep=!!(S.autoReported&&S.autoReported[ym]);
+    const availColor=isExp?'var(--text3)':isFut?'var(--text3)':isAutoRep?'var(--rend-text)':'var(--text2)';
     uniHtml+=`<div class="eph-urow${isExp?' expired':''}${isFut?' fut':''}">
       <div class="eph-u-mc">${MC[m2]+' '+String(y2).slice(2)}</div>
       <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
@@ -1528,6 +1529,25 @@ function updateCounters(){
   updateRecap();
 }
 
+function autoReportEph(){
+  if(!S.autoReported)S.autoReported={};
+  const{realAvail}=calcSoldes();
+  let changed=false;
+  Object.keys(realAvail).map(Number).forEach(function(ym){
+    if(ym>TODAY_YM)return;
+    const expYm=getExpYm(ym);
+    if(expYm!==TODAY_YM)return;
+    const avail=realAvail[ym]||0;
+    if(avail<=0||avail>420)return;
+    const cur=getEphExtensions(ym);
+    if(cur>=3)return;
+    if(!S.ephExtend)S.ephExtend={};
+    S.ephExtend[ym]=(S.ephExtend[ym]||0)+1;
+    S.autoReported[ym]=true;
+    changed=true;
+  });
+  if(changed)saveState();
+}
 function ephBarColor(moLeft,isExp){
   if(isExp)return'#555';
   if(moLeft<=0)return'#E24B4A';
@@ -1585,7 +1605,7 @@ function openPaniersModal(){
       const days=wmap[wk],id='_pa'+(++_pid2);
       h+='<div onclick="_ptog(\''+id+'\')" style="font-size:11px;padding:5px 0;border-bottom:0.5px solid var(--border2);cursor:pointer">'
         +'<div style="display:flex;justify-content:space-between;margin-bottom:0">'
-        +'<span style="font-weight:500;color:var(--text)"><span id="'+id+'c" style="display:inline-block;transition:transform .15s;margin-right:4px">›</span>Sem. '+wk+'</span>'
+        +'<span style="font-weight:600;color:var(--text)"><span id="'+id+'c" style="display:inline-block;transition:transform .15s;margin-right:4px">›</span>Semaine '+wk+'</span>'
         +'<span style="color:var(--text2)">'+days.length+'j</span>'
         +'</div>'
         +'<div id="'+id+'" style="display:none">'
@@ -2698,7 +2718,7 @@ function openMergedMoisModal(mym,tab){
       const days=wmap[wk],id='_pm'+(++_pid);
       h+='<div onclick="_ptog(\''+id+'\')" style="font-size:11px;padding:5px 0;border-bottom:0.5px solid var(--border2);cursor:pointer">'
         +'<div style="display:flex;justify-content:space-between">'
-        +'<span style="font-weight:500;color:var(--text)"><span id="'+id+'c" style="display:inline-block;transition:transform .15s;margin-right:4px">›</span>Sem. '+wk+'</span>'
+        +'<span style="font-weight:600;color:var(--text)"><span id="'+id+'c" style="display:inline-block;transition:transform .15s;margin-right:4px">›</span>Semaine '+wk+'</span>'
         +'<span style="color:var(--text2)">'+days.length+'j</span>'
         +'</div>'
         +'<div id="'+id+'" style="display:none">'
@@ -3644,7 +3664,7 @@ function init(){
   window._authToken=authToken;
   window._authUser=authUser;
   // Show user name in header if needed
-  loadState();applyTheme();
+  loadState();autoReportEph();applyTheme();
   // Load cycle override from server if available
   fetch(CLOUD_API+'/get-cycle',{method:'POST',headers:cloudHeaders(),body:'{}'})
     .then(function(r){return r.json();})
