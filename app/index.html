@@ -2139,6 +2139,9 @@ function calcTrueDispo(viewedYM){
   });
   const _all=Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='rend';}).sort();
   const _sortedYms=Object.keys(_sim).map(Number).sort();
+  // Snapshot brut before step 1
+  const genSnapshot=[];
+  _sortedYms.forEach(function(ym){if(ym<=viewedYM&&getExpYm(ym)>=viewedYM&&_sim[ym]>0)genSnapshot.push({ym,amount:_sim[ym],expYm:getExpYm(ym)});});
   // Step 1: FIFO for rendus ≤ viewedYM (they have priority, use all ≤ their month)
   _all.filter(function(k){const d=new Date(k+'T12:00:00');return d.getFullYear()*12+d.getMonth()<=viewedYM;})
     .forEach(function(k){
@@ -2185,7 +2188,7 @@ function calcTrueDispo(viewedYM){
     }
   });
   const reserved=Math.max(0,stockActif-dispo);
-  return{total:Math.max(0,dispo),breakdown,stockActif,reserved,reservedMonths,afterStep1,reservedDetail};
+  return{total:Math.max(0,dispo),breakdown,stockActif,reserved,reservedMonths,afterStep1,reservedDetail,genSnapshot};
 }
 
 function canPlaceRendu(newKeys){
@@ -2524,7 +2527,7 @@ function openMergedRenduCgModal(limit,tab){
     <button onclick="adjCET(+1)" style="padding:4px 10px;border:0.5px solid var(--border2);border-radius:6px;background:rgba(224,152,48,.12);color:var(--amber);cursor:pointer;font-size:11px;font-weight:500">+</button>
   </div>`;
   const _viewedYM=(typeof curY!=='undefined'&&typeof curM!=='undefined')?curY*12+curM:TODAY_YM;
-  const {total:dispoMois,stockActif,reserved,reservedMonths,afterStep1,reservedDetail}=calcTrueDispo(_viewedYM);
+  const {total:dispoMois,stockActif,reserved,reservedMonths,afterStep1,reservedDetail,genSnapshot}=calcTrueDispo(_viewedYM);
   const rcgUsedCurY=calcCongesUsedForYear(nowY);
   const rcgRendusMin=Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='rend';}).reduce(function(s,k){return s+getDur(new Date(k+'T12:00:00'));},0);
   const rcgCgKeys=Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='cg';}).sort();
@@ -2540,12 +2543,17 @@ function openMergedRenduCgModal(limit,tab){
     +'<div style="margin-bottom:8px;padding-bottom:8px;border-bottom:0.5px solid var(--border2)">'+rcgRdSections+'</div>'
     +'<div class="dd-title">Historique</div>'+rcgHistHtml;
   const dispoColor=dispoMois<=0?'var(--red)':dispoMois<120?'var(--amber)':'var(--rend-text)';
-  const _as1Lines=afterStep1.map(function(e){
+  const _as1Map={};afterStep1.forEach(function(e){_as1Map[e.ym]=e.amount;});
+  const _rowS='display:grid;grid-template-columns:44px 1fr auto auto auto;gap:0 5px;align-items:baseline;font-size:10px;padding:2px 0;border-bottom:0.5px solid var(--border2)';
+  const _stockLines=genSnapshot.map(function(e){
+    const actif=_as1Map[e.ym]||0,consumed=e.amount-actif;
     const ey=Math.floor(e.expYm/12),em=e.expYm%12;
-    return '<div style="display:flex;justify-content:space-between;align-items:baseline;font-size:10px;padding:2px 0;border-bottom:0.5px solid var(--border2)">'
-      +'<span style="color:var(--text2)">'+MC[e.ym%12].slice(0,3)+' '+String(Math.floor(e.ym/12)).slice(2)
-      +'<span style="color:var(--text3);font-size:9px;margin-left:4px">expire '+MC[em].slice(0,3)+' '+String(ey).slice(2)+'</span></span>'
-      +'<span style="font-weight:500;color:var(--rend-text)">'+fmtMin(e.amount)+'</span>'
+    return '<div style="'+_rowS+'">'
+      +'<span style="color:var(--text2);font-weight:500">'+MC[e.ym%12].slice(0,3)+' '+String(Math.floor(e.ym/12)).slice(2)+'</span>'
+      +'<span style="color:var(--text3);font-size:9px">exp '+MC[em].slice(0,3)+' '+String(ey).slice(2)+'</span>'
+      +'<span style="color:var(--text3)">'+fmtMin(e.amount)+'</span>'
+      +'<span style="color:'+(consumed>0?'var(--red)':'var(--border2)')+'">−'+fmtMin(consumed)+'</span>'
+      +'<span style="font-weight:600;color:'+(actif>0?'var(--rend-text)':'var(--text3)')+'">'+fmtMin(actif)+'</span>'
       +'</div>';
   }).join('')||'<div style="font-size:10px;color:var(--text3);padding:2px 0">Aucune heure active</div>';
   const _rdLines=reservedDetail.map(function(e){
@@ -2556,19 +2564,19 @@ function openMergedRenduCgModal(limit,tab){
   }).join('');
   const dispoDetailHtml=''
     +'<div id="dispo-detail-panel" style="display:none;text-align:left;margin-top:8px;padding:8px 10px;background:var(--bg);border-radius:8px;border:0.5px solid var(--border2)">'
-    +'<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Solde actif — par mois généré</div>'
-    +'<div style="font-size:9px;color:var(--text3);margin-bottom:6px;line-height:1.4">Heures générées consommées par les rendus déjà posés (FIFO : les plus anciennes d\'abord).</div>'
-    +_as1Lines
-    +'<div style="display:flex;justify-content:space-between;font-size:10px;padding-top:4px;margin-top:4px"><span style="color:var(--text3)">Stock actif total</span><span style="font-weight:600">'+fmtMin(stockActif)+'</span></div>'
+    +'<div style="display:grid;grid-template-columns:44px 1fr auto auto auto;gap:0 5px;font-size:9px;color:var(--text3);letter-spacing:.04em;text-transform:uppercase;padding-bottom:3px;margin-bottom:2px;border-bottom:0.5px solid var(--border2)">'
+    +'<span></span><span></span><span>Brut</span><span>Rendus</span><span>Actif</span>'
+    +'</div>'
+    +_stockLines
+    +'<div style="display:flex;justify-content:space-between;font-size:10px;padding-top:4px;margin-top:2px"><span style="color:var(--text3)">Stock actif</span><span style="font-weight:600">'+fmtMin(stockActif)+'</span></div>'
     +(_rdLines
-      ?'<div style="margin-top:8px;padding-top:6px;border-top:0.5px solid var(--border2)">'
-       +'<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px">Utilisé par rendus futurs</div>'
-       +'<div style="font-size:9px;color:var(--text3);margin-bottom:6px;line-height:1.4">Ces rendus futurs ne trouvent pas assez de stock futur — ils piochent dans le stock actif ci-dessus.</div>'
+      ?'<div style="margin-top:6px;padding-top:6px;border-top:0.5px solid var(--border2)">'
+       +'<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Réservé — rendus futurs</div>'
        +_rdLines
-       +'<div style="display:flex;justify-content:space-between;font-size:10px;padding-top:4px;margin-top:4px"><span style="color:var(--text3)">Total réservé</span><span style="color:var(--red);font-weight:600">−'+fmtMin(reserved)+'</span></div>'
+       +'<div style="display:flex;justify-content:space-between;font-size:10px;padding-top:4px;margin-top:2px"><span style="color:var(--text3)">Total réservé</span><span style="color:var(--red);font-weight:600">−'+fmtMin(reserved)+'</span></div>'
        +'</div>'
       :'')
-    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding-top:6px;border-top:0.5px solid var(--border2)">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;padding-top:6px;border-top:0.5px solid var(--border2)">'
     +'<span style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">= Dispo '+MC[_viewedYM%12]+'</span>'
     +'<span style="font-size:13px;font-weight:700;color:'+dispoColor+'">'+fmtMin(dispoMois)+'</span>'
     +'</div>'
