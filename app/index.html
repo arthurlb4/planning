@@ -1527,30 +1527,14 @@ function updateCounters(){
     const isWarn=!isExp&&!isFut&&!isAutoRep&&avail>0&&avail<=420&&baseExpYm===TODAY_YM;
     const autoRepMin=typeof(S.autoReport1m&&S.autoReport1m[ym])==='number'?S.autoReport1m[ym]:avail;
     const lostMin=isExp?(preExpiry[ym]||0):0;
-    const expLbl=isExp?(lostMin>0?'<span style="color:var(--red);font-size:10px">-'+fmtMin(lostMin)+'</span>':'<span style="color:var(--text3);font-size:10px">00h00</span>'):'→'+MC[expM].slice(0,3)+' '+String(expY).slice(2);
+    const extSpan=isExtended?'<span style="background:rgba(99,153,34,.35);border-radius:3px;padding:0 2px;color:var(--text)">'+MC[expM].slice(0,3)+' '+String(expY).slice(2)+'</span>':MC[expM].slice(0,3)+' '+String(expY).slice(2);
+    const expLbl=isExp?(lostMin>0?'<span style="color:var(--red);font-size:10px">-'+fmtMin(lostMin)+'</span>':'<span style="color:var(--text3);font-size:10px">00h00</span>'):isAutoRep?'<span style="color:var(--rend-text);font-size:10px">↓ '+fmtMin(autoRepMin)+'</span>':'→'+extSpan;
     const barPct=Math.round(avail/maxVal*100);
     const origPct=Math.round(orig/maxVal*100);
     const greenOpacity=isExp?'.15':isFut?'.35':'1';
     const availColor=isExp?'var(--text3)':isFut?'var(--text3)':(isAutoRep||isWarn)?'var(--rend-text)':'var(--text2)';
-    // Incoming auto-report line
     const incoming=incomingByYm[ym]||[];
     const incomingHtml=incoming.length?'<div style="font-size:9px;color:var(--rend-text);margin-top:1px">'+incoming.map(function(i){return'+'+fmtMin(i.amount)+' ← '+MC[i.srcYm%12].slice(0,3);}).join(' ')+'</div>':'';
-    // Right column: buttons for active months, expiry label for expired/future
-    let rightCol;
-    if(isExp||isFut){
-      rightCol='<div class="eph-u-exp">'+expLbl+'</div>';
-    } else {
-      const btn1mCls=isAutoRep?'rep-on':(isWarn?'rep-warn':'');
-      const b3=extCount===1?'rep-on':'',b6=extCount===2?'rep-on':'',b9=extCount===3?'rep-on':'';
-      rightCol='<div style="flex-shrink:0;text-align:right">'
-        +'<div style="font-size:8px;color:var(--text3);margin-bottom:2px">→'+MC[expM].slice(0,3)+' '+String(expY).slice(2)+'</div>'
-        +'<div class="eph-rep-btns">'
-        +'<button class="eph-rep-btn '+btn1mCls+'" disabled>1m</button>'
-        +'<button class="eph-rep-btn '+b3+'" onclick="setEphExt('+ym+',1)">3m</button>'
-        +'<button class="eph-rep-btn '+b6+'" onclick="setEphExt('+ym+',2)">6m</button>'
-        +'<button class="eph-rep-btn '+b9+'" onclick="setEphExt('+ym+',3)">9m</button>'
-        +'</div></div>';
-    }
     uniHtml+=`<div class="eph-urow${isExp?' expired':''}${isFut?' fut':''}">
       <div class="eph-u-mc">${MC[m2]+' '+String(y2).slice(2)}</div>
       <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
@@ -1558,7 +1542,7 @@ function updateCounters(){
         <div class="eph-bw"><div class="eph-b2" style="width:${origPct}%;background:var(--blue);opacity:${isFut?'.2':'.4'}"></div><div class="eph-b" style="width:${barPct}%;background:var(--rend-text);opacity:${greenOpacity}"></div></div>
         ${incomingHtml}
       </div>
-      ${rightCol}
+      <div class="eph-u-exp">${expLbl}</div>
     </div>`;
   });
   const uniEl=document.getElementById('eph-unified-list');
@@ -2440,7 +2424,7 @@ function openMergedRenduCgModal(limit,tab){
   const _modalWasOpen=document.body.classList.contains('modal-open');
   document.body.classList.add('modal-open');
   // === Rendus éphémères ===
-  const{gen,realAvail,prevEph,matelas:matelasVal}=calcSoldes();
+  const{gen,realAvail,prevEph,preExpiry,matelas:matelasVal}=calcSoldes();
   const ML2=['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
   const genPast=Object.keys(gen).map(Number).filter(ym=>ym<=TODAY_YM).sort().slice(-24);
   const allPrev2=Object.keys(prevEph).map(Number).filter(ym=>prevEph[ym]>0).sort();
@@ -2457,30 +2441,41 @@ function openMergedRenduCgModal(limit,tab){
     const isFut=ym>TODAY_YM,avail=isFut?(prevEph[ym]||0):(realAvail[ym]||0);
     const y=Math.floor(ym/12),m=ym%12,expYm=getExpYm(ym),expY=Math.floor(expYm/12),expM=expYm%12;
     const isExp=expYm<TODAY_YM,ext=getEphExtensions(ym);
-    const canAdd=!isExp&&!isFut&&ext<3,canSub=!isExp&&!isFut&&ext>0;
     const orig=(gen[ym]?Object.values(gen[ym]).reduce(function(s,v){return s+v;},0):0);
-    if(orig<=0&&avail<=0&&!canSub)return;
+    if(orig<=0&&avail<=0&&!ext)return;
     const origPct=Math.round(orig/maxV*100);
     const barPct=Math.round(avail/maxV*100);
     const greenOpacity=isExp?'.15':isFut?'.35':'1';
     const blueOpacity=isFut?'.2':'.4';
     const isAutoRepM=!!(S.autoReport1m&&S.autoReport1m[ym]);
-    const baseExpYmM=ym+3+getEphExtensions(ym)*3;
+    const baseExpYmM=ym+3+ext*3;
     const isWarnM=!isExp&&!isFut&&!isAutoRepM&&avail>0&&avail<=420&&baseExpYmM===TODAY_YM;
     const availColor=isExp?'var(--text3)':isFut?'var(--text3)':(isAutoRepM||isWarnM)?'var(--rend-text)':'var(--text2)';
-    const isExtended=getEphExtensions(ym)>0;
-    const autoNoteM=isAutoRepM?'<span style="color:var(--rend-text);font-size:9px">↻ </span>':'';
-    const extSpan=isExtended?'<span style="background:rgba(99,153,34,.35);border-radius:3px;padding:0 2px;color:var(--text)">'+ML2[expM]+' '+String(expY).slice(2)+'</span>':ML2[expM]+' '+String(expY).slice(2);
-    const expLbl=isExp?'expiré':autoNoteM+'→'+extSpan;
-    const minusBtn='<button onclick="undoEph('+ym+');openMergedRenduCgModal('+limit+')" style="'+btnS+'color:'+(canSub?'var(--text3)':'var(--border2)')+';pointer-events:'+(canSub?'auto':'none')+'">−3m</button>';
-    const plusBtn='<button onclick="reportEph('+ym+');openMergedRenduCgModal('+limit+')" style="'+btnS+'color:'+(canAdd?'var(--text3)':'var(--border2)')+';pointer-events:'+(canAdd?'auto':'none')+'">+3m</button>';
+    const autoRepMinM=typeof(S.autoReport1m&&S.autoReport1m[ym])==='number'?S.autoReport1m[ym]:avail;
+    const lostMinM=isExp?(preExpiry[ym]||0):0;
+    const isExtendedM=ext>0;
+    const extSpanM=isExtendedM?'<span style="background:rgba(99,153,34,.35);border-radius:3px;padding:0 2px;color:var(--text)">'+ML2[expM]+' '+String(expY).slice(2)+'</span>':ML2[expM]+' '+String(expY).slice(2);
+    const expLblM=isExp?(lostMinM>0?'<span style="color:var(--red);font-size:10px">-'+fmtMin(lostMinM)+'</span>':'<span style="color:var(--text3);font-size:10px">00h00</span>'):isAutoRepM?'<span style="color:var(--rend-text);font-size:10px">↓ '+fmtMin(autoRepMinM)+'</span>':'→'+extSpanM;
+    // Report buttons (only for active months)
+    let repBtns='';
+    if(!isExp&&!isFut){
+      const btn1mCls=isAutoRepM?'rep-on':(isWarnM?'rep-warn':'');
+      const b3=ext===1?'rep-on':'',b6=ext===2?'rep-on':'',b9=ext===3?'rep-on':'';
+      repBtns='<div class="eph-rep-btns" style="margin-top:4px">'
+        +'<button class="eph-rep-btn '+btn1mCls+'" disabled>1m</button>'
+        +'<button class="eph-rep-btn '+b3+'" onclick="setEphExt('+ym+',1);openMergedRenduCgModal('+limit+')">3m</button>'
+        +'<button class="eph-rep-btn '+b6+'" onclick="setEphExt('+ym+',2);openMergedRenduCgModal('+limit+')">6m</button>'
+        +'<button class="eph-rep-btn '+b9+'" onclick="setEphExt('+ym+',3);openMergedRenduCgModal('+limit+')">9m</button>'
+        +'</div>';
+    }
     rendRows+='<div class="eph-urow'+(isExp?' expired':'')+(isFut?' fut':'')+'">'
       +'<div class="eph-u-mc">'+ML2[m]+' '+String(y).slice(2)+'</div>'
       +'<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">'
-      +'<div class="eph-u-flow"><span style="color:var(--blue);font-size:9px">'+fmtMin(orig)+'</span><span style="color:var(--text3);font-size:9px;margin:0 2px">→</span><span style="font-weight:500;color:'+availColor+'">'+fmtMin(avail)+'</span><span style="color:var(--text3);font-size:9px;margin-left:auto">'+expLbl+'</span></div>'
+      +'<div class="eph-u-flow"><span style="color:var(--blue);font-size:9px">'+fmtMin(orig)+'</span><span style="color:var(--text3);font-size:9px;margin:0 2px">→</span><span style="font-weight:500;color:'+availColor+'">'+fmtMin(avail)+'</span></div>'
       +'<div class="eph-bw"><div class="eph-b2" style="width:'+origPct+'%;background:var(--blue);opacity:'+blueOpacity+'"></div><div class="eph-b" style="width:'+barPct+'%;background:var(--rend-text);opacity:'+greenOpacity+'"></div></div>'
+      +repBtns
       +'</div>'
-      +'<div style="display:flex;gap:2px;flex-shrink:0">'+minusBtn+plusBtn+'</div>'
+      +'<div class="eph-u-exp">'+expLblM+'</div>'
       +'</div>';
   });
   const moreBtn=hasMore?'<button onclick="openMergedRenduCgModal('+(limit+4)+')" style="width:100%;margin-top:6px;padding:6px;font-size:12px;color:var(--blue);background:transparent;border:0.5px solid var(--border);border-radius:var(--r);cursor:pointer">＋ voir plus</button>':'';
