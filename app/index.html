@@ -2149,7 +2149,11 @@ function calcTrueDispo(viewedYM){
         const _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;
       });
     });
+  // Snapshot stock actif after step 1 (before future rendus consume any)
+  let stockActif=0;
+  _sortedYms.forEach(function(ym){if(ym<=viewedYM&&getExpYm(ym)>=viewedYM)stockActif+=(_sim[ym]||0);});
   // Step 2: Future rendus — prefer >viewedYM credits first, then fall back to ≤viewedYM
+  const reservedMonths=new Set();
   _all.filter(function(k){const d=new Date(k+'T12:00:00');return d.getFullYear()*12+d.getMonth()>viewedYM;})
     .forEach(function(k){
       const _d=new Date(k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth(),_dur=getDur(_d);
@@ -2159,10 +2163,12 @@ function calcTrueDispo(viewedYM){
         const _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;
       });
       if(_lft>0){
+        const beforeFallback=_lft;
         _sortedYms.forEach(function(_ym){
           if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym||_ym>_pym||_ym>viewedYM)return;
           const _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;
         });
+        if(_lft<beforeFallback)reservedMonths.add(_pym);
       }
     });
   // Step 3: remaining ≤viewedYM credits with expiry ≥viewedYM = what's genuinely free
@@ -2174,7 +2180,8 @@ function calcTrueDispo(viewedYM){
       breakdown.push({ym,amount:_sim[ym]});
     }
   });
-  return{total:Math.max(0,dispo),breakdown};
+  const reserved=Math.max(0,stockActif-dispo);
+  return{total:Math.max(0,dispo),breakdown,stockActif,reserved,reservedMonths};
 }
 
 function canPlaceRendu(newKeys){
@@ -2512,7 +2519,7 @@ function openMergedRenduCgModal(limit,tab){
     <button onclick="adjCET(-1)" style="padding:4px 10px;border:0.5px solid var(--border);border-radius:6px;background:transparent;color:var(--text2);cursor:pointer;font-size:11px">−</button>
     <button onclick="adjCET(+1)" style="padding:4px 10px;border:0.5px solid var(--border2);border-radius:6px;background:rgba(224,152,48,.12);color:var(--amber);cursor:pointer;font-size:11px;font-weight:500">+</button>
   </div>`;
-  const {total:dispoMois,breakdown:dispoBreakdown}=calcTrueDispo(TODAY_YM);
+  const {total:dispoMois,stockActif,reserved,reservedMonths}=calcTrueDispo(TODAY_YM);
   const rcgUsedCurY=calcCongesUsedForYear(nowY);
   const rcgRendusMin=Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='rend';}).reduce(function(s,k){return s+getDur(new Date(k+'T12:00:00'));},0);
   const rcgCgKeys=Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='cg';}).sort();
@@ -2533,10 +2540,16 @@ function openMergedRenduCgModal(limit,tab){
       ?'<div style="flex:1;text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Matelas</div><div style="font-size:15px;font-weight:600;color:var(--blue)">'+fmtMin(matelasVal)+'</div></div>'
        +'<div style="width:0.5px;background:var(--border2)"></div>'
       :'')
-    +'<div style="flex:1;text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Dispo '+MC[NOW.getMonth()]+'</div>'
-    +'<div style="font-size:15px;font-weight:600;color:'+(dispoMois<=0?'var(--red)':dispoMois<120?'var(--amber)':'var(--rend-text)')+'">'+fmtMin(dispoMois)+'</div>'
-    +(dispoBreakdown.length>1?'<div style="margin-top:5px;display:flex;flex-direction:column;gap:2px;text-align:left">'+dispoBreakdown.map(function(b){const bm=b.ym%12,by=Math.floor(b.ym/12),bExp=getExpYm(b.ym),bem=bExp%12,bey=Math.floor(bExp/12);return'<div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text3)"><span>'+MC[bm]+' '+String(by).slice(2)+'</span><span style="color:var(--rend-text);font-weight:500">'+fmtMin(b.amount)+'</span><span>→'+MC[bem].slice(0,3)+' '+String(bey).slice(2)+'</span></div>';}).join('')+'</div>':'')
-    +'</div>'
+    +(reserved>0
+      ?'<div style="flex:1;min-width:0"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;text-align:center">Dispo '+MC[NOW.getMonth()]+'</div>'
+       +'<div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--text2);margin-bottom:3px"><span>Stock actif</span><span style="font-weight:500">'+fmtMin(stockActif)+'</span></div>'
+       +'<div style="display:flex;justify-content:space-between;align-items:center;font-size:10px;color:var(--text3);margin-bottom:4px"><span>Réservé ('+[...reservedMonths].sort().map(function(ym){return MC[ym%12].slice(0,3);}).join(', ')+')</span><span style="color:var(--red)">−'+fmtMin(reserved)+'</span></div>'
+       +'<div style="border-top:0.5px solid var(--border2);padding-top:4px;display:flex;justify-content:space-between;align-items:center"><span style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">Total</span><span style="font-size:15px;font-weight:600;color:'+(dispoMois<=0?'var(--red)':dispoMois<120?'var(--amber)':'var(--rend-text)')+'">'+fmtMin(dispoMois)+'</span></div>'
+       +'</div>'
+      :'<div style="flex:1;text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Dispo '+MC[NOW.getMonth()]+'</div>'
+       +'<div style="font-size:15px;font-weight:600;color:'+(dispoMois<=0?'var(--red)':dispoMois<120?'var(--amber)':'var(--rend-text)')+'">'+fmtMin(dispoMois)+'</div>'
+       +'</div>'
+    )
     +'</div>';
   const tabBtnS='flex:1;padding:8px 6px;font-size:12px;border:none;cursor:pointer;border-radius:8px;';
   document.getElementById('modal-root').innerHTML=
