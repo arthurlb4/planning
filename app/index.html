@@ -2544,47 +2544,66 @@ function openMergedRenduCgModal(limit,tab){
     +'<div class="dd-title">Historique</div>'+rcgHistHtml;
   const dispoColor=dispoMois<=0?'var(--red)':dispoMois<120?'var(--amber)':'var(--rend-text)';
   const _as1Map={};afterStep1.forEach(function(e){_as1Map[e.ym]=e.amount;});
-  const _rowS='display:grid;grid-template-columns:44px 1fr auto auto auto;gap:0 5px;align-items:baseline;font-size:10px;padding:2px 0;border-bottom:0.5px solid var(--border2)';
-  const _stockLines=genSnapshot.map(function(e){
+  const _rdByYm={};reservedDetail.forEach(function(e){_rdByYm[e.poseYm]=(_rdByYm[e.poseYm]||0)+e.amount;});
+  const _hasRd=Object.keys(_rdByYm).length>0;
+  const _thS='padding-bottom:5px;font-size:9px;font-weight:400;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap';
+  const _tableRows=genSnapshot.map(function(e){
     const actif=_as1Map[e.ym]||0,consumed=e.amount-actif;
     const ey=Math.floor(e.expYm/12),em=e.expYm%12;
-    return '<div style="'+_rowS+'">'
-      +'<span style="color:var(--text2);font-weight:500">'+MC[e.ym%12].slice(0,3)+' '+String(Math.floor(e.ym/12)).slice(2)+'</span>'
-      +'<span style="color:var(--text3);font-size:9px">exp '+MC[em].slice(0,3)+' '+String(ey).slice(2)+'</span>'
-      +'<span style="color:var(--text3)">'+fmtMin(e.amount)+'</span>'
-      +'<span style="color:'+(consumed>0?'var(--red)':'var(--border2)')+'">−'+fmtMin(consumed)+'</span>'
-      +'<span style="font-weight:600;color:'+(actif>0?'var(--rend-text)':'var(--text3)')+'">'+fmtMin(actif)+'</span>'
-      +'</div>';
-  }).join('')||'<div style="font-size:10px;color:var(--text3);padding:2px 0">Aucune heure active</div>';
-  const _rdByYm={};reservedDetail.forEach(function(e){_rdByYm[e.poseYm]=(_rdByYm[e.poseYm]||0)+e.amount;});
-  const _rdLines=Object.keys(_rdByYm).map(Number).sort().map(function(ym){
-    return '<div style="display:flex;justify-content:space-between;font-size:10px;padding:2px 0;border-bottom:0.5px solid var(--border2)">'
-      +'<span style="color:var(--text2)">'+MC[ym%12].slice(0,3)+' '+String(Math.floor(ym/12)).slice(2)+'</span>'
-      +'<span style="color:var(--red)">−'+fmtMin(_rdByYm[ym])+'</span>'
-      +'</div>';
+    return '<tr style="border-top:0.5px solid var(--border2)">'
+      +'<td style="padding:4px 8px 4px 0;color:var(--text2);font-weight:500;white-space:nowrap">'+MC[e.ym%12].slice(0,3)+' '+String(Math.floor(e.ym/12)).slice(2)+'</td>'
+      +'<td style="padding:4px 8px;font-size:9px;color:var(--text3);white-space:nowrap">'+MC[em].slice(0,3)+' '+String(ey).slice(2)+'</td>'
+      +'<td style="padding:4px 8px;text-align:right;white-space:nowrap">'+fmtMin(e.amount)+'</td>'
+      +'<td style="padding:4px 8px;text-align:right;color:'+(consumed>0?'var(--red)':'var(--text3)')+';white-space:nowrap">'+(consumed>0?'−'+fmtMin(consumed):'—')+'</td>'
+      +'<td style="padding:4px 0 4px 8px;text-align:right;font-weight:'+(actif>0?'600':'400')+';color:'+(actif>0?'var(--rend-text)':'var(--text3)')+';white-space:nowrap">'+fmtMin(actif)+'</td>'
+      +'</tr>';
+  }).join('')||'<tr><td colspan="5" style="font-size:10px;color:var(--text3);padding:6px 0">Aucune heure active</td></tr>';
+  const _rdTableRows=Object.keys(_rdByYm).map(Number).sort().map(function(ym){
+    return '<tr style="border-top:0.5px solid var(--border2)">'
+      +'<td style="padding:4px 8px 4px 0;color:var(--text2);font-weight:500;white-space:nowrap">'+MC[ym%12].slice(0,3)+' '+String(Math.floor(ym/12)).slice(2)+'</td>'
+      +'<td style="padding:4px 0 4px 8px;text-align:right;color:var(--red);font-weight:500;white-space:nowrap">−'+fmtMin(_rdByYm[ym])+'</td>'
+      +'</tr>';
   }).join('');
   const dispoDetailHtml=''
-    +'<div id="dispo-detail-panel" style="display:none;text-align:left;margin-top:8px;padding:8px 10px;background:var(--bg);border-radius:8px;border:0.5px solid var(--border2)">'
-    +'<div style="font-size:9px;color:var(--text3);line-height:1.5;margin-bottom:6px">Tes heures générées, consommées par tes rendus déjà posés (du plus ancien au plus récent), donnent ce qui reste.</div>'
-    +'<div style="display:grid;grid-template-columns:44px 1fr auto auto auto;gap:0 5px;font-size:9px;color:var(--text3);letter-spacing:.04em;text-transform:uppercase;padding-bottom:3px;margin-bottom:2px;border-bottom:0.5px solid var(--border2)">'
-    +'<span></span><span></span><span>Généré</span><span>−Posés</span><span>Reste</span>'
-    +'</div>'
-    +_stockLines
-    +'<div style="display:flex;justify-content:space-between;font-size:10px;padding-top:4px;margin-top:2px"><span style="color:var(--text3)">Total disponible</span><span style="font-weight:600">'+fmtMin(stockActif)+'</span></div>'
-    +(_rdLines
-      ?'<div style="margin-top:6px;padding-top:6px;border-top:0.5px solid var(--border2)">'
-       +'<div style="font-size:9px;color:var(--text3);line-height:1.5;margin-bottom:4px">Une partie de tes heures actuelles est déjà réservée pour couvrir ces rendus à venir.</div>'
-       +_rdLines
-       +'<div style="display:flex;justify-content:space-between;font-size:10px;padding-top:4px;margin-top:2px"><span style="color:var(--text3)">Déjà attribué</span><span style="color:var(--red);font-weight:600">−'+fmtMin(reserved)+'</span></div>'
+    +'<div id="dispo-detail-panel" style="display:none;margin-top:4px;padding:10px;background:var(--bg3);border-radius:var(--r);border:0.5px solid var(--border)">'
+    +'<div style="font-size:9px;color:var(--text3);line-height:1.5;margin-bottom:8px">Tes heures générées, consommées par tes rendus déjà posés (du plus ancien au plus récent), donnent ce qui reste.</div>'
+    +'<table style="width:100%;border-collapse:collapse;font-size:10px">'
+    +'<thead><tr>'
+    +'<th style="'+_thS+';text-align:left">Mois</th>'
+    +'<th style="'+_thS+';text-align:left">Expire</th>'
+    +'<th style="'+_thS+';text-align:right">Généré</th>'
+    +'<th style="'+_thS+';text-align:right">−Posés</th>'
+    +'<th style="'+_thS+';text-align:right">Reste</th>'
+    +'</tr></thead>'
+    +'<tbody>'+_tableRows+'</tbody>'
+    +'<tfoot><tr>'
+    +'<td colspan="4" style="padding-top:6px;font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">Total disponible</td>'
+    +'<td style="padding-top:6px;text-align:right;font-weight:700">'+fmtMin(stockActif)+'</td>'
+    +'</tr></tfoot>'
+    +'</table>'
+    +(_hasRd
+      ?'<div style="margin-top:8px;padding-top:8px;border-top:0.5px solid var(--border2)">'
+       +'<div style="font-size:9px;color:var(--text3);margin-bottom:6px;line-height:1.5">Une partie de tes heures actuelles est déjà réservée pour couvrir ces rendus à venir.</div>'
+       +'<table style="width:100%;border-collapse:collapse;font-size:10px">'
+       +'<thead><tr>'
+       +'<th style="'+_thS+';text-align:left">Mois du rendu</th>'
+       +'<th style="'+_thS+';text-align:right">Réservé</th>'
+       +'</tr></thead>'
+       +'<tbody>'+_rdTableRows+'</tbody>'
+       +'<tfoot><tr>'
+       +'<td style="padding-top:6px;font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">Déjà attribué</td>'
+       +'<td style="padding-top:6px;text-align:right;color:var(--red);font-weight:700">−'+fmtMin(reserved)+'</td>'
+       +'</tr></tfoot>'
+       +'</table>'
        +'</div>'
       :'')
-    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;padding-top:6px;border-top:0.5px solid var(--border2)">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding-top:8px;border-top:0.5px solid var(--border2)">'
     +'<span style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em">= Dispo '+MC[_viewedYM%12]+'</span>'
-    +'<span style="font-size:13px;font-weight:700;color:'+dispoColor+'">'+fmtMin(dispoMois)+'</span>'
+    +'<span style="font-size:14px;font-weight:700;color:'+dispoColor+'">'+fmtMin(dispoMois)+'</span>'
     +'</div>'
     +'</div>';
   const rendSoldeHeader=''
-    +'<div style="display:flex;gap:8px;margin-bottom:10px;padding:8px 10px;background:var(--bg3);border-radius:var(--r);border:0.5px solid var(--border)">'
+    +'<div style="display:flex;gap:8px;padding:8px 10px;background:var(--bg3);border-radius:var(--r);border:0.5px solid var(--border)">'
     +(matelasVal>0
       ?'<div style="flex:1;text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Matelas</div><div style="font-size:15px;font-weight:600;color:var(--blue)">'+fmtMin(matelasVal)+'</div></div>'
        +'<div style="width:0.5px;background:var(--border2)"></div>'
@@ -2595,7 +2614,6 @@ function openMergedRenduCgModal(limit,tab){
     +'<div style="font-size:15px;font-weight:600;color:'+dispoColor+'">'+fmtMin(dispoMois)+'</div>'
     +'<button onclick="var d=document.getElementById(\'dispo-detail-panel\');d.style.display=d.style.display===\'none\'?\'block\':\'none\'" style="background:transparent;border:none;color:var(--text3);font-size:14px;cursor:pointer;padding:0;line-height:1;-webkit-tap-highlight-color:transparent;vertical-align:middle">ⓘ</button>'
     +'</div>'
-    +dispoDetailHtml
     +'</div>'
     +'</div>';
   const tabBtnS='flex:1;padding:8px 6px;font-size:12px;border:none;cursor:pointer;border-radius:8px;';
@@ -2609,7 +2627,7 @@ function openMergedRenduCgModal(limit,tab){
     +'</div>'
     +'<div id="rcc-wrap">'
     +'<div id="rcc-0">'
-    +rendSoldeHeader
+    +'<div style="margin-bottom:10px">'+rendSoldeHeader+dispoDetailHtml+'</div>'
     +(rendRows||'<div style="font-size:11px;color:var(--text3)">Aucun rendu disponible.</div>')
     +moreBtn
     +'</div>'
