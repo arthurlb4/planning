@@ -2546,6 +2546,11 @@ function openMergedRenduCgModal(limit,tab){
   const _as1Map={};afterStep1.forEach(function(e){_as1Map[e.ym]=e.amount;});
   const _rdByYm={};reservedDetail.forEach(function(e){_rdByYm[e.poseYm]=(_rdByYm[e.poseYm]||0)+e.amount;});
   const _hasRd=Object.keys(_rdByYm).length>0;
+  const totalBrut=genSnapshot.reduce(function(s,e){return s+e.amount;},0);
+  const consumedByPast=Math.max(0,totalBrut-stockActif);
+  const _pPast=totalBrut>0?consumedByPast/totalBrut*100:0;
+  const _pFut=totalBrut>0?reserved/totalBrut*100:0;
+  const _pDispo=100-_pPast-_pFut;
   const _thS='padding-bottom:5px;font-size:9px;font-weight:400;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap';
   const _tableRows=genSnapshot.map(function(e){
     const actif=_as1Map[e.ym]||0,consumed=e.amount-actif;
@@ -2566,6 +2571,25 @@ function openMergedRenduCgModal(limit,tab){
   }).join('');
   const dispoDetailHtml=''
     +'<div id="dispo-detail-panel" style="display:none;margin-top:4px;padding:10px;background:var(--bg3);border-radius:var(--r);border:0.5px solid var(--border)">'
+    +(totalBrut>0
+      ?'<div style="margin-bottom:12px">'
+       +'<div style="display:flex;border-radius:6px;overflow:hidden;height:20px;background:var(--bg2)">'
+       +(consumedByPast>0?'<div style="width:'+_pPast.toFixed(1)+'%;background:rgba(120,120,120,.2)"></div>':'')
+       +'<div style="width:'+_pDispo.toFixed(1)+'%;min-width:4px;background:var(--rend-text);opacity:.65"></div>'
+       +(reserved>0?'<div style="width:'+_pFut.toFixed(1)+'%;background:var(--amber);opacity:.4"></div>':'')
+       +'</div>'
+       +'<div style="display:flex;margin-top:4px;font-size:9px">'
+       +(consumedByPast>0?'<div style="width:'+_pPast.toFixed(1)+'%;color:var(--text3);overflow:hidden;white-space:nowrap">−'+fmtMin(consumedByPast)+'</div>':'')
+       +'<div style="width:'+_pDispo.toFixed(1)+'%;text-align:center;font-weight:600;color:var(--rend-text)">'+fmtMin(dispoMois)+'</div>'
+       +(reserved>0?'<div style="width:'+_pFut.toFixed(1)+'%;text-align:right;color:var(--amber);overflow:hidden;white-space:nowrap">−'+fmtMin(reserved)+'</div>':'')
+       +'</div>'
+       +'<div style="display:flex;margin-top:1px;font-size:8px;color:var(--text3)">'
+       +(consumedByPast>0?'<div style="width:'+_pPast.toFixed(1)+'%;overflow:hidden;white-space:nowrap">← posés</div>':'')
+       +'<div style="width:'+_pDispo.toFixed(1)+'%;text-align:center;color:var(--rend-text)">dispo '+MC[_viewedYM%12]+'</div>'
+       +(reserved>0?'<div style="width:'+_pFut.toFixed(1)+'%;text-align:right;overflow:hidden;white-space:nowrap">futurs →</div>':'')
+       +'</div>'
+       +'</div>'
+      :'')
     +'<div style="font-size:9px;color:var(--text3);line-height:1.5;margin-bottom:8px">Tes heures générées, consommées par tes rendus déjà posés (du plus ancien au plus récent), donnent ce qui reste.</div>'
     +'<table style="width:100%;border-collapse:collapse;font-size:10px">'
     +'<thead><tr>'
