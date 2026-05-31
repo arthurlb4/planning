@@ -1548,7 +1548,7 @@ function updateCounters(){
   const uniEl=document.getElementById('eph-unified-list');
   if(uniEl)uniEl.innerHTML=uniHtml||'<div style="font-size:11px;color:var(--text3);padding:4px 0">Aucun rendu.</div>';
   const viewedYM=curY*12+curM;
-  const dispAtView=calcTrueDispo(viewedYM);
+  const {total:dispAtView}=calcTrueDispo(viewedYM);
   const dispoEl=document.getElementById('eph-total-dispo');
   if(dispoEl){
     dispoEl.textContent=fmtMin(dispAtView);
@@ -2167,8 +2167,14 @@ function calcTrueDispo(viewedYM){
     });
   // Step 3: remaining ≤viewedYM credits with expiry ≥viewedYM = what's genuinely free
   let dispo=0;
-  _sortedYms.forEach(function(ym){if(ym<=viewedYM&&getExpYm(ym)>=viewedYM)dispo+=(_sim[ym]||0);});
-  return Math.max(0,dispo);
+  const breakdown=[];
+  _sortedYms.forEach(function(ym){
+    if(ym<=viewedYM&&getExpYm(ym)>=viewedYM&&_sim[ym]>0){
+      dispo+=_sim[ym];
+      breakdown.push({ym,amount:_sim[ym]});
+    }
+  });
+  return{total:Math.max(0,dispo),breakdown};
 }
 
 function canPlaceRendu(newKeys){
@@ -2506,7 +2512,7 @@ function openMergedRenduCgModal(limit,tab){
     <button onclick="adjCET(-1)" style="padding:4px 10px;border:0.5px solid var(--border);border-radius:6px;background:transparent;color:var(--text2);cursor:pointer;font-size:11px">−</button>
     <button onclick="adjCET(+1)" style="padding:4px 10px;border:0.5px solid var(--border2);border-radius:6px;background:rgba(224,152,48,.12);color:var(--amber);cursor:pointer;font-size:11px;font-weight:500">+</button>
   </div>`;
-  const dispoMois=calcTrueDispo(TODAY_YM);
+  const {total:dispoMois,breakdown:dispoBreakdown}=calcTrueDispo(TODAY_YM);
   const rcgUsedCurY=calcCongesUsedForYear(nowY);
   const rcgRendusMin=Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='rend';}).reduce(function(s,k){return s+getDur(new Date(k+'T12:00:00'));},0);
   const rcgCgKeys=Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='cg';}).sort();
@@ -2528,7 +2534,9 @@ function openMergedRenduCgModal(limit,tab){
        +'<div style="width:0.5px;background:var(--border2)"></div>'
       :'')
     +'<div style="flex:1;text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Dispo '+MC[NOW.getMonth()]+'</div>'
-    +'<div style="font-size:15px;font-weight:600;color:'+(dispoMois<=0?'var(--red)':dispoMois<120?'var(--amber)':'var(--rend-text)')+'">'+fmtMin(dispoMois)+'</div></div>'
+    +'<div style="font-size:15px;font-weight:600;color:'+(dispoMois<=0?'var(--red)':dispoMois<120?'var(--amber)':'var(--rend-text)')+'">'+fmtMin(dispoMois)+'</div>'
+    +(dispoBreakdown.length>1?'<div style="margin-top:5px;display:flex;flex-direction:column;gap:2px;text-align:left">'+dispoBreakdown.map(function(b){const bm=b.ym%12,by=Math.floor(b.ym/12),bExp=getExpYm(b.ym),bem=bExp%12,bey=Math.floor(bExp/12);return'<div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text3)"><span>'+MC[bm]+' '+String(by).slice(2)+'</span><span style="color:var(--rend-text);font-weight:500">'+fmtMin(b.amount)+'</span><span>→'+MC[bem].slice(0,3)+' '+String(bey).slice(2)+'</span></div>';}).join('')+'</div>':'')
+    +'</div>'
     +'</div>';
   const tabBtnS='flex:1;padding:8px 6px;font-size:12px;border:none;cursor:pointer;border-radius:8px;';
   document.getElementById('modal-root').innerHTML=
