@@ -1493,16 +1493,6 @@ function updateCounters(){
   Object.keys(realAvail).map(Number).filter(ym=>realAvail[ym]>0).forEach(ym=>allUYms.add(ym));
   Object.keys(prevEph).map(Number).filter(ym=>prevEph[ym]>0).sort().slice(0,3).forEach(ym=>allUYms.add(ym));
   extendedUsed.forEach(ym=>allUYms.add(ym));
-  // Pre-build incomingByYm and ensure receiving months appear in the list
-  const incomingByYm={};
-  Object.keys(S.autoReport1m||{}).forEach(function(ymStr){
-    const srcYm=Number(ymStr),amount=S.autoReport1m[srcYm];
-    if(!(amount>0))return;
-    const recvYm=getExpYm(srcYm);
-    if(!incomingByYm[recvYm])incomingByYm[recvYm]=[];
-    incomingByYm[recvYm].push({srcYm,amount});
-    allUYms.add(recvYm);
-  });
   // First pass: collect rows and compute maxVal for bar widths
   const uniRows=[];
   [...allUYms].sort().forEach(ym=>{
@@ -1535,14 +1525,11 @@ function updateCounters(){
     const origPct=Math.round(orig/maxVal*100);
     const greenOpacity=isExp?'.15':isFut?'.35':'1';
     const availColor=isExp?'var(--text3)':isFut?'var(--text3)':(isAutoRep||isWarn)?'var(--rend-text)':'var(--text2)';
-    const incoming=incomingByYm[ym]||[];
-    const incomingHtml=incoming.length?'<div style="font-size:9px;color:var(--rend-text);margin-top:1px">'+incoming.map(function(i){return'+'+fmtMin(i.amount)+' ← '+MC[i.srcYm%12].slice(0,3);}).join(' ')+'</div>':'';
-    uniHtml+=`<div class="eph-urow${isExp?' expired':''}${isFut?' fut':''}">
+uniHtml+=`<div class="eph-urow${isExp?' expired':''}${isFut?' fut':''}">
       <div class="eph-u-mc">${MC[m2]+' '+String(y2).slice(2)}</div>
       <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
         <div class="eph-u-flow">${orig>0?`<span class="eph-u-cre" style="color:var(--blue)">${fmtMin(orig)}</span><span style="color:var(--text3);font-size:9px;margin:0 1px">→</span>`:''}<span class="eph-u-dispo" style="color:${availColor}">${isExp?'0':fmtMin(avail)}</span></div>
         <div class="eph-bw"><div class="eph-b2" style="width:${origPct}%;background:var(--blue);opacity:${isFut?'.2':'.4'}"></div><div class="eph-b" style="width:${barPct}%;background:var(--rend-text);opacity:${greenOpacity}"></div></div>
-        ${incomingHtml}
       </div>
       <div class="eph-u-exp">${expLbl}</div>
     </div>`;
