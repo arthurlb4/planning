@@ -862,6 +862,7 @@ function getEphExtensions(ym){
   if(v===true)return 1;
   return typeof v==='number'?v:0;
 }
+function getBaseExpYm(ym){return ym+3;}
 function getExpYm(ym){return ym+3+getEphExtensions(ym)*3+((S.autoReport1m&&S.autoReport1m[ym])?1:0);}
 
 // BUILD GEN
@@ -921,7 +922,7 @@ function calcSoldes(){
     const _rendKeys=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='rend').sort();
     const _sim={};
     // Use historical gen totals (not expiry-zeroed realEph) so past rendu days consume the correct month's stock.
-    // Per-day expiry is enforced by the getExpYm(_ym)<_poseYm check in the loop below.
+    // Per-day expiry is enforced by the getBaseExpYm(_ym)<_poseYm check in the loop below.
     Object.keys(realEph).forEach(function(ym){var ymN=Number(ym);_sim[ymN]=gen[ymN]?Object.values(gen[ymN]).reduce(function(s,v){return s+v;},0):0;});
     Object.keys(prevEph).forEach(function(ym){_sim[ym]=(_sim[ym]||0)+prevEph[ym];});
     _rendKeys.forEach(function(k){
@@ -929,7 +930,7 @@ function calcSoldes(){
       let _left=_dur;
       const _yms=Object.keys(_sim).map(Number).sort();
       for(const _ym of _yms){
-        if(_sim[_ym]<=0||getExpYm(_ym)<_poseYm||_ym>_poseYm)continue;
+        if(_sim[_ym]<=0||getBaseExpYm(_ym)<_poseYm||_ym>_poseYm)continue;
         const _take=Math.min(_sim[_ym],_left);_sim[_ym]-=_take;_left-=_take;
         if(_left<=0)break;
       }
@@ -1991,7 +1992,7 @@ function recalcAllMatelas(){
   _rks.forEach(function(k){
     var _d=new Date(k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth(),_kdur=getDur(_d);
     var _lft=_kdur;
-    _syms.forEach(function(_ym){if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym||_ym>_pym)return;var _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;});
+    _syms.forEach(function(_ym){if(_lft<=0||_sim[_ym]<=0||getBaseExpYm(_ym)<_pym||_ym>_pym)return;var _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;});
     if(_lft>0){var _use=Math.min(_lft,_avail);if(!S.matelasKeys)S.matelasKeys={};S.matelasKeys[k]=_use;S.profile.matelas=_avail-_use;_avail=S.profile.matelas;}
   });
 }
@@ -2149,7 +2150,7 @@ function calcTrueDispo(viewedYM){
       const _d=new Date(k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth(),_dur=getDur(_d);
       let _lft=_dur;
       _sortedYms.forEach(function(_ym){
-        if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym||_ym>_pym)return;
+        if(_lft<=0||_sim[_ym]<=0||getBaseExpYm(_ym)<_pym||_ym>_pym)return;
         const _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;
       });
     });
@@ -2209,7 +2210,7 @@ function canPlaceRendu(newKeys){
       const _d=new Date(k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth(),_dur=getDur(_d);
       let _lft=_dur;
       Object.keys(_sim).map(Number).sort().forEach(function(_ym){
-        if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym||_ym>_pym)return;
+        if(_lft<=0||_sim[_ym]<=0||getBaseExpYm(_ym)<_pym||_ym>_pym)return;
         const _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;
       });
       if(_lft>0){if(trackSet&&trackSet.has(k))tracked+=_lft;else other+=_lft;}
