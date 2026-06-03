@@ -2311,7 +2311,8 @@ function _applyPoseMatelas(type,startKey,endKey){
   if(!S.conges)S.conges={};
   var _s=new Date(startKey+'T12:00:00'),_e=new Date(endKey+'T12:00:00'),_d=new Date(_s);
   var _label=type==='rend'?'rendu':'congé';
-  while(_d<=_e){var k=dk(_d);var v2=getVac(_d);if(v2.vac&&v2.vac!=='RH'&&!v2.absent){S.conges[k]=type;}_d.setDate(_d.getDate()+1);}
+  var _createdYM_m=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:2026*12;
+  while(_d<=_e){var k=dk(_d);var v2=getVac(_d);if(v2.vac&&v2.vac!=='RH'&&!v2.absent){var _mym=_d.getFullYear()*12+_d.getMonth();S.conges[k]=(type==='rend'&&_mym<_createdYM_m)?'rend-hist':type;}_d.setDate(_d.getDate()+1);}
   if(type==='rend')recalcAllMatelas();
   logH(fmtDate(_s)+' -> '+_label+(_s<_e?' au '+fmtDate(_e):''),'#88b862',startKey);
   saveState();closeModal();render();gcalTrigger();
@@ -2340,12 +2341,16 @@ function applyPose(type,startKey,unique){
 
   // Validate rendus: full FIFO simulation including new days
   if(type==='rend'){
+    const _createdYM_v=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:2026*12;
     var totalRend=0;
     var _newKeys=[];
     var d0=new Date(start);
     while(d0<=end){
       const v2=getVac(d0);
-      if(v2.vac&&v2.vac!=='RH'&&!v2.absent){totalRend+=getDur(d0);_newKeys.push(dk(d0));}
+      if(v2.vac&&v2.vac!=='RH'&&!v2.absent){
+        const _d0ym=d0.getFullYear()*12+d0.getMonth();
+        if(_d0ym>=_createdYM_v){totalRend+=getDur(d0);_newKeys.push(dk(d0));}
+      }
       d0.setDate(d0.getDate()+1);
     }
     if(totalRend>0){
@@ -2370,6 +2375,7 @@ function applyPose(type,startKey,unique){
 
   pushUndo();
   if(!S.conges)S.conges={};if(!S.overrides)S.overrides={};
+  const _createdYM_w=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:2026*12;
   var d=new Date(start);
   while(d<=end){
     const k=dk(d);
@@ -2377,6 +2383,7 @@ function applyPose(type,startKey,unique){
     const isWorked=v2.vac&&v2.vac!=='RH'&&!v2.absent;
     if(isWorked){
       if(type==='absent'){S.overrides[k]={absent:true};S.conges[k]='absent';}
+      else if(type==='rend'){const _dym=d.getFullYear()*12+d.getMonth();S.conges[k]=_dym<_createdYM_w?'rend-hist':'rend';}
       else{S.conges[k]=type;}
     }
     d.setDate(d.getDate()+1);
