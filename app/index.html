@@ -1518,7 +1518,12 @@ function updateCounters(){
         ${primes.antenne?`<div style="display:flex;justify-content:center;align-items:center;width:100%"><span style="font-size:10px;color:var(--text3);padding-right:4px;min-width:46px;text-align:right;display:inline-block">Antenne</span><span style="width:0.5px;height:9px;background:var(--border2);flex-shrink:0"></span><span style="padding-left:4px;color:var(--amber);font-size:13px;font-weight:600;min-width:20px">${primes.antenne}</span></div>`:''}
         ${primes.reel?`<div style="display:flex;justify-content:center;align-items:center;width:100%"><span style="font-size:10px;color:var(--text3);padding-right:4px;min-width:46px;text-align:right;display:inline-block">Réal</span><span style="width:0.5px;height:9px;background:var(--border2);flex-shrink:0"></span><span style="padding-left:4px;color:var(--amber);font-size:13px;font-weight:600;min-width:20px">${primes.reel}</span></div>`:''}
         ${primes.coord?`<div style="display:flex;justify-content:center;align-items:center;width:100%"><span style="font-size:10px;color:var(--text3);padding-right:4px;min-width:46px;text-align:right;display:inline-block">Coord</span><span style="width:0.5px;height:9px;background:var(--border2);flex-shrink:0"></span><span style="padding-left:4px;color:var(--amber);font-size:13px;font-weight:600;min-width:20px">${primes.coord}</span></div>`:''}
-        ${nuitTotal?`<div style="display:flex;justify-content:center;align-items:center;width:100%"><span style="font-size:10px;color:var(--text3);padding-right:4px;min-width:46px;text-align:right;display:inline-block">Nuit</span><span style="width:0.5px;height:9px;background:var(--border2);flex-shrink:0"></span><span style="padding-left:4px;color:var(--amber);font-size:13px;font-weight:600;min-width:20px">${fmtMin(nuitTotal)}</span></div>`:''}
+      </div>
+      <div style="width:0.5px;background:var(--border2);flex-shrink:0;margin:2px 0"></div>
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;padding:4px 6px;gap:2px;min-width:0" onclick="event.stopPropagation();openMergedMoisModal(${mym},3)">
+        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">Nuit</div>
+        <div style="font-size:16px;font-weight:600;color:#9c7fe0">${nuitTotal?fmtMin(nuitTotal):'—'}</div>
+        <div style="font-size:10px;color:var(--text3)">heures</div>
       </div>
     </div>
   </div>`;
@@ -3036,13 +3041,17 @@ function openMergedMoisModal(mym,tab){
   const _nuitRows=[];const _seenWN=new Set();
   for(let dd=-6;dd<last;dd++){const _dn=new Date(y,m,1+dd),_mn=getMonday(_dn),_mkn=dk(_mn);if(_seenWN.has(_mkn))continue;_seenWN.add(_mkn);const _sn=new Date(_mn);_sn.setDate(_mn.getDate()+6);if(_sn.getFullYear()*12+_sn.getMonth()!==mym)continue;const _nm=calcNuitWeek(_mn);if(_nm>0)_nuitRows.push({wk:getISOWeek(_mn),min:_nm});}
   const _nuitTotal=_nuitRows.reduce((s,r)=>s+r.min,0);
-  let _nuitSec='';
-  if(_nuitRows.length>0){
-    _nuitSec='<div class="btit" style="margin-top:10px;margin-bottom:4px">Heures de nuit <span style="font-weight:400;color:var(--text3)">('+fmtMin(_nuitTotal)+')</span></div>';
-    _nuitRows.forEach(r=>{_nuitSec+='<div style="display:flex;justify-content:space-between;font-size:11px;padding:4px 0;border-bottom:0.5px solid var(--border2)"><span style="color:var(--text)">Semaine '+r.wk+'</span><b style="color:var(--text2)">'+fmtMin(r.min)+'</b></div>';});
-  }
-  let paniersHtml=pSec('Paniers',paniers)+pSec('Prime antenne',pa)+pSec('Prime réal',pr)+pSec('Prime coord',pc)+_nuitSec;
+  let paniersHtml=pSec('Paniers',paniers)+pSec('Prime antenne',pa)+pSec('Prime réal',pr)+pSec('Prime coord',pc);
   if(!paniersHtml)paniersHtml='<div style="font-size:11px;color:var(--text3);padding:6px 0">Aucun ce mois.</div>';
+  let nuitSection='';
+  if(_nuitRows.length>0){
+    nuitSection='<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;margin-bottom:8px"><span style="font-size:11px;color:var(--text3)">total</span><b style="font-size:15px;color:#9c7fe0">'+fmtMin(_nuitTotal)+'</b></div>'
+      +'<div class="sep" style="margin-bottom:8px"></div>'
+      +'<div class="btit" style="margin-bottom:4px">Détail par semaine</div>';
+    _nuitRows.forEach(r=>{nuitSection+='<div style="display:flex;justify-content:space-between;font-size:11px;padding:4px 0;border-bottom:0.5px solid var(--border2)"><span style="color:var(--text)">Semaine '+r.wk+'</span><b style="color:#9c7fe0">'+fmtMin(r.min)+'</b></div>';});
+  }else{
+    nuitSection='<div style="font-size:11px;color:var(--text3);padding:6px 0">Aucune heure de nuit ce mois.</div>';
+  }
 
   // === Heures sup. ===
   const sett2=settingsForYM(mym),useRendu2=sett2.hsRendu;
@@ -3123,11 +3132,13 @@ function openMergedMoisModal(mym,tab){
     +'<button id="mtp-0" onclick="moisTab(0)" style="flex:1;padding:8px 4px;font-size:12px;font-weight:600;color:var(--text);background:var(--bg2);border-radius:8px;border:none;cursor:pointer;font-family:var(--font);box-shadow:0 1px 3px rgba(0,0,0,.2)">Rendus</button>'
     +'<button id="mtp-1" onclick="moisTab(1)" style="flex:1;padding:8px 4px;font-size:12px;font-weight:400;color:var(--text3);background:transparent;border-radius:8px;border:none;cursor:pointer;font-family:var(--font)">HS</button>'
     +'<button id="mtp-2" onclick="moisTab(2)" style="flex:1;padding:8px 4px;font-size:12px;font-weight:400;color:var(--text3);background:transparent;border-radius:8px;border:none;cursor:pointer;font-family:var(--font)">Primes</button>'
+    +'<button id="mtp-3" onclick="moisTab(3)" style="flex:1;padding:8px 4px;font-size:12px;font-weight:400;color:var(--text3);background:transparent;border-radius:8px;border:none;cursor:pointer;font-family:var(--font)">Nuit</button>'
     +'</div>'
     +'<div id="mtp-wrap" style="display:grid">'
     +'<div id="mtc-0" style="grid-area:1/1">'+crSection+'</div>'
     +'<div id="mtc-1" style="grid-area:1/1;visibility:hidden;pointer-events:none">'+hsSection+'</div>'
     +'<div id="mtc-2" style="grid-area:1/1;visibility:hidden;pointer-events:none">'+paniersHtml+'</div>'
+    +'<div id="mtc-3" style="grid-area:1/1;visibility:hidden;pointer-events:none">'+nuitSection+'</div>'
     +'</div>'
     +'<button class="mcancel" onclick="closeModal()">Fermer</button>'
     +'</div></div>';
@@ -3140,8 +3151,8 @@ function openMergedMoisModal(mym,tab){
       wrap.addEventListener('touchend',function(e){
         var dx=e.changedTouches[0].clientX-_sxM,dy=Math.abs(e.changedTouches[0].clientY-_syM);
         if(Math.abs(dx)<50||dy>80)return;
-        var cur=0;for(var i=0;i<3;i++){var t=document.getElementById('mtc-'+i);if(t&&t.style.visibility!=='hidden')cur=i;}
-        moisTab(dx<0?Math.min(2,cur+1):Math.max(0,cur-1));
+        var cur=0;for(var i=0;i<4;i++){var t=document.getElementById('mtc-'+i);if(t&&t.style.visibility!=='hidden')cur=i;}
+        moisTab(dx<0?Math.min(3,cur+1):Math.max(0,cur-1));
       },{passive:true});
     }
   });
@@ -3155,7 +3166,7 @@ function _ptog(id){
   if(ch)ch.style.transform=open?'':'rotate(90deg)';
 }
 function moisTab(idx){
-  for(let i=0;i<3;i++){
+  for(let i=0;i<4;i++){
     const btn=document.getElementById('mtp-'+i),tab=document.getElementById('mtc-'+i);
     if(btn){btn.style.background=i===idx?'var(--bg2)':'transparent';btn.style.boxShadow=i===idx?'0 1px 3px rgba(0,0,0,.2)':'none';btn.style.fontWeight=i===idx?'600':'400';btn.style.color=i===idx?'var(--text)':'var(--text3)';}
     if(tab){tab.style.visibility=i===idx?'':'hidden';tab.style.pointerEvents=i===idx?'':'none';}
