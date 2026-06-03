@@ -1515,6 +1515,7 @@ function updateCounters(){
       <div style="flex:1;display:flex;flex-direction:column;padding:4px 6px;gap:1px;min-width:0;overflow:hidden" onclick="event.stopPropagation();openMergedMoisModal(${mym},2)">
         <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;text-align:center;margin-bottom:3px">Primes</div>
         ${panCount?`<div style="display:flex;justify-content:center;align-items:center;width:100%"><span style="font-size:10px;color:var(--text3);padding-right:4px;min-width:46px;text-align:right;display:inline-block">Paniers</span><span style="width:0.5px;height:9px;background:var(--border2);flex-shrink:0"></span><span style="padding-left:4px;color:var(--amber);font-size:13px;font-weight:600;min-width:20px">${panCount}</span></div>`:''}
+        ${primes.matin?`<div style="display:flex;justify-content:center;align-items:center;width:100%"><span style="font-size:10px;color:var(--text3);padding-right:4px;min-width:46px;text-align:right;display:inline-block">Matin</span><span style="width:0.5px;height:9px;background:var(--border2);flex-shrink:0"></span><span style="padding-left:4px;color:var(--amber);font-size:13px;font-weight:600;min-width:20px">${primes.matin}</span></div>`:''}
         ${primes.antenne?`<div style="display:flex;justify-content:center;align-items:center;width:100%"><span style="font-size:10px;color:var(--text3);padding-right:4px;min-width:46px;text-align:right;display:inline-block">Antenne</span><span style="width:0.5px;height:9px;background:var(--border2);flex-shrink:0"></span><span style="padding-left:4px;color:var(--amber);font-size:13px;font-weight:600;min-width:20px">${primes.antenne}</span></div>`:''}
         ${primes.reel?`<div style="display:flex;justify-content:center;align-items:center;width:100%"><span style="font-size:10px;color:var(--text3);padding-right:4px;min-width:46px;text-align:right;display:inline-block">Réal</span><span style="width:0.5px;height:9px;background:var(--border2);flex-shrink:0"></span><span style="padding-left:4px;color:var(--amber);font-size:13px;font-weight:600;min-width:20px">${primes.reel}</span></div>`:''}
         ${primes.coord?`<div style="display:flex;justify-content:center;align-items:center;width:100%"><span style="font-size:10px;color:var(--text3);padding-right:4px;min-width:46px;text-align:right;display:inline-block">Coord</span><span style="width:0.5px;height:9px;background:var(--border2);flex-shrink:0"></span><span style="padding-left:4px;color:var(--amber);font-size:13px;font-weight:600;min-width:20px">${primes.coord}</span></div>`:''}
@@ -1646,9 +1647,9 @@ function calcPaniersMois(y,m){
   return c;
 }
 function calcPrimesMois(y,m){
-  let antenne=0,reel=0,coord=0;const mym=y*12+m,seenW=new Set(),last=new Date(y,m+1,0).getDate();const VAC=getVAC();
-  for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd),mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);const sun=new Date(mon);sun.setDate(mon.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mym)continue;for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);const key=dk(d);if((S.conges||{})[key])continue;const{vac,absent,echange,ecSelf}=getVac(d);if(absent)continue;if(echange&&!ecSelf)continue;if(!vac||vac==='RH')continue;const v=VAC[vac];if(!v||!v.primes)continue;if(v.primes.antenne)antenne++;if(v.primes.reel)reel++;if(v.primes.coord)coord++;}}
-  return{antenne,reel,coord};
+  let antenne=0,reel=0,coord=0,matin=0;const mym=y*12+m,seenW=new Set(),last=new Date(y,m+1,0).getDate();const VAC=getVAC();
+  for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd),mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);const sun=new Date(mon);sun.setDate(mon.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mym)continue;for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);const key=dk(d);if((S.conges||{})[key])continue;const{vac,absent,echange,ecSelf}=getVac(d);if(absent)continue;if(echange&&!ecSelf)continue;if(!vac||vac==='RH')continue;const v=VAC[vac];if(!v)continue;if(v.deb&&_toMinApp(v.deb)<240)matin++;if(!v.primes)continue;if(v.primes.antenne)antenne++;if(v.primes.reel)reel++;if(v.primes.coord)coord++;}}
+  return{antenne,reel,coord,matin};
 }
 function calcNuitMinShift(v){
   if(!v||!v.deb||!v.fin)return 0;
@@ -1695,7 +1696,7 @@ function openPaniersModal(){
   const JOURS_L2=['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche'];
   const last=new Date(curY,curM+1,0).getDate();
   const mymP=curY*12+curM,seenWP=new Set();
-  const paniers=[],pa=[],pr=[],pc=[];
+  const paniers=[],pa=[],pr=[],pc=[],pm=[];
   for(let dd=-6;dd<last;dd++){
     const _dp=new Date(curY,curM,1+dd),monP=getMonday(_dp),mkP=dk(monP);
     if(seenWP.has(mkP))continue;seenWP.add(mkP);
@@ -1712,6 +1713,7 @@ function openPaniersModal(){
       const lbl=JOURS_L2[jidx===0?6:jidx-1]+' '+date.getDate()+' '+ML2[date.getMonth()];
       const entry={lbl,vac,wk:isoWeek(date)};
       if(v.panier)paniers.push(entry);
+      if(v.deb&&_toMinApp(v.deb)<240)pm.push(entry);
       if(v.primes){if(v.primes.antenne)pa.push(entry);if(v.primes.reel)pr.push(entry);if(v.primes.coord)pc.push(entry);}
     }
   }
@@ -1736,7 +1738,7 @@ function openPaniersModal(){
     return h;
   }
   const noData='<div style="font-size:11px;color:var(--text3);padding:6px 0">Aucun ce mois.</div>';
-  let html=sec('Paniers',paniers)+sec('Prime antenne',pa)+sec('Prime réal',pr)+sec('Prime coord',pc);
+  let html=sec('Paniers',paniers)+sec('Prime matin',pm)+sec('Prime antenne',pa)+sec('Prime réal',pr)+sec('Prime coord',pc);
   if(!html)html=noData;
   document.getElementById('modal-root').innerHTML=
     '<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet">'
@@ -3013,7 +3015,7 @@ function openMergedMoisModal(mym,tab){
   const last=new Date(y,m+1,0).getDate();
 
   // === Paniers & Primes ===
-  const paniers=[],pa=[],pr=[],pc=[];
+  const paniers=[],pa=[],pr=[],pc=[],pm2=[];
   {const seenWPM=new Set();
   for(let dd=-6;dd<last;dd++){
     const _dpm=new Date(y,m,1+dd),monPM=getMonday(_dpm),mkPM=dk(monPM);
@@ -3031,6 +3033,7 @@ function openMergedMoisModal(mym,tab){
       const lbl=JOURS_L[jidx===0?6:jidx-1]+' '+date.getDate()+' '+MLf[date.getMonth()].toLowerCase();
       const entry={lbl,vac,wk:isoWeek(date)};
       if(v.panier)paniers.push(entry);
+      if(v.deb&&_toMinApp(v.deb)<240)pm2.push(entry);
       if(v.primes){if(v.primes.antenne)pa.push(entry);if(v.primes.reel)pr.push(entry);if(v.primes.coord)pc.push(entry);}
     }
   }}
@@ -3066,7 +3069,7 @@ function openMergedMoisModal(mym,tab){
     if(_wkMin>0)_nuitRows.push({wk:getISOWeek(_mn),min:_wkMin,days:_days});
   }
   const _nuitTotal=_nuitRows.reduce((s,r)=>s+r.min,0);
-  let paniersHtml=pSec('Paniers',paniers)+pSec('Prime antenne',pa)+pSec('Prime réal',pr)+pSec('Prime coord',pc);
+  let paniersHtml=pSec('Paniers',paniers)+pSec('Prime matin',pm2)+pSec('Prime antenne',pa)+pSec('Prime réal',pr)+pSec('Prime coord',pc);
   if(!paniersHtml)paniersHtml='<div style="font-size:11px;color:var(--text3);padding:6px 0">Aucun ce mois.</div>';
   let _nid=0;
   let nuitSection='';
