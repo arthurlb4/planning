@@ -1641,13 +1641,13 @@ function ephBarColor(moLeft,isExp){
 }
 
 function calcPaniersMois(y,m){
-  let c=0;const last=new Date(y,m+1,0).getDate();
-  for(let d=1;d<=last;d++){const date=new Date(y,m,d),key=dk(date);if(isPanier(date)&&!(S.conges||{})[key])c++;}
+  const mym=y*12+m,seenW=new Set(),last=new Date(y,m+1,0).getDate();let c=0;
+  for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd),mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);const sun=new Date(mon);sun.setDate(mon.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mym)continue;for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);const key=dk(d);if(isPanier(d)&&!(S.conges||{})[key])c++;}}
   return c;
 }
 function calcPrimesMois(y,m){
-  let antenne=0,reel=0,coord=0;const last=new Date(y,m+1,0).getDate();const VAC=getVAC();
-  for(let d=1;d<=last;d++){const date=new Date(y,m,d),key=dk(date);if((S.conges||{})[key])continue;const{vac,absent,echange,ecSelf}=getVac(date);if(absent)continue;if(echange&&!ecSelf)continue;if(!vac||vac==='RH')continue;const v=VAC[vac];if(!v||!v.primes)continue;if(v.primes.antenne)antenne++;if(v.primes.reel)reel++;if(v.primes.coord)coord++;}
+  let antenne=0,reel=0,coord=0;const mym=y*12+m,seenW=new Set(),last=new Date(y,m+1,0).getDate();const VAC=getVAC();
+  for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd),mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);const sun=new Date(mon);sun.setDate(mon.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mym)continue;for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);const key=dk(d);if((S.conges||{})[key])continue;const{vac,absent,echange,ecSelf}=getVac(d);if(absent)continue;if(echange&&!ecSelf)continue;if(!vac||vac==='RH')continue;const v=VAC[vac];if(!v||!v.primes)continue;if(v.primes.antenne)antenne++;if(v.primes.reel)reel++;if(v.primes.coord)coord++;}}
   return{antenne,reel,coord};
 }
 function calcNuitMinShift(v){
@@ -1694,18 +1694,26 @@ function openPaniersModal(){
   const ML2=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
   const JOURS_L2=['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche'];
   const last=new Date(curY,curM+1,0).getDate();
+  const mymP=curY*12+curM,seenWP=new Set();
   const paniers=[],pa=[],pr=[],pc=[];
-  for(let d=1;d<=last;d++){
-    const date=new Date(curY,curM,d),key=dk(date);
-    if((S.conges||{})[key])continue;
-    const{vac,absent,echange,ecSelf}=getVac(date);
-    if(absent||!vac||vac==='RH'||(echange&&!ecSelf))continue;
-    const v=VAC[vac];if(!v)continue;
-    const jidx=date.getDay();
-    const lbl=JOURS_L2[jidx===0?6:jidx-1]+' '+d+' '+ML2[curM];
-    const entry={lbl,vac,wk:isoWeek(date)};
-    if(v.panier)paniers.push(entry);
-    if(v.primes){if(v.primes.antenne)pa.push(entry);if(v.primes.reel)pr.push(entry);if(v.primes.coord)pc.push(entry);}
+  for(let dd=-6;dd<last;dd++){
+    const _dp=new Date(curY,curM,1+dd),monP=getMonday(_dp),mkP=dk(monP);
+    if(seenWP.has(mkP))continue;seenWP.add(mkP);
+    const sunP=new Date(monP);sunP.setDate(monP.getDate()+6);
+    if(sunP.getFullYear()*12+sunP.getMonth()!==mymP)continue;
+    for(let i=0;i<7;i++){
+      const date=new Date(monP);date.setDate(monP.getDate()+i);
+      const key=dk(date);
+      if((S.conges||{})[key])continue;
+      const{vac,absent,echange,ecSelf}=getVac(date);
+      if(absent||!vac||vac==='RH'||(echange&&!ecSelf))continue;
+      const v=VAC[vac];if(!v)continue;
+      const jidx=date.getDay();
+      const lbl=JOURS_L2[jidx===0?6:jidx-1]+' '+date.getDate()+' '+ML2[date.getMonth()];
+      const entry={lbl,vac,wk:isoWeek(date)};
+      if(v.panier)paniers.push(entry);
+      if(v.primes){if(v.primes.antenne)pa.push(entry);if(v.primes.reel)pr.push(entry);if(v.primes.coord)pc.push(entry);}
+    }
   }
   let _pid2=0;
   function sec(title,entries){
@@ -3006,18 +3014,26 @@ function openMergedMoisModal(mym,tab){
 
   // === Paniers & Primes ===
   const paniers=[],pa=[],pr=[],pc=[];
-  for(let d=1;d<=last;d++){
-    const date=new Date(y,m,d),key=dk(date);
-    if((S.conges||{})[key])continue;
-    const{vac,absent,echange,ecSelf}=getVac(date);
-    if(absent||!vac||vac==='RH'||(echange&&!ecSelf))continue;
-    const v=VAC[vac];if(!v)continue;
-    const jidx=date.getDay();
-    const lbl=JOURS_L[jidx===0?6:jidx-1]+' '+d+' '+MLf[m].toLowerCase();
-    const entry={lbl,vac,wk:isoWeek(date)};
-    if(v.panier)paniers.push(entry);
-    if(v.primes){if(v.primes.antenne)pa.push(entry);if(v.primes.reel)pr.push(entry);if(v.primes.coord)pc.push(entry);}
-  }
+  {const seenWPM=new Set();
+  for(let dd=-6;dd<last;dd++){
+    const _dpm=new Date(y,m,1+dd),monPM=getMonday(_dpm),mkPM=dk(monPM);
+    if(seenWPM.has(mkPM))continue;seenWPM.add(mkPM);
+    const sunPM=new Date(monPM);sunPM.setDate(monPM.getDate()+6);
+    if(sunPM.getFullYear()*12+sunPM.getMonth()!==mym)continue;
+    for(let i=0;i<7;i++){
+      const date=new Date(monPM);date.setDate(monPM.getDate()+i);
+      const key=dk(date);
+      if((S.conges||{})[key])continue;
+      const{vac,absent,echange,ecSelf}=getVac(date);
+      if(absent||!vac||vac==='RH'||(echange&&!ecSelf))continue;
+      const v=VAC[vac];if(!v)continue;
+      const jidx=date.getDay();
+      const lbl=JOURS_L[jidx===0?6:jidx-1]+' '+date.getDate()+' '+MLf[date.getMonth()].toLowerCase();
+      const entry={lbl,vac,wk:isoWeek(date)};
+      if(v.panier)paniers.push(entry);
+      if(v.primes){if(v.primes.antenne)pa.push(entry);if(v.primes.reel)pr.push(entry);if(v.primes.coord)pc.push(entry);}
+    }
+  }}
   let _pid=0;
   function pSec(title,entries){
     if(!entries.length)return'';
