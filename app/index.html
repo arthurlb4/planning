@@ -1028,6 +1028,17 @@ function calcCongesUsedForYear(year){
   return total;
 }
 
+function computeCongesRest(year){
+  const _s=getSoldeAnnee(year),_u=calcCongesUsedForYear(year),_cet=getCET();
+  const _cgK=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='cg'&&k.startsWith(year+''));
+  const _d1s=new Date(year,0,15),_d1e=new Date(year,2,15),_d2s=new Date(year,8,15),_d2e=new Date(year,10,30);
+  let _w=0,_a=0;
+  _cgK.forEach(function(k){const d=new Date(k+'T12:00:00');if(d>=_d1s&&d<=_d1e)_w++;if(d>=_d2s&&d<=_d2e)_a++;});
+  const _ff=getFractForfait(year);let _fl=0;
+  for(const k of FERIES){if(!k.startsWith(year+''))continue;const dw=new Date(k+'T12:00:00').getDay();if(dw===0||dw===6)_fl++;}
+  return _s+getCongesAnc(year)+(_ff?3:0)+(_w>=5?1:0)+(_a>=5?1:0)+Math.min(4,_fl)-_u-_cet;
+}
+
 function calcCongesUsed(){
   // Total tous azimuts (pour compat récap, etc.) — somme sur toutes les années présentes dans S.conges
   const allYears=[...new Set(Object.keys(S.conges||{}).filter(k=>S.conges[k]==='cg').map(k=>parseInt(k.slice(0,4))))];
@@ -1982,7 +1993,20 @@ function resetVac(){pushUndo();var _pk=pendingKey;removeHistoryForKey(_pk);if(!S
 function setAbsent(){pushUndo();var date=new Date(pendingKey+'T12:00:00');if(!S.overrides)S.overrides={};S.overrides[pendingKey]={absent:true};if(!S.conges)S.conges={};S.conges[pendingKey]='absent';logH(fmtDate(date)+' -> absent','#c88048',pendingKey);saveState();closeModal();render();gcalTrigger();}
 function resetAbsent(){pushUndo();removeHistoryForKey(pendingKey);if(!S.overrides)S.overrides={};delete S.overrides[pendingKey];if(!S.conges)S.conges={};delete S.conges[pendingKey];saveState();closeModal();render();gcalTrigger();}
 function popCell(key){var el=document.querySelector('.dci[data-key="'+key+'"]');if(el){el.classList.add('pop');el.addEventListener('animationend',function(){el.classList.remove('pop');},{once:true});}}
-function poseConge(t){pushUndo();var date=new Date(pendingKey+'T12:00:00');if(!S.conges)S.conges={};
+function showBlockAlert(title,msg){
+  document.getElementById('modal-root').innerHTML='<div class="overlay" style="z-index:400"><div class="sheet" style="max-height:220px"><div class="sh"></div>'
+    +'<div class="st" style="color:#e07070">'+title+'</div>'
+    +'<div class="ss" style="margin-bottom:16px">'+msg+'</div>'
+    +'<button class="mb wide" onclick="closeModal()">OK</button>'
+    +'</div></div>';
+}
+function poseConge(t){
+  if(!S.conges)S.conges={};
+  const _pcEx=(S.conges||{})[pendingKey];
+  if(t==='cg'&&(_pcEx==='rend'||_pcEx==='rend-hist')){showBlockAlert('Conflit','Ce jour est déjà un rendu. Supprimez-le avant de poser un congé.');return;}
+  if(t==='rend'&&_pcEx==='cg'){showBlockAlert('Conflit','Ce jour est déjà un congé. Supprimez-le avant de poser un rendu.');return;}
+  if(t==='cg'){const _pcY=new Date(pendingKey+'T12:00:00').getFullYear();if(computeCongesRest(_pcY)<=0){showBlockAlert('Solde insuffisant','Plus de congés disponibles pour '+_pcY+'.');return;}}
+  pushUndo();var date=new Date(pendingKey+'T12:00:00');
   var stored=t;
   if(t==='rend'){const createdYM=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:2026*12;const dateYM=date.getFullYear()*12+date.getMonth();if(dateYM<createdYM)stored='rend-hist';}
   S.conges[pendingKey]=stored;logH(fmtDate(date)+' -> '+(t==='cg'?'congé':stored==='rend-hist'?'rendu hist. '+fmtMin(getDur(date)):'rendu '+fmtMin(getDur(date))),t==='cg'?'#6a9878':'#A8BF7A',pendingKey);
@@ -2252,6 +2276,23 @@ function applyPose(type,startKey,unique){
   const endKey=unique?startKey:(document.getElementById('pose-until').value||startKey);
   const start=new Date(startKey+'T12:00:00');
   const end=new Date(endKey+'T12:00:00');
+
+  // Conflict check: rend ↔ cg
+  if(type==='cg'||type==='rend'){
+    const _oppT=type==='cg'?['rend','rend-hist']:['cg'];
+    var _cf=[];var _dCf=new Date(start);
+    while(_dCf<=end){const _kCf=dk(_dCf),_vCf=getVac(_dCf);if(_vCf.vac&&_vCf.vac!=='RH'&&!_vCf.absent){const _exCf=(S.conges||{})[_kCf];if(_oppT.indexOf(_exCf)>=0)_cf.push(_kCf);}_dCf.setDate(_dCf.getDate()+1);}
+    if(_cf.length>0){const _oppLbl=type==='cg'?'rendu':'congé';showBlockAlert('Conflit',_cf.length+' jour'+(_cf.length>1?'s':'')+' déjà posé'+(_cf.length>1?'s':'')+' comme '+_oppLbl+'. Supprimez-les avant de continuer.');return;}
+  }
+
+  // Solde check: congés
+  if(type==='cg'){
+    const _cgByY={};var _dCg=new Date(start);
+    while(_dCg<=end){const _kCg=dk(_dCg),_vCg=getVac(_dCg);if(_vCg.vac&&_vCg.vac!=='RH'&&!_vCg.absent&&(S.conges||{})[_kCg]!=='cg'){const _yCg=_dCg.getFullYear();_cgByY[_yCg]=(_cgByY[_yCg]||0)+1;}_dCg.setDate(_dCg.getDate()+1);}
+    var _cgShort=0,_cgShortY=null;
+    Object.keys(_cgByY).forEach(function(_y2){const _r=computeCongesRest(Number(_y2));if(_cgByY[_y2]>_r){_cgShort=_cgByY[_y2]-_r;_cgShortY=Number(_y2);}});
+    if(_cgShort>0){showBlockAlert('Solde insuffisant','Il manque '+_cgShort+' jour'+(_cgShort>1?'s':'')+' pour '+_cgShortY+'. Disponible : '+Math.max(0,computeCongesRest(_cgShortY))+' j.');return;}
+  }
 
   // Validate rendus: full FIFO simulation including new days
   if(type==='rend'){
