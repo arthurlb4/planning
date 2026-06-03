@@ -1675,7 +1675,7 @@ function calcVariablesMois(y,m){
   const supHSlow=hs.low/60*tauxH*1.25,supHShigh=hs.high/60*tauxH*1.50;
   const supNuit=nuitMin/60*tauxH*0.40;
   const supPaniers=paniers*7.30,supAntenne=primes.antenne*17.38,supMatin=primes.matin*17.38,supReal=primes.reel*34.76,supCoord=primes.coord*17.38;
-  const total=supDim+supRH+supFer+supHSlow+supHShigh+supNuit+supPaniers+supAntenne+supMatin+supReal+supCoord;
+  const total=supDim+supRH+supFer+supHSlow+supHShigh+supNuit+supAntenne+supMatin+supReal+supCoord;
   return{total,tauxH,supDim,supRH,supFer,supHSlow,supHShigh,supNuit,supPaniers,supAntenne,supMatin,supReal,supCoord,dimMin:drf.dim,rhMin:drf.rh,ferMin:drf.fer,hsLow:hs.low,hsHigh:hs.high,nuitMin,paniers,antenne:primes.antenne,matin:primes.matin,reel:primes.reel,coord:primes.coord};
 }
 function calcPayeMois(y,m){
@@ -1684,7 +1684,7 @@ function calcPayeMois(y,m){
   const prevM=m===0?11:m-1,prevY=m===0?y-1:y;
   const vars=calcVariablesMois(prevY,prevM);
   const nao2022=130,nao2023=55,gpe=154;
-  let pfa=0;if(pr.hasPFA){if(pr.pfaMensuelle)pfa=190;else if(m===5||m===11)pfa=1140;}
+  let pfa=pr.pfaMensuelle?190:(m===5||m===11?1140:0);
   const totalFixes=nao2022+nao2023+gpe+pfa;
   let compCP=0;if(m===0){let yv=0;for(let pm=0;pm<12;pm++)yv+=calcVariablesMois(y-1,pm).total;compCP=yv/10;}
   return{base,salQ,salAnc,tauxH,heures,prevM,prevY,vars,nao2022,nao2023,gpe,pfa,totalFixes,compCP,total:base+vars.total+totalFixes+compCP,configured:salQ>0||salAnc>0};
@@ -3229,17 +3229,18 @@ function openMergedMoisModal(mym,tab){
       if(v.hsLow>0)varLines+=_row('HS ≤8h ('+fmtMin(v.hsLow)+' × 125%)',v.supHSlow,'var(--blue)');
       if(v.hsHigh>0)varLines+=_row('HS >8h ('+fmtMin(v.hsHigh)+' × 150%)',v.supHShigh,'var(--blue)');
       if(v.nuitMin>0)varLines+=_row('Nuit ('+fmtMin(v.nuitMin)+' × 40%)',v.supNuit,'#9c7fe0');
-      if(v.paniers>0)varLines+=_row('Paniers ('+v.paniers+' × 7,30 €)',v.supPaniers,'var(--amber)');
       if(v.antenne>0)varLines+=_row('P. antenne ('+v.antenne+' × 17,38 €)',v.supAntenne,'var(--amber)');
       if(v.matin>0)varLines+=_row('P. matin ('+v.matin+' × 17,38 €)',v.supMatin,'var(--amber)');
       if(v.reel>0)varLines+=_row('P. réal ('+v.reel+' × 34,76 €)',v.supReal,'var(--amber)');
       if(v.coord>0)varLines+=_row('P. coord ('+v.coord+' × 17,38 €)',v.supCoord,'var(--amber)');
       if(!varLines)varLines='<div style="font-size:11px;color:var(--text3);padding:3px 0">Aucun.</div>';
       payeSection=
-        '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;margin-bottom:8px">'
-        +'<span style="font-size:11px;color:var(--text3)">total estimé</span>'
+        '<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0">'
+        +'<span style="font-size:11px;color:var(--text3)">brut estimé</span>'
         +'<b style="font-size:18px;color:var(--green)">'+_fe(paye.total)+'</b>'
-        +'</div><div class="sep" style="margin-bottom:10px"></div>'
+        +'</div>'
+        +(v.paniers>0?'<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;margin-bottom:8px"><span style="font-size:11px;color:var(--text3)">paniers <span style="font-size:9px">(hors brut)</span></span><b style="font-size:13px;color:var(--amber)">'+_rp(v.supPaniers)+'</b></div>':'<div style="margin-bottom:8px"></div>')
+        +'<div class="sep" style="margin-bottom:10px"></div>'
         +'<div class="btit" style="margin-bottom:4px">Salaire de base</div>'
         +'<div style="font-size:11px">'+_rowb('Qualification',paye.salQ)+_rowb('Ancienneté',paye.salAnc)+_sub('Sous-total',paye.base)+'</div>'
         +'<div class="btit" style="margin-top:12px;margin-bottom:4px">Variables <span style="font-weight:400;color:var(--text3);font-size:10px">pour '+_MLp[paye.prevM]+' '+paye.prevY+'</span></div>'
@@ -3247,7 +3248,7 @@ function openMergedMoisModal(mym,tab){
         +'<div class="btit" style="margin-top:12px;margin-bottom:4px">Primes fixes</div>'
         +'<div style="font-size:11px">'
         +_row('NAO 2022',paye.nao2022,'var(--text2)')+_row('NAO 2023',paye.nao2023,'var(--text2)')+_row('Ind. GPE',paye.gpe,'var(--text2)')
-        +(paye.pfa>0?_row('PFA'+(paye.pfa===1140?' (sem.)':''),paye.pfa,'var(--text2)'):'')
+        +_row('PFA'+(paye.pfa===1140?' (sem.)':''),paye.pfa,'var(--text2)')
         +_subp('Sous-total',paye.totalFixes)+'</div>'
         +(paye.compCP>0?'<div class="btit" style="margin-top:12px;margin-bottom:4px">Complément CP</div><div style="font-size:11px">'+_row('1/10 variables '+(y-1),paye.compCP,'var(--text2)')+'</div>':'')
         +'<div style="font-size:10px;color:var(--text3);text-align:center;margin-top:10px">taux : '+fmtEuro(paye.tauxH)+'/h · '+paye.heures.toFixed(2)+'h/mois</div>';
@@ -3664,9 +3665,8 @@ function renderProfilesDropdown(){
         +'<div style="flex:1"><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:4px">H/mois</label>'
         +'<input id="ps-heures" type="number" step="0.01" value="'+(pr.profile.heuresMensuelles!=null?pr.profile.heuresMensuelles:151.67)+'" style="width:100%;height:36px;box-sizing:border-box;padding:6px 8px;border:0.5px solid var(--border);border-radius:var(--r);font-size:12px;background:var(--bg2);color:var(--text)"></div>'
         +'</div>'
-        +'<div style="display:flex;gap:16px;padding:4px 0;margin-bottom:6px">'
-        +'<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);cursor:pointer"><input id="ps-haspfa" type="checkbox"'+(pr.profile.hasPFA?' checked':'')+'> PFA</label>'
-        +'<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);cursor:pointer"><input id="ps-pfamens" type="checkbox"'+(pr.profile.pfaMensuelle?' checked':'')+'> Mensualisée</label>'
+        +'<div style="padding:4px 0;margin-bottom:6px">'
+        +'<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);cursor:pointer"><input id="ps-pfamens" type="checkbox"'+(pr.profile.pfaMensuelle?' checked':'')+'> PFA mensualisée (sinon : 1 140 € en juin et décembre)</label>'
         +'</div>'
         +'<button class="mb" style="width:100%;height:36px;font-size:12px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);margin-top:12px;margin-bottom:16px" data-pid="'+p.id+'" onclick="saveProfileFromDD(this.dataset.pid)">Enregistrer</button>'
         // ── SECTION GÉNÉRATION DES RENDUS ──
@@ -3736,7 +3736,6 @@ function saveProfileFromDD(pid){
   const _salq=document.getElementById('ps-salq');if(_salq)pr.profile.salaireQualif=parseFloat(_salq.value)||0;
   const _salanc=document.getElementById('ps-salanc');if(_salanc)pr.profile.primeAnciennete=parseFloat(_salanc.value)||0;
   const _psheur=document.getElementById('ps-heures');if(_psheur){const _hv=parseFloat(_psheur.value);if(_hv>0)pr.profile.heuresMensuelles=_hv;}
-  const _haspfa=document.getElementById('ps-haspfa');if(_haspfa)pr.profile.hasPFA=_haspfa.checked;
   const _pfamens=document.getElementById('ps-pfamens');if(_pfamens)pr.profile.pfaMensuelle=_pfamens.checked;
   const newLine=pr.profile.anchorLine;
   _profs[pid]=pr;if(pid===_aid)S=pr;saveState();render();renderProfilesDropdown();gcalUpdateBtn();
