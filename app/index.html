@@ -562,7 +562,8 @@ function loadState(){
   if(S.profile.ephSoldeCreatedYM===undefined)S.profile.ephSoldeCreatedYM=TODAY_YM;
   // Migrate: old autoReportEph incorrectly incremented ephExtend — undo it
   if(S.autoReported&&S.ephExtend){Object.keys(S.autoReported).forEach(function(ym){if(S.ephExtend[ym]>0){S.ephExtend[ym]--;if(S.ephExtend[ym]<=0)delete S.ephExtend[ym];}});delete S.autoReported;}
-  // Mark all existing customVacs as hidden (not shown in grid)
+  // Migrate: autoReport1m → autoExtend level 1
+  if(S.autoReport1m){if(!S.autoExtend)S.autoExtend={};Object.keys(S.autoReport1m).forEach(function(k){S.autoExtend[k]=Math.max((S.autoExtend[k]||0),1);});delete S.autoReport1m;}  // Mark all existing customVacs as hidden (not shown in grid)
   if(S.customVacs){Object.keys(S.customVacs).forEach(k=>{S.customVacs[k].hidden=true;});}
 }
 function saveState(){
@@ -858,13 +859,14 @@ function settingsForYM(ym){
 // ================================================================
 // HELPERS EXPIRATION
 function getEphExtensions(ym){
-  if(!S.ephExtend)return 0;
-  const v=S.ephExtend[ym];
-  if(v===true)return 1;
-  return typeof v==='number'?v:0;
+  const m=S.ephExtend&&S.ephExtend[ym];
+  const a=S.autoExtend&&S.autoExtend[ym];
+  const mv=m===true?1:typeof m==='number'?m:0;
+  const av=typeof a==='number'?a:0;
+  return Math.max(mv,av);
 }
 function getBaseExpYm(ym){return ym+3;}
-function getExpYm(ym){return ym+3+getEphExtensions(ym)*3+((S.autoReport1m&&S.autoReport1m[ym])?3:0);}
+function getExpYm(ym){return ym+3+getEphExtensions(ym)*3;}
 
 // BUILD GEN
 // ================================================================
@@ -1535,14 +1537,13 @@ function updateCounters(){
     const expY=Math.floor(expYm/12),expM=expYm%12;
     const moLeft=expYm-TODAY_YM;
     const extCount=getEphExtensions(ym);
-    const isAutoRep=!!(S.autoReport1m&&S.autoReport1m[ym]>0);
-    const isExtended=extCount>0||isAutoRep;
+    const isAutoRep=!!(S.autoExtend&&S.autoExtend[ym]>0);
+    const isExtended=extCount>0;
     const baseExpYm=ym+3+extCount*3;
-    const isWarn=!isExp&&!isFut&&!isAutoRep&&avail>0&&avail<=420&&baseExpYm===TODAY_YM;
-    const autoRepMin=typeof(S.autoReport1m&&S.autoReport1m[ym])==='number'?S.autoReport1m[ym]:avail;
+    const isWarn=!isExp&&!isFut&&avail>0&&avail<=420&&baseExpYm===TODAY_YM;
     const lostMin=isExp?(preExpiry[ym]||0):0;
     const extSpan=isExtended?'<span style="background:rgba(99,153,34,.35);border-radius:3px;padding:0 2px;color:var(--text)">'+MC[expM].slice(0,3)+' '+String(expY).slice(2)+'</span>':MC[expM].slice(0,3)+' '+String(expY).slice(2);
-    const expLbl=isExp?(lostMin>0?'<span style="color:var(--red);font-size:10px">-'+fmtMin(lostMin)+'</span>':'<span style="color:var(--text3);font-size:10px">00h00</span>'):isAutoRep?'→'+extSpan+'<div style="color:var(--rend-text);font-size:9px">↓ '+fmtMin(autoRepMin)+'</div>':'→'+extSpan;
+    const expLbl=isExp?(lostMin>0?'<span style="color:var(--red);font-size:10px">-'+fmtMin(lostMin)+'</span>':'<span style="color:var(--text3);font-size:10px">00h00</span>'):'→'+extSpan;
     const barPct=Math.round(avail/maxVal*100);
     const origPct=Math.round(orig/maxVal*100);
     const greenOpacity=isExp?'.15':isFut?'.35':'1';
@@ -1575,30 +1576,32 @@ uniHtml+=`<div class="eph-urow${isExp?' expired':''}${isFut?' fut':''}">
 // Auto-report: at the start of the expiry month, if remaining balance ≤7h,
 // silently extend by 1 month. Warning phase (month before): green color only.
 function autoReportEph(){
-  if(!S.autoReport1m)S.autoReport1m={};
-  // Always re-evaluate: save flags, clear them so getExpYm returns base expiry,
-  // then recalculate preExpiry accurately and re-decide for each expired month.
-  const saved=Object.assign({},S.autoReport1m);
-  Object.keys(S.autoReport1m).forEach(function(k){delete S.autoReport1m[k];});
+  if(!S.autoExtend)S.autoExtend={};
+  const saved=Object.assign({},S.autoExtend);
+  Object.keys(S.autoExtend).forEach(function(k){delete S.autoExtend[k];});
   const{preExpiry}=calcSoldes();
   let changed=false;
-  const allYms=new Set([...Object.keys(saved).map(Number),...Object.keys(preExpiry).map(Number)]);
+  const manExt=S.ephExtend||{};
+  const allYms=new Set([...Object.keys(saved).map(Number),...Object.keys(preExpiry).map(Number),...Object.keys(manExt).map(Number)]);
   allYms.forEach(function(ym){
     if(ym>TODAY_YM)return;
-    const baseExp=ym+3+getEphExtensions(ym)*3;
-    if(baseExp>=TODAY_YM){
-      // Month not yet expired — no auto-report flag
-      if(saved[ym]!==undefined)changed=true;
+    const prevAuto=saved[ym]||0;
+    const manLevel=typeof manExt[ym]==='number'?manExt[ym]:(manExt[ym]?1:0);
+    const currentLevel=Math.max(prevAuto,manLevel);
+    const expAtLevel=ym+3+currentLevel*3;
+    if(expAtLevel>=TODAY_YM){
+      // Not yet expired at current level — preserve existing auto level
+      if(prevAuto>0){S.autoExtend[ym]=prevAuto;if(saved[ym]!==prevAuto)changed=true;}
       return;
     }
-    // Past expiry: re-evaluate based on current FIFO balance
+    // Past expiry at current level — try to escalate
     const avail=preExpiry[ym]||0;
-    if(avail>0&&avail<=420){
-      S.autoReport1m[ym]=avail;
-      if(saved[ym]!==avail)changed=true;
-    } else {
-      // Balance 0 or >7h: hours expire, no report
-      if(saved[ym]!==undefined)changed=true;
+    if(avail>0&&avail<=420&&currentLevel<3){
+      S.autoExtend[ym]=currentLevel+1;
+      if(saved[ym]!==currentLevel+1)changed=true;
+    } else if(avail>0&&avail<=420&&currentLevel>=3){
+      S.autoExtend[ym]=3;
+      if(saved[ym]!==3)changed=true;
     }
   });
   if(changed){recalcAllMatelas();saveState();}
@@ -2117,7 +2120,7 @@ function calcDispoAtDate(targetDate){
     const ym=Number(ymStr);
     const avail=cs.realAvail[ym];
     if(avail<=0)return;
-    const expYm=ym+((S.ephExtend&&S.ephExtend[ym])?6:3);
+    const expYm=getExpYm(ym);
     const expDate=new Date(Math.floor(expYm/12),expYm%12+1,0);
     if(expDate>=targetDate)dispo+=avail;
   });
@@ -2128,7 +2131,7 @@ function calcDispoAtDate(targetDate){
     if(total<=0)return;
     const lastDayOfMonth=new Date(Math.floor(ym/12),ym%12+1,0);
     if(lastDayOfMonth>targetDate)return; // not yet created at targetDate
-    const expYm=ym+((S.ephExtend&&S.ephExtend[ym])?6:3);
+    const expYm=getExpYm(ym);
     const expDate=new Date(Math.floor(expYm/12),expYm%12+1,0);
     if(expDate>=targetDate)dispo+=total;
   });
@@ -2420,16 +2423,15 @@ function openRestantsModal(){
     const y=Math.floor(ym/12),m=ym%12;
     const expYm=getExpYm(ym),expY=Math.floor(expYm/12),expM=expYm%12;
     const isExp=expYm<TODAY_YM,ext=getEphExtensions(ym);
-    const isAutoRepR=!!(S.autoReport1m&&S.autoReport1m[ym]);
+    const isAutoRepR=!!(S.autoExtend&&S.autoExtend[ym]>0);
     const baseExpYmR=ym+3+ext*3;
-    const isWarnR=!isExp&&!isFut&&!isAutoRepR&&avail>0&&avail<=420&&baseExpYmR===TODAY_YM;
-    // canSub: allowed whenever ext>0
+    const isWarnR=!isExp&&!isFut&&avail>0&&avail<=420&&baseExpYmR===TODAY_YM;
     const canAdd=!isExp&&!isFut&&ext<3;
     const canSub=!isExp&&!isFut&&ext>0;
     if(avail<=0&&!canSub)return;
     const moLeft=expYm-TODAY_YM;
     const autoNoteR=isAutoRepR?'↻ ':'';
-    const expColor=isExp?'var(--rend-text)':(isAutoRepR||isWarnR)?'var(--rend-text)':'var(--text3)';
+    const expColor=isExp?'var(--rend-text)':(isWarnR)?'var(--rend-text)':'var(--text3)';
     const barColor=ephBarColor(moLeft,isExp);
     const pct=Math.round(avail/maxV*100);
     const minusBtn='<button onclick="undoEph('+ym+');openRestantsModal()" style="'+btnS+'color:'+(canSub?'var(--text3)':'var(--border2)')+';pointer-events:'+(canSub?'auto':'none')+'">-3m</button>';
@@ -2480,25 +2482,25 @@ function openMergedRenduCgModal(limit,tab){
     const barPct=Math.round(avail/maxV*100);
     const greenOpacity=isExp?'.15':isFut?'.35':'1';
     const blueOpacity=isFut?'.2':'.4';
-    const isAutoRepM=!!(S.autoReport1m&&S.autoReport1m[ym]);
+    const isAutoRepM=!!(S.autoExtend&&S.autoExtend[ym]>0);
+    const autoLevelM=(S.autoExtend&&S.autoExtend[ym])||0;
     const baseExpYmM=ym+3+ext*3;
-    const isWarnM=!isExp&&!isFut&&!isAutoRepM&&avail>0&&avail<=420&&baseExpYmM===TODAY_YM;
-    const availColor=isExp?'var(--text3)':isFut?'var(--text3)':(isAutoRepM||isWarnM)?'var(--rend-text)':'var(--text2)';
-    const autoRepMinM=typeof(S.autoReport1m&&S.autoReport1m[ym])==='number'?S.autoReport1m[ym]:avail;
+    const isWarnM=!isExp&&!isFut&&avail>0&&avail<=420&&baseExpYmM===TODAY_YM;
+    const availColor=isExp?'var(--text3)':isFut?'var(--text3)':(isWarnM)?'var(--rend-text)':'var(--text2)';
     const lostMinM=isExp?(preExpiry[ym]||0):0;
-    const isExtendedM=ext>0||isAutoRepM;
+    const isExtendedM=ext>0;
     const extSpanM=isExtendedM?'<span style="background:rgba(99,153,34,.35);border-radius:3px;padding:0 2px;color:var(--text)">'+ML2[expM]+' '+String(expY).slice(2)+'</span>':ML2[expM]+' '+String(expY).slice(2);
-    const expLblM=isExp?(lostMinM>0?'<span style="color:var(--red);font-size:10px">-'+fmtMin(lostMinM)+'</span>':'<span style="color:var(--text3);font-size:10px">00h00</span>'):isAutoRepM?'→'+extSpanM+'<div style="color:var(--rend-text);font-size:9px">↓ '+fmtMin(autoRepMinM)+'</div>':'→'+extSpanM;
+    const expLblM=isExp?(lostMinM>0?'<span style="color:var(--red);font-size:10px">-'+fmtMin(lostMinM)+'</span>':'<span style="color:var(--text3);font-size:10px">00h00</span>'):'→'+extSpanM;
     // Report buttons
     let repBtns='';
     if(!isFut&&(!isExp||lostMinM>0||ext>0)){
-      const btn1mCls=isAutoRepM?'rep-on':(avail>0&&avail<=420?'rep-1m':'');
-      const b3=ext===1?'rep-on':'',b6=ext===2?'rep-on':'',b9=ext===3?'rep-on':'';
+      const activeLevel=ext;
+      const nextAuto=(avail>0&&avail<=420&&activeLevel<3)?activeLevel+1:0;
+      const bCls=(L)=>L===activeLevel?'rep-on':L===nextAuto?'rep-1m':'';
       repBtns='<div class="eph-rep-btns">'
-        +(isExp?'':'<button class="eph-rep-btn '+btn1mCls+'" disabled>3m</button>')
-        +'<button class="eph-rep-btn '+b3+'" onclick="setEphExt('+ym+',1);openMergedRenduCgModal('+limit+')">3m</button>'
-        +'<button class="eph-rep-btn '+b6+'" onclick="setEphExt('+ym+',2);openMergedRenduCgModal('+limit+')">6m</button>'
-        +'<button class="eph-rep-btn '+b9+'" onclick="setEphExt('+ym+',3);openMergedRenduCgModal('+limit+')">9m</button>'
+        +'<button class="eph-rep-btn '+bCls(1)+'" onclick="setEphExt('+ym+',1);openMergedRenduCgModal('+limit+')">3m</button>'
+        +'<button class="eph-rep-btn '+bCls(2)+'" onclick="setEphExt('+ym+',2);openMergedRenduCgModal('+limit+')">6m</button>'
+        +'<button class="eph-rep-btn '+bCls(3)+'" onclick="setEphExt('+ym+',3);openMergedRenduCgModal('+limit+')">9m</button>'
         +'</div>';
     }
     rendRows+='<div class="eph-urow'+(isExp?' expired':'')+(isFut?' fut':'')+'">'
