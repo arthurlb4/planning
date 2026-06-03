@@ -1135,6 +1135,7 @@ function toggleFractForfait(year){
 
 function adjCET(delta,year){
   if(!S.profile)return;
+  if(delta>0&&computeCongesRest(year)<=0){showBlockAlert('Solde insuffisant','Plus de congés disponibles pour '+year+' — impossible d\'ajouter au CET.');return;}
   if(!S.profile.congesCETParAnnee)S.profile.congesCETParAnnee={};
   const cur=getCETForYear(year);
   if(delta>0){S.profile.congesCETParAnnee[year]=(cur+1);}
@@ -2428,7 +2429,7 @@ function openHSModal(mym){
     const low=useRendu?hsW.rawLow*1.25:hsW.rawLow;
     const high=useRendu?hsW.rawHigh*1.5:hsW.rawHigh;
     tot+=rowTotal;totLow+=low;totHigh+=high;totRawLow+=hsW.rawLow;totRawHigh+=hsW.rawHigh;if(hsW.isRam)totRam+=7*60;
-    rows+='<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0">'      +'<span style="font-size:11px;color:var(--text2)">Semaine '+getISOWeek(mon)+(prevMois?' <span style="font-size:9px;color:var(--text3)">(mois précédent)</span>':'')+(hsW.isRam?' <span style="font-size:9px;color:var(--text3)">(dont ramenée 7h)</span>':'')+'</span>'      +'<div style="display:flex;gap:16px;align-items:center">'      +(useRendu2?'<b style="font-size:11px;width:52px;text-align:right;color:var(--text3)">'+fmtMin(hsW.rawLow+hsW.rawHigh)+'</b>':'')      +'<b style="font-size:11px;width:52px;text-align:right">'+fmtMin(rowTotal)+'</b>'      +'</div></div>';
+    rows+='<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0">'      +'<span style="font-size:11px;color:var(--text2)">Semaine '+getISOWeek(mon)+(hsW.isRam?' <span style="font-size:9px;color:var(--text3)">(dont ramenée 7h)</span>':'')+'</span>'      +'<div style="display:flex;gap:16px;align-items:center">'      +(useRendu2?'<b style="font-size:11px;width:52px;text-align:right;color:var(--text3)">'+fmtMin(hsW.rawLow+hsW.rawHigh)+'</b>':'')      +'<b style="font-size:11px;width:52px;text-align:right">'+fmtMin(rowTotal)+'</b>'      +'</div></div>';
   }
   document.getElementById('modal-root').innerHTML=
     '<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet">'
@@ -2932,7 +2933,7 @@ function openDetailMois(mym){
     const date=new Date(y,m,1+dd);
     const mon=getMonday(date),mk=dk(mon);
     if(seenW.has(mk))continue;seenW.add(mk);
-    const note=mon.getFullYear()*12+mon.getMonth()!==mym?'← mois préc.':'';
+    const note='';
     hsRows+=makeWeekRow(mon,note);
   }
 
@@ -3010,7 +3011,7 @@ function openMergedMoisModal(mym,tab){
     const high=useRendu?hsW.rawHigh*1.5:hsW.rawHigh;
     tot+=rowTotal;totLow+=low;totHigh+=high;totRawLow+=hsW.rawLow;totRawHigh+=hsW.rawHigh;
     hsRows+='<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0">'
-      +'<span style="font-size:11px;font-weight:500;color:var(--text)">Semaine '+getISOWeek(mon)+(hsW.isRam?' <span style="font-size:9px;font-weight:400;color:var(--text3)">dont 7h de ramenée</span>':'')+(prevMois?' <span style="font-size:9px;font-weight:400;color:var(--text3)">← mois préc.</span>':'')+'</span>'
+      +'<span style="font-size:11px;font-weight:500;color:var(--text)">Semaine '+getISOWeek(mon)+(hsW.isRam?' <span style="font-size:9px;font-weight:400;color:var(--text3)">dont 7h de ramenée</span>':'')+'</span>'
       +'<div style="display:flex;gap:16px;align-items:center">'
       +(useRendu2?'<b style="font-size:11px;width:52px;text-align:right;color:var(--text3)">'+fmtMin(hsW.rawLow+hsW.rawHigh)+'</b>':'')
       +'<b style="font-size:11px;width:52px;text-align:right">'+fmtMin(rowTotal)+'</b></div></div>';
@@ -3059,7 +3060,7 @@ function openMergedMoisModal(mym,tab){
     const partRows=[{label:'Dimanches',val:weekDim,color:'#9c80e0'},{label:'RH',val:weekRH,color:'#7b9ce0'},{label:'Fériés',val:weekFer,color:'var(--gold)'},{label:'Heures supp.',val:hsHS2,color:'var(--blue)'},{label:'Ramenée',val:hsRam2,color:'var(--gold-dark)'}].filter(r=>r.val>0);
     return'<div style="font-size:11px;padding:5px 0;border-bottom:0.5px solid var(--border2)"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-weight:500;color:var(--text)">Semaine '+getISOWeek(mon)+(note?' <span style="font-size:10px;font-weight:400;color:var(--text3)">'+note+'</span>':'')+'</span><b style="color:var(--text2)">'+fmtMin(total)+'</b></div>'+partRows.map(r=>'<div style="display:flex;justify-content:space-between;padding:1px 0 1px 8px"><span style="color:var(--text3)">'+r.label+'</span><span style="color:'+r.color+'">'+fmtMin(r.val)+'</span></div>').join('')+'</div>';
   }
-  for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd);const mon=getMonday(date),mk=dk(mon);if(seenW2.has(mk))continue;seenW2.add(mk);const note=mon.getFullYear()*12+mon.getMonth()!==mym?'← mois préc.':'';crRows+=makeWeekRow2(mon,note);}
+  for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd);const mon=getMonday(date),mk=dk(mon);if(seenW2.has(mk))continue;seenW2.add(mk);crRows+=makeWeekRow2(mon,'');}
   const crTotRows=[{label:'Dimanches',val:gm.dim,color:'#9c80e0'},{label:'RH',val:gm.rh,color:'#7b9ce0'},{label:'Fériés travaillés',val:gm.fer,color:'var(--gold)'},{label:'Heures supp.',val:gm.hs,color:'var(--blue)'},{label:'Semaines ramenées',val:gm.ram,color:'var(--gold-dark)'},{label:'Solde initial',val:gm.solde,color:'var(--text2)'}].filter(r=>r.val>0);
   const gt2=(gm.dim||0)+(gm.rh||0)+(gm.fer||0)+(gm.hs||0)+(gm.ram||0);
   const crSection=
