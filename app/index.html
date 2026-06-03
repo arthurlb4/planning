@@ -1651,6 +1651,44 @@ function calcPrimesMois(y,m){
   for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd),mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);const sun=new Date(mon);sun.setDate(mon.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mym)continue;for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);const key=dk(d);if((S.conges||{})[key])continue;const{vac,absent,echange,ecSelf}=getVac(d);if(absent)continue;if(echange&&!ecSelf)continue;if(!vac||vac==='RH')continue;const v=VAC[vac];if(!v)continue;if(v.deb&&_toMinApp(v.deb)<240)matin++;if(!v.primes)continue;if(v.primes.antenne)antenne++;if(v.primes.reel)reel++;if(v.primes.coord)coord++;}}
   return{antenne,reel,coord,matin};
 }
+function fmtEuro(n){if(!isFinite(n)||isNaN(n))n=0;const abs=Math.abs(n).toFixed(2);const[int,dec]=abs.split('.');const intFmt=int.replace(/\B(?=(\d{3})+(?!\d))/g,' ');return(n<0?'-':'')+intFmt+','+dec+' €';}
+function calcDimRHFerMinsMois(y,m){
+  const mym=y*12+m,sett=settingsForYM(mym),seenW=new Set(),last=new Date(y,m+1,0).getDate();const VAC=getVAC();let dim=0,rh=0,fer=0;
+  for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd),mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);const sun=new Date(mon);sun.setDate(mon.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mym)continue;
+    for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);const key=dk(d);const cKey=(S.conges||{})[key];if(cKey&&(cKey==='cg'||cKey==='rend'||cKey==='rend-hist'||cKey==='absent'))continue;const{vac,absent,echange,ecSelf}=getVac(d);if(!vac||vac==='RH'||absent)continue;if(echange&&!ecSelf)continue;const dur=VAC[vac]?VAC[vac].dur:0;if(!dur)continue;const isFer=FERIES.has(key),isDim=d.getDay()===0,isRH=isRHDay(d);
+      if(isFer&&!sett.ferRendu)fer+=dur;
+      else if(isDim&&!sett.dimRendu)dim+=dur;
+      else if(isRH&&!echange&&!sett.rhRendu)rh+=dur;}}
+  return{dim,rh,fer};
+}
+function calcHSMinsMois(y,m){
+  const mym=y*12+m,sett=settingsForYM(mym);
+  if(sett.hsRendu)return{low:0,high:0};
+  const seenW=new Set(),last=new Date(y,m+1,0).getDate();let low=0,high=0;
+  for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd),mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);const sun=new Date(mon);sun.setDate(mon.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mym)continue;const hsW=calcHSWeek(mon);low+=hsW.rawLow;high+=hsW.rawHigh;}
+  return{low,high};
+}
+function calcVariablesMois(y,m){
+  const pr=S.profile||{};const base=(pr.salaireQualif||0)+(pr.primeAnciennete||0);const heures=pr.heuresMensuelles||151.67;const tauxH=heures>0?base/heures:0;
+  const drf=calcDimRHFerMinsMois(y,m);const hs=calcHSMinsMois(y,m);const nuitMin=calcNuitMois(y,m);const primes=calcPrimesMois(y,m);const paniers=calcPaniersMois(y,m);
+  const supDim=drf.dim/60*tauxH*0.30,supRH=drf.rh/60*tauxH*0.30,supFer=drf.fer/60*tauxH*1.00;
+  const supHSlow=hs.low/60*tauxH*1.25,supHShigh=hs.high/60*tauxH*1.50;
+  const supNuit=nuitMin/60*tauxH*0.40;
+  const supPaniers=paniers*7.30,supAntenne=primes.antenne*17.38,supMatin=primes.matin*17.38,supReal=primes.reel*34.76,supCoord=primes.coord*17.38;
+  const total=supDim+supRH+supFer+supHSlow+supHShigh+supNuit+supPaniers+supAntenne+supMatin+supReal+supCoord;
+  return{total,tauxH,supDim,supRH,supFer,supHSlow,supHShigh,supNuit,supPaniers,supAntenne,supMatin,supReal,supCoord,dimMin:drf.dim,rhMin:drf.rh,ferMin:drf.fer,hsLow:hs.low,hsHigh:hs.high,nuitMin,paniers,antenne:primes.antenne,matin:primes.matin,reel:primes.reel,coord:primes.coord};
+}
+function calcPayeMois(y,m){
+  const pr=S.profile||{};const salQ=pr.salaireQualif||0,salAnc=pr.primeAnciennete||0,base=salQ+salAnc;
+  const heures=pr.heuresMensuelles||151.67,tauxH=heures>0?base/heures:0;
+  const prevM=m===0?11:m-1,prevY=m===0?y-1:y;
+  const vars=calcVariablesMois(prevY,prevM);
+  const nao2022=130,nao2023=55,gpe=154;
+  let pfa=0;if(pr.hasPFA){if(pr.pfaMensuelle)pfa=190;else if(m===5||m===11)pfa=1140;}
+  const totalFixes=nao2022+nao2023+gpe+pfa;
+  let compCP=0;if(m===0){let yv=0;for(let pm=0;pm<12;pm++)yv+=calcVariablesMois(y-1,pm).total;compCP=yv/10;}
+  return{base,salQ,salAnc,tauxH,heures,prevM,prevY,vars,nao2022,nao2023,gpe,pfa,totalFixes,compCP,total:base+vars.total+totalFixes+compCP,configured:salQ>0||salAnc>0};
+}
 function calcNuitMinShift(v){
   if(!v||!v.deb||!v.fin)return 0;
   let deb=_toMinApp(v.deb),fin=_toMinApp(v.fin);
@@ -3169,20 +3207,69 @@ function openMergedMoisModal(mym,tab){
     +'<div style="margin-bottom:10px">'+crTotRows.map(r=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0"><div style="display:flex;align-items:center;gap:6px"><span class="rdot" style="background:'+r.color+'"></span><span style="font-size:11px;color:var(--text2)">'+r.label+'</span></div><b style="font-size:11px;color:var(--text)">'+fmtMin(r.val)+'</b></div>').join('')+'</div>'
     +(crRows?'<div class="sep"></div><div class="btit" style="margin-bottom:4px">Détail par semaine</div>'+crRows:'');
 
+  // === Paie ===
+  const paye=calcPayeMois(y,m);
+  let payeSection='';
+  {
+    const _MLp=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+    if(!paye.configured){
+      payeSection='<div style="font-size:12px;color:var(--text3);text-align:center;padding:24px 8px">Configurez votre salaire dans le profil pour voir l\'estimation.</div>';
+    }else{
+      const _fe=v=>fmtEuro(v);
+      const _rp=v=>'+'+fmtEuro(v);
+      const _row=(lbl,val,c)=>'<div style="display:flex;justify-content:space-between;padding:3px 0"><span style="color:var(--text3)">'+lbl+'</span><b'+(c?' style="color:'+c+'"':'')+'>'+_rp(val)+'</b></div>';
+      const _rowb=(lbl,val)=>'<div style="display:flex;justify-content:space-between;padding:3px 0"><span style="color:var(--text3)">'+lbl+'</span><b>'+_fe(val)+'</b></div>';
+      const _sub=(lbl,val)=>'<div style="display:flex;justify-content:space-between;padding:4px 0;border-top:0.5px solid var(--border2);margin-top:2px"><span>'+lbl+'</span><b>'+_fe(val)+'</b></div>';
+      const _subp=(lbl,val)=>'<div style="display:flex;justify-content:space-between;padding:4px 0;border-top:0.5px solid var(--border2);margin-top:2px"><span>'+lbl+'</span><b>'+_rp(val)+'</b></div>';
+      const v=paye.vars;
+      let varLines='';
+      if(v.dimMin>0)varLines+=_row('Dim ('+fmtMin(v.dimMin)+' × 30%)',v.supDim,'var(--text2)');
+      if(v.rhMin>0)varLines+=_row('RH ('+fmtMin(v.rhMin)+' × 30%)',v.supRH,'var(--text2)');
+      if(v.ferMin>0)varLines+=_row('Fériés ('+fmtMin(v.ferMin)+' × 100%)',v.supFer,'var(--text2)');
+      if(v.hsLow>0)varLines+=_row('HS ≤8h ('+fmtMin(v.hsLow)+' × 125%)',v.supHSlow,'var(--blue)');
+      if(v.hsHigh>0)varLines+=_row('HS >8h ('+fmtMin(v.hsHigh)+' × 150%)',v.supHShigh,'var(--blue)');
+      if(v.nuitMin>0)varLines+=_row('Nuit ('+fmtMin(v.nuitMin)+' × 40%)',v.supNuit,'#9c7fe0');
+      if(v.paniers>0)varLines+=_row('Paniers ('+v.paniers+' × 7,30 €)',v.supPaniers,'var(--amber)');
+      if(v.antenne>0)varLines+=_row('P. antenne ('+v.antenne+' × 17,38 €)',v.supAntenne,'var(--amber)');
+      if(v.matin>0)varLines+=_row('P. matin ('+v.matin+' × 17,38 €)',v.supMatin,'var(--amber)');
+      if(v.reel>0)varLines+=_row('P. réal ('+v.reel+' × 34,76 €)',v.supReal,'var(--amber)');
+      if(v.coord>0)varLines+=_row('P. coord ('+v.coord+' × 17,38 €)',v.supCoord,'var(--amber)');
+      if(!varLines)varLines='<div style="font-size:11px;color:var(--text3);padding:3px 0">Aucun.</div>';
+      payeSection=
+        '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;margin-bottom:8px">'
+        +'<span style="font-size:11px;color:var(--text3)">total estimé</span>'
+        +'<b style="font-size:18px;color:var(--green)">'+_fe(paye.total)+'</b>'
+        +'</div><div class="sep" style="margin-bottom:10px"></div>'
+        +'<div class="btit" style="margin-bottom:4px">Salaire de base</div>'
+        +'<div style="font-size:11px">'+_rowb('Qualification',paye.salQ)+_rowb('Ancienneté',paye.salAnc)+_sub('Sous-total',paye.base)+'</div>'
+        +'<div class="btit" style="margin-top:12px;margin-bottom:4px">Variables <span style="font-weight:400;color:var(--text3);font-size:10px">pour '+_MLp[paye.prevM]+' '+paye.prevY+'</span></div>'
+        +'<div style="font-size:11px">'+varLines+_subp('Sous-total',v.total)+'</div>'
+        +'<div class="btit" style="margin-top:12px;margin-bottom:4px">Primes fixes</div>'
+        +'<div style="font-size:11px">'
+        +_row('NAO 2022',paye.nao2022,'var(--text2)')+_row('NAO 2023',paye.nao2023,'var(--text2)')+_row('Ind. GPE',paye.gpe,'var(--text2)')
+        +(paye.pfa>0?_row('PFA'+(paye.pfa===1140?' (sem.)':''),paye.pfa,'var(--text2)'):'')
+        +_subp('Sous-total',paye.totalFixes)+'</div>'
+        +(paye.compCP>0?'<div class="btit" style="margin-top:12px;margin-bottom:4px">Complément CP</div><div style="font-size:11px">'+_row('1/10 variables '+(y-1),paye.compCP,'var(--text2)')+'</div>':'')
+        +'<div style="font-size:10px;color:var(--text3);text-align:center;margin-top:10px">taux : '+fmtEuro(paye.tauxH)+'/h · '+paye.heures.toFixed(2)+'h/mois</div>';
+    }
+  }
+
   document.getElementById('modal-root').innerHTML=
     '<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet">'
     +'<div class="sh"></div>'
     +'<div style="display:flex;margin:0 0 16px;background:var(--bg3);border-radius:10px;padding:3px;gap:2px">'
-    +'<button id="mtp-0" onclick="moisTab(0)" style="flex:1;padding:8px 4px;font-size:12px;font-weight:600;color:var(--text);background:var(--bg2);border-radius:8px;border:none;cursor:pointer;font-family:var(--font);box-shadow:0 1px 3px rgba(0,0,0,.2)">Rendus</button>'
-    +'<button id="mtp-1" onclick="moisTab(1)" style="flex:1;padding:8px 4px;font-size:12px;font-weight:400;color:var(--text3);background:transparent;border-radius:8px;border:none;cursor:pointer;font-family:var(--font)">HS</button>'
-    +'<button id="mtp-2" onclick="moisTab(2)" style="flex:1;padding:8px 4px;font-size:12px;font-weight:400;color:var(--text3);background:transparent;border-radius:8px;border:none;cursor:pointer;font-family:var(--font)">Primes</button>'
-    +'<button id="mtp-3" onclick="moisTab(3)" style="flex:1;padding:8px 4px;font-size:12px;font-weight:400;color:var(--text3);background:transparent;border-radius:8px;border:none;cursor:pointer;font-family:var(--font)">Nuit</button>'
+    +'<button id="mtp-0" onclick="moisTab(0)" style="flex:1;padding:8px 4px;font-size:11px;font-weight:600;color:var(--text);background:var(--bg2);border-radius:8px;border:none;cursor:pointer;font-family:var(--font);box-shadow:0 1px 3px rgba(0,0,0,.2)">Rendus</button>'
+    +'<button id="mtp-1" onclick="moisTab(1)" style="flex:1;padding:8px 4px;font-size:11px;font-weight:400;color:var(--text3);background:transparent;border-radius:8px;border:none;cursor:pointer;font-family:var(--font)">HS</button>'
+    +'<button id="mtp-2" onclick="moisTab(2)" style="flex:1;padding:8px 4px;font-size:11px;font-weight:400;color:var(--text3);background:transparent;border-radius:8px;border:none;cursor:pointer;font-family:var(--font)">Primes</button>'
+    +'<button id="mtp-3" onclick="moisTab(3)" style="flex:1;padding:8px 4px;font-size:11px;font-weight:400;color:var(--text3);background:transparent;border-radius:8px;border:none;cursor:pointer;font-family:var(--font)">Nuit</button>'
+    +'<button id="mtp-4" onclick="moisTab(4)" style="flex:1;padding:8px 4px;font-size:11px;font-weight:400;color:var(--text3);background:transparent;border-radius:8px;border:none;cursor:pointer;font-family:var(--font)">Paie</button>'
     +'</div>'
     +'<div id="mtp-wrap" style="display:grid">'
     +'<div id="mtc-0" style="grid-area:1/1">'+crSection+'</div>'
     +'<div id="mtc-1" style="grid-area:1/1;visibility:hidden;pointer-events:none">'+hsSection+'</div>'
     +'<div id="mtc-2" style="grid-area:1/1;visibility:hidden;pointer-events:none">'+paniersHtml+'</div>'
     +'<div id="mtc-3" style="grid-area:1/1;visibility:hidden;pointer-events:none">'+nuitSection+'</div>'
+    +'<div id="mtc-4" style="grid-area:1/1;visibility:hidden;pointer-events:none">'+payeSection+'</div>'
     +'</div>'
     +'<button class="mcancel" onclick="closeModal()">Fermer</button>'
     +'</div></div>';
@@ -3195,8 +3282,8 @@ function openMergedMoisModal(mym,tab){
       wrap.addEventListener('touchend',function(e){
         var dx=e.changedTouches[0].clientX-_sxM,dy=Math.abs(e.changedTouches[0].clientY-_syM);
         if(Math.abs(dx)<50||dy>80)return;
-        var cur=0;for(var i=0;i<4;i++){var t=document.getElementById('mtc-'+i);if(t&&t.style.visibility!=='hidden')cur=i;}
-        moisTab(dx<0?Math.min(3,cur+1):Math.max(0,cur-1));
+        var cur=0;for(var i=0;i<5;i++){var t=document.getElementById('mtc-'+i);if(t&&t.style.visibility!=='hidden')cur=i;}
+        moisTab(dx<0?Math.min(4,cur+1):Math.max(0,cur-1));
       },{passive:true});
     }
   });
@@ -3210,7 +3297,7 @@ function _ptog(id){
   if(ch)ch.style.transform=open?'':'rotate(90deg)';
 }
 function moisTab(idx){
-  for(let i=0;i<4;i++){
+  for(let i=0;i<5;i++){
     const btn=document.getElementById('mtp-'+i),tab=document.getElementById('mtc-'+i);
     if(btn){btn.style.background=i===idx?'var(--bg2)':'transparent';btn.style.boxShadow=i===idx?'0 1px 3px rgba(0,0,0,.2)':'none';btn.style.fontWeight=i===idx?'600':'400';btn.style.color=i===idx?'var(--text)':'var(--text3)';}
     if(tab){tab.style.visibility=i===idx?'':'hidden';tab.style.pointerEvents=i===idx?'':'none';}
@@ -3567,6 +3654,20 @@ function renderProfilesDropdown(){
         +'<div style="flex:1"><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:4px">CET initial (j)</label>'
         +'<input id="ps-cet-init" type="number" value="'+(pr.profile.cetInit||0)+'" onfocus="if(this.value)this.select()" '+'style="width:100%;height:36px;box-sizing:border-box;padding:6px 8px;border:0.5px solid var(--border);border-radius:var(--r);font-size:12px;background:var(--bg2);color:var(--text)"'+' ></div>'
         +'</div>'
+        // ── SECTION PAIE ──
+        +'<div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;margin-top:12px;padding-bottom:4px;border-bottom:0.5px solid var(--border)">Paie</div>'
+        +'<div style="display:flex;align-items:flex-end;gap:6px;margin-bottom:6px">'
+        +'<div style="flex:1"><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:4px">Qualification (€)</label>'
+        +'<input id="ps-salq" type="number" step="0.01" value="'+(pr.profile.salaireQualif!=null?pr.profile.salaireQualif:'')+'" placeholder="0" style="width:100%;height:36px;box-sizing:border-box;padding:6px 8px;border:0.5px solid var(--border);border-radius:var(--r);font-size:12px;background:var(--bg2);color:var(--text)"></div>'
+        +'<div style="flex:1"><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:4px">Ancienneté (€)</label>'
+        +'<input id="ps-salanc" type="number" step="0.01" value="'+(pr.profile.primeAnciennete!=null?pr.profile.primeAnciennete:'')+'" placeholder="0" style="width:100%;height:36px;box-sizing:border-box;padding:6px 8px;border:0.5px solid var(--border);border-radius:var(--r);font-size:12px;background:var(--bg2);color:var(--text)"></div>'
+        +'<div style="flex:1"><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:4px">H/mois</label>'
+        +'<input id="ps-heures" type="number" step="0.01" value="'+(pr.profile.heuresMensuelles!=null?pr.profile.heuresMensuelles:151.67)+'" style="width:100%;height:36px;box-sizing:border-box;padding:6px 8px;border:0.5px solid var(--border);border-radius:var(--r);font-size:12px;background:var(--bg2);color:var(--text)"></div>'
+        +'</div>'
+        +'<div style="display:flex;gap:16px;padding:4px 0;margin-bottom:6px">'
+        +'<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);cursor:pointer"><input id="ps-haspfa" type="checkbox"'+(pr.profile.hasPFA?' checked':'')+'> PFA</label>'
+        +'<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);cursor:pointer"><input id="ps-pfamens" type="checkbox"'+(pr.profile.pfaMensuelle?' checked':'')+'> Mensualisée</label>'
+        +'</div>'
         +'<button class="mb" style="width:100%;height:36px;font-size:12px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);margin-top:12px;margin-bottom:16px" data-pid="'+p.id+'" onclick="saveProfileFromDD(this.dataset.pid)">Enregistrer</button>'
         // ── SECTION GÉNÉRATION DES RENDUS ──
         +'<div '+'style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;margin-top:12px;padding-bottom:4px;border-bottom:0.5px solid var(--border)"'+'>Génération des rendus (M+1)</div>'
@@ -3632,6 +3733,11 @@ function saveProfileFromDD(pid){
   const mat=document.getElementById('ps-matelas');if(mat&&mat.value.trim()){const v=parseHM(mat.value);if(v>=0)pr.profile.matelas=v;}
   const eph2=document.getElementById('ps-eph');if(eph2&&eph2.value.trim()){const ev=parseHM(eph2.value);pr.profile.ephSolde=Math.round(ev/60*100)/100;pr.profile.ephSoldeCreatedYM=TODAY_YM;}
   const cetInit=document.getElementById('ps-cet-init');if(cetInit){const v=parseInt(cetInit.value);if(!isNaN(v)&&v>=0)pr.profile.cetInit=v;}
+  const _salq=document.getElementById('ps-salq');if(_salq)pr.profile.salaireQualif=parseFloat(_salq.value)||0;
+  const _salanc=document.getElementById('ps-salanc');if(_salanc)pr.profile.primeAnciennete=parseFloat(_salanc.value)||0;
+  const _psheur=document.getElementById('ps-heures');if(_psheur){const _hv=parseFloat(_psheur.value);if(_hv>0)pr.profile.heuresMensuelles=_hv;}
+  const _haspfa=document.getElementById('ps-haspfa');if(_haspfa)pr.profile.hasPFA=_haspfa.checked;
+  const _pfamens=document.getElementById('ps-pfamens');if(_pfamens)pr.profile.pfaMensuelle=_pfamens.checked;
   const newLine=pr.profile.anchorLine;
   _profs[pid]=pr;if(pid===_aid)S=pr;saveState();render();renderProfilesDropdown();gcalUpdateBtn();
   const _hpn=document.getElementById('hdr-profile-name');if(_hpn&&S.profile)_hpn.textContent=S.profile.name||'Profil';
