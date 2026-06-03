@@ -962,7 +962,18 @@ function setSoldeAnnee(year,val){
   if(!S.profile.congesParAnnee)S.profile.congesParAnnee={};
   S.profile.congesParAnnee[year]=val;
 }
-function getCET(){return(S.profile&&S.profile.congesCET)||0;}
+function getCETForYear(year){
+  if(S.profile&&S.profile.congesCET&&!S.profile.congesCETParAnnee){
+    S.profile.congesCETParAnnee={};
+    S.profile.congesCETParAnnee[NOW.getFullYear()]=S.profile.congesCET;
+    delete S.profile.congesCET;
+  }
+  return((S.profile&&S.profile.congesCETParAnnee)||{})[year]||0;
+}
+function getCET(){
+  const pa=(S.profile&&S.profile.congesCETParAnnee)||{};
+  return Object.values(pa).reduce(function(s,v){return s+(v||0);},0);
+}
 
 function calcCongesUsedForYear(year){
   // Filter conges keys to that year only, then apply full calcCongesUsed logic
@@ -1058,8 +1069,8 @@ function openCongesModal(){
       </div>
       <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Jours mis en réserve depuis le solde annuel</div>
       <div style="display:flex;gap:6px;align-items:center">
-        <button onclick="adjCET(-1)" style="flex:1;padding:8px;border:0.5px solid var(--border);border-radius:var(--r);background:transparent;color:var(--text2);cursor:pointer;font-size:12px">− 1 j</button>
-        <button onclick="adjCET(+1)" style="flex:1;padding:8px;border:0.5px solid var(--border2);border-radius:var(--r);background:rgba(224,152,48,.12);color:var(--amber);cursor:pointer;font-size:12px;font-weight:500">+ 1 j CET</button>
+        <button onclick="adjCET(-1,${nowY})" style="flex:1;padding:8px;border:0.5px solid var(--border);border-radius:var(--r);background:transparent;color:var(--text2);cursor:pointer;font-size:12px">− 1 j</button>
+        <button onclick="adjCET(+1,${nowY})" style="flex:1;padding:8px;border:0.5px solid var(--border2);border-radius:var(--r);background:rgba(224,152,48,.12);color:var(--amber);cursor:pointer;font-size:12px;font-weight:500">+ 1 j CET</button>
       </div>
       <div style="font-size:10px;color:var(--text3);margin-top:6px;text-align:center">Mettre en CET retire 1 j du solde de l'année en cours (${nowY})</div>
     </div>`;
@@ -1106,11 +1117,12 @@ function toggleFractForfait(year){
   saveState();updateCounters();openMergedRenduCgModal(6,1);
 }
 
-function adjCET(delta){
+function adjCET(delta,year){
   if(!S.profile)return;
-  const cet=getCET();
-  if(delta>0){S.profile.congesCET=(cet+1);}
-  else{if(cet<=0)return;S.profile.congesCET=Math.max(0,cet-1);}
+  if(!S.profile.congesCETParAnnee)S.profile.congesCETParAnnee={};
+  const cur=getCETForYear(year);
+  if(delta>0){S.profile.congesCETParAnnee[year]=(cur+1);}
+  else{if(cur<=0)return;S.profile.congesCETParAnnee[year]=Math.max(0,cur-1);}
   saveState();updateCounters();openMergedRenduCgModal(6,1);
 }
 
@@ -1439,7 +1451,7 @@ function goToMonth(m){
 // ================================================================
 function updateCounters(){
   const{gen,realEph,realAvail,prevEph,preExpiry,matelas,totalReal,totalPrev}=calcSoldes();
-  const cRest=Math.max(0,(function(){const _y=curY,_s=getSoldeAnnee(_y),_u=calcCongesUsedForYear(_y),_cet=getCET();const _cgK=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='cg'&&k.startsWith(_y+''));const _d1s=new Date(_y,0,15),_d1e=new Date(_y,2,15),_d2s=new Date(_y,8,15),_d2e=new Date(_y,10,30);let _w=0,_a=0;_cgK.forEach(function(k){const d=new Date(k+'T12:00:00');if(d>=_d1s&&d<=_d1e)_w++;if(d>=_d2s&&d<=_d2e)_a++;});const _ff=getFractForfait(_y);let _fl=0;for(const k of FERIES){if(!k.startsWith(_y+''))continue;const dw=new Date(k+'T12:00:00').getDay();if(dw===0||dw===6)_fl++;}return _s+getCongesAnc(_y)+(_ff?3:0)+(_w>=5?1:0)+(_a>=5?1:0)+Math.min(4,_fl)-_u-_cet;})());
+  const cRest=Math.max(0,(function(){const _y=curY,_s=getSoldeAnnee(_y),_u=calcCongesUsedForYear(_y),_cet=getCETForYear(_y);const _cgK=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='cg'&&k.startsWith(_y+''));const _d1s=new Date(_y,0,15),_d1e=new Date(_y,2,15),_d2s=new Date(_y,8,15),_d2e=new Date(_y,10,30);let _w=0,_a=0;_cgK.forEach(function(k){const d=new Date(k+'T12:00:00');if(d>=_d1s&&d<=_d1e)_w++;if(d>=_d2s&&d<=_d2e)_a++;});const _ff=getFractForfait(_y);let _fl=0;for(const k of FERIES){if(!k.startsWith(_y+''))continue;const dw=new Date(k+'T12:00:00').getDay();if(dw===0||dw===6)_fl++;}return _s+getCongesAnc(_y)+(_ff?3:0)+(_w>=5?1:0)+(_a>=5?1:0)+Math.min(4,_fl)-_u-_cet;})());
   // HS for current month (respect toggle and temporal settings)
   const settHS=settingsForYM(curY*12+curM);
   const useHSRendu=settHS.hsRendu;
@@ -2493,7 +2505,7 @@ function openMergedRenduCgModal(limit,tab){
   // === Congés ===
   const allCgKeys2=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='cg').sort();
   const nowY=curY;
-  const cet=getCET();
+  const cet=getCETForYear(nowY);
   // Only current year
   const soldeNow=getSoldeAnnee(nowY),usedNow=calcCongesUsedForYear(nowY);
   const ancNow=getCongesAnc(nowY);
@@ -2687,8 +2699,8 @@ function openMergedRenduCgModal(limit,tab){
     +`<div style="margin-top:16px;padding-top:14px;border-top:0.5px solid var(--border2)"><div style="padding:7px 10px;background:var(--bg3);border-radius:var(--r);border:0.5px solid var(--border);display:flex;align-items:center;gap:8px">
     <span style="font-size:10px;font-weight:600;color:var(--amber);flex:1">CET</span>
     <span style="font-size:13px;font-weight:700;color:var(--amber)" id="cet-val">${cet} j</span>
-    <button onclick="adjCET(-1)" style="padding:4px 10px;border:0.5px solid var(--border);border-radius:6px;background:transparent;color:var(--text2);cursor:pointer;font-size:11px">−</button>
-    <button onclick="adjCET(+1)" style="padding:4px 10px;border:0.5px solid var(--border2);border-radius:6px;background:rgba(224,152,48,.12);color:var(--amber);cursor:pointer;font-size:11px;font-weight:500">+</button>
+    <button onclick="adjCET(-1,${nowY})" style="padding:4px 10px;border:0.5px solid var(--border);border-radius:6px;background:transparent;color:var(--text2);cursor:pointer;font-size:11px">−</button>
+    <button onclick="adjCET(+1,${nowY})" style="padding:4px 10px;border:0.5px solid var(--border2);border-radius:6px;background:rgba(224,152,48,.12);color:var(--amber);cursor:pointer;font-size:11px;font-weight:500">+</button>
   </div></div>`
     +'</div>'
     +'<div id="rcc-2">'+recapRows+'</div>'
