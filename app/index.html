@@ -1086,10 +1086,24 @@ function adjSoldeAnnee(year,delta){
   const nv=Math.max(0,cur+delta);
   setSoldeAnnee(year,nv);
   saveState();
-  // Refresh just the cell
-  const el=document.getElementById('cpa-solde-'+year);
-  if(el)el.textContent=nv+' j';
   openMergedRenduCgModal(6,1);
+}
+function getCongesAnc(year){return(S.profile&&S.profile.congesAncParAnnee&&S.profile.congesAncParAnnee[year])||0;}
+function adjCongesAnc(year,delta){
+  if(!S.profile)return;
+  if(!S.profile.congesAncParAnnee)S.profile.congesAncParAnnee={};
+  S.profile.congesAncParAnnee[year]=Math.max(0,(S.profile.congesAncParAnnee[year]||0)+delta);
+  saveState();openMergedRenduCgModal(6,1);
+}
+function getFractForfait(year){
+  if(!S.profile||!S.profile.fractForfaitParAnnee)return true;
+  return S.profile.fractForfaitParAnnee[year]!==false;
+}
+function toggleFractForfait(year){
+  if(!S.profile)return;
+  if(!S.profile.fractForfaitParAnnee)S.profile.fractForfaitParAnnee={};
+  S.profile.fractForfaitParAnnee[year]=!getFractForfait(year);
+  saveState();openMergedRenduCgModal(6,1);
 }
 
 function adjCET(delta){
@@ -2495,47 +2509,43 @@ function openMergedRenduCgModal(limit,tab){
   const cet=getCET();
   // Only current year
   const soldeNow=getSoldeAnnee(nowY),usedNow=calcCongesUsedForYear(nowY);
+  const ancNow=getCongesAnc(nowY);
   // Fractionnés
   const _cgNowY=allCgKeys2.filter(k=>k.startsWith(nowY+''));
   const _d1s=new Date(nowY,0,15),_d1e=new Date(nowY,2,15);
   const _d2s=new Date(nowY,8,15),_d2e=new Date(nowY,10,30);
   let cgWinter=0,cgAutumn=0;
   _cgNowY.forEach(function(k){const d=new Date(k+'T12:00:00');if(d>=_d1s&&d<=_d1e)cgWinter++;if(d>=_d2s&&d<=_d2e)cgAutumn++;});
-  const createdYM=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:TODAY_YM;
-  const hasSeniority=createdYM<=nowY*12;
-  const fractBase=hasSeniority?3:0;
-  const fractTotal=fractBase+(cgWinter>=5?1:0)+(cgAutumn>=5?1:0);
+  const fractForfait=getFractForfait(nowY);
+  const fractBase=fractForfait?3:0;
+  const fractHiver=cgWinter>=5?1:0,fractAutomne=cgAutumn>=5?1:0;
+  const fractTotal=fractBase+fractHiver+fractAutomne;
   // Flottants
   let flottants=0;
   for(const k of FERIES){if(!k.startsWith(nowY+''))continue;const dw=new Date(k+'T12:00:00').getDay();if(dw===0||dw===6)flottants++;}
   flottants=Math.min(4,flottants);
-  // Effective total = base + fractionnés + flottants
-  const soldeEffectif=soldeNow+fractTotal+flottants;
+  // Effective total
+  const soldeEffectif=soldeNow+ancNow+fractTotal+flottants;
   const restNow=Math.max(0,soldeEffectif-usedNow);
-  const cgSection=`
-    <div style="margin-bottom:12px">
-      <div class="dd-title">${nowY}</div>
-      <div class="recap-row"><span>Congés de base</span><div style="display:flex;align-items:center;gap:6px">
-        <button onclick="adjSoldeAnnee(${nowY},-1)" style="width:20px;height:20px;border-radius:50%;border:0.5px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center">−</button>
-        <span id="cpa-solde-${nowY}" style="font-size:12px;font-weight:600;min-width:26px;text-align:center">${soldeNow} j</span>
-        <button onclick="adjSoldeAnnee(${nowY},+1)" style="width:20px;height:20px;border-radius:50%;border:0.5px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center">+</button>
-      </div></div>
-      <div class="recap-row"><span>Fractionnés</span><b style="color:var(--green)">+${fractTotal} j</b></div>
-      <div class="recap-row"><span>Flottants</span><b style="color:var(--green)">+${flottants} j</b></div>
-      <div class="recap-row" style="margin-top:4px;padding-top:4px;border-top:0.5px solid var(--border2)"><span style="font-weight:500">Total solde</span><b style="color:var(--text)">${soldeEffectif} j</b></div>
-      <div class="recap-row" style="margin-top:2px"><span>Posés</span><b style="color:var(--rend-text)">−${usedNow} j</b></div>
-      <div class="recap-row"><span style="font-weight:600">Restants</span><b style="color:${restNow>0?'var(--green)':'var(--text3)'};">${restNow} j</b></div>
-    </div>
-    <div style="margin-bottom:12px;padding-top:10px;border-top:0.5px solid var(--border2)">
-      <div class="dd-title">Jours fractionnés</div>
-      <div class="recap-row"><span>Forfait ancienneté</span><b style="color:${hasSeniority?'var(--green)':'var(--text3)'}">${fractBase} j</b></div>
-      <div class="recap-row"><span>Hiver 15/01–15/03 <span style="color:var(--text3);font-size:10px">${cgWinter}/5j</span></span><b style="color:${cgWinter>=5?'var(--green)':'var(--text3)'}">+${cgWinter>=5?1:0} j</b></div>
-      <div class="recap-row"><span>Automne 15/09–30/11 <span style="color:var(--text3);font-size:10px">${cgAutumn}/5j</span></span><b style="color:${cgAutumn>=5?'var(--green)':'var(--text3)'}">+${cgAutumn>=5?1:0} j</b></div>
-    </div>
-    <div style="margin-bottom:12px;padding-top:10px;border-top:0.5px solid var(--border2)">
-      <div class="dd-title">Jours flottants</div>
-      <div class="recap-row"><span>Fériés tombant sam./dim.</span><b style="color:var(--green)">${flottants} j</b></div>
-    </div>`;
+  const _adjBtn=(fn,arg,lbl)=>`<button onclick="${fn}(${arg})" style="width:20px;height:20px;border-radius:50%;border:0.5px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center">${lbl}</button>`;
+  const _rr=(label,val,color='var(--text2)',right='')=>`<div class="recap-row"><span>${label}</span><div style="display:flex;align-items:center;gap:6px">${right}<b style="color:${color};min-width:28px;text-align:right">${val}</b></div></div>`;
+  const _adjRow=(label,val,fn,arg)=>`<div class="recap-row"><span>${label}</span><div style="display:flex;align-items:center;gap:6px">${_adjBtn(fn,arg+',−1','−')}<b style="min-width:26px;text-align:center;font-size:12px">${val} j</b>${_adjBtn(fn,arg+',+1','+')}</div></div>`;
+  const _toggleStyle=fractForfait?'background:var(--rend-text);color:#fff;border-color:var(--rend-text)':'background:transparent;color:var(--text3);border-color:var(--border)';
+  const cgSection=
+    `<div class="dd-title">${nowY}</div>`
+    +_adjRow('Congés principaux',soldeNow,'adjSoldeAnnee',nowY)
+    +_adjRow('Jours d\'ancienneté',ancNow,'adjCongesAnc',nowY)
+    +`<div style="margin:10px 0 6px;padding-top:10px;border-top:0.5px solid var(--border2);font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">Fractionnés</div>`
+    +`<div class="recap-row"><span>Forfait ancienneté</span><div style="display:flex;align-items:center;gap:8px"><button onclick="toggleFractForfait(${nowY})" style="font-size:10px;padding:2px 8px;border-radius:4px;border:0.5px solid;cursor:pointer;font-family:inherit;${_toggleStyle}">${fractForfait?'Actif':'Inactif'}</button><b style="color:${fractForfait?'var(--green)':'var(--text3)'};min-width:28px;text-align:right">${fractBase} j</b></div></div>`
+    +`<div class="recap-row"><span>Hiver 15/01–15/03 <span style="color:${cgWinter>=5?'var(--rend-text)':'var(--red)'};font-size:10px">${cgWinter}/5j</span></span><b style="color:${fractHiver?'var(--green)':'var(--text3)'};">${fractHiver} j</b></div>`
+    +`<div class="recap-row"><span>Automne 15/09–30/11 <span style="color:${cgAutumn>=5?'var(--rend-text)':'var(--red)'};font-size:10px">${cgAutumn}/5j</span></span><b style="color:${fractAutomne?'var(--green)':'var(--text3)'};">${fractAutomne} j</b></div>`
+    +`<div style="margin:10px 0 6px;padding-top:10px;border-top:0.5px solid var(--border2);font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">Flottants</div>`
+    +`<div class="recap-row"><span>Fériés tombant sam./dim.</span><b style="color:${flottants>0?'var(--green)':'var(--text3)'}">${flottants} j</b></div>`
+    +`<div style="margin-top:12px;padding-top:10px;border-top:0.5px solid var(--border2)">`
+    +`<div class="recap-row"><span>Total</span><b style="color:var(--text)">${soldeEffectif} j</b></div>`
+    +`<div class="recap-row"><span>Posés</span><b style="color:var(--rend-text)">−${usedNow} j</b></div>`
+    +`<div class="recap-row"><span style="font-weight:600">Restants</span><b style="color:${restNow>0?'var(--green)':'var(--text3)'};">${restNow} j</b></div>`
+    +`</div>`;
   const _viewedYM=(typeof curY!=='undefined'&&typeof curM!=='undefined')?curY*12+curM:TODAY_YM;
   const {total:dispoMois,stockActif,reserved,reservedMonths,afterStep1,reservedDetail,genSnapshot}=calcTrueDispo(_viewedYM);
   const rcgUsedCurY=calcCongesUsedForYear(nowY);
