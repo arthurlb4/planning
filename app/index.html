@@ -1452,7 +1452,7 @@ function goToMonth(m){
 // ================================================================
 function updateCounters(){
   const{gen,realEph,realAvail,prevEph,preExpiry,matelas,totalReal,totalPrev}=calcSoldes();
-  const cRest=Math.max(0,getSoldeAnnee(curY)-calcCongesUsedForYear(curY));
+  const cRest=Math.max(0,(function(){const _y=curY,_s=getSoldeAnnee(_y),_u=calcCongesUsedForYear(_y);const _cgK=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='cg'&&k.startsWith(_y+''));const _d1s=new Date(_y,0,15),_d1e=new Date(_y,2,15),_d2s=new Date(_y,8,15),_d2e=new Date(_y,10,30);let _w=0,_a=0;_cgK.forEach(function(k){const d=new Date(k+'T12:00:00');if(d>=_d1s&&d<=_d1e)_w++;if(d>=_d2s&&d<=_d2e)_a++;});const _ff=getFractForfait(_y);let _fl=0;for(const k of FERIES){if(!k.startsWith(_y+''))continue;const dw=new Date(k+'T12:00:00').getDay();if(dw===0||dw===6)_fl++;}return _s+getCongesAnc(_y)+(_ff?3:0)+(_w>=5?1:0)+(_a>=5?1:0)+Math.min(4,_fl)-_u;})());
   // HS for current month (respect toggle and temporal settings)
   const settHS=settingsForYM(curY*12+curM);
   const useHSRendu=settHS.hsRendu;
@@ -2529,21 +2529,23 @@ function openMergedRenduCgModal(limit,tab){
   const restNow=Math.max(0,soldeEffectif-usedNow);
   const _adjBtn=(fn,arg,lbl)=>`<button onclick="${fn}(${arg})" style="width:20px;height:20px;border-radius:50%;border:0.5px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center">${lbl}</button>`;
   const _rr=(label,val,color='var(--text2)',right='')=>`<div class="recap-row"><span>${label}</span><div style="display:flex;align-items:center;gap:6px">${right}<b style="color:${color};min-width:28px;text-align:right">${val}</b></div></div>`;
-  const _adjRow=(label,val,fn,arg)=>`<div class="recap-row"><span>${label}</span><div style="display:flex;align-items:center;gap:6px">${_adjBtn(fn,arg+',−1','−')}<b style="min-width:26px;text-align:center;font-size:12px">${val} j</b>${_adjBtn(fn,arg+',+1','+')}</div></div>`;
+  const _adjRow=(label,val,fn,arg)=>`<div class="recap-row"><span>${label}</span><div style="display:flex;align-items:center;gap:6px">${_adjBtn(fn,arg+',-1','−')}<b style="min-width:26px;text-align:center;font-size:12px">${val} j</b>${_adjBtn(fn,arg+',1','+')}</div></div>`;
+  const _secTitle=(t)=>`<div style="margin:10px 0 4px;padding-top:10px;border-top:0.5px solid var(--border2);font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">${t}</div>`;
   const _toggleStyle=fractForfait?'background:var(--rend-text);color:#fff;border-color:var(--rend-text)':'background:transparent;color:var(--text3);border-color:var(--border)';
+  const _per=(t)=>`<span style="font-style:italic;font-size:9px;color:var(--text3)">${t}</span>`;
   const cgSection=
-    `<div class="dd-title">${nowY}</div>`
+    `<div style="font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Principaux</div>`
     +_adjRow('Congés principaux',soldeNow,'adjSoldeAnnee',nowY)
     +_adjRow('Jours d\'ancienneté',ancNow,'adjCongesAnc',nowY)
-    +`<div style="margin:10px 0 6px;padding-top:10px;border-top:0.5px solid var(--border2);font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">Fractionnés</div>`
-    +`<div class="recap-row"><span>Forfait ancienneté</span><div style="display:flex;align-items:center;gap:8px"><button onclick="toggleFractForfait(${nowY})" style="font-size:10px;padding:2px 8px;border-radius:4px;border:0.5px solid;cursor:pointer;font-family:inherit;${_toggleStyle}">${fractForfait?'Actif':'Inactif'}</button><b style="color:${fractForfait?'var(--green)':'var(--text3)'};min-width:28px;text-align:right">${fractBase} j</b></div></div>`
-    +`<div class="recap-row"><span>Hiver 15/01–15/03 <span style="color:${cgWinter>=5?'var(--rend-text)':'var(--red)'};font-size:10px">${cgWinter}/5j</span></span><b style="color:${fractHiver?'var(--green)':'var(--text3)'};">${fractHiver} j</b></div>`
-    +`<div class="recap-row"><span>Automne 15/09–30/11 <span style="color:${cgAutumn>=5?'var(--rend-text)':'var(--red)'};font-size:10px">${cgAutumn}/5j</span></span><b style="color:${fractAutomne?'var(--green)':'var(--text3)'};">${fractAutomne} j</b></div>`
-    +`<div style="margin:10px 0 6px;padding-top:10px;border-top:0.5px solid var(--border2);font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em">Flottants</div>`
-    +`<div class="recap-row"><span>Fériés tombant sam./dim.</span><b style="color:${flottants>0?'var(--green)':'var(--text3)'}">${flottants} j</b></div>`
+    +_secTitle('Fractionnés')
+    +`<div class="recap-row" style="align-items:center"><span>Forfait ancienneté</span><div style="display:flex;align-items:center;gap:8px"><button onclick="toggleFractForfait(${nowY})" style="font-size:10px;padding:1px 7px;border-radius:4px;border:0.5px solid;cursor:pointer;font-family:inherit;line-height:1.4;${_toggleStyle}">${fractForfait?'Actif':'Inactif'}</button><b style="color:${fractForfait?'var(--green)':'var(--text3)'};min-width:28px;text-align:right">${fractBase} j</b></div></div>`
+    +`<div class="recap-row"><span>Hiver ${_per('15/01–15/03')} <span style="color:${cgWinter>=5?'var(--rend-text)':'var(--red)'};font-size:10px">${cgWinter}/5j</span></span><b style="color:${fractHiver?'var(--green)':'var(--text3)'};">${fractHiver} j</b></div>`
+    +`<div class="recap-row"><span>Automne ${_per('15/09–30/11')} <span style="color:${cgAutumn>=5?'var(--rend-text)':'var(--red)'};font-size:10px">${cgAutumn}/5j</span></span><b style="color:${fractAutomne?'var(--green)':'var(--text3)'};">${fractAutomne} j</b></div>`
+    +_secTitle('Flottants')
+    +`<div class="recap-row"><span>Fériés sam./dim.</span><b style="color:${flottants>0?'var(--green)':'var(--text3)'}">${flottants} j</b></div>`
     +`<div style="margin-top:12px;padding-top:10px;border-top:0.5px solid var(--border2)">`
     +`<div class="recap-row"><span>Total</span><b style="color:var(--text)">${soldeEffectif} j</b></div>`
-    +`<div class="recap-row"><span>Posés</span><b style="color:var(--rend-text)">−${usedNow} j</b></div>`
+    +`<div class="recap-row"><span>Posés</span><b style="color:var(--red)">−${usedNow} j</b></div>`
     +`<div class="recap-row"><span style="font-weight:600">Restants</span><b style="color:${restNow>0?'var(--green)':'var(--text3)'};">${restNow} j</b></div>`
     +`</div>`;
   const _viewedYM=(typeof curY!=='undefined'&&typeof curM!=='undefined')?curY*12+curM:TODAY_YM;
