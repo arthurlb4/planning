@@ -1486,7 +1486,7 @@ function updateCounters(){
     rawLowTotal+=hsW.rawLow;rawHighTotal+=hsW.rawHigh;
   }}
   const mym=curY*12+curM,gm=gen[mym]||{};const gt=((gm.dim||0)+(gm.rh||0)+(gm.fer||0)+(gm.hs||0)+(gm.ram||0));// excludes solde initial
-  const panCount=calcPaniersMois(curY,curM);const primes=calcPrimesMois(curY,curM);
+  const panCount=calcPaniersMois(curY,curM);const primes=calcPrimesMois(curY,curM);const nuitTotal=calcNuitMois(curY,curM);
   const el=document.getElementById('ctr-main');if(!el)return;
   // Detail dots for "Créés ce mois"
   function detRow(color,val,lbl){return val>0?'<div style="display:flex;justify-content:center;align-items:center;width:100%;line-height:1.7"><span style="font-size:10px;color:var(--text3);padding-right:3px;width:26px;flex-shrink:0;text-align:right">'+lbl+'</span><span class="rdot" style="background:'+color+';flex-shrink:0;margin-right:3px"></span><span style="width:0.5px;height:9px;background:var(--border2);flex-shrink:0"></span><span style="padding-left:3px;font-size:10px;color:var(--text3);width:36px;flex-shrink:0;overflow:hidden">'+fmtMin(val)+'</span></div>':'';}
@@ -1518,6 +1518,7 @@ function updateCounters(){
         ${primes.antenne?`<div style="display:flex;justify-content:center;align-items:center;width:100%"><span style="font-size:10px;color:var(--text3);padding-right:4px;min-width:46px;text-align:right;display:inline-block">Antenne</span><span style="width:0.5px;height:9px;background:var(--border2);flex-shrink:0"></span><span style="padding-left:4px;color:var(--amber);font-size:13px;font-weight:600;min-width:20px">${primes.antenne}</span></div>`:''}
         ${primes.reel?`<div style="display:flex;justify-content:center;align-items:center;width:100%"><span style="font-size:10px;color:var(--text3);padding-right:4px;min-width:46px;text-align:right;display:inline-block">Réal</span><span style="width:0.5px;height:9px;background:var(--border2);flex-shrink:0"></span><span style="padding-left:4px;color:var(--amber);font-size:13px;font-weight:600;min-width:20px">${primes.reel}</span></div>`:''}
         ${primes.coord?`<div style="display:flex;justify-content:center;align-items:center;width:100%"><span style="font-size:10px;color:var(--text3);padding-right:4px;min-width:46px;text-align:right;display:inline-block">Coord</span><span style="width:0.5px;height:9px;background:var(--border2);flex-shrink:0"></span><span style="padding-left:4px;color:var(--amber);font-size:13px;font-weight:600;min-width:20px">${primes.coord}</span></div>`:''}
+        ${nuitTotal?`<div style="display:flex;justify-content:center;align-items:center;width:100%"><span style="font-size:10px;color:var(--text3);padding-right:4px;min-width:46px;text-align:right;display:inline-block">Nuit</span><span style="width:0.5px;height:9px;background:var(--border2);flex-shrink:0"></span><span style="padding-left:4px;color:var(--amber);font-size:13px;font-weight:600;min-width:20px">${fmtMin(nuitTotal)}</span></div>`:''}
       </div>
     </div>
   </div>`;
@@ -1643,6 +1644,41 @@ function calcPrimesMois(y,m){
   let antenne=0,reel=0,coord=0;const last=new Date(y,m+1,0).getDate();const VAC=getVAC();
   for(let d=1;d<=last;d++){const date=new Date(y,m,d),key=dk(date);if((S.conges||{})[key])continue;const{vac,absent,echange,ecSelf}=getVac(date);if(absent)continue;if(echange&&!ecSelf)continue;if(!vac||vac==='RH')continue;const v=VAC[vac];if(!v||!v.primes)continue;if(v.primes.antenne)antenne++;if(v.primes.reel)reel++;if(v.primes.coord)coord++;}
   return{antenne,reel,coord};
+}
+function calcNuitMinShift(v){
+  if(!v||!v.deb||!v.fin)return 0;
+  let deb=_toMinApp(v.deb),fin=_toMinApp(v.fin);
+  if(deb===null||fin===null)return 0;
+  if(fin<deb)fin+=1440;
+  const n1=Math.max(0,Math.min(fin,360)-Math.max(deb,0));     // 0h-6h (matin)
+  const n2=Math.max(0,Math.min(fin,1440)-Math.max(deb,1260)); // 21h-24h
+  const n3=Math.max(0,Math.min(fin,1800)-Math.max(deb,1440)); // 0h-6h (après minuit)
+  return n1+n2+n3;
+}
+function calcNuitWeek(monday){
+  const VAC=getVAC();let nuit=0;
+  for(let i=0;i<7;i++){
+    const d=new Date(monday);d.setDate(monday.getDate()+i);
+    const key=dk(d);const{vac,absent,echange,ecSelf}=getVac(d);
+    if(absent)continue;
+    const _cg=(S.conges||{})[key];
+    if(_cg&&(_cg==='cg'||_cg==='rend'||_cg==='rend-hist'||_cg==='absent'))continue;
+    if(echange&&!ecSelf)continue;
+    if(!vac||vac==='RH')continue;
+    nuit+=calcNuitMinShift(VAC[vac]);
+  }
+  return nuit;
+}
+function calcNuitMois(y,m){
+  const mym=y*12+m,seenW=new Set(),last=new Date(y,m+1,0).getDate();let total=0;
+  for(let dd=-6;dd<last;dd++){
+    const date=new Date(y,m,1+dd),mon=getMonday(date),mk=dk(mon);
+    if(seenW.has(mk))continue;seenW.add(mk);
+    const sun=new Date(mon);sun.setDate(mon.getDate()+6);
+    if(sun.getFullYear()*12+sun.getMonth()!==mym)continue;
+    total+=calcNuitWeek(mon);
+  }
+  return total;
 }
 
 function openPaniersModal(){
@@ -2997,7 +3033,15 @@ function openMergedMoisModal(mym,tab){
     });
     return h;
   }
-  let paniersHtml=pSec('Paniers',paniers)+pSec('Prime antenne',pa)+pSec('Prime réal',pr)+pSec('Prime coord',pc);
+  const _nuitRows=[];const _seenWN=new Set();
+  for(let dd=-6;dd<last;dd++){const _dn=new Date(y,m,1+dd),_mn=getMonday(_dn),_mkn=dk(_mn);if(_seenWN.has(_mkn))continue;_seenWN.add(_mkn);const _sn=new Date(_mn);_sn.setDate(_mn.getDate()+6);if(_sn.getFullYear()*12+_sn.getMonth()!==mym)continue;const _nm=calcNuitWeek(_mn);if(_nm>0)_nuitRows.push({wk:getISOWeek(_mn),min:_nm});}
+  const _nuitTotal=_nuitRows.reduce((s,r)=>s+r.min,0);
+  let _nuitSec='';
+  if(_nuitRows.length>0){
+    _nuitSec='<div class="btit" style="margin-top:10px;margin-bottom:4px">Heures de nuit <span style="font-weight:400;color:var(--text3)">('+fmtMin(_nuitTotal)+')</span></div>';
+    _nuitRows.forEach(r=>{_nuitSec+='<div style="display:flex;justify-content:space-between;font-size:11px;padding:4px 0;border-bottom:0.5px solid var(--border2)"><span style="color:var(--text)">Semaine '+r.wk+'</span><b style="color:var(--text2)">'+fmtMin(r.min)+'</b></div>';});
+  }
+  let paniersHtml=pSec('Paniers',paniers)+pSec('Prime antenne',pa)+pSec('Prime réal',pr)+pSec('Prime coord',pc)+_nuitSec;
   if(!paniersHtml)paniersHtml='<div style="font-size:11px;color:var(--text3);padding:6px 0">Aucun ce mois.</div>';
 
   // === Heures sup. ===
