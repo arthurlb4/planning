@@ -1717,7 +1717,7 @@ function openPaniersModal(){
       const days=wmap[wk],id='_pa'+(++_pid2);
       h+='<div onclick="_ptog(\''+id+'\')" style="font-size:11px;padding:5px 0;border-bottom:0.5px solid var(--border2);cursor:pointer">'
         +'<div style="display:flex;justify-content:space-between;margin-bottom:0">'
-        +'<span style="font-weight:600;color:var(--text)"><span id="'+id+'c" style="display:inline-block;transition:transform .15s;margin-right:4px">›</span>Semaine '+wk+'</span>'
+        +'<span style="font-weight:500;color:var(--text)"><span id="'+id+'c" style="display:inline-block;transition:transform .15s;margin-right:4px">›</span>Semaine '+wk+'</span>'
         +'<span style="color:var(--text2)">'+days.length+'j</span>'
         +'</div>'
         +'<div id="'+id+'" style="display:none">'
@@ -3028,7 +3028,7 @@ function openMergedMoisModal(mym,tab){
       const days=wmap[wk],id='_pm'+(++_pid);
       h+='<div onclick="_ptog(\''+id+'\')" style="font-size:11px;padding:5px 0;border-bottom:0.5px solid var(--border2);cursor:pointer">'
         +'<div style="display:flex;justify-content:space-between">'
-        +'<span style="font-weight:600;color:var(--text)"><span id="'+id+'c" style="display:inline-block;transition:transform .15s;margin-right:4px">›</span>Semaine '+wk+'</span>'
+        +'<span style="font-weight:500;color:var(--text)"><span id="'+id+'c" style="display:inline-block;transition:transform .15s;margin-right:4px">›</span>Semaine '+wk+'</span>'
         +'<span style="color:var(--text2)">'+days.length+'j</span>'
         +'</div>'
         +'<div id="'+id+'" style="display:none">'
@@ -3039,16 +3039,36 @@ function openMergedMoisModal(mym,tab){
     return h;
   }
   const _nuitRows=[];const _seenWN=new Set();
-  for(let dd=-6;dd<last;dd++){const _dn=new Date(y,m,1+dd),_mn=getMonday(_dn),_mkn=dk(_mn);if(_seenWN.has(_mkn))continue;_seenWN.add(_mkn);const _sn=new Date(_mn);_sn.setDate(_mn.getDate()+6);if(_sn.getFullYear()*12+_sn.getMonth()!==mym)continue;const _nm=calcNuitWeek(_mn);if(_nm>0)_nuitRows.push({wk:getISOWeek(_mn),min:_nm});}
+  for(let dd=-6;dd<last;dd++){
+    const _dn=new Date(y,m,1+dd),_mn=getMonday(_dn),_mkn=dk(_mn);
+    if(_seenWN.has(_mkn))continue;_seenWN.add(_mkn);
+    const _sn=new Date(_mn);_sn.setDate(_mn.getDate()+6);
+    if(_sn.getFullYear()*12+_sn.getMonth()!==mym)continue;
+    const _days=[];
+    for(let i=0;i<7;i++){const _dd=new Date(_mn);_dd.setDate(_mn.getDate()+i);const _kd=dk(_dd);const{vac:_vn,absent:_ab,echange:_ec,ecSelf:_es}=getVac(_dd);if(_ab)continue;const _cgd=(S.conges||{})[_kd];if(_cgd&&(_cgd==='cg'||_cgd==='rend'||_cgd==='rend-hist'||_cgd==='absent'))continue;if(_ec&&!_es)continue;if(!_vn||_vn==='RH')continue;const _nm2=calcNuitMinShift(VAC[_vn]);if(_nm2>0){const _ji=_dd.getDay();_days.push({lbl:JOURS_L[_ji===0?6:_ji-1]+' '+_dd.getDate()+' '+MLf[m].toLowerCase(),vac:_vn,min:_nm2});}}
+    const _wkMin=_days.reduce((s,d)=>s+d.min,0);
+    if(_wkMin>0)_nuitRows.push({wk:getISOWeek(_mn),min:_wkMin,days:_days});
+  }
   const _nuitTotal=_nuitRows.reduce((s,r)=>s+r.min,0);
   let paniersHtml=pSec('Paniers',paniers)+pSec('Prime antenne',pa)+pSec('Prime réal',pr)+pSec('Prime coord',pc);
   if(!paniersHtml)paniersHtml='<div style="font-size:11px;color:var(--text3);padding:6px 0">Aucun ce mois.</div>';
+  let _nid=0;
   let nuitSection='';
   if(_nuitRows.length>0){
     nuitSection='<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;margin-bottom:8px"><span style="font-size:11px;color:var(--text3)">total</span><b style="font-size:15px;color:#9c7fe0">'+fmtMin(_nuitTotal)+'</b></div>'
-      +'<div class="sep" style="margin-bottom:8px"></div>'
-      +'<div class="btit" style="margin-bottom:4px">Détail par semaine</div>';
-    _nuitRows.forEach(r=>{nuitSection+='<div style="display:flex;justify-content:space-between;font-size:11px;padding:4px 0;border-bottom:0.5px solid var(--border2)"><span style="color:var(--text)">Semaine '+r.wk+'</span><b style="color:#9c7fe0">'+fmtMin(r.min)+'</b></div>';});
+      +'<div class="sep" style="margin-bottom:8px"></div>';
+    _nuitRows.forEach(r=>{
+      const id='_pn'+(++_nid);
+      nuitSection+='<div onclick="_ptog(\''+id+'\')" style="font-size:11px;padding:5px 0;border-bottom:0.5px solid var(--border2);cursor:pointer">'
+        +'<div style="display:flex;justify-content:space-between">'
+        +'<span style="font-weight:500;color:var(--text)"><span id="'+id+'c" style="display:inline-block;transition:transform .15s;margin-right:4px">›</span>Semaine '+r.wk+'</span>'
+        +'<b style="color:#9c7fe0">'+fmtMin(r.min)+'</b>'
+        +'</div>'
+        +'<div id="'+id+'" style="display:none">'
+        +r.days.map(d=>'<div style="display:flex;justify-content:space-between;padding:1px 0 1px 8px"><span style="color:var(--text3)">'+d.lbl+'<span style="margin-left:5px;color:var(--text3);font-size:10px;opacity:.7">'+d.vac+'</span></span><b style="color:#9c7fe0">'+fmtMin(d.min)+'</b></div>').join('')
+        +'</div>'
+        +'</div>';
+    });
   }else{
     nuitSection='<div style="font-size:11px;color:var(--text3);padding:6px 0">Aucune heure de nuit ce mois.</div>';
   }
