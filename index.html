@@ -91,9 +91,17 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         <div class="field"><label>Ligne actuelle</label><select id="reg-line" style="width:100%;padding:10px 12px;background:var(--bg);border:0.5px solid var(--border);border-radius:var(--r);color:var(--text);font-size:14px;-webkit-appearance:none"></select></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
           <div class="field" style="margin-bottom:0"><label>Matelas (h)</label><input type="text" id="reg-matelas" placeholder="ex: 5h30"></div>
-          <div class="field" style="margin-bottom:0"><label>Congés / an</label><input type="number" id="reg-conges" value="25"></div>
+          <div class="field" style="margin-bottom:0"><label>Rendus éphem. (h)</label><input type="text" id="reg-eph" placeholder="ex: 10h00"></div>
         </div>
-        <div class="field"><label>Rendus éphem. initiaux (h)</label><input type="text" id="reg-eph" placeholder="ex: 10h00"></div>
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;margin-top:4px">Paie <span style="font-style:italic;font-weight:400;text-transform:none;font-size:10px">(optionnel)</span></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+          <div class="field" style="margin-bottom:0"><label>Palier</label><input type="number" id="reg-palier" placeholder="ex: 19" min="1" max="60"></div>
+          <div class="field" style="margin-bottom:0"><label>Ancienneté (ans)</label><input type="number" id="reg-anc" placeholder="ex: 7" min="0"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
+          <div class="field" style="margin-bottom:0"><label>Contrat (%)</label><input type="number" id="reg-pct" placeholder="ex: 100" min="1" max="200"></div>
+          <div class="field" style="margin-bottom:0;display:flex;align-items:flex-end;padding-bottom:2px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="checkbox" id="reg-pfamens"> PFA mensualisée</label></div>
+        </div>
         <div style="margin-bottom:14px">
           <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Génération des rendus</div>
           <div style="display:flex;flex-direction:column;gap:2px">
@@ -300,9 +308,12 @@ async function doRegister() {
   const pwd = document.getElementById('reg-pwd').value;
   // Profile data
   const regLineIdx = parseInt(document.getElementById('reg-line')?.value||'0');
-  const regConges = parseInt(document.getElementById('reg-conges')?.value||'25');
   const regMatelasRaw = document.getElementById('reg-matelas')?.value||'';
   const regEphRaw = document.getElementById('reg-eph')?.value||'';
+  const regPalier = parseInt(document.getElementById('reg-palier')?.value||'');
+  const regAnc = parseFloat(document.getElementById('reg-anc')?.value||'');
+  const regPct = parseFloat(document.getElementById('reg-pct')?.value||'');
+  const regPfaMens = document.getElementById('reg-pfamens')?.checked||false;
   function parseHMLogin(str){
     if(!str)return 0;
     str=str.trim().replace(',','.');
@@ -339,8 +350,16 @@ async function doRegister() {
     localStorage.setItem('auth_token', data.token);
     localStorage.setItem('auth_user', JSON.stringify({ userId: data.userId, name: data.name, email: data.email }));
     // Save profile in the format expected by the app (pl_v8)
+    const _todayYM = new Date().getFullYear()*12+new Date().getMonth();
     const profileData = {
-      profile:{name,anchorLine:regAnchorLine,matelas:regMatelas,congesInit:regConges,ephSolde:Math.round(regEph/60*100)/100,ephSoldeCreatedYM:new Date().getFullYear()*12+new Date().getMonth(),gcalAutoSync:false},
+      profile:{
+        name, anchorLine:regAnchorLine, matelas:regMatelas, congesInit:25,
+        ephSolde:Math.round(regEph/60*100)/100, ephSoldeCreatedYM:_todayYM,
+        gcalAutoSync:false, pfaMensuelle:regPfaMens, hasSeenPayPrompt:true,
+        ...(!isNaN(regPalier)&&regPalier>=1 ? {palierNum:regPalier} : {}),
+        ...(!isNaN(regAnc)&&regAnc>=0 ? {ancYears:regAnc, ancRefYM:_todayYM} : {}),
+        ...(!isNaN(regPct)&&regPct>0 ? {heuresMensuelles:Math.round(regPct*151.67/100*100)/100} : {}),
+      },
       settings:{dimRendu:!!document.getElementById('reg-dim')?.checked,rhRendu:!!document.getElementById('reg-rh')?.checked,ferRendu:!!document.getElementById('reg-fer')?.checked,hsRendu:!!document.getElementById('reg-hs')?.checked,theme:'dark'},
       overrides:{},conges:{},history:[],customVacs:{}
     };
