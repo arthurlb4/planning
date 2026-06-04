@@ -3132,25 +3132,39 @@ function openMergedMoisModal(mym,tab){
       if(v.primes){if(v.primes.antenne)pa.push(entry);if(v.primes.reel)pr.push(entry);if(v.primes.coord)pc.push(entry);}
     }
   }
-  let _pid=0;
-  function pSec(title,entries){
-    if(!entries.length)return'';
-    const weeks=[],wmap={};
-    entries.forEach(e=>{if(!wmap[e.wk]){wmap[e.wk]=[];weeks.push(e.wk);}wmap[e.wk].push(e);});
-    let h='<div class="btit" style="margin-top:10px;margin-bottom:4px">'+title+' <span style="font-weight:400;color:var(--text3)">('+entries.length+')</span></div>';
-    weeks.forEach(wk=>{
-      const days=wmap[wk],id='_pm'+(++_pid);
-      h+='<div onclick="_ptog(\''+id+'\')" style="font-size:11px;padding:5px 0;border-bottom:0.5px solid var(--border2);cursor:pointer">'
-        +'<div style="display:flex;justify-content:space-between">'
-        +'<span style="font-weight:500;color:var(--text)"><span id="'+id+'c" style="display:inline-block;transition:transform .15s;margin-right:4px">›</span>Semaine '+wk+'</span>'
-        +'<span style="color:var(--text2)">'+days.length+'j</span>'
-        +'</div>'
-        +'<div id="'+id+'" style="display:none">'
-        +days.map(e=>'<div style="display:flex;justify-content:space-between;padding:1px 0 1px 8px"><span style="color:var(--text3)">'+e.lbl+'</span><b style="color:var(--amber)">'+e.vac+'</b></div>').join('')
-        +'</div>'
-        +'</div>';
-    });
-    return h;
+  // Subtotals by type
+  const _primesGroups=[['Paniers',paniers],['Prime matin',pm2],['Prime antenne',pa],['Prime réal',pr],['Prime coord',pc]].filter(g=>g[1].length);
+  const _primesTotal=paniers.length+pm2.length+pa.length+pr.length+pc.length;
+  let _primesSubHTML='';
+  if(_primesGroups.length){
+    _primesSubHTML='<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;margin-bottom:4px"><span style="font-size:11px;color:var(--text3)">total</span><b style="font-size:15px;color:var(--amber)">'+_primesTotal+'</b></div>'
+      +'<div style="font-size:11px;margin-bottom:8px">'+_primesGroups.map(g=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0"><span style="color:var(--text3)">'+g[0]+'</span><b style="color:var(--amber)">'+g[1].length+'</b></div>').join('')+'</div>';
+  }
+  // Merged week detail (entries de-duplicated per day, types listed)
+  const _dayPrimesMap={};
+  function _collectPrime(entries,typeLbl){entries.forEach(e=>{if(!_dayPrimesMap[e.lbl])_dayPrimesMap[e.lbl]={lbl:e.lbl,wk:e.wk,types:[]};if(!_dayPrimesMap[e.lbl].types.includes(typeLbl))_dayPrimesMap[e.lbl].types.push(typeLbl);});}
+  _collectPrime(paniers,'Panier');_collectPrime(pm2,'Matin');_collectPrime(pa,'Antenne');_collectPrime(pr,'Réal');_collectPrime(pc,'Coord');
+  const _wkMap={},_wkOrder=[];
+  Object.values(_dayPrimesMap).forEach(e=>{if(!_wkMap[e.wk]){_wkMap[e.wk]=[];_wkOrder.push(e.wk);}_wkMap[e.wk].push(e);});
+  _wkOrder.sort((a,b)=>a-b);
+  let _pid=0,_primesWeekHTML='';
+  _wkOrder.forEach(function(wk){
+    const days=_wkMap[wk],id='_pw'+(++_pid);
+    _primesWeekHTML+='<div onclick="_ptog(\''+id+'\')" style="font-size:11px;padding:5px 0;border-bottom:0.5px solid var(--border2);cursor:pointer">'
+      +'<div style="display:flex;justify-content:space-between">'
+      +'<span style="font-weight:500;color:var(--text)"><span id="'+id+'c" style="display:inline-block;transition:transform .15s;margin-right:4px">›</span>Semaine '+wk+'</span>'
+      +'<span style="color:var(--amber)">'+days.reduce(function(s,d){return s+d.types.length;},0)+'</span>'
+      +'</div>'
+      +'<div id="'+id+'" style="display:none">'
+      +days.map(e=>'<div style="display:flex;justify-content:space-between;padding:1px 0 1px 8px"><span style="color:var(--text3)">'+e.lbl+'</span><b style="color:var(--amber)">'+e.types.join(' · ')+'</b></div>').join('')
+      +'</div></div>';
+  });
+  let paniersHtml='';
+  if(_primesTotal>0){
+    paniersHtml=_primesSubHTML
+      +(_primesWeekHTML?'<div class="sep" style="margin-bottom:8px"></div><div class="btit" style="margin-bottom:4px">Détail par semaine</div>'+_primesWeekHTML:'');
+  }else{
+    paniersHtml='<div style="font-size:11px;color:var(--text3);padding:6px 0">Aucun ce mois.</div>';
   }
   const _nuitRows=[];const _seenWN=new Set();
   for(let dd=-6;dd<last;dd++){
@@ -3164,8 +3178,6 @@ function openMergedMoisModal(mym,tab){
     if(_wkMin>0)_nuitRows.push({wk:getISOWeek(_mn),min:_wkMin,days:_days});
   }
   const _nuitTotal=_nuitRows.reduce((s,r)=>s+r.min,0);
-  let paniersHtml=pSec('Paniers',paniers)+pSec('Prime matin',pm2)+pSec('Prime antenne',pa)+pSec('Prime réal',pr)+pSec('Prime coord',pc);
-  if(!paniersHtml)paniersHtml='<div style="font-size:11px;color:var(--text3);padding:6px 0">Aucun ce mois.</div>';
   let _nid=0;
   let nuitSection='';
   if(_nuitRows.length>0){
@@ -3294,7 +3306,7 @@ function openMergedMoisModal(mym,tab){
       payeSection=
         '<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0">'
         +'<span style="font-size:11px;color:var(--text3)">brut estimé</span>'
-        +'<b style="font-size:18px;color:var(--gold-pay)">'+_fe(paye.total)+'</b>'
+        +'<b style="font-size:15px;color:var(--gold-pay)">'+_fe(paye.total)+'</b>'
         +'</div>'
         +(v.paniers>0?'<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;margin-bottom:8px"><span style="font-size:11px;color:var(--text3)">Paniers '+v.paniers+' × 7,50 € <span style="font-size:9px">(hors brut)</span></span><b style="font-size:13px;color:var(--amber)">'+_fe(v.supPaniers)+'</b></div>':'<div style="margin-bottom:8px"></div>')
         +'<div class="sep" style="margin-bottom:10px"></div>'
