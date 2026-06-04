@@ -1653,6 +1653,10 @@ function calcPrimesMois(y,m){
 }
 function fmtEuro(n){if(!isFinite(n)||isNaN(n))n=0;const abs=Math.abs(n).toFixed(2);const[int,dec]=abs.split('.');const intFmt=int.replace(/\B(?=(\d{3})+(?!\d))/g,' ');return(n<0?'-':'')+intFmt+','+dec+' €';}
 function calcPalierSalaire(n){const base=2091.75;if(n<=19)return base;if(n<=40)return Math.floor(base*Math.pow(1.015,n-19)*100)/100;const p40=Math.floor(base*Math.pow(1.015,21)*100)/100;return Math.floor(p40*Math.pow(1.005,n-40)*100)/100;}
+function _getHistVal(hist,fb,ym){if(hist&&hist.length){let v=null;for(const e of hist)if(e.ym<=ym)v=e.v;if(v!==null)return v;}return fb;}
+function getPalierForYM(ym){return _getHistVal((S.profile||{}).palierHistory,(S.profile||{}).palierNum||0,ym);}
+function getAncForYM(ym){return _getHistVal((S.profile||{}).ancHistory,(S.profile||{}).primeAnciennete||0,ym);}
+function getHeuresForYM(ym){return _getHistVal((S.profile||{}).heuresHistory,(S.profile||{}).heuresMensuelles||151.67,ym);}
 function calcDimRHFerMinsMois(y,m){
   const mym=y*12+m,sett=settingsForYM(mym),seenW=new Set(),last=new Date(y,m+1,0).getDate();const VAC=getVAC();let dim=0,rh=0,fer=0;
   for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd),mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);const sun=new Date(mon);sun.setDate(mon.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mym)continue;
@@ -1670,7 +1674,7 @@ function calcHSMinsMois(y,m){
   return{low,high};
 }
 function calcVariablesMois(y,m){
-  const pr=S.profile||{};const base=(pr.salaireQualif||0)+(pr.primeAnciennete||0);const heures=pr.heuresMensuelles||151.67;const tauxH=heures>0?base/heures:0;
+  const mym_cv=y*12+m;const pr=S.profile||{};const _pn=getPalierForYM(mym_cv);const salQ=_pn>0?calcPalierSalaire(_pn):(pr.salaireQualif||0);const salAnc=getAncForYM(mym_cv);const heures=getHeuresForYM(mym_cv);const base=salQ+salAnc;const tauxH=heures>0?base/heures:0;
   const drf=calcDimRHFerMinsMois(y,m);const hs=calcHSMinsMois(y,m);const nuitMin=calcNuitMois(y,m);const primes=calcPrimesMois(y,m);const paniers=calcPaniersMois(y,m);
   const r2=v=>Math.round(v*100)/100;
   const supDim=r2(drf.dim/60*tauxH*0.30),supRH=r2(drf.rh/60*tauxH*0.30),supFer=r2(drf.fer/60*tauxH*1.00);
@@ -1681,8 +1685,8 @@ function calcVariablesMois(y,m){
   return{total,tauxH,supDim,supRH,supFer,supHSlow,supHShigh,supNuit,supPaniers,supAntenne,supMatin,supReal,supCoord,dimMin:drf.dim,rhMin:drf.rh,ferMin:drf.fer,hsLow:hs.low,hsHigh:hs.high,nuitMin,paniers,antenne:primes.antenne,matin:primes.matin,reel:primes.reel,coord:primes.coord};
 }
 function calcPayeMois(y,m){
-  const pr=S.profile||{};const salQ=pr.salaireQualif||0,salAnc=pr.primeAnciennete||0,base=salQ+salAnc;
-  const heures=pr.heuresMensuelles||151.67,tauxH=heures>0?base/heures:0;
+  const mym_cp=y*12+m;const pr=S.profile||{};const _pn=getPalierForYM(mym_cp);const salQ=_pn>0?calcPalierSalaire(_pn):(pr.salaireQualif||0);const salAnc=getAncForYM(mym_cp);const heures=getHeuresForYM(mym_cp);const base=salQ+salAnc;
+  const tauxH=heures>0?base/heures:0;
   const prevM=m===0?11:m-1,prevY=m===0?y-1:y;
   const vars=calcVariablesMois(prevY,prevM);
   const nao2022=130,nao2023=55,gpe=154;
@@ -3640,10 +3644,17 @@ function renderProfilesDropdown(){
       var lineOpts=Array.from({length:14},function(_,i){
         return '<option value="'+i+'"'+(i===_curVisual?' selected':'')+'>'+formatLineOption(i)+'</option>';
       }).join('');
+      var _palHist=pr.profile.palierHistory||[];
+      var _ancHist=pr.profile.ancHistory||[];
+      var _heurHist=pr.profile.heuresHistory||[];
+      var _curPalier=_palHist.length?_palHist[_palHist.length-1].v:(pr.profile.palierNum||'');
+      var _curAnc=_ancHist.length?_ancHist[_ancHist.length-1].v:(pr.profile.primeAnciennete!=null?pr.profile.primeAnciennete:'');
+      var _curHeur=_heurHist.length?_heurHist[_heurHist.length-1].v:(pr.profile.heuresMensuelles||151.67);
+      var _curPct=Math.round(_curHeur/151.67*100*10)/10;
       actD='<div id="ps-panel" class="ps-panel">'
         // ── SECTION PROFIL ──
         +'<div '+'style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;margin-top:12px;padding-bottom:4px;border-bottom:0.5px solid var(--border)"'+'>Profil</div>'
-        +'<div style="display:flex;align-items:flex-end;gap:6px;margin-bottom:6px">'
+        +'<div style="display:flex;align-items:flex-start;gap:6px;margin-bottom:6px">'
         +'<div style="flex:2"><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:4px">Nom</label>'
         +'<input id="ps-name" value="'+(pr.profile.name||'')+'" '+'style="width:100%;height:36px;box-sizing:border-box;padding:6px 8px;border:0.5px solid var(--border);border-radius:var(--r);font-size:12px;background:var(--bg2);color:var(--text)"'+' ></div>'
         +'<div style="flex:1"><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:4px">Ligne</label>'
@@ -3663,16 +3674,23 @@ function renderProfilesDropdown(){
         +'<div style="flex:1"><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:4px">Palier</label>'
         +'<div style="display:flex;align-items:center;border:0.5px solid var(--border);border-radius:var(--r);background:var(--bg2);height:36px;overflow:hidden">'
         +'<span style="padding:0 7px;font-size:12px;color:var(--text3);line-height:36px;border-right:0.5px solid var(--border);user-select:none">P</span>'
-        +'<input id="ps-palier" type="number" min="1" max="99" value="'+(pr.profile.palierNum||'')+'" placeholder="022" oninput="(function(v){var el=document.getElementById(\'ps-palier-lbl\');if(el)el.textContent=v&&v>=1?fmtEuro(calcPalierSalaire(v)):\'\';})(parseInt(this.value)||0)" style="flex:1;height:100%;box-sizing:border-box;padding:6px 8px;border:none;font-size:12px;background:transparent;color:var(--text)"></div>'
-        +'<div id="ps-palier-lbl" style="font-size:10px;color:var(--text3);margin-top:3px;min-height:14px">'+(pr.profile.palierNum?fmtEuro(calcPalierSalaire(pr.profile.palierNum)):'')+'</div>'
+        +'<input id="ps-palier" type="number" min="1" max="99" value="'+_curPalier+'" placeholder="022" oninput="(function(v){var el=document.getElementById(\'ps-palier-lbl\');if(el)el.textContent=v&&v>=1?fmtEuro(calcPalierSalaire(v)):\'\';})(parseInt(this.value)||0)" style="flex:1;height:100%;box-sizing:border-box;padding:6px 8px;border:none;font-size:12px;background:transparent;color:var(--text)"></div>'
+        +'<div id="ps-palier-lbl" style="font-size:10px;color:var(--text3);height:16px;line-height:16px;margin-top:2px">'+(_curPalier&&parseInt(_curPalier)>=1?fmtEuro(calcPalierSalaire(parseInt(_curPalier))):'')+'</div>'
+        +'<input id="ps-palier-dep" placeholder="depuis m/aaaa" style="width:100%;height:22px;box-sizing:border-box;padding:2px 6px;border:0.5px solid var(--border);border-radius:var(--r);font-size:10px;background:var(--bg2);color:var(--text);margin-top:3px">'
         +'</div>'
         +'<div style="flex:1"><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:4px">Ancienneté (€)</label>'
-        +'<input id="ps-salanc" type="number" step="0.01" value="'+(pr.profile.primeAnciennete!=null?pr.profile.primeAnciennete:'')+'" placeholder="0" style="width:100%;height:36px;box-sizing:border-box;padding:6px 8px;border:0.5px solid var(--border);border-radius:var(--r);font-size:12px;background:var(--bg2);color:var(--text)"></div>'
-        +'<div style="flex:1"><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:4px">H/mois</label>'
-        +'<input id="ps-heures" type="number" step="0.01" value="'+(pr.profile.heuresMensuelles!=null?pr.profile.heuresMensuelles:151.67)+'" style="width:100%;height:36px;box-sizing:border-box;padding:6px 8px;border:0.5px solid var(--border);border-radius:var(--r);font-size:12px;background:var(--bg2);color:var(--text)"></div>'
+        +'<input id="ps-salanc" type="number" step="0.01" value="'+_curAnc+'" placeholder="0" style="width:100%;height:36px;box-sizing:border-box;padding:6px 8px;border:0.5px solid var(--border);border-radius:var(--r);font-size:12px;background:var(--bg2);color:var(--text)">'
+        +'<div style="height:16px;line-height:16px;margin-top:2px"></div>'
+        +'<input id="ps-anc-dep" placeholder="depuis m/aaaa" style="width:100%;height:22px;box-sizing:border-box;padding:2px 6px;border:0.5px solid var(--border);border-radius:var(--r);font-size:10px;background:var(--bg2);color:var(--text);margin-top:3px">'
+        +'</div>'
+        +'<div style="flex:1"><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:4px">Contrat (%)</label>'
+        +'<input id="ps-heures" type="number" step="0.1" value="'+_curPct+'" style="width:100%;height:36px;box-sizing:border-box;padding:6px 8px;border:0.5px solid var(--border);border-radius:var(--r);font-size:12px;background:var(--bg2);color:var(--text)">'
+        +'<div style="height:16px;line-height:16px;margin-top:2px"></div>'
+        +'<input id="ps-heur-dep" placeholder="depuis m/aaaa" style="width:100%;height:22px;box-sizing:border-box;padding:2px 6px;border:0.5px solid var(--border);border-radius:var(--r);font-size:10px;background:var(--bg2);color:var(--text);margin-top:3px">'
+        +'</div>'
         +'</div>'
         +'<div style="padding:4px 0;margin-bottom:6px">'
-        +'<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);cursor:pointer"><input id="ps-pfamens" type="checkbox"'+(pr.profile.pfaMensuelle?' checked':'')+'> PFA mensualisée (sinon : 1 140 € en juin et décembre)</label>'
+        +'<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);cursor:pointer"><input id="ps-pfamens" type="checkbox"'+(pr.profile.pfaMensuelle?' checked':'')+'> PFA mensualisée</label>'
         +'</div>'
         +'<button class="mb" style="width:100%;height:36px;font-size:12px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);margin-top:12px;margin-bottom:16px" data-pid="'+p.id+'" onclick="saveProfileFromDD(this.dataset.pid)">Enregistrer</button>'
         // ── SECTION GÉNÉRATION DES RENDUS ──
@@ -3739,9 +3757,14 @@ function saveProfileFromDD(pid){
   const mat=document.getElementById('ps-matelas');if(mat&&mat.value.trim()){const v=parseHM(mat.value);if(v>=0)pr.profile.matelas=v;}
   const eph2=document.getElementById('ps-eph');if(eph2&&eph2.value.trim()){const ev=parseHM(eph2.value);pr.profile.ephSolde=Math.round(ev/60*100)/100;}
   const cetInit=document.getElementById('ps-cet-init');if(cetInit){const v=parseInt(cetInit.value);if(!isNaN(v)&&v>=0)pr.profile.cetInit=v;}
-  const _palierEl=document.getElementById('ps-palier');if(_palierEl&&_palierEl.value.trim()){const _pn=parseInt(_palierEl.value);if(_pn>=1){pr.profile.palierNum=_pn;pr.profile.salaireQualif=calcPalierSalaire(_pn);}}
-  const _salanc=document.getElementById('ps-salanc');if(_salanc)pr.profile.primeAnciennete=parseFloat(_salanc.value)||0;
-  const _psheur=document.getElementById('ps-heures');if(_psheur){const _hv=parseFloat(_psheur.value);if(_hv>0)pr.profile.heuresMensuelles=_hv;}
+  const _pd=s=>{const p=(s||'').trim().split('/');if(p.length!==2)return null;const _m=parseInt(p[0]),_y=parseInt(p[1]);return(!isNaN(_m)&&!isNaN(_y)&&_m>=1&&_m<=12&&_y>=2020&&_y<=2035)?_y*12+(_m-1):null;};
+  const _histUps=(arr,ym,v)=>{const i=arr.findIndex(e=>e.ym===ym);if(i>=0)arr[i].v=v;else arr.push({ym,v});arr.sort((a,b)=>a.ym-b.ym);};
+  const _palierEl=document.getElementById('ps-palier'),_palierDepEl=document.getElementById('ps-palier-dep');
+  if(_palierEl&&_palierEl.value.trim()){const _pn=parseInt(_palierEl.value);if(_pn>=1){pr.profile.palierNum=_pn;pr.profile.salaireQualif=calcPalierSalaire(_pn);const _pd2=_pd(_palierDepEl&&_palierDepEl.value);if(_pd2!==null){if(!pr.profile.palierHistory)pr.profile.palierHistory=[];_histUps(pr.profile.palierHistory,_pd2,_pn);}}}
+  const _ancEl=document.getElementById('ps-salanc'),_ancDepEl=document.getElementById('ps-anc-dep');
+  if(_ancEl){const _av=parseFloat(_ancEl.value)||0;pr.profile.primeAnciennete=_av;const _pd3=_pd(_ancDepEl&&_ancDepEl.value);if(_pd3!==null){if(!pr.profile.ancHistory)pr.profile.ancHistory=[];_histUps(pr.profile.ancHistory,_pd3,_av);}}
+  const _psheur=document.getElementById('ps-heures'),_heurDepEl=document.getElementById('ps-heur-dep');
+  if(_psheur){const _pct=parseFloat(_psheur.value);if(_pct>0){const _hv=Math.round(_pct*151.67/100*100)/100;pr.profile.heuresMensuelles=_hv;const _pd4=_pd(_heurDepEl&&_heurDepEl.value);if(_pd4!==null){if(!pr.profile.heuresHistory)pr.profile.heuresHistory=[];_histUps(pr.profile.heuresHistory,_pd4,_hv);}}}
   const _pfamens=document.getElementById('ps-pfamens');if(_pfamens)pr.profile.pfaMensuelle=_pfamens.checked;
   const newLine=pr.profile.anchorLine;
   _profs[pid]=pr;if(pid===_aid)S=pr;saveState();render();renderProfilesDropdown();gcalUpdateBtn();
