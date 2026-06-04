@@ -1282,16 +1282,21 @@ function navDir(d){
     const newRows=_calNRows(newY,newM);
     const rowsChanged=oldRows!==newRows;
     const _tileIds=['eph-rest-bloc','ctr-main'];
+    const sideBelow=!!document.querySelector('.layout.side-below')||window.innerWidth<=720;
+    const sc=sideBelow?document.querySelector('.side-col'):null;
     {
       const outCls=d<0?'slide-right':'slide-left';
       const inCls=d<0?'slide-in-right':'slide-in-left';
       mv.classList.add(outCls);
+      if(sc)sc.classList.add(outCls);
       setTimeout(function(){
         mv.classList.remove('slide-left','slide-right');
         mv.style.opacity='0';
+        if(sc){sc.classList.remove('slide-left','slide-right');sc.style.opacity='0';}
         curM+=d;if(curM<0){curM=11;curY--;}if(curM>11){curM=0;curY++;}
         render();
         mv.classList.add(inCls);
+        if(sc)sc.classList.add(inCls);
         if(rowsChanged){
           const dy=newRows>oldRows?-20:20;
           _tileIds.forEach(function(id){
@@ -1306,6 +1311,7 @@ function navDir(d){
         }
         setTimeout(function(){
           mv.classList.remove('slide-in-left','slide-in-right');mv.style.opacity='';
+          if(sc){sc.classList.remove('slide-in-left','slide-in-right');sc.style.opacity='';}
         },220);
       },180);
     }
@@ -1909,9 +1915,9 @@ function openRecapModal(){
   document.getElementById('modal-root').innerHTML=
     '<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet">'
     +'<div class="sh"></div><div class="st">Récapitulatif</div>'
-    +'<div class="recap-row"><span>Congés '+NOW.getFullYear()+' restants</span><b style="color:var(--green)">'+restCurY+' j</b></div>'
-    +'<div class="recap-row"><span>Rendus posés</span><b style="color:var(--rend-text)">'+fmtMin(rendusMin)+'</b></div>'
-    +'<div class="recap-row" style="margin-bottom:12px"><span>Éphem. dispo</span><b style="color:var(--blue)">'+fmtMin(cs.totalReal)+'</b></div>'
+    +'<div class="recap-row" style="font-size:13px;font-weight:600"><span>Congés '+NOW.getFullYear()+' restants</span><b style="color:var(--green)">'+restCurY+' j</b></div>'
+    +'<div class="recap-row" style="font-size:13px;font-weight:600"><span>Rendus posés</span><b style="color:var(--rend-text)">'+fmtMin(rendusMin)+'</b></div>'
+    +'<div class="recap-row" style="font-size:13px;font-weight:600;margin-bottom:12px"><span>Éphem. dispo</span><b style="color:var(--blue)">'+fmtMin(cs.totalReal)+'</b></div>'
     +'<div class="btit" style="margin-bottom:4px;margin-top:4px">Congés</div>'
     +cgHtml
     +'<div class="btit" style="margin-bottom:4px;margin-top:8px">Rendus</div>'
@@ -1955,8 +1961,8 @@ function _rhMonthSections(keys,type){
       :fmtMin(Object.values(weeks).reduce((s,w)=>s+w.min,0));
     const uid='rhm-'+type+'-'+ym;
     return '<div onclick="var x=document.getElementById(\''+uid+'\');x.style.display=x.style.display===\'block\'?\'none\':\'block\'" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;padding:5px 0">'
-      +'<span style="font-size:13px;font-weight:600;color:var(--text)">'+MC2[m]+' '+y+'</span>'
-      +'<b style="font-size:13px;color:'+color+'">'+total+'</b>'
+      +'<span style="font-size:11px;color:var(--text2)">'+MC2[m]+' '+y+'</span>'
+      +'<b style="font-size:11px;color:'+color+'">'+total+'</b>'
       +'</div>'
       +'<div id="'+uid+'" style="display:none">'+wks+'</div>';
   }).join('');
@@ -1970,9 +1976,9 @@ function renderHistoryDropdown(){
   const cgSections=_rhMonthSections(cgKeys,'cg')||'<div style="font-size:11px;color:var(--text3);padding:2px 0">Aucun congé.</div>';
   const rdSections=_rhMonthSections(rdKeys,'rend')||'<div style="font-size:11px;color:var(--text3);padding:2px 0">Aucun rendu.</div>';
   const recapHtml=
-    '<div class="recap-row"><span>Congés '+NOW.getFullYear()+' posés</span><b style="color:var(--green)">'+usedCurY+' j</b></div>'
+    '<div class="recap-row" style="font-size:13px;font-weight:600"><span>Congés '+NOW.getFullYear()+' posés</span><b style="color:var(--green)">'+usedCurY+' j</b></div>'
     +'<div style="margin-bottom:8px">'+cgSections+'</div>'
-    +'<div class="recap-row"><span>Rendus posés</span><b style="color:var(--rend-text)">'+fmtMin(rendusMin)+'</b></div>'
+    +'<div class="recap-row" style="font-size:13px;font-weight:600"><span>Rendus posés</span><b style="color:var(--rend-text)">'+fmtMin(rendusMin)+'</b></div>'
     +'<div style="margin-bottom:8px;padding-bottom:8px;border-bottom:0.5px solid var(--border2)">'+rdSections+'</div>';
   const h=(S.history||[]).slice(0,8);
   const histHtml=h.length
@@ -5324,7 +5330,7 @@ function gcalBuildDayEvent(dateKey){
   } else if(congesType==='rend'){
     const dur=getDur(d);
     summary=(vac&&vac!=='RH'?vacLbl+' ':'')+'Rendu';
-    colorId='4';
+    colorId='2';
     description='Rendu ephemere - '+fmtMin(dur);
   } else if(congesType==='absent'){
     summary=(vac&&vac!=='RH'?vacLbl+' ':'')+'Absent';
@@ -5336,8 +5342,8 @@ function gcalBuildDayEvent(dateKey){
     const panier=isPanier(d)?' - panier':'';
     if(v2.echange&&!v2.ecSelf){summary=vacLbl+' (donne)';colorId='8';}
     else if(v2.echange&&v2.ecSelf){summary=vacLbl+' (echange)';colorId='11';}
-    else if(v2.ov&&!v2.fromSV){summary=vacLbl;colorId='10';}
-    else if(v2.ov&&v2.fromSV){summary=vacLbl+' +';colorId='11';}
+    else if(v2.ov&&!v2.fromSV){summary=vacLbl;colorId='9';}
+    else if(v2.ov&&v2.fromSV){summary=vacLbl+' +';colorId='9';}
     else{summary=vacLbl;colorId='7';}
     description=fmtMin(dur)+panier;
   }
