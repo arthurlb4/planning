@@ -1115,13 +1115,9 @@ function adjSoldeAnnee(year,delta){
   saveState();
   updateCounters();openMergedRenduCgModal(6,1);
 }
-function getCongesAnc(year){return(S.profile&&S.profile.congesAncParAnnee&&S.profile.congesAncParAnnee[year])||0;}
-function adjCongesAnc(year,delta){
-  if(!S.profile)return;
-  if(!S.profile.congesAncParAnnee)S.profile.congesAncParAnnee={};
-  S.profile.congesAncParAnnee[year]=Math.max(0,(S.profile.congesAncParAnnee[year]||0)+delta);
-  saveState();updateCounters();openMergedRenduCgModal(6,1);
-}
+function calcCongesAncJours(years){if(years>=25)return 4;if(years>20)return 3;if(years>15)return 2;if(years>5)return 1;return 0;}
+function getCongesAnc(year){const pr=S.profile||{};const ym=year*12+11;let yrs=0;if(pr.ancYears!=null&&pr.ancRefYM!=null){const anni=typeof pr.ancMoisAnni==='number'&&pr.ancMoisAnni>=0?pr.ancMoisAnni:-1;yrs=pr.ancYears;if(anni>=0){const minYM=Math.min(pr.ancRefYM,ym),maxYM=Math.max(pr.ancRefYM,ym);let cnt=0;for(let y=Math.floor(minYM/12);y<=Math.floor(maxYM/12)+1;y++){const aym=y*12+anni;if(aym>minYM&&aym<=maxYM)cnt++;}yrs=ym>=pr.ancRefYM?yrs+cnt:yrs-cnt;}yrs=Math.max(0,yrs);}else if(pr.ancYears!=null)yrs=pr.ancYears;return calcCongesAncJours(yrs);}
+function adjCongesAnc(year,delta){}
 function getFractForfait(year){
   if(!S.profile||!S.profile.fractForfaitParAnnee)return true;
   return S.profile.fractForfaitParAnnee[year]!==false;
@@ -2699,7 +2695,7 @@ function openMergedRenduCgModal(limit,tab){
   const cgSection=
     `<div style="font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Principaux</div>`
     +_adjRow('Congés principaux',soldeNow,'adjSoldeAnnee',nowY)
-    +_adjRow('Jours d\'ancienneté',ancNow,'adjCongesAnc',nowY)
+    +_rr('Jours d\'ancienneté',ancNow+' j')
     +_secTitle('Fractionnés')
     +`<div class="recap-row" style="align-items:center"><span>Forfait ancienneté</span><div style="display:flex;align-items:center;gap:8px"><button onclick="toggleFractForfait(${nowY})" style="font-size:10px;padding:1px 7px;border-radius:4px;border:0.5px solid;cursor:pointer;font-family:inherit;line-height:1.4;${_toggleStyle}">${fractForfait?'Actif':'Inactif'}</button><b style="color:${fractForfait?'var(--green)':'var(--text3)'};min-width:28px;text-align:right">${fractBase} j</b></div></div>`
     +`<div class="recap-row"><span>Hiver ${_per('15/01–15/03')} <span style="color:${cgWinter>=5?'var(--rend-text)':'var(--red)'};font-size:10px">${cgWinter}/5j</span></span><b style="color:${fractHiver?'var(--green)':'var(--text3)'};">${fractHiver} j</b></div>`
@@ -3748,6 +3744,9 @@ function renderProfilesDropdown(){
     +'<div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Génération des rendus</div>'
     +npToggles
     +'<div id="np-lines-section" style="margin-top:10px"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Ligne (les lignes prises sont grisées)</div><div id="np-lines-list" style="font-size:11px;color:var(--text3)">Chargement...</div></div>'
+    +'<div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin:10px 0 4px">Paie <span style="font-style:italic;font-weight:400;text-transform:none">(optionnel)</span></div>'
+    +'<div class="mr2"><div><label>Palier</label><input id="np-palier" type="number" placeholder="ex: 19" min="1" max="60" style="height:36px"></div><div><label>Ancienneté (ans)</label><input id="np-anc" type="number" placeholder="ex: 7" min="0" style="height:36px"></div></div>'
+    +'<div class="mr2"><div><label>Contrat (%)</label><input id="np-pct" type="number" placeholder="ex: 100" min="1" max="200" style="height:36px"></div><div></div></div>'
     +'<button class="mb pri wide" style="margin-top:8px" onclick="confirmNewProfile()">Créer le profil</button>'
     +'</div>';
 }
@@ -4141,7 +4140,42 @@ function getCycleVacWithHistory(date,pr){
 
 function openChangeLigneModal2(pid){openChangeLigneModal(pid);}
 
-
+function showPayPromptIfNeeded(){
+  if(!S||!S.profile)return;
+  if(S.profile.hasSeenPayPrompt)return;
+  if(S.profile.palierNum||S.profile.ancYears!=null||S.profile.salaireQualif)return;
+  S.profile.hasSeenPayPrompt=true;
+  saveState();
+  _lockBodyScroll();
+  document.getElementById('modal-root').innerHTML=
+    '<div class="overlay">'
+    +'<div class="sheet"><div class="sh"></div><div class="st">Données de paie</div>'
+    +'<div class="ss" style="margin-bottom:14px">Renseignez vos informations de paie pour calculer votre salaire estimé. Modifiables à tout moment dans votre profil.</div>'
+    +'<label style="font-size:12px;color:var(--text3);display:block;margin-bottom:4px">Palier</label>'
+    +'<div style="display:flex;align-items:center;border:0.5px solid var(--border);border-radius:var(--r);background:var(--bg2);height:48px;margin-bottom:6px;overflow:hidden">'
+    +'<span style="padding:0 10px;font-size:16px;color:var(--text3);line-height:48px;border-right:0.5px solid var(--border);user-select:none">P</span>'
+    +'<input id="_pp-palier" type="number" min="1" max="60" placeholder="019" oninput="(function(v){var l=document.getElementById(\'_pp-pal-lbl\');if(l)l.textContent=v>=1?fmtEuro(calcPalierSalaire(v)):\'\';})(parseInt(this.value)||0)" style="flex:1;height:100%;box-sizing:border-box;padding:0 12px;border:none;font-size:16px;background:transparent;color:var(--text)">'
+    +'</div>'
+    +'<div id="_pp-pal-lbl" style="font-size:12px;color:var(--text3);height:18px;line-height:18px;margin-bottom:12px"></div>'
+    +'<label style="font-size:12px;color:var(--text3);display:block;margin-bottom:4px">Ancienneté (années)</label>'
+    +'<input id="_pp-anc" type="number" min="0" max="50" placeholder="0" oninput="(function(v){var l=document.getElementById(\'_pp-anc-lbl\');if(l)l.textContent=v>=0?fmtEuro(calcAncPrime(v)):\'\';})(parseFloat(this.value)||0)" style="width:100%;height:48px;box-sizing:border-box;padding:0 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:16px;background:var(--bg2);color:var(--text);margin-bottom:6px">'
+    +'<div id="_pp-anc-lbl" style="font-size:12px;color:var(--text3);height:18px;line-height:18px;margin-bottom:12px"></div>'
+    +'<label style="font-size:12px;color:var(--text3);display:block;margin-bottom:4px">Contrat (%)</label>'
+    +'<input id="_pp-pct" type="number" min="1" max="200" placeholder="100" style="width:100%;height:48px;box-sizing:border-box;padding:0 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:16px;background:var(--bg2);color:var(--text);margin-bottom:16px">'
+    +'<button class="mb" style="width:100%;height:44px;font-size:14px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);margin-bottom:8px" onclick="_confirmPayPrompt()">Enregistrer</button>'
+    +'<button class="mcancel" onclick="closeModal()">Plus tard</button>'
+    +'</div></div>';
+}
+function _confirmPayPrompt(){
+  if(!S||!S.profile)return;
+  const pn=parseInt((document.getElementById('_pp-palier')||{}).value);
+  if(!isNaN(pn)&&pn>=1){S.profile.palierNum=pn;S.profile.salaireQualif=calcPalierSalaire(pn);}
+  const an=parseFloat((document.getElementById('_pp-anc')||{}).value);
+  if(!isNaN(an)&&an>=0){S.profile.ancYears=an;S.profile.ancRefYM=TODAY_YM;S.profile.primeAnciennete=calcAncPrime(an);}
+  const pct=parseFloat((document.getElementById('_pp-pct')||{}).value);
+  if(!isNaN(pct)&&pct>0){S.profile.heuresMensuelles=Math.round(pct*151.67/100*100)/100;}
+  saveState();render();closeModal();
+}
 
 function confirmNewProfile(){
   const name=(document.getElementById('np-name')||{value:''}).value.trim();
@@ -4161,6 +4195,13 @@ function confirmNewProfile(){
   d.settings.ferRendu=(document.getElementById('np-fer')||{checked:true}).checked;
   d.settings.hsRendu=(document.getElementById('np-hs')||{checked:true}).checked;
   d.settings.theme=(S.settings&&S.settings.theme)||'dark';
+  const npPalier=parseInt((document.getElementById('np-palier')||{value:''}).value);
+  if(!isNaN(npPalier)&&npPalier>=1){d.profile.palierNum=npPalier;d.profile.salaireQualif=calcPalierSalaire(npPalier);}
+  const npAnc=parseFloat((document.getElementById('np-anc')||{value:''}).value);
+  if(!isNaN(npAnc)&&npAnc>=0){d.profile.ancYears=npAnc;d.profile.ancRefYM=TODAY_YM;d.profile.primeAnciennete=calcAncPrime(npAnc);}
+  const npPct=parseFloat((document.getElementById('np-pct')||{value:''}).value);
+  if(!isNaN(npPct)&&npPct>0){d.profile.heuresMensuelles=Math.round(npPct*151.67/100*100)/100;}
+  d.profile.hasSeenPayPrompt=true;
   createProfile(id,d);switchProfile(id);render();document.querySelectorAll('.dropdown').forEach(d=>d.style.display='none');document.removeEventListener('click',_ddClose,true);
 }
 
@@ -4349,6 +4390,7 @@ function init(){
     const hpn=document.getElementById('hdr-profile-name');
     if(hpn&&S&&S.profile)hpn.textContent=S.profile.name||'Profil';
     document.body.style.opacity='1';document.body.style.transition='opacity .25s';setTimeout(function(){document.body.style.transition='';},300);
+    showPayPromptIfNeeded();
   }).catch(function(){
     document.body.style.opacity='1';document.body.style.transition='opacity .25s';setTimeout(function(){document.body.style.transition='';},300);
   });
