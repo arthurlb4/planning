@@ -4789,6 +4789,7 @@ function _syncSideTop(){
   sc.style.paddingTop=(mbar?mbar.offsetHeight:0)+'px';
 }
 var _sbGuard=false;
+var _sbEntryH=0;
 function _checkSideBelow(){
   if(_sbGuard||window.innerWidth<721)return;
   const mv=document.getElementById('month-view');
@@ -4798,8 +4799,17 @@ function _checkSideBelow(){
   const mbar=document.querySelector('.mbar');
   const calH=(mbar?mbar.offsetHeight:0)+mv.offsetHeight;
   const sideH=sc.scrollHeight;
-  const should=sideH>calH+300;
-  if(layout.classList.contains('side-below')!==should){
+  const currently=layout.classList.contains('side-below');
+  // Asymmetric hysteresis: enter early, exit only when cal catches up to original sideH
+  let should;
+  if(currently){
+    should=_sbEntryH>0?calH<_sbEntryH:sideH>calH;
+  } else {
+    should=sideH>calH+30;
+    if(should)_sbEntryH=sideH;
+  }
+  if(currently!==should){
+    if(!should)_sbEntryH=0;
     layout.classList.toggle('side-below',should);
     mv.style.width='';
     const aw=document.getElementById('ann-wrap');
