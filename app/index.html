@@ -1689,6 +1689,10 @@ function calcVariablesMois(y,m){
   const total=supDim+supRH+supFer+supHSlow+supHShigh+supNuit+supAntenne+supMatin+supReal+supCoord;
   return{total,tauxH,supDim,supRH,supFer,supHSlow,supHShigh,supNuit,supPaniers,supAntenne,supMatin,supReal,supCoord,dimMin:drf.dim,rhMin:drf.rh,ferMin:drf.fer,hsLow:hs.low,hsHigh:hs.high,nuitMin,paniers,antenne:primes.antenne,matin:primes.matin,reel:primes.reel,coord:primes.coord};
 }
+function getPrimesFixesCustomForYM(ym){
+  const primes=(S.profile&&S.profile.primesFixesCustom)||[];
+  return primes.filter(function(p){return p.debutYM<=ym&&(p.finYM==null||ym<=p.finYM);});
+}
 function calcPayeMois(y,m){
   const mym_cp=y*12+m;const pr=S.profile||{};const _pn=getPalierForYM(mym_cp);const salQ=_pn>0?calcPalierSalaire(_pn):(pr.salaireQualif||0);const salAnc=getAncForYM(mym_cp);const heures=getHeuresForYM(mym_cp);const base=salQ+salAnc;
   const tauxH=heures>0?Math.round(base/heures*100)/100:0;
@@ -1698,8 +1702,10 @@ function calcPayeMois(y,m){
   const pfaM=_pn>0?calcPFA(_pn):(pr.palierNum?calcPFA(pr.palierNum):190);
   let pfa=pr.pfaMensuelle?pfaM:(m===5||m===11?pfaM*6:0);
   const totalFixes=nao2022+nao2023+gpe+pfa;
+  const primesCustom=getPrimesFixesCustomForYM(mym_cp);
+  const totalPrimesCustom=primesCustom.reduce(function(s,p){return s+p.montant;},0);
   let compCP=0;if(m===0){let yv=0;for(let pm=0;pm<12;pm++)yv+=calcVariablesMois(y-1,pm).total;compCP=yv/10;}
-  return{base,salQ,salAnc,tauxH,heures,prevM,prevY,vars,nao2022,nao2023,gpe,pfa,pfaMensuelle:pr.pfaMensuelle,totalFixes,compCP,total:base+vars.total+totalFixes+compCP,configured:salQ>0||salAnc>0||heures>0};
+  return{base,salQ,salAnc,tauxH,heures,prevM,prevY,vars,nao2022,nao2023,gpe,pfa,pfaMensuelle:pr.pfaMensuelle,totalFixes,primesCustom,totalPrimesCustom,compCP,total:base+vars.total+totalFixes+totalPrimesCustom+compCP,configured:salQ>0||salAnc>0||heures>0};
 }
 function calcNuitMinShift(v){
   if(!v||!v.deb||!v.fin)return 0;
@@ -3267,6 +3273,20 @@ function openMergedMoisModal(mym,tab){
         +_row('NAO 2022',paye.nao2022,'var(--text2)')+_row('NAO 2023',paye.nao2023,'var(--text2)')+_row('Ind. GPE',paye.gpe,'var(--text2)')
         +_row('PFA'+(paye.pfa>0&&!paye.pfaMensuelle?' (sem.)':''),paye.pfa,'var(--text2)')
         +_subp('Sous-total',paye.totalFixes)+'</div>'
+        +'<div class="btit" style="margin-top:12px;margin-bottom:4px">Primes personnalisées</div>'
+        +'<div style="font-size:11px" id="paie-primes-custom">'
+        +(paye.primesCustom.length===0?'<div style="color:var(--text3);padding:3px 0">Aucune.</div>':'')
+        +paye.primesCustom.map(function(p){
+          return '<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0">'
+            +'<span style="color:var(--text3);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+p.label+'</span>'
+            +'<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">'
+            +'<b style="color:var(--text2)">+'+fmtEuro(p.montant)+'</b>'
+            +'<button onclick="openDeletePrimeFixeModal(\''+p.id+'\','+mym+')" style="width:20px;height:20px;border-radius:50%;border:0.5px solid var(--border);background:transparent;color:var(--red);cursor:pointer;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>'
+            +'</div></div>';
+        }).join('')
+        +(paye.totalPrimesCustom>0?'<div style="display:flex;justify-content:space-between;padding:4px 0;border-top:0.5px solid var(--border2);margin-top:2px"><span>Sous-total</span><b>+'+fmtEuro(paye.totalPrimesCustom)+'</b></div>':'')
+        +'</div>'
+        +'<button onclick="openAddPrimeFixeModal('+mym+')" style="margin-top:6px;width:100%;height:32px;font-size:11px;background:transparent;color:var(--blue);border:0.5px dashed var(--blue);border-radius:var(--r);cursor:pointer;font-family:var(--font)">+ Ajouter une prime</button>'
         +(paye.compCP>0?'<div class="btit" style="margin-top:12px;margin-bottom:4px">Complément CP</div><div style="font-size:11px">'+_row('1/10 variables '+(y-1),paye.compCP,'var(--text2)')+'</div>':'')
         +'<div style="font-size:10px;color:var(--text3);text-align:center;margin-top:10px">taux : '+fmtEuro(paye.tauxH)+'/h · '+paye.heures.toFixed(2)+'h/mois</div>';
     }
@@ -3858,6 +3878,67 @@ function openContratModal(){
 function _setContratResult(pct,date){var f=_depField;_depField=null;if(pct>0&&f){var i=document.getElementById(f.inputId),d=document.getElementById(f.depId);if(i)i.value=pct;if(d)d.value=date||'';saveProfileFromDD(_aid);}closeModal();}
 function _confirmContratToujours(){_setContratResult(parseFloat((document.getElementById('_cont-pct')||{}).value)||0,'');}
 function _confirmContratDate(){var s=_depGetDate();if(s)_setContratResult(parseFloat((document.getElementById('_cont-pct')||{}).value)||0,s);}
+function openAddPrimeFixeModal(ym){
+  var y=Math.floor(ym/12),m=ym%12;
+  _lockBodyScroll();
+  document.getElementById('modal-root').innerHTML=
+    '<div class="overlay" onclick="if(event.target===this)closeModal()">'
+    +'<div class="sheet"><div class="sh"></div><div class="st">Ajouter une prime</div>'
+    +'<label style="font-size:12px;color:var(--text3);display:block;margin-bottom:4px">Libellé</label>'
+    +'<input id="_apf-label" type="text" placeholder="ex: Prime de nuit fixe" style="width:100%;height:44px;box-sizing:border-box;padding:0 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--bg2);color:var(--text);margin-bottom:12px">'
+    +'<label style="font-size:12px;color:var(--text3);display:block;margin-bottom:4px">Montant (€ / mois)</label>'
+    +'<input id="_apf-montant" type="number" min="0" step="0.01" placeholder="0,00" style="width:100%;height:44px;box-sizing:border-box;padding:0 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--bg2);color:var(--text);margin-bottom:12px">'
+    +'<label style="font-size:12px;color:var(--text3);display:block;margin-bottom:6px">Début</label>'
+    +'<div style="display:flex;gap:8px;margin-bottom:16px">'
+    +'<button id="_apf-debut-cem" onclick="document.getElementById(\'_apf-debut-cem\').style.background=\'var(--blue)\';document.getElementById(\'_apf-debut-cem\').style.color=\'#fff\';document.getElementById(\'_apf-debut-tj\').style.background=\'var(--bg3)\';document.getElementById(\'_apf-debut-tj\').style.color=\'var(--text)\';window._apfDebut='+ym+';" style="flex:1;height:36px;font-size:12px;border:0.5px solid var(--border);border-radius:var(--r);cursor:pointer;font-family:var(--font);background:var(--blue);color:#fff">Ce mois</button>'
+    +'<button id="_apf-debut-tj" onclick="document.getElementById(\'_apf-debut-tj\').style.background=\'var(--blue)\';document.getElementById(\'_apf-debut-tj\').style.color=\'#fff\';document.getElementById(\'_apf-debut-cem\').style.background=\'var(--bg3)\';document.getElementById(\'_apf-debut-cem\').style.color=\'var(--text)\';window._apfDebut=0;" style="flex:1;height:36px;font-size:12px;border:0.5px solid var(--border);border-radius:var(--r);cursor:pointer;font-family:var(--font);background:var(--bg3);color:var(--text)">Depuis toujours</button>'
+    +'</div>'
+    +'<button class="mb" style="width:100%;height:44px;font-size:14px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);margin-bottom:8px" onclick="_confirmAddPrimeFixe('+ym+')">Ajouter</button>'
+    +'<button class="mcancel" onclick="closeModal()">Annuler</button>'
+    +'</div></div>';
+  window._apfDebut=ym;
+}
+function _confirmAddPrimeFixe(ym){
+  var label=(document.getElementById('_apf-label')||{value:''}).value.trim();
+  var montant=parseFloat((document.getElementById('_apf-montant')||{value:''}).value);
+  if(!label){alert('Libellé requis.');return;}
+  if(isNaN(montant)||montant<=0){alert('Montant invalide.');return;}
+  if(!S.profile.primesFixesCustom)S.profile.primesFixesCustom=[];
+  S.profile.primesFixesCustom.push({id:'pfc_'+Date.now(),label:label,montant:montant,debutYM:window._apfDebut||ym,finYM:null});
+  saveState();closeModal();openMergedMoisModal(ym,4);
+}
+function openDeletePrimeFixeModal(id,ym){
+  var primes=S.profile&&S.profile.primesFixesCustom||[];
+  var p=primes.find(function(x){return x.id===id;});
+  if(!p)return;
+  var y=Math.floor(ym/12),m=ym%12;
+  var ML=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+  _lockBodyScroll();
+  document.getElementById('modal-root').innerHTML=
+    '<div class="overlay" onclick="if(event.target===this)closeModal()">'
+    +'<div class="sheet"><div class="sh"></div><div class="st">Supprimer la prime</div>'
+    +'<div class="ss" style="margin-bottom:16px">« '+p.label+' » — '+fmtEuro(p.montant)+'/mois</div>'
+    +'<button class="mb" style="width:100%;height:44px;font-size:13px;background:var(--bg3);color:var(--text);border:0.5px solid var(--border);border-radius:var(--r);margin-bottom:8px" onclick="_deletePrimeFixeFrom(\''+id+'\','+ym+','+ym+')">Supprimer depuis '+ML[m]+' '+y+'</button>'
+    +'<button class="mb del" style="width:100%;height:44px;font-size:13px;border-radius:var(--r);margin-bottom:8px" onclick="_deletePrimeFixeFrom(\''+id+'\','+ym+',null)">Supprimer entièrement</button>'
+    +'<button class="mcancel" onclick="closeModal()">Annuler</button>'
+    +'</div></div>';
+}
+function _deletePrimeFixeFrom(id,ym,fromYM){
+  if(!S.profile||!S.profile.primesFixesCustom)return;
+  if(fromYM===null){
+    S.profile.primesFixesCustom=S.profile.primesFixesCustom.filter(function(p){return p.id!==id;});
+  }else{
+    var p=S.profile.primesFixesCustom.find(function(x){return x.id===id;});
+    if(p){
+      if(fromYM<=p.debutYM){
+        S.profile.primesFixesCustom=S.profile.primesFixesCustom.filter(function(x){return x.id!==id;});
+      }else{
+        p.finYM=fromYM-1;
+      }
+    }
+  }
+  saveState();closeModal();openMergedMoisModal(ym,4);
+}
 function openDepuisModal(inputId,btnId){
   _depField={inputId:inputId,btnId:btnId};
   _lockBodyScroll();
