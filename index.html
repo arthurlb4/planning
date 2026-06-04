@@ -103,7 +103,7 @@ body.reg-active .tabs{margin-bottom:16px;}
         </div>
         <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;margin-top:2px">Paie <span style="font-style:italic;font-weight:400;text-transform:none">(optionnel)</span></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:9px">
-          <div class="field" style="margin-bottom:0"><label>Palier</label><select id="reg-palier"><option value="">—</option></select></div>
+          <div class="field" style="margin-bottom:0"><label>Palier</label><select id="reg-palier" onchange="updatePalierPreview()"><option value="">—</option></select><div id="reg-palier-preview" style="font-size:10px;color:var(--text3);margin-top:3px;min-height:13px"></div></div>
           <div class="field" style="margin-bottom:0"><label>Ancienneté (ans)</label><input type="number" id="reg-anc" placeholder="ex: 7" min="0"></div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
@@ -295,10 +295,23 @@ function formatLineOption(idx){
   return lineData.map(function(v){return(!v||v==='RH')?'—':v;}).join(' ');
 }
 
+function calcPalierSalaireReg(n){const base=2091.75;if(n<1)return base;if(n<=40)return Math.floor(base*Math.pow(1.015,n-19)*100)/100;const p40=Math.floor(base*Math.pow(1.015,21)*100)/100;return Math.floor(p40*Math.pow(1.005,n-40)*100)/100;}
+function fmtEuroReg(v){return v.toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';}
+function updatePalierPreview(){
+  const sel=document.getElementById('reg-palier');
+  const lbl=document.getElementById('reg-palier-preview');
+  if(!lbl)return;
+  const v=sel?sel.value:'';
+  if(!v){lbl.textContent='';return;}
+  if(v==='christophe'){lbl.textContent=fmtEuroReg(100000);return;}
+  const n=parseInt(v);
+  lbl.textContent=n>=1?fmtEuroReg(calcPalierSalaireReg(n)):'';
+}
 function populateRegPalier(){
   const sel=document.getElementById('reg-palier');
   if(!sel||sel.options.length>1)return;
-  for(let i=1;i<=40;i++){const o=document.createElement('option');o.value=i;o.textContent='P'+i;sel.appendChild(o);}
+  for(let i=1;i<=100;i++){const o=document.createElement('option');o.value=i;o.textContent='P'+i;sel.appendChild(o);}
+  const oc=document.createElement('option');oc.value='christophe';oc.textContent='Christophe';sel.appendChild(oc);
 }
 
 async function populateRegLine(){
@@ -328,7 +341,8 @@ async function doRegister() {
   const regLineIdx = parseInt(document.getElementById('reg-line')?.value||'0');
   const regMatelasRaw = document.getElementById('reg-matelas')?.value||'';
   const regEphRaw = document.getElementById('reg-eph')?.value||'';
-  const regPalier = parseInt(document.getElementById('reg-palier')?.value||'');
+  const regPalierVal = document.getElementById('reg-palier')?.value||'';
+  const regPalier = parseInt(regPalierVal);
   const regAnc = parseFloat(document.getElementById('reg-anc')?.value||'');
   const regPct = parseFloat(document.getElementById('reg-pct')?.value||'');
   const regPfaMens = document.getElementById('reg-pfamens')?.checked||false;
@@ -374,7 +388,7 @@ async function doRegister() {
         name, anchorLine:regAnchorLine, matelas:regMatelas, congesInit:25,
         ephSolde:Math.round(regEph/60*100)/100, ephSoldeCreatedYM:_todayYM,
         gcalAutoSync:false, pfaMensuelle:regPfaMens, hasSeenPayPrompt:true,
-        ...(!isNaN(regPalier)&&regPalier>=1 ? {palierNum:regPalier} : {}),
+        ...(regPalierVal==='christophe' ? {salaireQualif:100000} : (!isNaN(regPalier)&&regPalier>=1 ? {palierNum:regPalier,salaireQualif:calcPalierSalaireReg(regPalier)} : {})),
         ...(!isNaN(regAnc)&&regAnc>=0 ? {ancYears:regAnc, ancRefYM:_todayYM} : {}),
         ...(!isNaN(regPct)&&regPct>0 ? {heuresMensuelles:Math.round(regPct*151.67/100*100)/100} : {}),
       },
