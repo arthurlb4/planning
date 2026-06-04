@@ -30,6 +30,7 @@ body.reg-active .tabs{margin-bottom:16px;}
 #form-register .field{margin-bottom:9px;}
 #form-register .field label{font-size:10px;margin-bottom:3px;}
 #form-register .field input,#form-register .field select{padding:8px 10px;font-size:13px;}
+#reg-palier,#reg-anc,#reg-pct{font-style:italic;}
 .btn{width:100%;padding:11px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);font-size:14px;font-weight:500;cursor:pointer;margin-top:4px;transition:opacity .15s;}
 .btn:hover{opacity:.9;}
 .btn:disabled{opacity:.5;cursor:not-allowed;}
@@ -102,10 +103,10 @@ body.reg-active .tabs{margin-bottom:16px;}
           <div class="field" style="margin-bottom:0"><label>Rendus éphem. (h)</label><input type="text" id="reg-eph" placeholder="ex: 10h00"></div>
         </div>
         <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;margin-top:2px">Paie <span style="font-style:italic;font-weight:400;text-transform:none">(optionnel)</span></div>
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px;align-items:start">
-          <div class="field" style="margin-bottom:0"><label>Palier</label><select id="reg-palier" onchange="updatePalierPreview()"><option value="">—</option></select><div id="reg-palier-preview" style="font-size:10px;color:var(--text3);margin-top:3px;min-height:13px"></div></div>
-          <div class="field" style="margin-bottom:0"><label>Anc. (ans)</label><input type="number" id="reg-anc" placeholder="7" min="0" oninput="updateAncPreview()"><div id="reg-anc-preview" style="font-size:10px;color:var(--text3);margin-top:3px;min-height:13px"></div></div>
-          <div class="field" style="margin-bottom:0"><label>Contrat (%)</label><select id="reg-pct"><option value="">—</option></select><div style="min-height:13px;margin-top:3px"></div></div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px">
+          <div class="field" style="margin-bottom:0"><label>Palier</label><select id="reg-palier"><option value="">—</option></select></div>
+          <div class="field" style="margin-bottom:0"><label>Anc. (ans)</label><select id="reg-anc"><option value="">—</option></select></div>
+          <div class="field" style="margin-bottom:0"><label>Contrat (%)</label><select id="reg-pct"><option value="">—</option></select></div>
           <div class="field" style="margin-bottom:0;text-align:center"><label>PFA<br>mens.</label><div style="display:flex;justify-content:center;padding-top:6px"><label class="tgl"><input type="checkbox" id="reg-pfamens"><span class="tgl-s"></span></label></div><div style="min-height:13px;margin-top:3px"></div></div>
         </div>
         <div style="margin-bottom:10px">
@@ -296,14 +297,8 @@ function formatLineOption(idx){
 function calcPalierSalaireReg(n){const base=2091.75;if(n<1)return base;if(n<=40)return Math.floor(base*Math.pow(1.015,n-19)*100)/100;const p40=Math.floor(base*Math.pow(1.015,21)*100)/100;return Math.floor(p40*Math.pow(1.005,n-40)*100)/100;}
 function calcAncPrimeReg(y){const base=2091.75;if(y<=0)return 0;if(y<=20)return Math.round(y*0.01*base*100)/100;return Math.round((20*0.01+(y-20)*0.005)*base*100)/100;}
 function fmtEuroReg(v){return v.toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';}
-function updateAncPreview(){const inp=document.getElementById('reg-anc');const lbl=document.getElementById('reg-anc-preview');if(!lbl)return;const v=parseFloat(inp?inp.value:'');lbl.textContent=(v>0&&!isNaN(v))?fmtEuroReg(calcAncPrimeReg(v)):'';}
-function populateRegContrat(){const sel=document.getElementById('reg-pct');if(!sel||sel.options.length>1)return;for(let p=5;p<=200;p+=5){const o=document.createElement('option');o.value=p;o.textContent=p+'%';if(p===100)o.selected=true;sel.appendChild(o);}}
-function updatePalierPreview(){
-  const sel=document.getElementById('reg-palier');
-  const lbl=document.getElementById('reg-palier-preview');
-  if(!lbl)return;
-  const v=sel?sel.value:'';
-  if(!v){lbl.textContent='';return;}
+function populateRegContrat(){const sel=document.getElementById('reg-pct');if(!sel||sel.options.length>1)return;for(let p=5;p<=100;p+=5){const o=document.createElement('option');o.value=p;const h=Math.round(p*151.67/100*100)/100;o.textContent=p+'% | '+h.toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' h';if(p===100)o.selected=true;sel.appendChild(o);}
+function populateRegAnc(){const sel=document.getElementById('reg-anc');if(!sel||sel.options.length>1)return;for(let i=0;i<=50;i++){const o=document.createElement('option');o.value=i;const label=i===0?'0 an':(i===1?'1 an':i+' ans');o.textContent=label+' | '+fmtEuroReg(calcAncPrimeReg(i));sel.appendChild(o);}}}
   if(v==='christophe'){lbl.textContent=fmtEuroReg(100000);return;}
   const n=parseInt(v);
   lbl.textContent=n>=1?fmtEuroReg(calcPalierSalaireReg(n)):'';
@@ -311,13 +306,14 @@ function updatePalierPreview(){
 function populateRegPalier(){
   const sel=document.getElementById('reg-palier');
   if(!sel||sel.options.length>1)return;
-  for(let i=1;i<=100;i++){const o=document.createElement('option');o.value=i;o.textContent='P'+i;sel.appendChild(o);}
-  const oc=document.createElement('option');oc.value='christophe';oc.textContent='Christophe';sel.appendChild(oc);
+  for(let i=1;i<=100;i++){const o=document.createElement('option');o.value=i;o.textContent='P'+i+' | '+fmtEuroReg(calcPalierSalaireReg(i));sel.appendChild(o);}
+  const oc=document.createElement('option');oc.value='christophe';oc.textContent='Christophe | '+fmtEuroReg(100000);sel.appendChild(oc);
 }
 
 async function populateRegLine(){
   populateRegPalier();
   populateRegContrat();
+  populateRegAnc();
   const sel=document.getElementById('reg-line');
   if(!sel)return;
   // Try to load cycle from KV
