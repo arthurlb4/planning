@@ -3677,17 +3677,20 @@ function renderProfilesDropdown(){
         +'<span style="padding:0 7px;font-size:12px;color:var(--text3);line-height:36px;border-right:0.5px solid var(--border);user-select:none">P</span>'
         +'<input id="ps-palier" type="number" min="11" max="99" value="'+_curPalier+'" placeholder="022" oninput="(function(v){var el=document.getElementById(\'ps-palier-lbl\');if(el)el.textContent=v&&v>=1?fmtEuro(calcPalierSalaire(v)):\'\';})(parseInt(this.value)||0)" style="flex:1;height:100%;box-sizing:border-box;padding:6px 8px;border:none;font-size:12px;background:transparent;color:var(--text)"></div>'
         +'<div id="ps-palier-lbl" style="font-size:10px;color:var(--text3);height:16px;line-height:16px;margin-top:2px">'+(_curPalier&&parseInt(_curPalier)>=1?fmtEuro(calcPalierSalaire(parseInt(_curPalier))):'')+'</div>'
-        +'<input id="ps-palier-dep" placeholder="depuis m/aaaa" style="width:100%;height:22px;box-sizing:border-box;padding:2px 6px;border:0.5px solid var(--border);border-radius:var(--r);font-size:10px;background:var(--bg2);color:var(--text);margin-top:3px">'
+        +'<input type="hidden" id="ps-palier-dep">'
+        +'<button id="ps-palier-dep-btn" type="button" onclick="openDepuisModal(\'ps-palier-dep\',\'ps-palier-dep-btn\')" style="width:100%;height:22px;box-sizing:border-box;padding:0 8px;border:0.5px solid var(--border);border-radius:var(--r);font-size:10px;background:var(--bg2);color:var(--text3);text-align:left;cursor:pointer;margin-top:3px">depuis toujours</button>'
         +'</div>'
         +'<div style="flex:1"><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:4px">Ancienneté (ans)</label>'
         +'<input id="ps-salanc" type="number" step="1" min="0" value="'+_curAncYears+'" placeholder="0" oninput="(function(v){var el=document.getElementById(\'ps-salanc-lbl\');if(el)el.textContent=v>=0?fmtEuro(calcAncPrime(v)):\'\';})(parseFloat(this.value)||0)" style="width:100%;height:36px;box-sizing:border-box;padding:6px 8px;border:0.5px solid var(--border);border-radius:var(--r);font-size:12px;background:var(--bg2);color:var(--text)">'
         +'<div id="ps-salanc-lbl" style="font-size:10px;color:var(--text3);height:16px;line-height:16px;margin-top:2px">'+(_curAncYears!==''?fmtEuro(calcAncPrime(parseFloat(_curAncYears)||0)):'')+'</div>'
-        +'<input id="ps-anc-dep" placeholder="depuis m/aaaa" style="width:100%;height:22px;box-sizing:border-box;padding:2px 6px;border:0.5px solid var(--border);border-radius:var(--r);font-size:10px;background:var(--bg2);color:var(--text);margin-top:3px">'
+        +'<input type="hidden" id="ps-anc-dep">'
+        +'<button id="ps-anc-dep-btn" type="button" onclick="openDepuisModal(\'ps-anc-dep\',\'ps-anc-dep-btn\')" style="width:100%;height:22px;box-sizing:border-box;padding:0 8px;border:0.5px solid var(--border);border-radius:var(--r);font-size:10px;background:var(--bg2);color:var(--text3);text-align:left;cursor:pointer;margin-top:3px">depuis toujours</button>'
         +'</div>'
         +'<div style="flex:1"><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:4px">Contrat (%)</label>'
         +'<input id="ps-heures" type="number" step="0.1" value="'+_curPct+'" style="width:100%;height:36px;box-sizing:border-box;padding:6px 8px;border:0.5px solid var(--border);border-radius:var(--r);font-size:12px;background:var(--bg2);color:var(--text)">'
         +'<div style="height:16px;line-height:16px;margin-top:2px"></div>'
-        +'<input id="ps-heur-dep" placeholder="depuis m/aaaa" style="width:100%;height:22px;box-sizing:border-box;padding:2px 6px;border:0.5px solid var(--border);border-radius:var(--r);font-size:10px;background:var(--bg2);color:var(--text);margin-top:3px">'
+        +'<input type="hidden" id="ps-heur-dep">'
+        +'<button id="ps-heur-dep-btn" type="button" onclick="openDepuisModal(\'ps-heur-dep\',\'ps-heur-dep-btn\')" style="width:100%;height:22px;box-sizing:border-box;padding:0 8px;border:0.5px solid var(--border);border-radius:var(--r);font-size:10px;background:var(--bg2);color:var(--text3);text-align:left;cursor:pointer;margin-top:3px">depuis toujours</button>'
         +'</div>'
         +'</div>'
         +'<div style="padding:4px 0;margin-bottom:6px">'
@@ -3771,6 +3774,33 @@ function saveProfileFromDD(pid){
   _profs[pid]=pr;if(pid===_aid)S=pr;saveState();render();renderProfilesDropdown();gcalUpdateBtn();
   const _hpn=document.getElementById('hdr-profile-name');if(_hpn&&S.profile)_hpn.textContent=S.profile.name||'Profil';
 }
+var _depField=null;
+function openDepuisModal(inputId,btnId){
+  _depField={inputId:inputId,btnId:btnId};
+  _lockBodyScroll();
+  const _ML=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+  const _n=new Date(),_cm=_n.getMonth()+1,_cy=_n.getFullYear();
+  document.getElementById('modal-root').innerHTML=
+    '<div class="overlay" onclick="if(event.target===this){_depField=null;closeModal()}">'
+    +'<div class="sheet"><div class="sh"></div>'
+    +'<div class="st">Depuis quand ?</div>'
+    +'<button class="mb" style="width:100%;height:48px;font-size:14px;background:var(--bg3);color:var(--text);border:0.5px solid var(--border);border-radius:var(--r);margin-bottom:10px" onclick="_confirmDepuisToujours()">Depuis toujours</button>'
+    +'<button id="_dep-date-btn" class="mb" style="width:100%;height:48px;font-size:14px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);margin-bottom:14px" onclick="_depShowDatePick()">Depuis une date</button>'
+    +'<div id="_dep-date-pick" style="display:none">'
+    +'<div style="display:flex;gap:8px;margin-bottom:12px">'
+    +'<select id="_dep-m" style="flex:1;height:40px;border:0.5px solid var(--border);border-radius:var(--r);background:var(--bg2);color:var(--text);font-size:13px;padding:0 8px">'
+    +_ML.map(function(mn,i){return'<option value="'+(i+1)+'"'+((i+1)===_cm?' selected':'')+'>'+mn+'</option>';}).join('')
+    +'</select>'
+    +'<input id="_dep-y" type="number" value="'+_cy+'" min="2020" max="2035" style="width:88px;height:40px;border:0.5px solid var(--border);border-radius:var(--r);background:var(--bg2);color:var(--text);font-size:13px;padding:0 8px;box-sizing:border-box">'
+    +'</div>'
+    +'<button class="mb" style="width:100%;height:44px;font-size:14px;background:var(--blue);color:#fff;border:none;border-radius:var(--r)" onclick="_confirmDepuisDate()">Confirmer</button>'
+    +'</div>'
+    +'<button class="mcancel" onclick="_depField=null;closeModal()">Annuler</button>'
+    +'</div></div>';
+}
+function _depShowDatePick(){var d=document.getElementById('_dep-date-pick'),b=document.getElementById('_dep-date-btn');if(d)d.style.display='block';if(b)b.style.display='none';}
+function _confirmDepuisToujours(){var f=_depField;_depField=null;if(f){var el=document.getElementById(f.inputId),btn=document.getElementById(f.btnId);if(el)el.value='';if(btn)btn.textContent='depuis toujours';}closeModal();}
+function _confirmDepuisDate(){var m=parseInt((document.getElementById('_dep-m')||{}).value),y=parseInt((document.getElementById('_dep-y')||{}).value),f=_depField;_depField=null;if(!isNaN(m)&&!isNaN(y)&&f){var s=m+'/'+y,el=document.getElementById(f.inputId),btn=document.getElementById(f.btnId);if(el)el.value=s;if(btn)btn.textContent='depuis '+m+'/'+y;}closeModal();}
 function applySettingsFromDD(pid){
   const pr=_profs[pid];if(!pr)return;if(!pr.settings)pr.settings={};
   const dimEl=document.getElementById('ps-dim'),rhEl=document.getElementById('ps-rh');
