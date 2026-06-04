@@ -1679,8 +1679,8 @@ function calcHSMinsMois(y,m){
   for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd),mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);const sun=new Date(mon);sun.setDate(mon.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mym)continue;const hsW=calcHSWeek(mon);low+=hsW.rawLow;high+=hsW.rawHigh;}
   return{low,high};
 }
-function calcVariablesMois(y,m){
-  const mym_cv=y*12+m;const pr=S.profile||{};const _pn=getPalierForYM(mym_cv);const salQ=_pn>0?calcPalierSalaire(_pn):(pr.salaireQualif||0);const salAnc=getAncForYM(mym_cv);const heures=getHeuresForYM(mym_cv);const base=salQ+salAnc;const tauxH=heures>0?Math.round(base/heures*100)/100:0;
+function calcVariablesMois(y,m,overrideTauxH){
+  const mym_cv=y*12+m;const pr=S.profile||{};const _pn=getPalierForYM(mym_cv);const salQ=_pn>0?calcPalierSalaire(_pn):(pr.salaireQualif||0);const salAnc=getAncForYM(mym_cv);const heures=getHeuresForYM(mym_cv);const base=salQ+salAnc;const tauxH=overrideTauxH!=null?overrideTauxH:(heures>0?Math.round(base/heures*100)/100:0);
   const drf=calcDimRHFerMinsMois(y,m);const hs=calcHSMinsMois(y,m);const nuitMin=calcNuitMois(y,m);const primes=calcPrimesMois(y,m);const paniers=calcPaniersMois(y,m);
   const r2=v=>Math.round(v*100)/100;
   const supDim=r2(drf.dim/60*tauxH*0.30),supRH=r2(drf.rh/60*tauxH*0.30),supFer=r2(drf.fer/60*tauxH*1.00);
@@ -1698,7 +1698,11 @@ function calcPayeMois(y,m){
   const mym_cp=y*12+m;const pr=S.profile||{};const _pn=getPalierForYM(mym_cp);const salQ=_pn>0?calcPalierSalaire(_pn):(pr.salaireQualif||0);const salAnc=getAncForYM(mym_cp);const heures=getHeuresForYM(mym_cp);const base=salQ+salAnc;
   const tauxH=heures>0?Math.round(base/heures*100)/100:0;
   const prevM=m===0?11:m-1,prevY=m===0?y-1:y;
-  const vars=calcVariablesMois(prevY,prevM);
+  const _prevMym=prevY*12+prevM,_prevPn=getPalierForYM(_prevMym);
+  const _prevSalQ=_prevPn>0?calcPalierSalaire(_prevPn):(pr.salaireQualif||0);
+  const _prevBase=_prevSalQ+getAncForYM(_prevMym),_prevHeur=getHeuresForYM(_prevMym);
+  const prevTauxH=_prevHeur>0?Math.round(_prevBase/_prevHeur*100)/100:0;
+  const vars=calcVariablesMois(y,m,prevTauxH);
   const nao2022=130,nao2023=55,gpe=calcGPE(pr.groupeClassif||0);
   const pfaM=_pn>0?calcPFA(_pn):(pr.palierNum?calcPFA(pr.palierNum):190);
   let pfa=pr.pfaMensuelle?pfaM:(m===5||m===11?pfaM*6:0);
@@ -3267,7 +3271,7 @@ function openMergedMoisModal(mym,tab){
         +'<div class="sep" style="margin-bottom:10px"></div>'
         +'<div class="btit" style="margin-bottom:4px">Salaire de base</div>'
         +'<div style="font-size:11px">'+_rowb('Qualification',paye.salQ)+_rowb('Ancienneté',paye.salAnc)+_sub('Sous-total',paye.base)+'</div>'
-        +'<div class="btit" style="margin-top:12px;margin-bottom:4px">Variables <span style="font-weight:400;color:var(--text3);font-size:10px">pour '+_MLp[paye.prevM]+' '+paye.prevY+'</span></div>'
+        +'<div class="btit" style="margin-top:12px;margin-bottom:4px">Variables <span style="font-weight:400;color:var(--text3);font-size:10px">(taux '+_MLp[paye.prevM]+')</span></div>'
         +'<div style="font-size:11px">'+varLines+_subp('Sous-total',v.total)+'</div>'
         +'<div class="btit" style="margin-top:12px;margin-bottom:4px">Primes fixes</div>'
         +'<div style="font-size:11px">'
