@@ -1655,13 +1655,17 @@ function calcPrimesMois(y,m){
 }
 function fmtEuro(n){if(!isFinite(n)||isNaN(n))n=0;const abs=Math.abs(n).toFixed(2);const[int,dec]=abs.split('.');const intFmt=int.replace(/\B(?=(\d{3})+(?!\d))/g,' ');return(n<0?'-':'')+intFmt+','+dec+' €';}
 function calcPalierSalaire(n){const base=2091.75;if(n<1)return base;if(n<=44)return Math.floor(base*Math.pow(1.015,n-19)*100)/100;const p44=Math.floor(base*Math.pow(1.015,25)*100)/100;return Math.floor(p44*Math.pow(1.0075,n-44)*100)/100;}
-function calcPFA(n){if(n<=1)return 240;if(n<=3)return 230;if(n<=5)return 220;if(n<=8)return 210;if(n<=17)return 200;if(n<=22)return 190;if(n<=30)return 170;return 160;}
-function calcGPE(g){const t=[0,20,52,62,128,154,159,172,187,231];return t[g]||0;}
-function calcAncPrime(years){const base=2091.75;const y=parseFloat(years)||0;if(y<=0)return 0;if(y<=20)return Math.round(y*0.01*base*100)/100;return Math.round((20*0.01+(y-20)*0.005)*base*100)/100;}
+var _DPC={primes:[{id:'nao2022',label:'NAO 2022',montant:130,debutYM:0,finYM:null},{id:'nao2023',label:'NAO 2023',montant:55,debutYM:0,finYM:null}],gpe:[{debutYM:0,t:[20,52,62,128,154,159,172,187,231]}],pfa:[{debutYM:0,t:[{max:1,v:240},{max:3,v:230},{max:5,v:220},{max:8,v:210},{max:17,v:200},{max:22,v:190},{max:30,v:170},{max:9999,v:160}]}],anc:[{debutYM:0,base:2091.75,rate1:0.01,rate2:0.005,threshold:20}]};
+function getPayConfig(){return S.payConfig||{};}
+function _pcLatest(arr,ym,def){var a=(arr||[]).filter(function(e){return e.debutYM<=ym;});if(a.length)return a.sort(function(a,b){return b.debutYM-a.debutYM;})[0];return(arr&&arr.length)?arr.sort(function(a,b){return b.debutYM-a.debutYM;})[0]:def;}
+function getPrimesConvForYM(ym){var pc=getPayConfig();var src=pc.primes&&pc.primes.length?pc.primes:_DPC.primes;return src.filter(function(p){return p.debutYM<=ym&&(p.finYM==null||ym<=p.finYM);});}
+function calcPFA(n,ym){var pc=getPayConfig();var e=_pcLatest(pc.pfa,ym!=null?ym:TODAY_YM,_DPC.pfa[0]);if(!e)e=_DPC.pfa[0];for(var i=0;i<e.t.length;i++){if(n<=e.t[i].max)return e.t[i].v;}return e.t[e.t.length-1].v;}
+function calcGPE(g,ym){if(!(g>=1&&g<=9))return 0;var pc=getPayConfig();var e=_pcLatest(pc.gpe,ym!=null?ym:TODAY_YM,_DPC.gpe[0]);if(!e)e=_DPC.gpe[0];return e.t[g-1]||0;}
+function calcAncPrime(years,ym){var pc=getPayConfig();var e=_pcLatest(pc.anc,ym!=null?ym:TODAY_YM,_DPC.anc[0]);if(!e)e=_DPC.anc[0];var b=e.base,r1=e.rate1,r2=e.rate2,th=e.threshold;var y=parseFloat(years)||0;if(y<=0)return 0;if(y<=th)return Math.round(y*r1*b*100)/100;return Math.round((th*r1+(y-th)*r2)*b*100)/100;}
 function calcAncYearsFromYM(entreeYM,ym){const eY=Math.floor(entreeYM/12),eM=entreeYM%12,cY=Math.floor(ym/12),cM=ym%12;return Math.max(0,cY-eY-(cM<eM?1:0));}
 function _getHistVal(hist,fb,ym){if(hist&&hist.length){let v=null;for(const e of hist)if(e.ym<=ym)v=e.v;if(v!==null)return v;}return fb;}
 function getPalierForYM(ym){return _getHistVal((S.profile||{}).palierHistory,(S.profile||{}).palierNum||0,ym);}
-function getAncForYM(ym){const pr=S.profile||{};if(pr.ancYears!=null&&pr.ancRefYM!=null){const anni=typeof pr.ancMoisAnni==='number'&&pr.ancMoisAnni>=0?pr.ancMoisAnni:-1;let yrs=pr.ancYears;if(anni>=0){const minYM=Math.min(pr.ancRefYM,ym),maxYM=Math.max(pr.ancRefYM,ym);let cnt=0;for(let y=Math.floor(minYM/12);y<=Math.floor(maxYM/12)+1;y++){const aym=y*12+anni;if(aym>minYM&&aym<=maxYM)cnt++;}yrs=ym>=pr.ancRefYM?yrs+cnt:yrs-cnt;}return calcAncPrime(Math.max(0,yrs));}if(pr.ancEntreeYM!=null)return calcAncPrime(calcAncYearsFromYM(pr.ancEntreeYM,ym));if(pr.ancYearsHistory&&pr.ancYearsHistory.length){const y=_getHistVal(pr.ancYearsHistory,pr.ancYears||0,ym);return calcAncPrime(y);}if(pr.ancYears!=null)return calcAncPrime(pr.ancYears);return _getHistVal(pr.ancHistory,pr.primeAnciennete||0,ym);}
+function getAncForYM(ym){const pr=S.profile||{};if(pr.ancYears!=null&&pr.ancRefYM!=null){const anni=typeof pr.ancMoisAnni==='number'&&pr.ancMoisAnni>=0?pr.ancMoisAnni:-1;let yrs=pr.ancYears;if(anni>=0){const minYM=Math.min(pr.ancRefYM,ym),maxYM=Math.max(pr.ancRefYM,ym);let cnt=0;for(let y=Math.floor(minYM/12);y<=Math.floor(maxYM/12)+1;y++){const aym=y*12+anni;if(aym>minYM&&aym<=maxYM)cnt++;}yrs=ym>=pr.ancRefYM?yrs+cnt:yrs-cnt;}return calcAncPrime(Math.max(0,yrs),ym);}if(pr.ancEntreeYM!=null)return calcAncPrime(calcAncYearsFromYM(pr.ancEntreeYM,ym),ym);if(pr.ancYearsHistory&&pr.ancYearsHistory.length){const y=_getHistVal(pr.ancYearsHistory,pr.ancYears||0,ym);return calcAncPrime(y,ym);}if(pr.ancYears!=null)return calcAncPrime(pr.ancYears,ym);return _getHistVal(pr.ancHistory,pr.primeAnciennete||0,ym);}
 function getHeuresForYM(ym){return _getHistVal((S.profile||{}).heuresHistory,(S.profile||{}).heuresMensuelles||151.67,ym);}
 function calcDimRHFerMinsMois(y,m){
   const mym=y*12+m,sett=settingsForYM(mym),seenW=new Set(),last=new Date(y,m+1,0).getDate();const VAC=getVAC();let dim=0,rh=0,fer=0;
@@ -1703,14 +1707,15 @@ function calcPayeMois(y,m){
   const _prevBase=_prevSalQ+getAncForYM(_prevMym),_prevHeur=getHeuresForYM(_prevMym);
   const prevTauxH=_prevHeur>0?Math.round(_prevBase/_prevHeur*100)/100:0;
   const vars=calcVariablesMois(prevY,prevM,prevTauxH);
-  const nao2022=130,nao2023=55,gpe=calcGPE(pr.groupeClassif||0);
-  const pfaM=_pn>0?calcPFA(_pn):(pr.palierNum?calcPFA(pr.palierNum):190);
+  const _primesConv=getPrimesConvForYM(mym_cp);const _pcTotal=_primesConv.reduce(function(s,p){return s+p.montant;},0);
+  const gpe=calcGPE(pr.groupeClassif||0,mym_cp);
+  const pfaM=_pn>0?calcPFA(_pn,mym_cp):(pr.palierNum?calcPFA(pr.palierNum,mym_cp):190);
   let pfa=pr.pfaMensuelle?pfaM:(m===5||m===11?pfaM*6:0);
-  const totalFixes=nao2022+nao2023+gpe+pfa;
+  const totalFixes=_pcTotal+gpe+pfa;
   const primesCustom=getPrimesFixesCustomForYM(mym_cp);
   const totalPrimesCustom=primesCustom.reduce(function(s,p){return s+p.montant;},0);
   let compCP=0;if(m===0){let yv=0;for(let pm=0;pm<12;pm++)yv+=calcVariablesMois(y-1,pm).total;compCP=yv/10;}
-  return{base,salQ,salAnc,tauxH,heures,prevM,prevY,vars,nao2022,nao2023,gpe,groupeClassif:pr.groupeClassif||0,pfa,pfaMensuelle:pr.pfaMensuelle,totalFixes,primesCustom,totalPrimesCustom,compCP,total:base+vars.total+totalFixes+totalPrimesCustom+compCP,configured:salQ>0||salAnc>0||heures>0};
+  return{base,salQ,salAnc,tauxH,heures,prevM,prevY,vars,primesConv:_primesConv,gpe,groupeClassif:pr.groupeClassif||0,pfa,pfaMensuelle:pr.pfaMensuelle,totalFixes,primesCustom,totalPrimesCustom,compCP,total:base+vars.total+totalFixes+totalPrimesCustom+compCP,configured:salQ>0||salAnc>0||heures>0};
 }
 function calcNuitMinShift(v){
   if(!v||!v.deb||!v.fin)return 0;
@@ -3275,7 +3280,7 @@ function openMergedMoisModal(mym,tab){
         +'<div style="font-size:11px">'+varLines+_subp('Sous-total',v.total)+'</div>'
         +'<div class="btit" style="margin-top:12px;margin-bottom:4px">Primes fixes</div>'
         +'<div style="font-size:11px">'
-        +_row('NAO 2022',paye.nao2022,'var(--text2)')+_row('NAO 2023',paye.nao2023,'var(--text2)')+_row('Ind. GPE'+(paye.groupeClassif?' (Gr.'+paye.groupeClassif+')':''),paye.gpe,'var(--text2)')
+        +paye.primesConv.map(function(p){return _row(p.label,p.montant,'var(--text2)');}).join('')+_row('Ind. GPE'+(paye.groupeClassif?' (Gr.'+paye.groupeClassif+')':''),paye.gpe,'var(--text2)')
         +_row('PFA'+(paye.pfa>0&&!paye.pfaMensuelle?' (sem.)':''),paye.pfa,'var(--text2)')
         +_subp('Sous-total',paye.totalFixes)+'</div>'
         +'<div class="btit" style="margin-top:12px;margin-bottom:4px">Primes personnalisées</div>'
@@ -3724,7 +3729,7 @@ function renderProfilesDropdown(){
         +'<input type="hidden" id="ps-heur-dep">'
         +'</div>'
         +'<div style="flex:1"><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:4px">Groupe</label>'
-        +(function(){ return'<select id="ps-groupe" style="width:100%;height:36px;box-sizing:border-box;padding:6px 8px;border:0.5px solid var(--border);border-radius:var(--r);font-size:12px;background:var(--bg2);color:var(--text)">'+'<option value="">—</option>'+[[1,20],[2,52],[3,62],[4,128],[5,154],[6,159],[7,172],[8,187],[9,231]].map(function(gv){return'<option value="'+gv[0]+'"'+(gv[0]===(pr.profile.groupeClassif||0)?' selected':'')+'>Gr. '+gv[0]+' | '+gv[1]+' €</option>';}).join('')+'</select>';})() 
+        +(function(){return'<select id="ps-groupe" style="width:100%;height:36px;box-sizing:border-box;padding:6px 8px;border:0.5px solid var(--border);border-radius:var(--r);font-size:12px;background:var(--bg2);color:var(--text)">'+'<option value="">—</option>'+[1,2,3,4,5,6,7,8,9].map(function(g){return'<option value="'+g+'"'+(g===(pr.profile.groupeClassif||0)?' selected':'')+'>Gr. '+g+' | '+calcGPE(g,TODAY_YM)+' €</option>';}).join('')+'</select>';})()
         +'<div style="height:16px;margin-top:2px"></div>'
         +'</div>'
         +'</div>'
@@ -3747,6 +3752,37 @@ function renderProfilesDropdown(){
         +'<button id="gcal-clear-btn" title="Effacer les événements" class="mb" style="padding:10px;display:flex;align-items:center;justify-content:center;color:var(--text2)" onclick="gcalClear()"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M9 3h6a1 1 0 0 1 1 1v1H8V4a1 1 0 0 1 1-1zM3 6h18v2H3V6zm2 3h14l-1.5 12a1 1 0 0 1-1 .9H7.5a1 1 0 0 1-1-.9L5 9z"/></svg></button>'
         +'<button id="gcal-disconnect-btn" title="Déconnecter" class="mb" style="padding:10px;display:flex;align-items:center;justify-content:center;color:var(--text2)" onclick="gcalDisconnect()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>'
         +'</div>'
+        // ── SECTION CONVENTION COLLECTIVE ──
+        +'<div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;margin-top:16px;padding-bottom:4px;border-bottom:0.5px solid var(--border)">Convention collective</div>'
+        +(function(){
+          var pc=getPayConfig();
+          var primes=pc.primes&&pc.primes.length?pc.primes:_DPC.primes;
+          var _ML2=['jan','fév','mar','avr','mai','juin','juil','aoû','sep','oct','nov','déc'];
+          return primes.map(function(p){
+            var lbl=p.debutYM>0?'depuis '+_ML2[p.debutYM%12]+'. '+Math.floor(p.debutYM/12):'toujours';
+            return'<div style="display:flex;align-items:center;gap:6px;padding:3px 0">'
+              +'<span style="flex:1;font-size:12px;color:var(--text)">'+p.label+'</span>'
+              +'<b style="font-size:12px;color:var(--text2)">'+fmtEuro(p.montant)+'</b>'
+              +'<span style="font-size:10px;color:var(--text3)">'+lbl+'</span>'
+              +'<button onclick="deleteConvPrime(\''+p.id+'\')" style="width:18px;height:18px;border-radius:50%;border:0.5px solid var(--border);background:transparent;color:var(--red);cursor:pointer;font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;flex-shrink:0">×</button>'
+              +'</div>';
+          }).join('');
+        })()
+        +'<button onclick="openAdminPrimeModal()" style="width:100%;height:30px;font-size:11px;background:transparent;color:var(--blue);border:0.5px dashed var(--blue);border-radius:var(--r);cursor:pointer;font-family:var(--font);margin:6px 0 10px">+ Ajouter une prime</button>'
+        +(function(){
+          var pc=getPayConfig();
+          var ge=_pcLatest(pc.gpe,TODAY_YM,_DPC.gpe[0])||_DPC.gpe[0];
+          var pe=_pcLatest(pc.pfa,TODAY_YM,_DPC.pfa[0])||_DPC.pfa[0];
+          var ae=_pcLatest(pc.anc,TODAY_YM,_DPC.anc[0])||_DPC.anc[0];
+          var _ML2=['jan','fév','mar','avr','mai','juin','juil','aoû','sep','oct','nov','déc'];
+          function dateLbl(e){return e.debutYM>0?'depuis '+_ML2[e.debutYM%12]+'. '+Math.floor(e.debutYM/12):'';}
+          return'<div class="srow" style="padding:4px 0;align-items:center"><div style="flex:1"><div class="slbl" style="font-size:12px">Groupes GPE</div><div style="font-size:10px;color:var(--text3)">'+ge.t.map(function(v,i){return'G'+(i+1)+':'+v+'€';}).join(' ')+'</div><div style="font-size:10px;color:var(--text3)">'+dateLbl(ge)+'</div></div>'
+            +'<button onclick="openAdminGPEModal()" class="mb" style="font-size:11px;padding:4px 10px;height:28px;flex-shrink:0">Modifier</button></div>'
+            +'<div class="srow" style="padding:4px 0;align-items:center"><div style="flex:1"><div class="slbl" style="font-size:12px">PFA par palier</div><div style="font-size:10px;color:var(--text3)">'+pe.t.map(function(tr){return(tr.max>=9999?'P31+':'P≤'+tr.max)+':'+tr.v+'€';}).join(' ')+'</div><div style="font-size:10px;color:var(--text3)">'+dateLbl(pe)+'</div></div>'
+            +'<button onclick="openAdminPFAModal()" class="mb" style="font-size:11px;padding:4px 10px;height:28px;flex-shrink:0">Modifier</button></div>'
+            +'<div class="srow" style="padding:4px 0;align-items:center"><div style="flex:1"><div class="slbl" style="font-size:12px">Ancienneté</div><div style="font-size:10px;color:var(--text3)">base '+fmtEuro(ae.base)+' · ≤'+ae.threshold+' ans: '+(ae.rate1*100)+'%/an · >'+ae.threshold+' ans: '+(ae.rate2*100)+'%/an</div><div style="font-size:10px;color:var(--text3)">'+dateLbl(ae)+'</div></div>'
+            +'<button onclick="openAdminAncModal()" class="mb" style="font-size:11px;padding:4px 10px;height:28px;flex-shrink:0">Modifier</button></div>';
+        })()
         +'</div></div>';
     }
     var delBtn=p.id!=='default'?'<button class="pdel" title="Supprimer" data-pid="'+p.id+'" onclick="event.stopPropagation();deleteProfileDD(this.dataset.pid)"><i class="ti ti-trash" style="font-size:13px"></i></button>':'';
@@ -3952,6 +3988,138 @@ function _deletePrimeFixeFrom(id,ym,fromYM){
     }
   }
   saveState();closeModal();openMergedMoisModal(ym,4);
+}
+// ── ADMIN CONVENTION COLLECTIVE ──
+function _pcInitConfig(){if(!S.payConfig)S.payConfig={};var pc=S.payConfig;if(!pc.primes){pc.primes=JSON.parse(JSON.stringify(_DPC.primes));}if(!pc.gpe){pc.gpe=JSON.parse(JSON.stringify(_DPC.gpe));}if(!pc.pfa){pc.pfa=JSON.parse(JSON.stringify(_DPC.pfa));}if(!pc.anc){pc.anc=JSON.parse(JSON.stringify(_DPC.anc));}}
+function _adminDateYM(){var m=parseInt((document.getElementById('_apc-m')||{}).value)||new Date().getMonth()+1;var y=parseInt((document.getElementById('_apc-y')||{}).value)||new Date().getFullYear();return y*12+(m-1);}
+function _adminDatePicker(selId,inpId){var _ML=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];var n=new Date();return'<div style="display:flex;gap:8px;margin-top:10px"><select id="'+selId+'" style="flex:1;height:40px;border:0.5px solid var(--border);border-radius:var(--r);background:var(--bg2);color:var(--text);font-size:13px;padding:0 8px">'+_ML.map(function(mn,i){return'<option value="'+(i+1)+'"'+((i+1)===n.getMonth()+1?' selected':'')+'>'+mn+'</option>';}).join('')+'</select><input id="'+inpId+'" type="number" value="'+n.getFullYear()+'" min="2020" max="2040" style="width:88px;height:40px;border:0.5px solid var(--border);border-radius:var(--r);background:var(--bg2);color:var(--text);font-size:13px;padding:0 8px;box-sizing:border-box"></div>';}
+
+function deleteConvPrime(id){
+  if(!confirm('Supprimer cette prime ?'))return;
+  _pcInitConfig();
+  var def=_DPC.primes;
+  if(!S.payConfig.primes||!S.payConfig.primes.length)S.payConfig.primes=JSON.parse(JSON.stringify(def));
+  S.payConfig.primes=S.payConfig.primes.filter(function(p){return p.id!==id;});
+  saveState();renderProfilesDropdown();
+}
+function openAdminPrimeModal(){
+  _lockBodyScroll();
+  var n=new Date(),_ML2=['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
+  document.getElementById('modal-root').innerHTML=
+    '<div class="overlay" onclick="if(event.target===this)closeModal()">'
+    +'<div class="sheet"><div class="sh"></div><div class="st">Nouvelle prime de convention</div>'
+    +'<label style="font-size:12px;color:var(--text3);display:block;margin-bottom:4px">Libellé</label>'
+    +'<input id="_apc-label" type="text" placeholder="ex: NAO 2024" style="width:100%;height:44px;box-sizing:border-box;padding:0 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--bg2);color:var(--text);margin-bottom:12px">'
+    +'<label style="font-size:12px;color:var(--text3);display:block;margin-bottom:4px">Montant (€ / mois)</label>'
+    +'<input id="_apc-montant" type="number" min="0" step="0.01" placeholder="0,00" style="width:100%;height:44px;box-sizing:border-box;padding:0 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--bg2);color:var(--text);margin-bottom:12px">'
+    +'<label style="font-size:12px;color:var(--text3);display:block;margin-bottom:4px">Date d\'application</label>'
+    +_adminDatePicker('_apc-m','_apc-y')
+    +'<button class="mb" style="width:100%;height:44px;font-size:14px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);margin-top:16px;margin-bottom:8px" onclick="_confirmAdminPrime()">Ajouter</button>'
+    +'<button class="mcancel" onclick="closeModal()">Annuler</button>'
+    +'</div></div>';
+}
+function _confirmAdminPrime(){
+  var label=(document.getElementById('_apc-label')||{value:''}).value.trim();
+  var montant=parseFloat((document.getElementById('_apc-montant')||{value:''}).value);
+  if(!label){alert('Libellé requis.');return;}
+  if(isNaN(montant)||montant<0){alert('Montant invalide.');return;}
+  var ym=_adminDateYM();
+  _pcInitConfig();
+  S.payConfig.primes.push({id:'pc_'+Date.now(),label:label,montant:montant,debutYM:ym,finYM:null});
+  saveState();closeModal();renderProfilesDropdown();
+}
+
+function openAdminGPEModal(){
+  _lockBodyScroll();
+  var pc=getPayConfig();
+  var e=_pcLatest(pc.gpe,TODAY_YM,_DPC.gpe[0])||_DPC.gpe[0];
+  var labels=['G1','G2','G3','G4','G5','G6','G7','G8','G9'];
+  var rows=labels.map(function(l,i){
+    return'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+      +'<span style="width:28px;font-size:12px;color:var(--text3)">'+l+'</span>'
+      +'<input id="_agpe-'+i+'" type="number" min="0" step="1" value="'+e.t[i]+'" style="flex:1;height:40px;box-sizing:border-box;padding:0 10px;border:0.5px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--bg2);color:var(--text)"> €'
+      +'</div>';
+  }).join('');
+  document.getElementById('modal-root').innerHTML=
+    '<div class="overlay" onclick="if(event.target===this)closeModal()">'
+    +'<div class="sheet"><div class="sh"></div><div class="st">Indemnités de groupe (GPE)</div>'
+    +rows
+    +'<label style="font-size:12px;color:var(--text3);display:block;margin-top:8px;margin-bottom:4px">Date d\'application</label>'
+    +_adminDatePicker('_apc-m','_apc-y')
+    +'<button class="mb" style="width:100%;height:44px;font-size:14px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);margin-top:16px;margin-bottom:8px" onclick="_confirmAdminGPE()">Enregistrer</button>'
+    +'<button class="mcancel" onclick="closeModal()">Annuler</button>'
+    +'</div></div>';
+}
+function _confirmAdminGPE(){
+  var t=[0,1,2,3,4,5,6,7,8].map(function(i){return parseFloat((document.getElementById('_agpe-'+i)||{value:'0'}).value)||0;});
+  if(t.some(function(v){return isNaN(v)||v<0;})){alert('Valeurs invalides.');return;}
+  var ym=_adminDateYM();
+  _pcInitConfig();
+  S.payConfig.gpe.push({debutYM:ym,t:t});
+  saveState();closeModal();renderProfilesDropdown();render();
+}
+
+function openAdminPFAModal(){
+  _lockBodyScroll();
+  var pc=getPayConfig();
+  var e=_pcLatest(pc.pfa,TODAY_YM,_DPC.pfa[0])||_DPC.pfa[0];
+  var tierLabels=['P1','P2-P3','P4-P5','P6-P8','P9-P17','P18-P22','P23-P30','P31+'];
+  var rows=tierLabels.map(function(l,i){
+    return'<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
+      +'<span style="width:64px;font-size:12px;color:var(--text3)">'+l+'</span>'
+      +'<input id="_apfa-'+i+'" type="number" min="0" step="1" value="'+(e.t[i]?e.t[i].v:'')+'" style="flex:1;height:40px;box-sizing:border-box;padding:0 10px;border:0.5px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--bg2);color:var(--text)"> €'
+      +'</div>';
+  }).join('');
+  document.getElementById('modal-root').innerHTML=
+    '<div class="overlay" onclick="if(event.target===this)closeModal()">'
+    +'<div class="sheet"><div class="sh"></div><div class="st">Indemnités PFA par palier</div>'
+    +rows
+    +'<label style="font-size:12px;color:var(--text3);display:block;margin-top:8px;margin-bottom:4px">Date d\'application</label>'
+    +_adminDatePicker('_apc-m','_apc-y')
+    +'<button class="mb" style="width:100%;height:44px;font-size:14px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);margin-top:16px;margin-bottom:8px" onclick="_confirmAdminPFA()">Enregistrer</button>'
+    +'<button class="mcancel" onclick="closeModal()">Annuler</button>'
+    +'</div></div>';
+}
+function _confirmAdminPFA(){
+  var maxArr=[1,3,5,8,17,22,30,9999];
+  var t=maxArr.map(function(max,i){return{max:max,v:parseFloat((document.getElementById('_apfa-'+i)||{value:'0'}).value)||0};});
+  if(t.some(function(tr){return isNaN(tr.v)||tr.v<0;})){alert('Valeurs invalides.');return;}
+  var ym=_adminDateYM();
+  _pcInitConfig();
+  S.payConfig.pfa.push({debutYM:ym,t:t});
+  saveState();closeModal();renderProfilesDropdown();render();
+}
+
+function openAdminAncModal(){
+  _lockBodyScroll();
+  var pc=getPayConfig();
+  var e=_pcLatest(pc.anc,TODAY_YM,_DPC.anc[0])||_DPC.anc[0];
+  document.getElementById('modal-root').innerHTML=
+    '<div class="overlay" onclick="if(event.target===this)closeModal()">'
+    +'<div class="sheet"><div class="sh"></div><div class="st">Formule ancienneté</div>'
+    +'<label style="font-size:12px;color:var(--text3);display:block;margin-bottom:4px">Base de référence (€)</label>'
+    +'<input id="_aanc-base" type="number" min="0" step="0.01" value="'+e.base+'" style="width:100%;height:44px;box-sizing:border-box;padding:0 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--bg2);color:var(--text);margin-bottom:10px">'
+    +'<div style="display:flex;gap:8px;margin-bottom:10px">'
+    +'<div style="flex:1"><label style="font-size:12px;color:var(--text3);display:block;margin-bottom:4px">Taux ≤ seuil (%/an)</label><input id="_aanc-r1" type="number" min="0" max="100" step="0.1" value="'+(e.rate1*100)+'" style="width:100%;height:44px;box-sizing:border-box;padding:0 10px;border:0.5px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--bg2);color:var(--text)"></div>'
+    +'<div style="flex:1"><label style="font-size:12px;color:var(--text3);display:block;margin-bottom:4px">Taux > seuil (%/an)</label><input id="_aanc-r2" type="number" min="0" max="100" step="0.1" value="'+(e.rate2*100)+'" style="width:100%;height:44px;box-sizing:border-box;padding:0 10px;border:0.5px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--bg2);color:var(--text)"></div>'
+    +'<div style="flex:1"><label style="font-size:12px;color:var(--text3);display:block;margin-bottom:4px">Seuil (ans)</label><input id="_aanc-th" type="number" min="0" max="50" step="1" value="'+e.threshold+'" style="width:100%;height:44px;box-sizing:border-box;padding:0 10px;border:0.5px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--bg2);color:var(--text)"></div>'
+    +'</div>'
+    +'<label style="font-size:12px;color:var(--text3);display:block;margin-bottom:4px">Date d\'application</label>'
+    +_adminDatePicker('_apc-m','_apc-y')
+    +'<button class="mb" style="width:100%;height:44px;font-size:14px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);margin-top:16px;margin-bottom:8px" onclick="_confirmAdminAnc()">Enregistrer</button>'
+    +'<button class="mcancel" onclick="closeModal()">Annuler</button>'
+    +'</div></div>';
+}
+function _confirmAdminAnc(){
+  var base=parseFloat((document.getElementById('_aanc-base')||{value:'0'}).value);
+  var r1=parseFloat((document.getElementById('_aanc-r1')||{value:'0'}).value)/100;
+  var r2=parseFloat((document.getElementById('_aanc-r2')||{value:'0'}).value)/100;
+  var th=parseInt((document.getElementById('_aanc-th')||{value:'0'}).value)||0;
+  if(isNaN(base)||base<=0){alert('Base invalide.');return;}
+  var ym=_adminDateYM();
+  _pcInitConfig();
+  S.payConfig.anc.push({debutYM:ym,base:base,rate1:r1,rate2:r2,threshold:th});
+  saveState();closeModal();renderProfilesDropdown();render();
 }
 function openDepuisModal(inputId,btnId){
   _depField={inputId:inputId,btnId:btnId};
