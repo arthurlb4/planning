@@ -1192,6 +1192,17 @@ export default {
       return resp({ ok: true, ops: fsOps.length, started: true });
     }
 
+    if (path === '/get-pay-config') {
+      var config = await env.PLANNING_DB.get('global:pay-config', { type: 'json' }) || null;
+      return resp({ config: config });
+    }
+    if (path === '/admin/pay-config/save') {
+      if (!await verifyAdmin(request, env)) return resp({ error: 'Non autorise' }, 401);
+      var config = body.config;
+      if (!config) return resp({ error: 'Config manquante' }, 400);
+      await env.PLANNING_DB.put('global:pay-config', JSON.stringify(config));
+      return resp({ ok: true });
+    }
     if (path === '/gcal/sync-debug') {
       const session = await verifySession(request, env);
       if (!session) return resp({ error: 'Non authentifie' }, 401);
