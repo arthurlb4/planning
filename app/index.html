@@ -1654,9 +1654,10 @@ function calcPrimesMois(y,m){
 function fmtEuro(n){if(!isFinite(n)||isNaN(n))n=0;const abs=Math.abs(n).toFixed(2);const[int,dec]=abs.split('.');const intFmt=int.replace(/\B(?=(\d{3})+(?!\d))/g,' ');return(n<0?'-':'')+intFmt+','+dec+' €';}
 function calcPalierSalaire(n){const base=2091.75;if(n<1)return base;if(n<=40)return Math.floor(base*Math.pow(1.015,n-19)*100)/100;const p40=Math.floor(base*Math.pow(1.015,21)*100)/100;return Math.floor(p40*Math.pow(1.005,n-40)*100)/100;}
 function calcAncPrime(years){const base=2091.75;const y=parseFloat(years)||0;if(y<=0)return 0;if(y<=20)return Math.round(y*0.01*base*100)/100;return Math.round((20*0.01+(y-20)*0.005)*base*100)/100;}
+function calcAncYearsFromYM(entreeYM,ym){const eY=Math.floor(entreeYM/12),eM=entreeYM%12,cY=Math.floor(ym/12),cM=ym%12;return Math.max(0,cY-eY-(cM<eM?1:0));}
 function _getHistVal(hist,fb,ym){if(hist&&hist.length){let v=null;for(const e of hist)if(e.ym<=ym)v=e.v;if(v!==null)return v;}return fb;}
 function getPalierForYM(ym){return _getHistVal((S.profile||{}).palierHistory,(S.profile||{}).palierNum||0,ym);}
-function getAncForYM(ym){const pr=S.profile||{};if(pr.ancYearsHistory&&pr.ancYearsHistory.length||pr.ancYears!=null){const y=_getHistVal(pr.ancYearsHistory,pr.ancYears||0,ym);return calcAncPrime(y);}return _getHistVal(pr.ancHistory,pr.primeAnciennete||0,ym);}
+function getAncForYM(ym){const pr=S.profile||{};if(pr.ancEntreeYM!=null)return calcAncPrime(calcAncYearsFromYM(pr.ancEntreeYM,ym));if(pr.ancYearsHistory&&pr.ancYearsHistory.length||pr.ancYears!=null){const y=_getHistVal(pr.ancYearsHistory,pr.ancYears||0,ym);return calcAncPrime(y);}return _getHistVal(pr.ancHistory,pr.primeAnciennete||0,ym);}
 function getHeuresForYM(ym){return _getHistVal((S.profile||{}).heuresHistory,(S.profile||{}).heuresMensuelles||151.67,ym);}
 function calcDimRHFerMinsMois(y,m){
   const mym=y*12+m,sett=settingsForYM(mym),seenW=new Set(),last=new Date(y,m+1,0).getDate();const VAC=getVAC();let dim=0,rh=0,fer=0;
@@ -3646,10 +3647,12 @@ function renderProfilesDropdown(){
         return '<option value="'+i+'"'+(i===_curVisual?' selected':'')+'>'+formatLineOption(i)+'</option>';
       }).join('');
       var _palHist=pr.profile.palierHistory||[];
-      var _ancYearsHist=pr.profile.ancYearsHistory||[];
       var _heurHist=pr.profile.heuresHistory||[];
       var _curPalier=_palHist.length?_palHist[_palHist.length-1].v:(pr.profile.palierNum||'');
-      var _curAncYears=_ancYearsHist.length?_ancYearsHist[_ancYearsHist.length-1].v:(pr.profile.ancYears!=null?pr.profile.ancYears:'');
+      var _ancEntreeYM=pr.profile.ancEntreeYM;
+      var _ancEntreeStr=_ancEntreeYM!=null?((_ancEntreeYM%12+1)+'/'+Math.floor(_ancEntreeYM/12)):'';
+      var _ancInitYrs=_ancEntreeYM!=null?calcAncYearsFromYM(_ancEntreeYM,TODAY_YM):null;
+      var _ancInitLbl=_ancInitYrs!=null?(_ancInitYrs+' an'+(_ancInitYrs>1?'s':'')+' → '+fmtEuro(calcAncPrime(_ancInitYrs))):'&nbsp;';
       var _curHeur=_heurHist.length?_heurHist[_heurHist.length-1].v:(pr.profile.heuresMensuelles||151.67);
       var _curPct=Math.round(_curHeur/151.67*100*10)/10;
       actD='<div id="ps-panel" class="ps-panel">'
@@ -3680,11 +3683,10 @@ function renderProfilesDropdown(){
         +'<input type="hidden" id="ps-palier-dep">'
         +'<button id="ps-palier-dep-btn" type="button" onclick="openDepuisModal(\'ps-palier-dep\',\'ps-palier-dep-btn\')" style="width:100%;height:22px;box-sizing:border-box;padding:0 8px;border:0.5px solid var(--border);border-radius:var(--r);font-size:10px;background:var(--bg2);color:var(--text3);text-align:left;cursor:pointer;margin-top:3px">depuis toujours</button>'
         +'</div>'
-        +'<div style="flex:1"><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:4px">Ancienneté (ans)</label>'
-        +'<input id="ps-salanc" type="number" step="1" min="0" value="'+_curAncYears+'" placeholder="0" oninput="(function(v){var el=document.getElementById(\'ps-salanc-lbl\');if(el)el.textContent=v>=0?fmtEuro(calcAncPrime(v)):\'\';})(parseFloat(this.value)||0)" style="width:100%;height:36px;box-sizing:border-box;padding:6px 8px;border:0.5px solid var(--border);border-radius:var(--r);font-size:12px;background:var(--bg2);color:var(--text)">'
-        +'<div id="ps-salanc-lbl" style="font-size:10px;color:var(--text3);height:16px;line-height:16px;margin-top:2px">'+(_curAncYears!==''?fmtEuro(calcAncPrime(parseFloat(_curAncYears)||0)):'')+'</div>'
-        +'<input type="hidden" id="ps-anc-dep">'
-        +'<button id="ps-anc-dep-btn" type="button" onclick="openDepuisModal(\'ps-anc-dep\',\'ps-anc-dep-btn\')" style="width:100%;height:22px;box-sizing:border-box;padding:0 8px;border:0.5px solid var(--border);border-radius:var(--r);font-size:10px;background:var(--bg2);color:var(--text3);text-align:left;cursor:pointer;margin-top:3px">depuis toujours</button>'
+        +'<div style="flex:1"><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:4px">Ancienneté</label>'
+        +'<input type="hidden" id="ps-anc-dep" value="'+_ancEntreeStr+'">'
+        +'<button id="ps-anc-dep-btn" type="button" onclick="openEntreeDateModal(\'ps-anc-dep\',\'ps-anc-dep-btn\',\'ps-salanc-lbl\')" style="width:100%;height:36px;box-sizing:border-box;padding:0 8px;border:0.5px solid var(--border);border-radius:var(--r);font-size:12px;background:var(--bg2);color:var(--text);text-align:left;cursor:pointer">'+(_ancEntreeStr?'depuis '+_ancEntreeStr:'Date non définie')+'</button>'
+        +'<div id="ps-salanc-lbl" style="font-size:10px;color:var(--text3);height:16px;line-height:16px;margin-top:2px">'+_ancInitLbl+'</div>'
         +'</div>'
         +'<div style="flex:1"><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:4px">Contrat (%)</label>'
         +'<input id="ps-heures" type="number" step="0.1" value="'+_curPct+'" style="width:100%;height:36px;box-sizing:border-box;padding:6px 8px;border:0.5px solid var(--border);border-radius:var(--r);font-size:12px;background:var(--bg2);color:var(--text)">'
@@ -3765,8 +3767,8 @@ function saveProfileFromDD(pid){
   const _histUps=(arr,ym,v)=>{const i=arr.findIndex(e=>e.ym===ym);if(i>=0)arr[i].v=v;else arr.push({ym,v});arr.sort((a,b)=>a.ym-b.ym);};
   const _palierEl=document.getElementById('ps-palier'),_palierDepEl=document.getElementById('ps-palier-dep');
   if(_palierEl&&_palierEl.value.trim()){const _pn=parseInt(_palierEl.value);if(_pn>=1){pr.profile.palierNum=_pn;pr.profile.salaireQualif=calcPalierSalaire(_pn);const _pd2=_pd(_palierDepEl&&_palierDepEl.value);if(_pd2!==null){if(!pr.profile.palierHistory)pr.profile.palierHistory=[];_histUps(pr.profile.palierHistory,_pd2,_pn);}}}
-  const _ancEl=document.getElementById('ps-salanc'),_ancDepEl=document.getElementById('ps-anc-dep');
-  if(_ancEl){const _ay=parseFloat(_ancEl.value)||0;pr.profile.ancYears=_ay;pr.profile.primeAnciennete=calcAncPrime(_ay);const _pd3=_pd(_ancDepEl&&_ancDepEl.value);if(_pd3!==null){if(!pr.profile.ancYearsHistory)pr.profile.ancYearsHistory=[];_histUps(pr.profile.ancYearsHistory,_pd3,_ay);}}
+  const _ancDepEl=document.getElementById('ps-anc-dep');
+  if(_ancDepEl&&_ancDepEl.value.trim()){const _pd3=_pd(_ancDepEl.value);if(_pd3!==null){pr.profile.ancEntreeYM=_pd3;pr.profile.primeAnciennete=calcAncPrime(calcAncYearsFromYM(_pd3,TODAY_YM));}}
   const _psheur=document.getElementById('ps-heures'),_heurDepEl=document.getElementById('ps-heur-dep');
   if(_psheur){const _pct=parseFloat(_psheur.value);if(_pct>0){const _hv=Math.round(_pct*151.67/100*100)/100;pr.profile.heuresMensuelles=_hv;const _pd4=_pd(_heurDepEl&&_heurDepEl.value);if(_pd4!==null){if(!pr.profile.heuresHistory)pr.profile.heuresHistory=[];_histUps(pr.profile.heuresHistory,_pd4,_hv);}}}
   const _pfamens=document.getElementById('ps-pfamens');if(_pfamens)pr.profile.pfaMensuelle=_pfamens.checked;
@@ -3801,6 +3803,40 @@ function openDepuisModal(inputId,btnId){
 function _depShowDatePick(){var d=document.getElementById('_dep-date-pick'),b=document.getElementById('_dep-date-btn');if(d)d.style.display='block';if(b)b.style.display='none';}
 function _confirmDepuisToujours(){var f=_depField;_depField=null;if(f){var el=document.getElementById(f.inputId),btn=document.getElementById(f.btnId);if(el)el.value='';if(btn)btn.textContent='depuis toujours';}closeModal();}
 function _confirmDepuisDate(){var m=parseInt((document.getElementById('_dep-m')||{}).value),y=parseInt((document.getElementById('_dep-y')||{}).value),f=_depField;_depField=null;if(!isNaN(m)&&!isNaN(y)&&f){var s=m+'/'+y,el=document.getElementById(f.inputId),btn=document.getElementById(f.btnId);if(el)el.value=s;if(btn)btn.textContent='depuis '+m+'/'+y;}closeModal();}
+function openEntreeDateModal(inputId,btnId,lblId){
+  _depField={inputId:inputId,btnId:btnId,lblId:lblId};
+  _lockBodyScroll();
+  const _ML=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+  const curVal=(document.getElementById(inputId)||{}).value||'';
+  const parts=curVal.split('/');
+  const hasVal=parts.length===2&&!isNaN(parseInt(parts[0]))&&!isNaN(parseInt(parts[1]));
+  const initM=hasVal?parseInt(parts[0]):1,initY=hasVal?parseInt(parts[1]):new Date().getFullYear()-10;
+  document.getElementById('modal-root').innerHTML=
+    '<div class="overlay" onclick="if(event.target===this){_depField=null;closeModal()}">'
+    +'<div class="sheet"><div class="sh"></div>'
+    +'<div class="st">Date d\'ancienneté</div>'
+    +'<div class="ss" style="margin-bottom:14px">Mois et année d\'entrée dans l\'entreprise</div>'
+    +'<div style="display:flex;gap:8px;margin-bottom:16px">'
+    +'<select id="_dep-m" style="flex:1;height:40px;border:0.5px solid var(--border);border-radius:var(--r);background:var(--bg2);color:var(--text);font-size:13px;padding:0 8px">'
+    +_ML.map(function(mn,i){return'<option value="'+(i+1)+'"'+((i+1)===initM?' selected':'')+'>'+mn+'</option>';}).join('')
+    +'</select>'
+    +'<input id="_dep-y" type="number" value="'+initY+'" min="1970" max="2035" style="width:88px;height:40px;border:0.5px solid var(--border);border-radius:var(--r);background:var(--bg2);color:var(--text);font-size:13px;padding:0 8px;box-sizing:border-box">'
+    +'</div>'
+    +'<button class="mb" style="width:100%;height:44px;font-size:14px;background:var(--blue);color:#fff;border:none;border-radius:var(--r)" onclick="_confirmEntreeDate()">Confirmer</button>'
+    +'<button class="mcancel" onclick="_depField=null;closeModal()">Annuler</button>'
+    +'</div></div>';
+}
+function _confirmEntreeDate(){
+  var m=parseInt((document.getElementById('_dep-m')||{}).value),y=parseInt((document.getElementById('_dep-y')||{}).value),f=_depField;
+  _depField=null;
+  if(!isNaN(m)&&!isNaN(y)&&f){
+    var s=m+'/'+y,el=document.getElementById(f.inputId),btn=document.getElementById(f.btnId),lbl=document.getElementById(f.lblId);
+    if(el)el.value=s;
+    if(btn)btn.textContent='depuis '+m+'/'+y;
+    if(lbl){var eym=y*12+(m-1),yrs=calcAncYearsFromYM(eym,TODAY_YM);lbl.textContent=yrs+' an'+(yrs>1?'s':'')+' → '+fmtEuro(calcAncPrime(yrs));}
+  }
+  closeModal();
+}
 function applySettingsFromDD(pid){
   const pr=_profs[pid];if(!pr)return;if(!pr.settings)pr.settings={};
   const dimEl=document.getElementById('ps-dim'),rhEl=document.getElementById('ps-rh');
