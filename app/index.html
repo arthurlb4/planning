@@ -1214,23 +1214,31 @@ function applyTheme(t){
   const icon=document.getElementById('theme-icon');
   if(icon)icon.className=t==='dark'?'ti ti-moon':'ti ti-sun';
 }
-function updateWarnIcon(warnKeys){
+function updateWarnIcon(warnKeys,expNext){
   const wrap=document.getElementById('warn-icon-wrap');
   if(!wrap)return;
-  if(!warnKeys||warnKeys.size===0){
+  const hasWarn=warnKeys&&warnKeys.size>0;
+  const hasExpiry=expNext&&expNext.length>0;
+  if(!hasWarn&&!hasExpiry){
     wrap.style.display='none';
     const dd=document.getElementById('warn-dropdown');if(dd)dd.style.display='none';
     return;
   }
   wrap.style.display='inline-flex';
-  const list=document.getElementById('warn-dates-list');
-  if(list){
-    const ML=['jan','\u00e9fv','mar','avr','mai','jun','jul','ao\u00fb','sep','oct','nov','d\u00e9c'];
-    list.innerHTML=[...warnKeys].sort().map(function(k){
-      const d=new Date(k+'T12:00:00');
-      return '<div style="padding:2px 0;border-bottom:0.5px solid var(--border2)">'+d.getDate()+' '+ML[d.getMonth()]+' '+d.getFullYear()+'</div>';
-    }).join('');
+  const dd=document.getElementById('warn-dropdown');
+  if(!dd)return;
+  const ML=['jan','f\u00e9v','mar','avr','mai','jun','jul','ao\u00fb','sep','oct','nov','d\u00e9c'];
+  let html='';
+  if(hasWarn){
+    html+='<div style="font-weight:600;margin-bottom:6px;color:var(--amber)">Rendus en d\u00e9passement</div>';
+    html+=[...warnKeys].sort().map(function(k){const d=new Date(k+'T12:00:00');return'<div style="padding:2px 0;border-bottom:0.5px solid var(--border2)">'+d.getDate()+' '+ML[d.getMonth()]+' '+d.getFullYear()+'</div>';}).join('');
   }
+  if(hasExpiry){
+    if(hasWarn)html+='<div style="height:8px"></div>';
+    html+='<div style="font-weight:600;margin-bottom:6px;color:var(--red)">Expire le mois prochain</div>';
+    html+=expNext.map(function(e){const y=Math.floor(e.ym/12),m=e.ym%12;return'<div style="padding:2px 0;border-bottom:0.5px solid var(--border2)">'+ML[m]+' '+y+' \u00b7 '+fmtMin(e.avail)+'</div>';}).join('');
+  }
+  dd.innerHTML=html;
 }
 function toggleWarnDropdown(){
   const dd=document.getElementById('warn-dropdown');
@@ -1269,7 +1277,7 @@ function navDir(d){
   if(annualOpen){curY+=d;renderAnnual();document.getElementById('mtit').textContent=String(curY);return;}
   const mv=document.getElementById('month-view');
   if(mv){
-    const sideBelow=!!document.querySelector('.layout.side-below');
+    const sideBelow=!!document.querySelector('.layout.side-below')||window.innerWidth<=720;
     const oldRows=_calNRows(curY,curM);
     let newY=curY,newM=curM+d;if(newM<0){newM=11;newY--;}if(newM>11){newM=0;newY++;}
     const newRows=_calNRows(newY,newM);
@@ -1347,7 +1355,9 @@ function renderMonth(el_heads,el_cal){
   }
   let sdow=first.getDay();sdow=sdow===0?6:sdow-1;
   // Warn keys come directly from the FIFO inside calcSoldes (no double-pass)
-  const _warnKeys=calcSoldes().warnKeys;
+  const _cs0=calcSoldes();
+  const _warnKeys=_cs0.warnKeys;
+  const _expNext=Object.keys(_cs0.realAvail).map(Number).filter(function(ym){const av=_cs0.realAvail[ym];return av>0&&getExpYm(ym)===TODAY_YM+1&&!(S.autoExtend&&S.autoExtend[ym]>0);}).map(function(ym){return{ym,avail:_cs0.realAvail[ym]};});
   const cells=[];for(let i=0;i<sdow;i++)cells.push(null);
   const _VAC=getVAC();
   for(let d=1;d<=last.getDate();d++){
@@ -1389,7 +1399,7 @@ function renderMonth(el_heads,el_cal){
   el_cal.innerHTML=html;
   requestAnimationFrame(function(){_renderCycBadges(el_cal);});
   // Update header warn icon
-  updateWarnIcon(_warnKeys);
+  updateWarnIcon(_warnKeys,_expNext);
 }
 
 function _renderCycBadges(calEl){
@@ -3324,6 +3334,7 @@ function openMergedMoisModal(mym,tab){
         +'<div style="font-size:11px">'+_rowb('Qualification',paye.salQ)+_rowb('Ancienneté',paye.salAnc)+_sub('Sous-total',paye.base)+'</div>'
         +'<div class="btit" style="margin-top:12px;margin-bottom:4px">Variables <span style="font-weight:400;color:var(--text3);font-size:10px">('+_MLp[paye.prevM]+')</span></div>'
         +'<div style="font-size:11px">'+varLines+_subp('Sous-total',v.total)+'</div>'
+        +(m===0?'<div class="btit" style="margin-top:12px;margin-bottom:4px">Complément CP</div>'+(paye.compCP>0?'<div style="font-size:11px">'+_subp('1/10 variables '+(y-1),paye.compCP)+'</div>':'<div style="font-size:11px;color:var(--amber);display:flex;align-items:flex-start;gap:5px;padding:4px 0"><span style="flex-shrink:0">⚠</span><span>1/10 des variables '+(y-1)+' non calculable — les données de l\'année précédente sont incomplètes.</span></div>'):'')
         +'<div class="btit" style="margin-top:12px;margin-bottom:4px">Primes fixes</div>'
         +'<div style="font-size:11px">'
         +paye.primesConv.map(function(p){return _row(p.label,p.montant,'var(--text2)');}).join('')+_row('Ind. GPE'+(paye.groupeClassif?' (Gr.'+paye.groupeClassif+')':''),paye.gpe,'var(--text2)')
@@ -3342,7 +3353,6 @@ function openMergedMoisModal(mym,tab){
         +(paye.totalPrimesCustom>0?'<div style="display:flex;justify-content:space-between;padding:4px 0;border-top:0.5px solid var(--border2);margin-top:2px"><span>Sous-total</span><b>+'+fmtEuro(paye.totalPrimesCustom)+'</b></div>':'')
         +'</div>'
         +'<button onclick="openAddPrimeFixeModal('+mym+')" style="margin-top:6px;width:100%;height:32px;font-size:11px;background:transparent;color:var(--blue);border:0.5px dashed var(--blue);border-radius:var(--r);cursor:pointer;font-family:var(--font)">+ Ajouter une prime</button>'
-        +(m===0?'<div class="btit" style="margin-top:12px;margin-bottom:4px">Complément CP</div>'+(paye.compCP>0?'<div style="font-size:11px">'+_subp('1/10 variables '+(y-1),paye.compCP)+'</div>':'<div style="font-size:11px;color:var(--amber);display:flex;align-items:flex-start;gap:5px;padding:4px 0"><span style="flex-shrink:0">⚠</span><span>1/10 des variables '+(y-1)+' non calculable — les données de l\'année précédente sont incomplètes.</span></div>'):'')
         +'<div style="font-size:10px;color:var(--text3);text-align:center;margin-top:10px">taux : '+fmtEuro(paye.tauxH)+'/h · '+paye.heures.toFixed(2)+'h/mois</div>';
     }
   }
