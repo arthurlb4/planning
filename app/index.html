@@ -1655,6 +1655,7 @@ function calcPrimesMois(y,m){
 }
 function fmtEuro(n){if(!isFinite(n)||isNaN(n))n=0;const abs=Math.abs(n).toFixed(2);const[int,dec]=abs.split('.');const intFmt=int.replace(/\B(?=(\d{3})+(?!\d))/g,' ');return(n<0?'-':'')+intFmt+','+dec+' €';}
 function calcPalierSalaire(n){const base=2091.75;if(n<1)return base;if(n<=40)return Math.floor(base*Math.pow(1.015,n-19)*100)/100;const p40=Math.floor(base*Math.pow(1.015,21)*100)/100;return Math.floor(p40*Math.pow(1.005,n-40)*100)/100;}
+function calcPFA(n){if(n<=1)return 240;if(n<=3)return 230;if(n<=5)return 220;if(n<=8)return 210;if(n<=17)return 200;if(n<=22)return 190;if(n<=30)return 170;return 160;}
 function calcAncPrime(years){const base=2091.75;const y=parseFloat(years)||0;if(y<=0)return 0;if(y<=20)return Math.round(y*0.01*base*100)/100;return Math.round((20*0.01+(y-20)*0.005)*base*100)/100;}
 function calcAncYearsFromYM(entreeYM,ym){const eY=Math.floor(entreeYM/12),eM=entreeYM%12,cY=Math.floor(ym/12),cM=ym%12;return Math.max(0,cY-eY-(cM<eM?1:0));}
 function _getHistVal(hist,fb,ym){if(hist&&hist.length){let v=null;for(const e of hist)if(e.ym<=ym)v=e.v;if(v!==null)return v;}return fb;}
@@ -1694,10 +1695,11 @@ function calcPayeMois(y,m){
   const prevM=m===0?11:m-1,prevY=m===0?y-1:y;
   const vars=calcVariablesMois(prevY,prevM);
   const nao2022=130,nao2023=55,gpe=154;
-  let pfa=pr.pfaMensuelle?190:(m===5||m===11?1140:0);
+  const pfaM=_pn>0?calcPFA(_pn):(pr.palierNum?calcPFA(pr.palierNum):190);
+  let pfa=pr.pfaMensuelle?pfaM:(m===5||m===11?pfaM*6:0);
   const totalFixes=nao2022+nao2023+gpe+pfa;
   let compCP=0;if(m===0){let yv=0;for(let pm=0;pm<12;pm++)yv+=calcVariablesMois(y-1,pm).total;compCP=yv/10;}
-  return{base,salQ,salAnc,tauxH,heures,prevM,prevY,vars,nao2022,nao2023,gpe,pfa,totalFixes,compCP,total:base+vars.total+totalFixes+compCP,configured:salQ>0||salAnc>0};
+  return{base,salQ,salAnc,tauxH,heures,prevM,prevY,vars,nao2022,nao2023,gpe,pfa,pfaMensuelle:pr.pfaMensuelle,totalFixes,compCP,total:base+vars.total+totalFixes+compCP,configured:salQ>0||salAnc>0};
 }
 function calcNuitMinShift(v){
   if(!v||!v.deb||!v.fin)return 0;
@@ -3258,7 +3260,7 @@ function openMergedMoisModal(mym,tab){
         +'<div class="btit" style="margin-top:12px;margin-bottom:4px">Primes fixes</div>'
         +'<div style="font-size:11px">'
         +_row('NAO 2022',paye.nao2022,'var(--text2)')+_row('NAO 2023',paye.nao2023,'var(--text2)')+_row('Ind. GPE',paye.gpe,'var(--text2)')
-        +_row('PFA'+(paye.pfa===1140?' (sem.)':''),paye.pfa,'var(--text2)')
+        +_row('PFA'+(paye.pfa>0&&!paye.pfaMensuelle?' (sem.)':''),paye.pfa,'var(--text2)')
         +_subp('Sous-total',paye.totalFixes)+'</div>'
         +(paye.compCP>0?'<div class="btit" style="margin-top:12px;margin-bottom:4px">Complément CP</div><div style="font-size:11px">'+_row('1/10 variables '+(y-1),paye.compCP,'var(--text2)')+'</div>':'')
         +'<div style="font-size:10px;color:var(--text3);text-align:center;margin-top:10px">taux : '+fmtEuro(paye.tauxH)+'/h · '+paye.heures.toFixed(2)+'h/mois</div>';
