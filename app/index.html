@@ -1120,6 +1120,7 @@ function calcCongesAncJours(years){if(years>=25)return 4;if(years>20)return 3;if
 function getCongesAnc(year){const pr=S.profile||{};const ym=year*12+11;let yrs=0;if(pr.ancYears!=null&&pr.ancRefYM!=null){const anni=typeof pr.ancMoisAnni==='number'&&pr.ancMoisAnni>=0?pr.ancMoisAnni:-1;yrs=pr.ancYears;if(anni>=0){const minYM=Math.min(pr.ancRefYM,ym),maxYM=Math.max(pr.ancRefYM,ym);let cnt=0;for(let y=Math.floor(minYM/12);y<=Math.floor(maxYM/12)+1;y++){const aym=y*12+anni;if(aym>minYM&&aym<=maxYM)cnt++;}yrs=ym>=pr.ancRefYM?yrs+cnt:yrs-cnt;}yrs=Math.max(0,yrs);}else if(pr.ancYears!=null)yrs=pr.ancYears;return calcCongesAncJours(yrs);}
 function adjCongesAnc(year,delta){}
 function getFractForfait(year){
+  if(_getAncYrsForYM(year*12+11)<1)return false;
   if(!S.profile||!S.profile.fractForfaitParAnnee)return true;
   return S.profile.fractForfaitParAnnee[year]!==false;
 }
@@ -1667,6 +1668,7 @@ function calcPFA(n,ym){var pc=getPayConfig();var e=_pcLatest(pc.pfa,ym!=null?ym:
 function calcGPE(g,ym){if(!(g>=1&&g<=9))return 0;var pc=getPayConfig();var e=_pcLatest(pc.gpe,ym!=null?ym:TODAY_YM,_DPC.gpe[0]);if(!e)e=_DPC.gpe[0];return e.t[g-1]||0;}
 function calcAncPrime(years,ym){var pc=getPayConfig();var e=_pcLatest(pc.anc,ym!=null?ym:TODAY_YM,_DPC.anc[0]);if(!e)e=_DPC.anc[0];var b=e.base,r1=e.rate1,r2=e.rate2,th=e.threshold;var y=parseFloat(years)||0;if(y<=0)return 0;if(y<=th)return Math.round(y*r1*b*100)/100;return Math.round((th*r1+(y-th)*r2)*b*100)/100;}
 function calcAncYearsFromYM(entreeYM,ym){const eY=Math.floor(entreeYM/12),eM=entreeYM%12,cY=Math.floor(ym/12),cM=ym%12;return Math.max(0,cY-eY-(cM<eM?1:0));}
+function _getAncYrsForYM(ym){const pr=S.profile||{};if(pr.ancYears!=null&&pr.ancRefYM!=null){const anni=typeof pr.ancMoisAnni==='number'&&pr.ancMoisAnni>=0?pr.ancMoisAnni:-1;let yrs=pr.ancYears;if(anni>=0){const minYM=Math.min(pr.ancRefYM,ym),maxYM=Math.max(pr.ancRefYM,ym);let cnt=0;for(let y=Math.floor(minYM/12);y<=Math.floor(maxYM/12)+1;y++){const aym=y*12+anni;if(aym>minYM&&aym<=maxYM)cnt++;}yrs=ym>=pr.ancRefYM?yrs+cnt:yrs-cnt;}return Math.max(0,yrs);}if(pr.ancEntreeYM!=null)return calcAncYearsFromYM(pr.ancEntreeYM,ym);if(pr.ancYearsHistory&&pr.ancYearsHistory.length)return _getHistVal(pr.ancYearsHistory,pr.ancYears||0,ym);return pr.ancYears!=null?pr.ancYears:0;}
 function _getHistVal(hist,fb,ym){if(hist&&hist.length){let v=null;for(const e of hist)if(e.ym<=ym)v=e.v;if(v!==null)return v;}return fb;}
 function getPalierForYM(ym){return _getHistVal((S.profile||{}).palierHistory,(S.profile||{}).palierNum||0,ym);}
 function getAncForYM(ym){const pr=S.profile||{};if(pr.ancYears!=null&&pr.ancRefYM!=null){const anni=typeof pr.ancMoisAnni==='number'&&pr.ancMoisAnni>=0?pr.ancMoisAnni:-1;let yrs=pr.ancYears;if(anni>=0){const minYM=Math.min(pr.ancRefYM,ym),maxYM=Math.max(pr.ancRefYM,ym);let cnt=0;for(let y=Math.floor(minYM/12);y<=Math.floor(maxYM/12)+1;y++){const aym=y*12+anni;if(aym>minYM&&aym<=maxYM)cnt++;}yrs=ym>=pr.ancRefYM?yrs+cnt:yrs-cnt;}return calcAncPrime(Math.max(0,yrs),ym);}if(pr.ancEntreeYM!=null)return calcAncPrime(calcAncYearsFromYM(pr.ancEntreeYM,ym),ym);if(pr.ancYearsHistory&&pr.ancYearsHistory.length){const y=_getHistVal(pr.ancYearsHistory,pr.ancYears||0,ym);return calcAncPrime(y,ym);}if(pr.ancYears!=null)return calcAncPrime(pr.ancYears,ym);return _getHistVal(pr.ancHistory,pr.primeAnciennete||0,ym);}
@@ -3280,7 +3282,7 @@ function openMergedMoisModal(mym,tab){
         +'<div class="sep" style="margin-bottom:10px"></div>'
         +'<div class="btit" style="margin-bottom:4px">Salaire de base</div>'
         +'<div style="font-size:11px">'+_rowb('Qualification',paye.salQ)+_rowb('Ancienneté',paye.salAnc)+_sub('Sous-total',paye.base)+'</div>'
-        +'<div class="btit" style="margin-top:12px;margin-bottom:4px">Variables <span style="font-weight:400;color:var(--text3);font-size:10px">(taux '+_MLp[paye.prevM]+')</span></div>'
+        +'<div class="btit" style="margin-top:12px;margin-bottom:4px">Variables <span style="font-weight:400;color:var(--text3);font-size:10px">('+_MLp[paye.prevM]+')</span></div>'
         +'<div style="font-size:11px">'+varLines+_subp('Sous-total',v.total)+'</div>'
         +'<div class="btit" style="margin-top:12px;margin-bottom:4px">Primes fixes</div>'
         +'<div style="font-size:11px">'
