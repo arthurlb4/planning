@@ -1486,7 +1486,7 @@ function updateCounters(){
     rawLowTotal+=hsW.rawLow;rawHighTotal+=hsW.rawHigh;
   }}
   const mym=curY*12+curM,gm=gen[mym]||{};const gt=((gm.dim||0)+(gm.rh||0)+(gm.fer||0)+(gm.hs||0)+(gm.ram||0));// excludes solde initial
-  const panCount=calcPaniersMois(curY,curM);const primes=calcPrimesMois(curY,curM);const nuitTotal=calcNuitMois(curY,curM);
+  const panCount=calcPaniersMois(curY,curM);const primes=calcPrimesMois(curY,curM);const nuitTotal=calcNuitMois(curY,curM);const paye_tc=calcPayeMois(curY,curM);
   const el=document.getElementById('ctr-main');if(!el)return;
   // Detail dots for "Créés ce mois"
   function detRow(color,val,lbl){return val>0?'<div style="display:flex;justify-content:center;align-items:center;width:100%;line-height:1.7"><span style="font-size:10px;color:var(--text3);padding-right:3px;width:26px;flex-shrink:0;text-align:right">'+lbl+'</span><span class="rdot" style="background:'+color+';flex-shrink:0;margin-right:3px"></span><span style="width:0.5px;height:9px;background:var(--border2);flex-shrink:0"></span><span style="padding-left:3px;font-size:10px;color:var(--text3);width:36px;flex-shrink:0;overflow:hidden">'+fmtMin(val)+'</span></div>':'';}
@@ -1526,6 +1526,12 @@ function updateCounters(){
         <div style="font-size:16px;font-weight:600;color:#9c7fe0">${nuitTotal?fmtMin(nuitTotal):'—'}</div>
         <div style="font-size:10px;color:var(--text3)">heures</div>
       </div>
+      ${paye_tc.configured?`<div style="width:0.5px;background:var(--border2);flex-shrink:0;margin:2px 0"></div>
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;padding:4px 6px;gap:2px;min-width:0" onclick="event.stopPropagation();openMergedMoisModal(${mym},4)">
+        <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">Brut</div>
+        <div style="font-size:12px;font-weight:700;color:var(--gold);text-align:center;line-height:1.3">${fmtEuro(paye_tc.total)}</div>
+        <div style="font-size:10px;color:var(--text3)">estimé</div>
+      </div>`:''}
     </div>
   </div>`;
 
@@ -1676,7 +1682,7 @@ function calcHSMinsMois(y,m){
   return{low,high};
 }
 function calcVariablesMois(y,m){
-  const mym_cv=y*12+m;const pr=S.profile||{};const _pn=getPalierForYM(mym_cv);const salQ=_pn>0?calcPalierSalaire(_pn):(pr.salaireQualif||0);const salAnc=getAncForYM(mym_cv);const heures=getHeuresForYM(mym_cv);const base=salQ+salAnc;const tauxH=heures>0?Math.round(base/heures*1000)/1000:0;
+  const mym_cv=y*12+m;const pr=S.profile||{};const _pn=getPalierForYM(mym_cv);const salQ=_pn>0?calcPalierSalaire(_pn):(pr.salaireQualif||0);const salAnc=getAncForYM(mym_cv);const heures=getHeuresForYM(mym_cv);const base=salQ+salAnc;const tauxH=heures>0?Math.round(base/heures*100)/100:0;
   const drf=calcDimRHFerMinsMois(y,m);const hs=calcHSMinsMois(y,m);const nuitMin=calcNuitMois(y,m);const primes=calcPrimesMois(y,m);const paniers=calcPaniersMois(y,m);
   const r2=v=>Math.round(v*100)/100;
   const supDim=r2(drf.dim/60*tauxH*0.30),supRH=r2(drf.rh/60*tauxH*0.30),supFer=r2(drf.fer/60*tauxH*1.00);
@@ -1688,7 +1694,7 @@ function calcVariablesMois(y,m){
 }
 function calcPayeMois(y,m){
   const mym_cp=y*12+m;const pr=S.profile||{};const _pn=getPalierForYM(mym_cp);const salQ=_pn>0?calcPalierSalaire(_pn):(pr.salaireQualif||0);const salAnc=getAncForYM(mym_cp);const heures=getHeuresForYM(mym_cp);const base=salQ+salAnc;
-  const tauxH=heures>0?Math.round(base/heures*1000)/1000:0;
+  const tauxH=heures>0?Math.round(base/heures*100)/100:0;
   const prevM=m===0?11:m-1,prevY=m===0?y-1:y;
   const vars=calcVariablesMois(prevY,prevM);
   const nao2022=130,nao2023=55,gpe=154;
@@ -3800,8 +3806,9 @@ function _confirmPalierToujours(){_setPalierResult(parseInt((document.getElement
 function _confirmPalierDate(){var s=_depGetDate();if(s)_setPalierResult(parseInt((document.getElementById('_pal-n')||{}).value)||0,s);}
 function openAncModal(){
   var pr=S.profile||{};
-  var curYrs=pr.ancYears!=null?pr.ancYears:'';
-  var curMois=typeof pr.ancMoisAnni==='number'&&pr.ancMoisAnni>=0?pr.ancMoisAnni:-1;
+  var curYrs=(document.getElementById('ps-salanc')||{}).value;if(curYrs==null||curYrs==='')curYrs=pr.ancYears!=null?pr.ancYears:'';
+  var moisInDOM=parseInt((document.getElementById('ps-anc-mois')||{}).value);
+  var curMois=!isNaN(moisInDOM)&&moisInDOM>=0?moisInDOM:(typeof pr.ancMoisAnni==='number'&&pr.ancMoisAnni>=0?pr.ancMoisAnni:-1);
   _depField={yrsId:'ps-salanc',moisId:'ps-anc-mois',lblId:'ps-salanc-lbl'};
   _lockBodyScroll();
   document.getElementById('modal-root').innerHTML=
@@ -3821,7 +3828,7 @@ function openAncModal(){
     +'<button class="mcancel" onclick="_depField=null;closeModal()">Annuler</button>'
     +'</div></div>';
 }
-function _confirmAnc(){var yrs=parseFloat((document.getElementById('_anc-yrs')||{}).value),mois=parseInt((document.getElementById('_anc-mois')||{}).value),f=_depField;_depField=null;if(!isNaN(yrs)&&f){var i=document.getElementById(f.yrsId),l=document.getElementById(f.lblId),mi=document.getElementById(f.moisId);if(i)i.value=yrs;if(l)l.textContent=fmtEuro(calcAncPrime(yrs));if(mi&&!isNaN(mois)&&mois>=0)mi.value=mois;}closeModal();}
+function _confirmAnc(){var yrs=parseFloat((document.getElementById('_anc-yrs')||{}).value),mois=parseInt((document.getElementById('_anc-mois')||{}).value),f=_depField;_depField=null;if(!isNaN(yrs)&&f){var i=document.getElementById(f.yrsId),l=document.getElementById(f.lblId),mi=document.getElementById(f.moisId);if(i)i.value=yrs;if(l)l.textContent=fmtEuro(calcAncPrime(yrs));if(mi)mi.value=!isNaN(mois)?mois:-1;}closeModal();}
 function openContratModal(){
   var curPct=parseFloat((document.getElementById('ps-heures')||{}).value)||0;
   var curDep=(document.getElementById('ps-heur-dep')||{}).value||'',p=curDep.split('/');
