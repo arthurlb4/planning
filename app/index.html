@@ -1653,9 +1653,10 @@ function calcPrimesMois(y,m){
 }
 function fmtEuro(n){if(!isFinite(n)||isNaN(n))n=0;const abs=Math.abs(n).toFixed(2);const[int,dec]=abs.split('.');const intFmt=int.replace(/\B(?=(\d{3})+(?!\d))/g,' ');return(n<0?'-':'')+intFmt+','+dec+' €';}
 function calcPalierSalaire(n){const base=2091.75;if(n<1)return base;if(n<=40)return Math.floor(base*Math.pow(1.015,n-19)*100)/100;const p40=Math.floor(base*Math.pow(1.015,21)*100)/100;return Math.floor(p40*Math.pow(1.005,n-40)*100)/100;}
+function calcAncPrime(years){const base=2091.75;const y=parseFloat(years)||0;if(y<=0)return 0;if(y<=20)return Math.round(y*0.01*base*100)/100;return Math.round((20*0.01+(y-20)*0.005)*base*100)/100;}
 function _getHistVal(hist,fb,ym){if(hist&&hist.length){let v=null;for(const e of hist)if(e.ym<=ym)v=e.v;if(v!==null)return v;}return fb;}
 function getPalierForYM(ym){return _getHistVal((S.profile||{}).palierHistory,(S.profile||{}).palierNum||0,ym);}
-function getAncForYM(ym){return _getHistVal((S.profile||{}).ancHistory,(S.profile||{}).primeAnciennete||0,ym);}
+function getAncForYM(ym){const pr=S.profile||{};if(pr.ancYearsHistory&&pr.ancYearsHistory.length||pr.ancYears!=null){const y=_getHistVal(pr.ancYearsHistory,pr.ancYears||0,ym);return calcAncPrime(y);}return _getHistVal(pr.ancHistory,pr.primeAnciennete||0,ym);}
 function getHeuresForYM(ym){return _getHistVal((S.profile||{}).heuresHistory,(S.profile||{}).heuresMensuelles||151.67,ym);}
 function calcDimRHFerMinsMois(y,m){
   const mym=y*12+m,sett=settingsForYM(mym),seenW=new Set(),last=new Date(y,m+1,0).getDate();const VAC=getVAC();let dim=0,rh=0,fer=0;
@@ -3645,10 +3646,10 @@ function renderProfilesDropdown(){
         return '<option value="'+i+'"'+(i===_curVisual?' selected':'')+'>'+formatLineOption(i)+'</option>';
       }).join('');
       var _palHist=pr.profile.palierHistory||[];
-      var _ancHist=pr.profile.ancHistory||[];
+      var _ancYearsHist=pr.profile.ancYearsHistory||[];
       var _heurHist=pr.profile.heuresHistory||[];
       var _curPalier=_palHist.length?_palHist[_palHist.length-1].v:(pr.profile.palierNum||'');
-      var _curAnc=_ancHist.length?_ancHist[_ancHist.length-1].v:(pr.profile.primeAnciennete!=null?pr.profile.primeAnciennete:'');
+      var _curAncYears=_ancYearsHist.length?_ancYearsHist[_ancYearsHist.length-1].v:(pr.profile.ancYears!=null?pr.profile.ancYears:'');
       var _curHeur=_heurHist.length?_heurHist[_heurHist.length-1].v:(pr.profile.heuresMensuelles||151.67);
       var _curPct=Math.round(_curHeur/151.67*100*10)/10;
       actD='<div id="ps-panel" class="ps-panel">'
@@ -3674,13 +3675,13 @@ function renderProfilesDropdown(){
         +'<div style="flex:1"><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:4px">Palier</label>'
         +'<div style="display:flex;align-items:center;border:0.5px solid var(--border);border-radius:var(--r);background:var(--bg2);height:36px;overflow:hidden">'
         +'<span style="padding:0 7px;font-size:12px;color:var(--text3);line-height:36px;border-right:0.5px solid var(--border);user-select:none">P</span>'
-        +'<input id="ps-palier" type="number" min="1" max="99" value="'+_curPalier+'" placeholder="022" oninput="(function(v){var el=document.getElementById(\'ps-palier-lbl\');if(el)el.textContent=v&&v>=1?fmtEuro(calcPalierSalaire(v)):\'\';})(parseInt(this.value)||0)" style="flex:1;height:100%;box-sizing:border-box;padding:6px 8px;border:none;font-size:12px;background:transparent;color:var(--text)"></div>'
+        +'<input id="ps-palier" type="number" min="11" max="99" value="'+_curPalier+'" placeholder="022" oninput="(function(v){var el=document.getElementById(\'ps-palier-lbl\');if(el)el.textContent=v&&v>=1?fmtEuro(calcPalierSalaire(v)):\'\';})(parseInt(this.value)||0)" style="flex:1;height:100%;box-sizing:border-box;padding:6px 8px;border:none;font-size:12px;background:transparent;color:var(--text)"></div>'
         +'<div id="ps-palier-lbl" style="font-size:10px;color:var(--text3);height:16px;line-height:16px;margin-top:2px">'+(_curPalier&&parseInt(_curPalier)>=1?fmtEuro(calcPalierSalaire(parseInt(_curPalier))):'')+'</div>'
         +'<input id="ps-palier-dep" placeholder="depuis m/aaaa" style="width:100%;height:22px;box-sizing:border-box;padding:2px 6px;border:0.5px solid var(--border);border-radius:var(--r);font-size:10px;background:var(--bg2);color:var(--text);margin-top:3px">'
         +'</div>'
-        +'<div style="flex:1"><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:4px">Ancienneté (€)</label>'
-        +'<input id="ps-salanc" type="number" step="0.01" value="'+_curAnc+'" placeholder="0" style="width:100%;height:36px;box-sizing:border-box;padding:6px 8px;border:0.5px solid var(--border);border-radius:var(--r);font-size:12px;background:var(--bg2);color:var(--text)">'
-        +'<div style="height:16px;line-height:16px;margin-top:2px"></div>'
+        +'<div style="flex:1"><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:4px">Ancienneté (ans)</label>'
+        +'<input id="ps-salanc" type="number" step="1" min="0" value="'+_curAncYears+'" placeholder="0" oninput="(function(v){var el=document.getElementById(\'ps-salanc-lbl\');if(el)el.textContent=v>=0?fmtEuro(calcAncPrime(v)):\'\';})(parseFloat(this.value)||0)" style="width:100%;height:36px;box-sizing:border-box;padding:6px 8px;border:0.5px solid var(--border);border-radius:var(--r);font-size:12px;background:var(--bg2);color:var(--text)">'
+        +'<div id="ps-salanc-lbl" style="font-size:10px;color:var(--text3);height:16px;line-height:16px;margin-top:2px">'+(_curAncYears!==''?fmtEuro(calcAncPrime(parseFloat(_curAncYears)||0)):'')+'</div>'
         +'<input id="ps-anc-dep" placeholder="depuis m/aaaa" style="width:100%;height:22px;box-sizing:border-box;padding:2px 6px;border:0.5px solid var(--border);border-radius:var(--r);font-size:10px;background:var(--bg2);color:var(--text);margin-top:3px">'
         +'</div>'
         +'<div style="flex:1"><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:4px">Contrat (%)</label>'
@@ -3762,7 +3763,7 @@ function saveProfileFromDD(pid){
   const _palierEl=document.getElementById('ps-palier'),_palierDepEl=document.getElementById('ps-palier-dep');
   if(_palierEl&&_palierEl.value.trim()){const _pn=parseInt(_palierEl.value);if(_pn>=1){pr.profile.palierNum=_pn;pr.profile.salaireQualif=calcPalierSalaire(_pn);const _pd2=_pd(_palierDepEl&&_palierDepEl.value);if(_pd2!==null){if(!pr.profile.palierHistory)pr.profile.palierHistory=[];_histUps(pr.profile.palierHistory,_pd2,_pn);}}}
   const _ancEl=document.getElementById('ps-salanc'),_ancDepEl=document.getElementById('ps-anc-dep');
-  if(_ancEl){const _av=parseFloat(_ancEl.value)||0;pr.profile.primeAnciennete=_av;const _pd3=_pd(_ancDepEl&&_ancDepEl.value);if(_pd3!==null){if(!pr.profile.ancHistory)pr.profile.ancHistory=[];_histUps(pr.profile.ancHistory,_pd3,_av);}}
+  if(_ancEl){const _ay=parseFloat(_ancEl.value)||0;pr.profile.ancYears=_ay;pr.profile.primeAnciennete=calcAncPrime(_ay);const _pd3=_pd(_ancDepEl&&_ancDepEl.value);if(_pd3!==null){if(!pr.profile.ancYearsHistory)pr.profile.ancYearsHistory=[];_histUps(pr.profile.ancYearsHistory,_pd3,_ay);}}
   const _psheur=document.getElementById('ps-heures'),_heurDepEl=document.getElementById('ps-heur-dep');
   if(_psheur){const _pct=parseFloat(_psheur.value);if(_pct>0){const _hv=Math.round(_pct*151.67/100*100)/100;pr.profile.heuresMensuelles=_hv;const _pd4=_pd(_heurDepEl&&_heurDepEl.value);if(_pd4!==null){if(!pr.profile.heuresHistory)pr.profile.heuresHistory=[];_histUps(pr.profile.heuresHistory,_pd4,_hv);}}}
   const _pfamens=document.getElementById('ps-pfamens');if(_pfamens)pr.profile.pfaMensuelle=_pfamens.checked;
