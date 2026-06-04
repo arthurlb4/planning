@@ -1656,6 +1656,7 @@ function calcPrimesMois(y,m){
 function fmtEuro(n){if(!isFinite(n)||isNaN(n))n=0;const abs=Math.abs(n).toFixed(2);const[int,dec]=abs.split('.');const intFmt=int.replace(/\B(?=(\d{3})+(?!\d))/g,' ');return(n<0?'-':'')+intFmt+','+dec+' €';}
 function calcPalierSalaire(n){const base=2091.75;if(n<1)return base;if(n<=44)return Math.floor(base*Math.pow(1.015,n-19)*100)/100;const p44=Math.floor(base*Math.pow(1.015,25)*100)/100;return Math.floor(p44*Math.pow(1.0075,n-44)*100)/100;}
 function calcPFA(n){if(n<=1)return 240;if(n<=3)return 230;if(n<=5)return 220;if(n<=8)return 210;if(n<=17)return 200;if(n<=22)return 190;if(n<=30)return 170;return 160;}
+function calcGPE(g){const t=[0,20,52,62,128,154,159,172,187,231];return t[g]||0;}
 function calcAncPrime(years){const base=2091.75;const y=parseFloat(years)||0;if(y<=0)return 0;if(y<=20)return Math.round(y*0.01*base*100)/100;return Math.round((20*0.01+(y-20)*0.005)*base*100)/100;}
 function calcAncYearsFromYM(entreeYM,ym){const eY=Math.floor(entreeYM/12),eM=entreeYM%12,cY=Math.floor(ym/12),cM=ym%12;return Math.max(0,cY-eY-(cM<eM?1:0));}
 function _getHistVal(hist,fb,ym){if(hist&&hist.length){let v=null;for(const e of hist)if(e.ym<=ym)v=e.v;if(v!==null)return v;}return fb;}
@@ -1698,14 +1699,14 @@ function calcPayeMois(y,m){
   const tauxH=heures>0?Math.round(base/heures*100)/100:0;
   const prevM=m===0?11:m-1,prevY=m===0?y-1:y;
   const vars=calcVariablesMois(prevY,prevM);
-  const nao2022=130,nao2023=55,gpe=154;
+  const nao2022=130,nao2023=55,gpe=calcGPE(pr.groupeClassif||0);
   const pfaM=_pn>0?calcPFA(_pn):(pr.palierNum?calcPFA(pr.palierNum):190);
   let pfa=pr.pfaMensuelle?pfaM:(m===5||m===11?pfaM*6:0);
   const totalFixes=nao2022+nao2023+gpe+pfa;
   const primesCustom=getPrimesFixesCustomForYM(mym_cp);
   const totalPrimesCustom=primesCustom.reduce(function(s,p){return s+p.montant;},0);
   let compCP=0;if(m===0){let yv=0;for(let pm=0;pm<12;pm++)yv+=calcVariablesMois(y-1,pm).total;compCP=yv/10;}
-  return{base,salQ,salAnc,tauxH,heures,prevM,prevY,vars,nao2022,nao2023,gpe,pfa,pfaMensuelle:pr.pfaMensuelle,totalFixes,primesCustom,totalPrimesCustom,compCP,total:base+vars.total+totalFixes+totalPrimesCustom+compCP,configured:salQ>0||salAnc>0||heures>0};
+  return{base,salQ,salAnc,tauxH,heures,prevM,prevY,vars,nao2022,nao2023,gpe,groupeClassif:pr.groupeClassif||0,pfa,pfaMensuelle:pr.pfaMensuelle,totalFixes,primesCustom,totalPrimesCustom,compCP,total:base+vars.total+totalFixes+totalPrimesCustom+compCP,configured:salQ>0||salAnc>0||heures>0};
 }
 function calcNuitMinShift(v){
   if(!v||!v.deb||!v.fin)return 0;
@@ -3270,7 +3271,7 @@ function openMergedMoisModal(mym,tab){
         +'<div style="font-size:11px">'+varLines+_subp('Sous-total',v.total)+'</div>'
         +'<div class="btit" style="margin-top:12px;margin-bottom:4px">Primes fixes</div>'
         +'<div style="font-size:11px">'
-        +_row('NAO 2022',paye.nao2022,'var(--text2)')+_row('NAO 2023',paye.nao2023,'var(--text2)')+_row('Ind. GPE',paye.gpe,'var(--text2)')
+        +_row('NAO 2022',paye.nao2022,'var(--text2)')+_row('NAO 2023',paye.nao2023,'var(--text2)')+_row('Ind. GPE'+(paye.groupeClassif?' (Gr.'+paye.groupeClassif+')':''),paye.gpe,'var(--text2)')
         +_row('PFA'+(paye.pfa>0&&!paye.pfaMensuelle?' (sem.)':''),paye.pfa,'var(--text2)')
         +_subp('Sous-total',paye.totalFixes)+'</div>'
         +'<div class="btit" style="margin-top:12px;margin-bottom:4px">Primes personnalisées</div>'
@@ -3718,6 +3719,10 @@ function renderProfilesDropdown(){
         +'<div style="height:16px;line-height:16px;margin-top:2px"></div>'
         +'<input type="hidden" id="ps-heur-dep">'
         +'</div>'
+        +'<div style="flex:1"><label style="font-size:10px;color:var(--text3);display:block;margin-bottom:4px">Groupe GPE</label>'
+        +(function(){ return'<select id="ps-groupe" style="width:100%;height:36px;box-sizing:border-box;padding:6px 8px;border:0.5px solid var(--border);border-radius:var(--r);font-size:12px;background:var(--bg2);color:var(--text)">'+'<option value="">—</option>'+[[1,20],[2,52],[3,62],[4,128],[5,154],[6,159],[7,172],[8,187],[9,231]].map(function(gv){return'<option value="'+gv[0]+'"'+(gv[0]===(pr.profile.groupeClassif||0)?' selected':'')+'>Gr. '+gv[0]+' — '+gv[1]+' €</option>';}).join('')+'</select>';})() 
+        +'<div style="height:16px;margin-top:2px"></div>'
+        +'</div>'
         +'</div>'
         +'<div style="padding:4px 0;margin-bottom:6px">'
         +'<label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);cursor:pointer"><input id="ps-pfamens" type="checkbox"'+(pr.profile.pfaMensuelle?' checked':'')+'> PFA mensualisée</label>'
@@ -3773,7 +3778,10 @@ function renderProfilesDropdown(){
     +'<div id="np-lines-section" style="margin-top:10px"><div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Ligne (les lignes prises sont grisées)</div><div id="np-lines-list" style="font-size:11px;color:var(--text3)">Chargement...</div></div>'
     +'<div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin:10px 0 4px">Paie <span style="font-style:italic;font-weight:400;text-transform:none">(optionnel)</span></div>'
     +'<div class="mr2"><div><label>Palier</label><input id="np-palier" type="number" placeholder="ex: 19" min="1" max="60" style="height:36px"></div><div><label>Ancienneté (ans)</label><input id="np-anc" type="number" placeholder="ex: 7" min="0" style="height:36px"></div></div>'
-    +'<div class="mr2"><div><label>Contrat (%)</label><input id="np-pct" type="number" placeholder="ex: 100" min="1" max="200" style="height:36px"></div><div></div></div>'
+    +'<div class="mr2"><div><label>Contrat (%)</label><input id="np-pct" type="number" placeholder="ex: 100" min="1" max="200" style="height:36px"></div>'
+    +'<div><label>Groupe GPE</label><select id="np-groupe" style="height:36px;width:100%;border:0.5px solid var(--border);border-radius:var(--r);background:var(--bg2);color:var(--text);font-size:12px;padding:0 8px">'
+    +'<option value="">—</option><option value="1">Gr. 1 — 20 €</option><option value="2">Gr. 2 — 52 €</option><option value="3">Gr. 3 — 62 €</option><option value="4">Gr. 4 — 128 €</option><option value="5">Gr. 5 — 154 €</option><option value="6">Gr. 6 — 159 €</option><option value="7">Gr. 7 — 172 €</option><option value="8">Gr. 8 — 187 €</option><option value="9">Gr. 9 — 231 €</option>'
+    +'</select></div></div>'
     +'<div style="padding:4px 0;margin-top:4px"><label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text);cursor:pointer"><input id="np-pfamens" type="checkbox"> PFA mensualisée</label></div>'
     +'<button class="mb pri wide" style="margin-top:8px" onclick="confirmNewProfile()">Créer le profil</button>'
     +'</div>';
@@ -3800,6 +3808,7 @@ function saveProfileFromDD(pid){
   const _psheur=document.getElementById('ps-heures'),_heurDepEl=document.getElementById('ps-heur-dep');
   if(_psheur){const _pct=parseFloat(_psheur.value);if(_pct>0){const _hv=Math.round(_pct*151.67/100*100)/100;pr.profile.heuresMensuelles=_hv;const _pd4=_pd(_heurDepEl&&_heurDepEl.value);if(_pd4!==null){if(!pr.profile.heuresHistory)pr.profile.heuresHistory=[];_histUps(pr.profile.heuresHistory,_pd4,_hv);}}}
   const _pfamens=document.getElementById('ps-pfamens');if(_pfamens)pr.profile.pfaMensuelle=_pfamens.checked;
+  const _grpEl=document.getElementById('ps-groupe');if(_grpEl){const _gv=parseInt(_grpEl.value);pr.profile.groupeClassif=(!isNaN(_gv)&&_gv>=1)?_gv:0;}
   const newLine=pr.profile.anchorLine;
   _profs[pid]=pr;if(pid===_aid)S=pr;saveState();render();renderProfilesDropdown();gcalUpdateBtn();
   const _hpn=document.getElementById('hdr-profile-name');if(_hpn&&S.profile)_hpn.textContent=S.profile.name||'Profil';
@@ -4251,6 +4260,10 @@ function showPayPromptIfNeeded(){
     +'<div id="_pp-anc-lbl" style="font-size:12px;color:var(--text3);height:18px;line-height:18px;margin-bottom:12px"></div>'
     +'<label style="font-size:12px;color:var(--text3);display:block;margin-bottom:4px">Contrat (%)</label>'
     +'<input id="_pp-pct" type="number" min="1" max="200" placeholder="100" style="width:100%;height:48px;box-sizing:border-box;padding:0 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:16px;background:var(--bg2);color:var(--text);margin-bottom:12px">'
+    +'<label style="font-size:12px;color:var(--text3);display:block;margin-bottom:4px">Groupe GPE</label>'
+    +'<select id="_pp-groupe" style="width:100%;height:48px;box-sizing:border-box;padding:0 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:16px;background:var(--bg2);color:var(--text);margin-bottom:12px">'
+    +'<option value="">—</option><option value="1">Gr. 1 — 20 €</option><option value="2">Gr. 2 — 52 €</option><option value="3">Gr. 3 — 62 €</option><option value="4">Gr. 4 — 128 €</option><option value="5">Gr. 5 — 154 €</option><option value="6">Gr. 6 — 159 €</option><option value="7">Gr. 7 — 172 €</option><option value="8">Gr. 8 — 187 €</option><option value="9">Gr. 9 — 231 €</option>'
+    +'</select>'
     +'<label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);cursor:pointer;margin-bottom:16px"><input id="_pp-pfamens" type="checkbox"> PFA mensualisée</label>'
     +'<button class="mb" style="width:100%;height:44px;font-size:14px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);margin-bottom:8px" onclick="_confirmPayPrompt()">Enregistrer</button>'
     +'<button class="mcancel" onclick="closeModal()">Plus tard</button>'
@@ -4265,6 +4278,7 @@ function _confirmPayPrompt(){
   const pct=parseFloat((document.getElementById('_pp-pct')||{}).value);
   if(!isNaN(pct)&&pct>0){S.profile.heuresMensuelles=Math.round(pct*151.67/100*100)/100;}
   const pfamEl=document.getElementById('_pp-pfamens');if(pfamEl)S.profile.pfaMensuelle=pfamEl.checked;
+  const grpEl=document.getElementById('_pp-groupe');if(grpEl){const _gv=parseInt(grpEl.value);S.profile.groupeClassif=(!isNaN(_gv)&&_gv>=1)?_gv:0;}
   saveState();render();closeModal();
 }
 
@@ -4293,6 +4307,8 @@ function confirmNewProfile(){
   const npPct=parseFloat((document.getElementById('np-pct')||{value:''}).value);
   if(!isNaN(npPct)&&npPct>0){d.profile.heuresMensuelles=Math.round(npPct*151.67/100*100)/100;}
   d.profile.pfaMensuelle=(document.getElementById('np-pfamens')||{checked:false}).checked;
+  const npGroupe=parseInt((document.getElementById('np-groupe')||{value:''}).value);
+  if(!isNaN(npGroupe)&&npGroupe>=1)d.profile.groupeClassif=npGroupe;
   d.profile.hasSeenPayPrompt=true;
   createProfile(id,d);switchProfile(id);render();document.querySelectorAll('.dropdown').forEach(d=>d.style.display='none');document.removeEventListener('click',_ddClose,true);
 }
