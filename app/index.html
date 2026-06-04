@@ -4789,7 +4789,6 @@ function _syncSideTop(){
   sc.style.paddingTop=(mbar?mbar.offsetHeight:0)+'px';
 }
 var _sbGuard=false;
-var _sbEntryH=0;
 function _checkSideBelow(){
   if(_sbGuard||window.innerWidth<721)return;
   const mv=document.getElementById('month-view');
@@ -4797,26 +4796,31 @@ function _checkSideBelow(){
   const layout=document.querySelector('.layout');
   if(!mv||!sc||!layout)return;
   const mbar=document.querySelector('.mbar');
+  const aw=document.getElementById('ann-wrap');
+  const currently=layout.classList.contains('side-below');
+  // Measure always in side-by-side mode: both calH and sideH change when
+  // layout toggles, so comparing them live creates insoluble oscillation.
+  // Temporarily removing the class + clearing inline widths causes a
+  // synchronous reflow but no paint (browser paints once, after the frame).
+  if(currently){
+    layout.classList.remove('side-below');
+    mv.style.width='';
+    if(mbar)mbar.style.width='';
+    if(aw)aw.style.width='';
+  }
   const calH=(mbar?mbar.offsetHeight:0)+mv.offsetHeight;
   const sideH=sc.scrollHeight;
-  const currently=layout.classList.contains('side-below');
-  // Asymmetric hysteresis: enter early, exit only when cal catches up to original sideH
-  let should;
-  if(currently){
-    should=_sbEntryH>0?calH<_sbEntryH:sideH>calH;
-  } else {
-    should=sideH>calH+30;
-    if(should)_sbEntryH=sideH;
-  }
+  const should=sideH>calH+30;
+  layout.classList.toggle('side-below',should);
   if(currently!==should){
-    if(!should)_sbEntryH=0;
-    layout.classList.toggle('side-below',should);
     mv.style.width='';
-    const aw=document.getElementById('ann-wrap');
-    if(aw)aw.style.width='';
     if(mbar)mbar.style.width='';
+    if(aw)aw.style.width='';
     _sbGuard=true;
     requestAnimationFrame(function(){_sbGuard=false;_fitCalendar();});
+  } else if(currently){
+    // Stayed in side-below but widths were cleared for measurement; re-fit
+    requestAnimationFrame(_fitCalendar);
   }
 }
 window.addEventListener('resize',function(){_fitCalendar();if(annualOpen)_fitAnnual();_syncSideTop();_checkSideBelow();});
