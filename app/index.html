@@ -3977,9 +3977,9 @@ function openSettingsModal(tab){
   var _ancLbl=_curAncYears!==''?fmtEuro(calcAncPrime(parseFloat(_curAncYears))):'';
   var _heurLbl=_curHeur?(Math.round(_curHeur*100)/100).toFixed(2).replace('.',',')+' h':'';
   var _grpLbl=pr.profile.groupeClassif?calcGPE(pr.profile.groupeClassif,TODAY_YM)+' €':'';
-  var _oncPal='onchange="saveProfileFromDD('+_pidLit+');var _v=this.value,_l=document.getElementById(\'ps-palier-lbl\');if(_l)_l.textContent=_v?(_v===\'christophe\'?fmtEuro(100000):fmtEuro(calcPalierSalaire(+_v))):\'\';"';
-  var _oncAnc='onchange="saveProfileFromDD('+_pidLit+');var _v=this.value,_l=document.getElementById(\'ps-salanc-lbl\');if(_l)_l.textContent=_v!==\'\'?fmtEuro(calcAncPrime(+_v)):\'\';"';
-  var _oncHeur='onchange="saveProfileFromDD('+_pidLit+');var _v=this.value,_l=document.getElementById(\'ps-heures-lbl\');if(_l)_l.textContent=_v?(Math.round(_v*151.67/100*100)/100).toFixed(2).replace(\'.\',\',\')+\' h\':\'\';"';
+  var _oncPal='onchange="openPalierModal()"';
+  var _oncAnc='onchange="openAncModal()"';
+  var _oncHeur='onchange="openContratModal()"';
   var _oncGrp='onchange="saveProfileFromDD('+_pidLit+');var _v=this.value,_l=document.getElementById(\'ps-groupe-lbl\');if(_l)_l.textContent=_v?calcGPE(+_v,TODAY_YM)+\' €\':\'\';"';
   var tab1=''
     +'<div class="srow" '+_sr+'><div class="slbl">Palier</div><div '+_rCol+'><div id="ps-palier-lbl" '+_subV+'>'+_palLbl+'</div><select id="ps-palier" '+_oncPal+' style="'+_selR+'">'+palierOpts+'</select></div></div>'
@@ -4108,7 +4108,7 @@ function openPalierModal(){
   _depField={inputId:'ps-palier',depId:'ps-palier-dep',lblId:'ps-palier-lbl'};
   _lockBodyScroll();
   document.getElementById('modal-root').innerHTML=
-    '<div class="overlay" onclick="if(event.target===this){_depField=null;closeModal()}">'
+    '<div class="overlay" onclick="if(event.target===this){_depField=null;openSettingsModal(1);}">'
     +'<div class="sheet"><div class="sh"></div><div class="st">Palier</div>'
     +'<div style="display:flex;align-items:center;border:0.5px solid var(--border);border-radius:var(--r);background:var(--bg2);height:48px;margin-bottom:6px;overflow:hidden">'
     +'<span style="padding:0 10px;font-size:16px;color:var(--text3);line-height:48px;border-right:0.5px solid var(--border);user-select:none">P</span>'
@@ -4118,10 +4118,10 @@ function openPalierModal(){
     +'<button class="mb" style="width:100%;height:44px;font-size:14px;background:var(--bg3);color:var(--text);border:0.5px solid var(--border);border-radius:var(--r);margin-bottom:10px" onclick="_confirmPalierToujours()">Depuis toujours</button>'
     +'<button id="_dep-date-btn" class="mb" style="width:100%;height:44px;font-size:14px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);margin-bottom:4px" onclick="var d=document.getElementById(\'_dep-date-pick\'),b=this;if(d)d.style.display=\'block\';b.style.display=\'none\'">Depuis une date</button>'
     +_mkDepPick(iM,iY,'_confirmPalierDate')
-    +'<button class="mcancel" onclick="_depField=null;closeModal()">Annuler</button>'
+    +'<button class="mcancel" onclick="_depField=null;openSettingsModal(1);">Annuler</button>'
     +'</div></div>';
 }
-function _setPalierResult(n,date){var f=_depField;_depField=null;if(n>=11&&f){var i=document.getElementById(f.inputId),l=document.getElementById(f.lblId),d=document.getElementById(f.depId);if(i)i.value=n;if(l)l.textContent=fmtEuro(calcPalierSalaire(n));if(d)d.value=date||'';saveProfileFromDD(_aid);}closeModal();}
+function _setPalierResult(n,date){var f=_depField;_depField=null;if(n>=11&&f){var i=document.getElementById(f.inputId),l=document.getElementById(f.lblId),d=document.getElementById(f.depId);if(i)i.value=n;if(l)l.textContent=fmtEuro(calcPalierSalaire(n));if(d)d.value=date||'';if(!i){var _pr=_profs[_aid];if(_pr){_pr.profile.palierNum=n;_pr.profile.salaireQualif=calcPalierSalaire(n);if(date){var _p2=date.split('/'),_m2=parseInt(_p2[0]),_y2=parseInt(_p2[1]);if(!isNaN(_m2)&&!isNaN(_y2)){var _ym2=_y2*12+(_m2-1);if(!_pr.profile.palierHistory)_pr.profile.palierHistory=[];var _ix=_pr.profile.palierHistory.findIndex(function(e){return e.ym===_ym2;});if(_ix>=0)_pr.profile.palierHistory[_ix].v=n;else _pr.profile.palierHistory.push({ym:_ym2,v:n});_pr.profile.palierHistory.sort(function(a,b){return a.ym-b.ym;});}}S=_profs[_aid]=_pr;saveState();render();}openSettingsModal(1);}else{saveProfileFromDD(_aid);closeModal();}}else{closeModal();}}
 function _confirmPalierToujours(){_setPalierResult(parseInt((document.getElementById('_pal-n')||{}).value)||0,'');}
 function _confirmPalierDate(){var s=_depGetDate();if(s)_setPalierResult(parseInt((document.getElementById('_pal-n')||{}).value)||0,s);}
 function openAncModal(){
@@ -4132,7 +4132,7 @@ function openAncModal(){
   _depField={yrsId:'ps-salanc',moisId:'ps-anc-mois',lblId:'ps-salanc-lbl'};
   _lockBodyScroll();
   document.getElementById('modal-root').innerHTML=
-    '<div class="overlay" onclick="if(event.target===this){_depField=null;closeModal()}">'
+    '<div class="overlay" onclick="if(event.target===this){_depField=null;openSettingsModal(1);}">'
     +'<div class="sheet"><div class="sh"></div><div class="st">Ancienneté</div>'
     +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
     +'<input id="_anc-yrs" type="number" min="0" max="50" step="1" value="'+(curYrs!==''?curYrs:'')+'" placeholder="0" oninput="(function(v){var l=document.getElementById(\'_anc-lbl\');if(l)l.textContent=v>=0?fmtEuro(calcAncPrime(v)):\'\';})(parseFloat(this.value)||0)" style="flex:1;height:48px;box-sizing:border-box;padding:0 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:16px;background:var(--bg2);color:var(--text)">'
@@ -4145,10 +4145,10 @@ function openAncModal(){
     +_ML.map(function(mn,i){return'<option value="'+i+'"'+(i===curMois?' selected':'')+'>'+mn+'</option>';}).join('')
     +'</select>'
     +'<button class="mb" style="width:100%;height:44px;font-size:14px;background:var(--blue);color:#fff;border:none;border-radius:var(--r)" onclick="_confirmAnc()">Confirmer</button>'
-    +'<button class="mcancel" onclick="_depField=null;closeModal()">Annuler</button>'
+    +'<button class="mcancel" onclick="_depField=null;openSettingsModal(1);">Annuler</button>'
     +'</div></div>';
 }
-function _confirmAnc(){var yrs=parseFloat((document.getElementById('_anc-yrs')||{}).value),mois=parseInt((document.getElementById('_anc-mois')||{}).value),f=_depField;_depField=null;if(!isNaN(yrs)&&f){var i=document.getElementById(f.yrsId),l=document.getElementById(f.lblId),mi=document.getElementById(f.moisId);if(i)i.value=yrs;if(l)l.textContent=fmtEuro(calcAncPrime(yrs));if(mi)mi.value=!isNaN(mois)?mois:-1;saveProfileFromDD(_aid);}closeModal();}
+function _confirmAnc(){var yrs=parseFloat((document.getElementById('_anc-yrs')||{}).value),mois=parseInt((document.getElementById('_anc-mois')||{}).value),f=_depField;_depField=null;if(!isNaN(yrs)&&f){var i=document.getElementById(f.yrsId),l=document.getElementById(f.lblId),mi=document.getElementById(f.moisId);if(i)i.value=yrs;if(l)l.textContent=fmtEuro(calcAncPrime(yrs));if(mi)mi.value=!isNaN(mois)?mois:-1;if(!i){var _pr=_profs[_aid];if(_pr){_pr.profile.ancYears=yrs;_pr.profile.ancRefYM=TODAY_YM;if(!isNaN(mois)&&mois>=0)_pr.profile.ancMoisAnni=mois;_pr.profile.primeAnciennete=calcAncPrime(yrs);S=_profs[_aid]=_pr;saveState();render();}openSettingsModal(1);}else{saveProfileFromDD(_aid);closeModal();}}else{closeModal();}}
 function openContratModal(){
   var curPct=parseFloat((document.getElementById('ps-heures')||{}).value)||0;
   var curDep=(document.getElementById('ps-heur-dep')||{}).value||'',p=curDep.split('/');
@@ -4156,7 +4156,7 @@ function openContratModal(){
   _depField={inputId:'ps-heures',depId:'ps-heur-dep'};
   _lockBodyScroll();
   document.getElementById('modal-root').innerHTML=
-    '<div class="overlay" onclick="if(event.target===this){_depField=null;closeModal()}">'
+    '<div class="overlay" onclick="if(event.target===this){_depField=null;openSettingsModal(1);}">'
     +'<div class="sheet"><div class="sh"></div><div class="st">Taux de travail</div>'
     +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
     +'<input id="_cont-pct" type="number" min="0" max="200" step="0.1" value="'+(curPct||'')+'" placeholder="100" oninput="(function(v){var l=document.getElementById(\'_cont-lbl\');if(l)l.textContent=v>0?(Math.round(v*151.67/100*100)/100)+\' h\':\'\';})(parseFloat(this.value)||0)" style="flex:1;height:48px;box-sizing:border-box;padding:0 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:16px;background:var(--bg2);color:var(--text)">'
@@ -4166,10 +4166,10 @@ function openContratModal(){
     +'<button class="mb" style="width:100%;height:44px;font-size:14px;background:var(--bg3);color:var(--text);border:0.5px solid var(--border);border-radius:var(--r);margin-bottom:10px" onclick="_confirmContratToujours()">Depuis toujours</button>'
     +'<button id="_dep-date-btn" class="mb" style="width:100%;height:44px;font-size:14px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);margin-bottom:4px" onclick="var d=document.getElementById(\'_dep-date-pick\'),b=this;if(d)d.style.display=\'block\';b.style.display=\'none\'">Depuis une date</button>'
     +_mkDepPick(iM,iY,'_confirmContratDate')
-    +'<button class="mcancel" onclick="_depField=null;closeModal()">Annuler</button>'
+    +'<button class="mcancel" onclick="_depField=null;openSettingsModal(1);">Annuler</button>'
     +'</div></div>';
 }
-function _setContratResult(pct,date){var f=_depField;_depField=null;if(pct>0&&f){var i=document.getElementById(f.inputId),d=document.getElementById(f.depId);if(i)i.value=pct;if(d)d.value=date||'';saveProfileFromDD(_aid);}closeModal();}
+function _setContratResult(pct,date){var f=_depField;_depField=null;if(pct>0&&f){var i=document.getElementById(f.inputId),d=document.getElementById(f.depId);if(i)i.value=pct;if(d)d.value=date||'';if(!i){var _pr=_profs[_aid];if(_pr){var _hv=Math.round(pct*151.67/100*100)/100;_pr.profile.heuresMensuelles=_hv;if(date){var _p2=date.split('/'),_m2=parseInt(_p2[0]),_y2=parseInt(_p2[1]);if(!isNaN(_m2)&&!isNaN(_y2)){var _ym2=_y2*12+(_m2-1);if(!_pr.profile.heuresHistory)_pr.profile.heuresHistory=[];var _ix=_pr.profile.heuresHistory.findIndex(function(e){return e.ym===_ym2;});if(_ix>=0)_pr.profile.heuresHistory[_ix].v=_hv;else _pr.profile.heuresHistory.push({ym:_ym2,v:_hv});_pr.profile.heuresHistory.sort(function(a,b){return a.ym-b.ym;});}}S=_profs[_aid]=_pr;saveState();render();}openSettingsModal(1);}else{saveProfileFromDD(_aid);closeModal();}}else{closeModal();}}
 function _confirmContratToujours(){_setContratResult(parseFloat((document.getElementById('_cont-pct')||{}).value)||0,'');}
 function _confirmContratDate(){var s=_depGetDate();if(s)_setContratResult(parseFloat((document.getElementById('_cont-pct')||{}).value)||0,s);}
 function openAddPrimeFixeModal(ym){
