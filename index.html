@@ -46,6 +46,10 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .tgl input:checked+.tgl-s{background:var(--blue);}
 .tgl input:checked+.tgl-s:before{transform:translateX(16px);}
 #form-slider{position:relative;overflow:hidden;transition:height .4s cubic-bezier(.4,0,.2,1);}
+.pwd-req{font-size:11px;color:var(--text3);padding:1px 0;display:flex;align-items:center;gap:5px;}
+.pwd-req::before{content:'○';font-size:9px;flex-shrink:0;}
+.pwd-req.met{color:var(--green);}
+.pwd-req.met::before{content:'●';}
 .card{transition:box-shadow .4s;}
 </style>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
@@ -94,7 +98,7 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
       <div id="form-register" style="display:none">
         <!-- Step dots -->
         <div style="display:flex;justify-content:center;gap:8px;margin-bottom:18px">
-          <div id="rdot1" style="width:24px;height:8px;border-radius:4px;background:var(--blue);transition:all .25s"></div>
+          <div id="rdot1" style="width:24px;height:8px;border-radius:4px;background:var(--text2);transition:all .25s"></div>
           <div id="rdot2" style="width:8px;height:8px;border-radius:50%;background:var(--bg3);transition:all .25s"></div>
           <div id="rdot3" style="width:8px;height:8px;border-radius:50%;background:var(--bg3);transition:all .25s"></div>
         </div>
@@ -103,7 +107,15 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
         <div id="reg-s1">
           <div class="field"><label>Nom</label><input type="text" id="reg-name" name="name" autocomplete="name" placeholder="Votre nom"></div>
           <div class="field"><label>Email</label><input type="email" id="reg-email" name="email" autocomplete="email" placeholder="votre@email.com"></div>
-          <div class="field"><label>Mot de passe</label><input type="password" id="reg-pwd" name="password" autocomplete="new-password" placeholder="Minimum 6 caractères" onkeydown="if(event.key==='Enter')regGoStep2()"></div>
+          <div class="field" style="margin-bottom:4px"><label>Mot de passe</label><input type="password" id="reg-pwd" name="password" autocomplete="new-password" placeholder="8 car. minimum" oninput="checkPwdReqs()" onkeydown="if(event.key==='Enter')regGoStep2()"></div>
+          <div id="reg-pwd-reqs" style="display:none;margin-bottom:10px;padding:6px 10px;background:var(--bg);border-radius:var(--r);border:0.5px solid var(--border)">
+            <div class="pwd-req" id="rq-len">8 caractères minimum</div>
+            <div class="pwd-req" id="rq-upper">1 majuscule (A–Z)</div>
+            <div class="pwd-req" id="rq-lower">1 minuscule (a–z)</div>
+            <div class="pwd-req" id="rq-digit">1 chiffre (0–9)</div>
+            <div class="pwd-req" id="rq-special">1 caractère spécial (!@#$…)</div>
+          </div>
+          <div class="field"><label>Confirmer le mot de passe</label><input type="password" id="reg-pwd2" name="password2" autocomplete="new-password" placeholder="••••••••" onkeydown="if(event.key==='Enter')regGoStep2()"></div>
           <button class="btn" onclick="regGoStep2()">Continuer</button>
           <div class="err" id="reg-err1"></div>
         </div>
@@ -221,7 +233,7 @@ function setRegDots(step) {
     var d = document.getElementById('rdot' + (i + 1));
     if (!d) continue;
     if (i === step) {
-      d.style.width = '24px'; d.style.borderRadius = '4px'; d.style.background = 'var(--blue)';
+      d.style.width = '24px'; d.style.borderRadius = '4px'; d.style.background = 'var(--text2)';
     } else {
       d.style.width = '8px'; d.style.borderRadius = '50%';
       d.style.background = i < step ? 'var(--text3)' : 'var(--bg3)';
@@ -240,14 +252,32 @@ function _animRegSlider(fn) {
   });
 }
 
+function checkPwdReqs() {
+  var v = document.getElementById('reg-pwd').value;
+  var box = document.getElementById('reg-pwd-reqs');
+  if (box) box.style.display = v ? '' : 'none';
+  function setMet(id, ok) { var el = document.getElementById(id); if (el) el.classList.toggle('met', ok); }
+  setMet('rq-len', v.length >= 8);
+  setMet('rq-upper', /[A-Z]/.test(v));
+  setMet('rq-lower', /[a-z]/.test(v));
+  setMet('rq-digit', /[0-9]/.test(v));
+  setMet('rq-special', /[^A-Za-z0-9]/.test(v));
+}
+
 function regGoStep2() {
   const name = document.getElementById('reg-name').value.trim();
   const email = document.getElementById('reg-email').value.trim();
   const pwd = document.getElementById('reg-pwd').value;
+  const pwd2 = document.getElementById('reg-pwd2').value;
   showErr('reg-err1', '');
   if (!name) return showErr('reg-err1', 'Entrez votre nom.');
   if (!email || !email.includes('@')) return showErr('reg-err1', 'Email invalide.');
-  if (pwd.length < 6) return showErr('reg-err1', 'Mot de passe trop court (min 6 caractères).');
+  if (pwd.length < 8) return showErr('reg-err1', 'Mot de passe : 8 caractères minimum.');
+  if (!/[A-Z]/.test(pwd)) return showErr('reg-err1', 'Mot de passe : au moins une majuscule.');
+  if (!/[a-z]/.test(pwd)) return showErr('reg-err1', 'Mot de passe : au moins une minuscule.');
+  if (!/[0-9]/.test(pwd)) return showErr('reg-err1', 'Mot de passe : au moins un chiffre.');
+  if (!/[^A-Za-z0-9]/.test(pwd)) return showErr('reg-err1', 'Mot de passe : au moins un caractère spécial.');
+  if (pwd !== pwd2) return showErr('reg-err1', 'Les mots de passe ne correspondent pas.');
   _animRegSlider(function() {
     document.getElementById('reg-s1').style.display = 'none';
     document.getElementById('reg-s2').style.display = '';
