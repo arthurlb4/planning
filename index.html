@@ -12,7 +12,8 @@
 [data-theme=light]{--bg:#e8e8e4;--bg2:#deded9;--bg3:#d0cfc9;--text:#1a1a18;--text2:#4a4a46;--text3:#8a8880;--border:rgba(0,0,0,.18);}
 :root{--bg:#18181b;--bg2:#27272a;--bg3:#3f3f46;--text:#f4f4f5;--text2:#d4d4d8;--text3:#71717a;--blue:#4ea0f7;--green:#5a9e3f;--border:rgba(255,255,255,.12);--r:10px;}
 body,input,button{transition:background-color .25s ease,color .25s ease,border-color .25s ease;}
-body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;user-select:none;-webkit-user-select:none;}
+input,textarea,select{user-select:text;-webkit-user-select:text;}
 .card{background:var(--bg2);border:0.5px solid var(--border);border-radius:16px;padding:28px 24px;width:100%;max-width:380px;}
 .logo{text-align:center;margin-bottom:20px;}
 .logo h1{font-size:20px;font-weight:600;margin-bottom:4px;}
@@ -410,35 +411,41 @@ function switchTab(tab) {
   }, 400);
 }
 
+function _measureHidden(el) {
+  var prev = el.style.cssText;
+  el.style.cssText += ';position:absolute!important;visibility:hidden!important;display:block!important;';
+  var h = el.offsetHeight;
+  el.style.cssText = prev;
+  return h;
+}
+
 function showForgot(show = true) {
-  const slider = document.getElementById('form-slider');
-  const loginEl = document.getElementById('form-login');
-  const forgotEl = document.getElementById('form-forgot');
+  var slider = document.getElementById('form-slider');
+  var loginEl = document.getElementById('form-login');
+  var forgotEl = document.getElementById('form-forgot');
   if (!slider || !loginEl || !forgotEl) return;
   if (show) {
-    const fromH = loginEl.offsetHeight;
-    slider.style.height = fromH + 'px';
+    var fromH = slider.offsetHeight;
+    var toH = _measureHidden(forgotEl);
     loginEl.style.display = 'none';
     forgotEl.style.display = '';
-    const toH = slider.scrollHeight;
-    requestAnimationFrame(function() {
-      slider.style.height = toH + 'px';
-      setTimeout(function() { slider.style.height = 'auto'; }, 420);
-    });
-  } else {
-    const fromH = forgotEl.offsetHeight;
     slider.style.height = fromH + 'px';
+    slider.getBoundingClientRect(); // force reflow — commits fromH before transition
+    slider.style.height = toH + 'px';
+    setTimeout(function() { slider.style.height = 'auto'; }, 420);
+  } else {
+    var fromH = slider.offsetHeight;
+    var toH = _measureHidden(loginEl);
     forgotEl.style.display = 'none';
     loginEl.style.display = '';
     document.getElementById('form-register').style.display = 'none';
     document.getElementById('tab-login').classList.add('active');
     document.getElementById('tab-register').classList.remove('active');
     showErr('forgot-err', ''); showOk('forgot-ok', '');
-    const toH = slider.scrollHeight;
-    requestAnimationFrame(function() {
-      slider.style.height = toH + 'px';
-      setTimeout(function() { slider.style.height = 'auto'; }, 420);
-    });
+    slider.style.height = fromH + 'px';
+    slider.getBoundingClientRect();
+    slider.style.height = toH + 'px';
+    setTimeout(function() { slider.style.height = 'auto'; }, 420);
   }
 }
 
