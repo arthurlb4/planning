@@ -2674,63 +2674,71 @@ function openAnnualSettingsModal(y){
   for(let m=0;m<12;m++){
     const ym=y*12+m;
     const eff=settingsForYM(ym);
-    const hasBp=keys.some(k=>!!_smhGet(k,ym));
     const isSel=_annualSel.has(ym);
     const isPending=!!(_annualPending&&_annualPending.ym===ym);
     const isPast=ym<TODAY_YM,isCur=ym===TODAY_YM;
-    rows+='<tr style="border-top:0.5px solid var(--border2);'+(isSel?'background:rgba(59,130,246,.10)':isPending?'background:rgba(245,158,11,.08)':'')+'">'
-      +'<td style="padding:6px 4px;font-size:11px;color:'+(isCur?'var(--blue)':isPast?'var(--text3)':'var(--text)')+';cursor:pointer" onclick="toggleAnnualSel('+ym+')">'
-      +ML[m]+(hasBp?'<span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--blue);vertical-align:middle;margin-left:3px"></span>':'')
-      +(isSel?'<span style="font-size:9px;color:var(--blue);margin-left:3px">✓</span>':'')+'</td>';
+    rows+='<tr style="border-top:0.5px solid var(--border2);'+(isSel?'background:rgba(59,130,246,.10)':isPending?'background:rgba(245,158,11,.07)':'')+'">'
+      +'<td style="padding:5px 4px;font-size:11px;color:'+(isCur?'var(--blue)':isPast?'var(--text3)':'var(--text)')+';cursor:pointer;user-select:none" onclick="toggleAnnualSel('+ym+')">'
+      +ML[m]+(isSel?'<span style="font-size:9px;color:var(--blue);margin-left:3px">✓</span>':'')+'</td>';
     for(let k=0;k<4;k++){
       const key=keys[k];
       const val=eff[key];
       const hasBpKey=!!_smhGet(key,ym);
       const isPendingCell=isPending&&_annualPending.key===key;
-      rows+='<td style="text-align:center;padding:6px 2px">'
-        +'<button onclick="selectAnnualCell('+ym+',\''+key+'\')" style="width:28px;height:22px;border-radius:5px;border:0.5px solid '+(isPendingCell?'var(--amber)':hasBpKey?'var(--blue)':'var(--border)')+';background:'+(isPendingCell?'rgba(245,158,11,.25)':val?(hasBpKey?'rgba(59,130,246,.25)':'rgba(255,255,255,.06)'):'transparent')+';color:'+(val?'var(--text)':'var(--text3)')+';font-size:11px;cursor:pointer;font-family:var(--font)">'+(val?'✓':'–')+'</button>'
+      // Circle: ● filled = ON, ○ empty = OFF. Blue border+color if breakpoint, amber if pending cell.
+      const borderCol=isPendingCell?'var(--amber)':hasBpKey?'var(--blue)':'var(--border)';
+      const textCol=isPendingCell?'var(--amber)':hasBpKey?'var(--blue)':val?'var(--text2)':'var(--text3)';
+      rows+='<td style="text-align:center;padding:5px 2px">'
+        +'<button onclick="selectAnnualCell('+ym+',\''+key+'\')" style="width:28px;height:24px;border-radius:5px;border:0.5px solid '+borderCol+';background:'+(isPendingCell?'rgba(245,158,11,.10)':hasBpKey&&val?'rgba(59,130,246,.12)':'transparent')+';color:'+textCol+';font-size:14px;line-height:1;cursor:pointer;font-family:var(--font);display:inline-flex;align-items:center;justify-content:center">'+(val?'●':'○')+'</button>'
         +'</td>';
     }
     rows+='</tr>';
   }
-  let actionBar='';
+  // Check if all 12 months of this year are selected (for column header state)
+  const allSel=Array.from({length:12},(_,m)=>y*12+m).every(ym=>_annualSel.has(ym));
+  const colHeaders=keys.map((k,i)=>{
+    const allColSel=Array.from({length:12},(_,m)=>y*12+m).every(ym=>_annualSel.has(ym));
+    return '<th style="padding:4px 2px;font-size:10px;color:var(--blue);font-weight:500;text-align:center;cursor:pointer;user-select:none" onclick="selectAnnualCol(\''+k+'\')">'+hdrs[i]+'</th>';
+  }).join('');
+  // Action bar — fixed-height container (72px) to avoid modal resize
+  let actionContent='';
   if(_annualPending){
     const {ym,key}=_annualPending;
     const lm=ym%12;
     const lk={'dimRendu':'Dim','rhRendu':'RH','ferRendu':'Fér','hsRendu':'HS'}[key];
     const cur=settingsForYM(ym)[key];
-    actionBar='<div style="margin-top:10px;padding:10px;border-radius:var(--r);background:rgba(245,158,11,.08);border:0.5px solid var(--amber)">'
-      +'<div style="font-size:11px;color:var(--amber);margin-bottom:8px">'+ML[lm]+' – '+lk+' : '+(cur?'ON → OFF':'OFF → ON')+'</div>'
+    actionContent='<div style="font-size:11px;color:var(--amber);margin-bottom:7px">'+ML[lm]+' – '+lk+' : '+(cur?'● → ○':'○ → ●')+'</div>'
       +'<div style="display:flex;gap:8px">'
-      +'<button onclick="applyAnnualCell('+ym+',\''+key+'\',false)" style="flex:1;height:32px;font-size:11px;font-family:var(--font);background:var(--bg2);color:var(--text);border:0.5px solid var(--border);border-radius:var(--r);cursor:pointer">Ce mois</button>'
-      +'<button onclick="applyAnnualCell('+ym+',\''+key+'\',true)" style="flex:1;height:32px;font-size:11px;font-family:var(--font);background:var(--amber);color:#000;border:none;border-radius:var(--r);cursor:pointer">Ce mois et les suivants</button>'
-      +'</div></div>';
+      +'<button onclick="applyAnnualCell('+ym+',\''+key+'\',false)" style="flex:1;height:30px;font-size:11px;font-family:var(--font);background:var(--bg2);color:var(--text);border:0.5px solid var(--border);border-radius:var(--r);cursor:pointer">Ce mois</button>'
+      +'<button onclick="applyAnnualCell('+ym+',\''+key+'\',true)" style="flex:1;height:30px;font-size:11px;font-family:var(--font);background:var(--amber);color:#000;border:none;border-radius:var(--r);cursor:pointer">Ce mois et les suivants</button>'
+      +'</div>';
   }else if(_annualSel.size>0){
     const sc=_annualSel.size;
-    actionBar='<div style="margin-top:10px;padding:10px;border-radius:var(--r);background:rgba(59,130,246,.08);border:0.5px solid var(--blue)">'
-      +'<div style="font-size:11px;color:var(--blue);margin-bottom:8px">'+sc+' mois sélectionné'+(sc>1?'s':'')+' — valeurs à appliquer</div>'
-      +'<div style="display:flex;justify-content:space-around;margin-bottom:10px">'
-      +keys.map((k,i)=>'<div style="display:flex;flex-direction:column;align-items:center;gap:4px"><span style="font-size:10px;color:var(--text3)">'+hdrs[i]+'</span><label class="tgl"><input type="checkbox" id="aa-'+k+'"'+(_annualActionState[k]?' checked':'')+'><span class="tgl-s"></span></label></div>').join('')
+    actionContent='<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px">'
+      +'<span style="font-size:11px;color:var(--blue);flex:1">'+sc+' mois sélectionné'+(sc>1?'s':'')+'</span>'
+      +keys.map((k,i)=>'<div style="display:flex;flex-direction:column;align-items:center;gap:2px"><span style="font-size:9px;color:var(--text3)">'+hdrs[i]+'</span><label class="tgl" style="transform:scale(.8);transform-origin:center"><input type="checkbox" id="aa-'+k+'"'+(_annualActionState[k]?' checked':'')+'><span class="tgl-s"></span></label></div>').join('')
+      +'<button onclick="clearAnnualSel()" style="height:28px;padding:0 8px;font-size:13px;font-family:var(--font);background:transparent;border:0.5px solid var(--border);border-radius:var(--r);cursor:pointer;color:var(--text3);flex-shrink:0">✕</button>'
       +'</div>'
-      +'<div style="display:flex;gap:8px">'
-      +'<button onclick="applyAnnualSel()" style="flex:1;height:32px;font-size:11px;font-family:var(--font);background:var(--blue);color:#fff;border:none;border-radius:var(--r);cursor:pointer">Appliquer</button>'
-      +'<button onclick="clearAnnualSel()" style="height:32px;padding:0 12px;font-size:11px;font-family:var(--font);background:transparent;border:0.5px solid var(--border);border-radius:var(--r);cursor:pointer;color:var(--text3)">✕</button>'
-      +'</div></div>';
+      +'<button onclick="applyAnnualSel()" style="width:100%;height:30px;font-size:11px;font-family:var(--font);background:var(--blue);color:#fff;border:none;border-radius:var(--r);cursor:pointer">Appliquer</button>';
   }
+  const actionBorderColor=_annualPending?'var(--amber)':_annualSel.size>0?'var(--blue)':'transparent';
+  const actionBg=_annualPending?'rgba(245,158,11,.07)':_annualSel.size>0?'rgba(59,130,246,.07)':'transparent';
   document.getElementById('modal-root').innerHTML=
     '<div class="overlay" onclick="if(event.target===this){_annualPending=null;_annualSel.clear();closeModal();}"><div class="sheet">'
     +'<div class="sh"></div>'
-    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
     +'<button onclick="_annualPending=null;_annualSel.clear();openAnnualSettingsModal('+(y-1)+')" style="background:transparent;border:none;color:var(--text2);cursor:pointer;font-size:18px;padding:0 8px">‹</button>'
     +'<span style="font-size:16px;font-weight:600">'+y+'</span>'
     +'<button onclick="_annualPending=null;_annualSel.clear();openAnnualSettingsModal('+(y+1)+')" style="background:transparent;border:none;color:var(--text2);cursor:pointer;font-size:18px;padding:0 8px">›</button>'
     +'</div>'
-    +'<div class="ss" style="margin-bottom:8px">● = point de propagation. Cellule : changer. Nom du mois : sélectionner (multi).</div>'
+    +'<div class="ss" style="margin-bottom:6px">● = ON · ○ = OFF · point bleu = ancre de propagation. Colonne : tout sélectionner.</div>'
     +'<table style="width:100%;border-collapse:collapse">'
     +'<thead><tr><th style="padding:4px;font-size:10px;color:var(--text3);font-weight:500;text-align:left"></th>'
-    +hdrs.map(h=>'<th style="padding:4px 2px;font-size:10px;color:var(--text3);font-weight:500;text-align:center">'+h+'</th>').join('')
+    +colHeaders
     +'</tr></thead><tbody>'+rows+'</tbody></table>'
-    +actionBar
+    +'<div style="margin-top:10px;min-height:72px;padding:10px;border-radius:var(--r);background:'+actionBg+';border:0.5px solid '+actionBorderColor+';box-sizing:border-box">'
+    +actionContent
+    +'</div>'
     +'<button class="mcancel mclose" onclick="_annualPending=null;_annualSel.clear();closeModal()">Fermer</button>'
     +'</div></div>';
 }
@@ -2761,6 +2769,13 @@ function applyAnnualSel(){
   keys.forEach(k=>{const el=document.getElementById('aa-'+k);if(el)_annualActionState[k]=el.checked;});
   _annualSel.forEach(ym=>{keys.forEach(k=>_smhSet(k,ym,_annualActionState[k]));});
   _annualSel.clear();saveState();render();openAnnualSettingsModal(_annualSelYear);
+}
+function selectAnnualCol(key){
+  _annualPending=null;
+  const allYms=Array.from({length:12},(_,m)=>_annualSelYear*12+m);
+  const allSel=allYms.every(ym=>_annualSel.has(ym));
+  allYms.forEach(ym=>allSel?_annualSel.delete(ym):_annualSel.add(ym));
+  openAnnualSettingsModal(_annualSelYear);
 }
 function openHSModal(mym){
   document.querySelectorAll('[onclick*="openHSModal"]').forEach(el=>el.classList.add('active'));_lockBodyScroll();
@@ -3443,7 +3458,7 @@ function openMergedMoisModal(mym,tab){
     +'<span style="font-size:11px;color:var(--text3)">Génération des rendus'+(_hasMo?'<span style="margin-left:6px;font-size:9px;padding:1px 5px;border-radius:8px;background:var(--blue);color:#fff">ce mois</span>':'')+'</span>'
     +'<button onclick="openMonthSettingsModal('+mym+')" style="font-size:11px;color:var(--blue);background:transparent;border:0.5px solid var(--blue);border-radius:var(--r);padding:4px 10px;cursor:pointer;font-family:var(--font)">Configurer</button>'
     +'</div>';
-  const hsSection=hsRows?(hsColHdr+hsSummary+'<div class="sep" style="margin:6px 0"></div>'+'<div class="btit" style="margin-bottom:4px">Détail par semaine</div>'+hsRows+_moCfgBtn):(hsColHdr+hsSummary+_moCfgBtn);
+  const hsSection=hsRows?(hsColHdr+hsSummary+'<div class="sep" style="margin:6px 0"></div>'+'<div class="btit" style="margin-bottom:4px">Détail par semaine</div>'+hsRows):(hsColHdr+hsSummary);
 
   // === Créés ce mois ===
   const{gen:gen2}=calcSoldes();const gm=gen2[mym]||{};
@@ -3486,7 +3501,8 @@ function openMergedMoisModal(mym,tab){
     +'<span style="font-size:15px;font-weight:700;color:var(--rend-text)">'+fmtMin(gt2)+'</span>'
     +'</div>'
     +'<div style="margin-bottom:10px">'+crTotRows.map(r=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0"><div style="display:flex;align-items:center;gap:6px"><span class="rdot" style="background:'+r.color+'"></span><span style="font-size:11px;color:var(--text2)">'+r.label+'</span></div><b style="font-size:11px;color:var(--text)">'+fmtMin(r.val)+'</b></div>').join('')+'</div>'
-    +(crRows?'<div class="sep"></div><div class="btit" style="margin-bottom:4px">Détail par semaine</div>'+crRows:'');
+    +(crRows?'<div class="sep"></div><div class="btit" style="margin-bottom:4px">Détail par semaine</div>'+crRows:'')
+    +_moCfgBtn;
 
   // === Paie ===
   const paye=calcPayeMois(y,m);
@@ -4181,11 +4197,7 @@ function openSettingsModal(tab){
   // ── TAB 2: HEURES ──
   var tab2=''
     +_sh+'Génération des rendus</div>'
-    +mkTgl('ps-dim','Dimanches'+_inf('si travaillé'),computeSettForProfile(pr,TODAY_YM+1,'dimRendu'),pr.settings&&pr.settings.settingsHistory,'dimRendu',pid)
-    +mkTgl('ps-rh','RH travaillés'+_inf('repos hebdomadaire'),computeSettForProfile(pr,TODAY_YM+1,'rhRendu'),pr.settings&&pr.settings.settingsHistory,'rhRendu',pid)
-    +mkTgl('ps-fer','Fériés travaillés'+_inf('+100 % taux horaire'),computeSettForProfile(pr,TODAY_YM+1,'ferRendu'),pr.settings&&pr.settings.settingsHistory,'ferRendu',pid)
-    +mkTgl('ps-hs','Heures sup.'+_inf('+25 / 50 %'),computeSettForProfile(pr,TODAY_YM+1,'hsRendu'),pr.settings&&pr.settings.settingsHistory,'hsRendu',pid)
-    +'<div class="srow" style="padding:8px 0"><div class="slbl">Par mois'+_inf('overrides mensuels')+'</div><button class="mb" style="width:120px;height:32px;min-height:32px;padding:0;font-size:12px;background:var(--bg0)" onclick="closeModal();setTimeout(()=>openAnnualSettingsModal('+new Date().getFullYear()+'),80)">Vue annuelle</button></div>'
+    +'<div class="srow" '+_sr+'><div class="slbl">Par mois'+_inf('propagation par point')+'</div><button class="mb" style="width:120px;height:32px;min-height:32px;padding:0;font-size:12px;background:var(--bg0)" onclick="closeModal();setTimeout(()=>openAnnualSettingsModal('+new Date().getFullYear()+'),80)">Changer</button></div>'
     +_sh+'Soldes initiaux</div>'
     +'<div class="srow" '+_sr+'><div class="slbl">Matelas'+_inf('crédit de rendus')+'</div><input id="ps-matelas" '+_onb+' value="'+fmtMin(pr.profile.matelas||0)+'" onfocus="if(this.value)this.select()" style="'+_inpR+'"></div>'
     +'<div class="srow" '+_sr+'><div class="slbl">Stock éphem.'+_inf('rendus éphémères')+'</div><input id="ps-eph" '+_onb+' value="'+fmtMin(Math.round((pr.profile.ephSolde||0)*60))+'" onfocus="if(this.value)this.select()" style="'+_inpR+'"></div>'
