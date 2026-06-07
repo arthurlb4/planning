@@ -2677,7 +2677,7 @@ function resetMonthSettings(mym){
   _SMH_KEYS.forEach(k=>_smhDel(k,mym));
   saveState();render();openMergedMoisModal(mym,1);
 }
-function openAnnualSettingsModal(y){
+function openAnnualSettingsModal(y,dir){
   if(!y)y=new Date().getFullYear();
   _annualSelYear=y;
   const _wasOpen=document.body.classList.contains('modal-open');
@@ -2741,9 +2741,9 @@ function openAnnualSettingsModal(y){
     +'<button onclick="_annualPending=null;_annualSel.clear();openSettingsModal(2)" style="background:transparent;border:none;color:var(--blue);cursor:pointer;font-size:11px;padding:0;display:flex;align-items:center;gap:3px">‹ Paramètres</button>'
     +'</div>'
     +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
-    +'<button onclick="_annualPending=null;_annualSel.clear();openAnnualSettingsModal('+(y-1)+')" style="background:transparent;border:none;color:var(--text2);cursor:pointer;font-size:18px;padding:0 8px">‹</button>'
+    +'<button onclick="_annualPending=null;_annualSel.clear();openAnnualSettingsModal('+(y-1)+',"prev")" style="background:transparent;border:none;color:var(--text2);cursor:pointer;font-size:18px;padding:0 8px">‹</button>'
     +'<span style="font-size:16px;font-weight:600">'+y+'</span>'
-    +'<button onclick="_annualPending=null;_annualSel.clear();openAnnualSettingsModal('+(y+1)+')" style="background:transparent;border:none;color:var(--text2);cursor:pointer;font-size:18px;padding:0 8px">›</button>'
+    +'<button onclick="_annualPending=null;_annualSel.clear();openAnnualSettingsModal('+(y+1)+',"next")" style="background:transparent;border:none;color:var(--text2);cursor:pointer;font-size:18px;padding:0 8px">›</button>'
     +'</div>'
     +'<div class="ss" style="margin-bottom:6px">● = ON · ○ = OFF. Colonne : tout sélectionner. Mois : multi-sélection.</div>'
     +'<table style="width:100%;border-collapse:collapse">'
@@ -2755,6 +2755,19 @@ function openAnnualSettingsModal(y){
     +'</div>'
     +'<button class="mcancel mclose" onclick="_annualPending=null;_annualSel.clear();closeModal()">Fermer</button>'
     +'</div></div>';
+  if(dir){const _tbl=document.querySelector('#modal-root table');if(_tbl)_tbl.style.animation=(dir==='next'?'slideInLeft':'slideInRight')+' .22s ease';}
+  const _sh2=document.querySelector('#modal-root .sheet');
+  if(_sh2){
+    let _sx=0,_sy=0,_st=0,_sb=false;
+    _sh2.addEventListener('touchstart',function(e){_sx=e.touches[0].clientX;_sy=e.touches[0].clientY;_st=Date.now();_sb=!!e.target.closest('button,input,label,select');},{passive:true});
+    _sh2.addEventListener('touchend',function(e){
+      if(_sb||Date.now()-_st<200)return;
+      const dx=e.changedTouches[0].clientX-_sx,dy=Math.abs(e.changedTouches[0].clientY-_sy);
+      if(Math.abs(dx)<50||dy>Math.abs(dx))return;
+      _annualPending=null;_annualSel.clear();
+      openAnnualSettingsModal(dx<0?y+1:y-1,dx<0?'next':'prev');
+    },{passive:true});
+  }
 }
 function selectAnnualCell(ym,key){
   if(_annualPending&&_annualPending.ym===ym&&_annualPending.key===key){
