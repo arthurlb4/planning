@@ -624,7 +624,7 @@ function saveState(){
       for(let _wi=0;_wi<7;_wi++){
         const _wd=new Date(_mon.getTime()+_wi*864e5);
         const _wk=dk(_wd),_wc=(S.conges||{})[_wk],_wv=getVac(_wd);
-        _weekVacs.push(_wc==='cg'?'CG':(_wc==='rend'||_wc==='rend-hist')?'RH':(_wc==='absent'||_wv.absent)?'Abs':(_wv.vac||'-'));
+        _weekVacs.push(_wc==='cg'?'CG':(_wc==='rend'||_wc==='rend-hist')?'REND':(_wc==='absent'||_wv.absent)?'Abs':(_wv.vac||'-'));
       }
       fetch(CLOUD_API+'/lines/register',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({
         ligne:'S'+(_rVisual+1),profileId:_aid,
@@ -3967,8 +3967,17 @@ function _wvRender(linesData,monKey,currentMon,isHistorical){
         _cellHtml='<div class="dc s-'+_st+'"><div class="dci"><span class="dv">'+_lbl+'</span></div></div>';
       } else {
         var _wvCode=(showUserVacs&&hasUser&&users[0].weekVacs)?users[0].weekVacs[d]:null;
-        var _code=(_wvCode&&_wvCode!=='-')?_wvCode:(grid[i]?grid[i][d]:null);
-        _cellHtml=_wvCell(_code);
+        var _cyc=grid[i]?grid[i][d]:null;
+        if(_wvCode==='CG'){
+          _cellHtml='<div class="dc s-cg"><div class="dci"><span class="dv">'+(_cyc||'')+'</span></div></div>';
+        } else if(_wvCode==='REND'){
+          _cellHtml='<div class="dc s-rend"><div class="dci"><span class="dv">'+(_cyc||'')+'</span></div></div>';
+        } else if(_wvCode==='Abs'){
+          _cellHtml='<div class="dc s-absent"><div class="dci"><span class="dv" style="color:var(--red)">abs.</span></div></div>';
+        } else {
+          var _code=(_wvCode&&_wvCode!=='-')?_wvCode:_cyc;
+          _cellHtml=_wvCell(_code);
+        }
       }
       html+='<td style="padding:2px 2px">'+_cellHtml+'</td>';
     }
