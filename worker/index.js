@@ -536,7 +536,7 @@ export default {
         if (cleaned.length > 0) linesMap[ligne] = cleaned; else delete linesMap[ligne];
       }
       if (!linesMap[ligne]) linesMap[ligne] = [];
-      linesMap[ligne].push({ userId: session.userId, userName: body.userName || session.userId, profileId: profileId, profileName: profileName || profileId, weekVacs: body.weekVacs || [] });
+      linesMap[ligne].push({ userId: session.userId, userName: body.userName || session.userId, profileId: profileId, profileName: profileName || profileId, weekVacs: body.weekVacs || [], regLine: body.regLine !== undefined ? body.regLine : parseInt(ligne.slice(1))-1, regWeek: body.regWeek || getMondayKey() });
       await env.PLANNING_DB.put('global:lines_used', JSON.stringify(linesMap));
       var monKey = getMondayKey();
       await env.PLANNING_DB.put('lines:week:' + monKey, JSON.stringify(linesMap), { expirationTtl: 90 * 24 * 3600 });

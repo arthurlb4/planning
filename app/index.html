@@ -631,7 +631,9 @@ function saveState(){
         ligne:'S'+(_rVisual+1),profileId:_aid,
         profileName:S.profile.name||_aid,
         userName:(window._authUser&&window._authUser.name)||'',
-        weekVacs:_weekVacs
+        weekVacs:_weekVacs,
+        regLine:_rVisual,
+        regWeek:dk(_mon)
       })}).catch(function(){});
     }
   },2000);
@@ -3943,10 +3945,22 @@ function _wvRender(linesData,monKey,currentMon,isHistorical){
   if(isHistorical||weekDelta===0){
     adjustedLines=linesData;
   } else {
+    var _viewedMon=getMonday(monDate);
     Object.keys(linesData).forEach(function(lineName){
-      var idx=parseInt(lineName.slice(1))-1;
-      var newIdx=((idx+weekDelta)%nLines+nLines)%nLines;
-      adjustedLines['S'+(newIdx+1)]=linesData[lineName];
+      (linesData[lineName]||[]).forEach(function(user){
+        var newLineIdx;
+        if(user.regWeek&&user.regLine!==undefined){
+          var _regMon=new Date(user.regWeek+'T12:00:00');
+          var _diff=Math.round((_viewedMon-_regMon)/(7*864e5));
+          newLineIdx=((user.regLine+_diff)%nLines+nLines)%nLines;
+        }else{
+          var idx=parseInt(lineName.slice(1))-1;
+          newLineIdx=((idx+weekDelta)%nLines+nLines)%nLines;
+        }
+        var nl='S'+(newLineIdx+1);
+        if(!adjustedLines[nl])adjustedLines[nl]=[];
+        adjustedLines[nl].push(user);
+      });
     });
   }
   // Current user's line for this week — use lineIdx() to respect lineHistory
