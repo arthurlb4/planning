@@ -2663,8 +2663,18 @@ function saveMonthSettings(mym,propagate){
         if(!S.profile.settingsMonthly[mym])S.profile.settingsMonthly[mym]={};
         S.profile.settingsMonthly[mym][k]=newVal;
       }else{
-        if(S.profile.settingsMonthly&&S.profile.settingsMonthly[mym])
-          delete S.profile.settingsMonthly[mym][k];
+        if(S.profile.settingsMonthly){
+          Object.keys(S.profile.settingsMonthly).forEach(function(mStr){
+            var m=Number(mStr);
+            if(m>=mym&&S.profile.settingsMonthly[m]&&k in S.profile.settingsMonthly[m]){
+              delete S.profile.settingsMonthly[m][k];
+              if(!Object.keys(S.profile.settingsMonthly[m]).length)delete S.profile.settingsMonthly[m];
+            }
+          });
+        }
+        if(S.profile.settingsMonthlyHistory&&S.profile.settingsMonthlyHistory[k]){
+          S.profile.settingsMonthlyHistory[k]=S.profile.settingsMonthlyHistory[k].filter(function(e){return e.ym<=mym;});
+        }
         _smhSet(k,mym,newVal);
       }
     }
@@ -2784,9 +2794,20 @@ function applyAnnualCell(ym,key,propagate){
     if(!S.profile.settingsMonthly[ym])S.profile.settingsMonthly[ym]={};
     S.profile.settingsMonthly[ym][key]=newVal;
   }else{
-    // Ce mois et les suivants: breakpoint that propagates, remove any exact override
-    if(S.profile.settingsMonthly&&S.profile.settingsMonthly[ym])
-      delete S.profile.settingsMonthly[ym][key];
+    // Ce mois et les suivants: propagating breakpoint — clear everything for this key after ym
+    // so neither settingsMonthly exact overrides nor later settingsMonthlyHistory entries shadow it
+    if(S.profile.settingsMonthly){
+      Object.keys(S.profile.settingsMonthly).forEach(function(mStr){
+        var m=Number(mStr);
+        if(m>=ym&&S.profile.settingsMonthly[m]&&key in S.profile.settingsMonthly[m]){
+          delete S.profile.settingsMonthly[m][key];
+          if(!Object.keys(S.profile.settingsMonthly[m]).length)delete S.profile.settingsMonthly[m];
+        }
+      });
+    }
+    if(S.profile.settingsMonthlyHistory&&S.profile.settingsMonthlyHistory[key]){
+      S.profile.settingsMonthlyHistory[key]=S.profile.settingsMonthlyHistory[key].filter(function(e){return e.ym<=ym;});
+    }
     _smhSet(key,ym,newVal);
   }
   _annualPending=null;saveState();render();openAnnualSettingsModal(_annualSelYear);
