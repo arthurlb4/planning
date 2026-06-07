@@ -526,13 +526,15 @@ export default {
       if (!session) return resp({ error: 'Non authentifie' }, 401);
       var currentMon = getMondayKey();
       var requestedMon = (body && body.monday) || currentMon;
-      var linesMap;
-      if (requestedMon === currentMon) {
-        linesMap = await env.PLANNING_DB.get('global:lines_used', { type: 'json' }) || {};
+      var linesMap, isHistorical = false;
+      if (requestedMon < currentMon) {
+        var snapshot = await env.PLANNING_DB.get('lines:week:' + requestedMon, { type: 'json' });
+        if (snapshot) { linesMap = snapshot; isHistorical = true; }
+        else { linesMap = await env.PLANNING_DB.get('global:lines_used', { type: 'json' }) || {}; }
       } else {
-        linesMap = await env.PLANNING_DB.get('lines:week:' + requestedMon, { type: 'json' }) || {};
+        linesMap = await env.PLANNING_DB.get('global:lines_used', { type: 'json' }) || {};
       }
-      return resp({ lines: linesMap, monday: requestedMon });
+      return resp({ lines: linesMap, monday: requestedMon, current: currentMon, isHistorical: isHistorical });
     }
 
     // ============================================================

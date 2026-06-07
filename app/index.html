@@ -3874,11 +3874,8 @@ function closeWeekView(){
 function weekViewNav(delta){
   var d=new Date(_weekViewMon+'T12:00:00');
   d.setDate(d.getDate()+delta*7);
-  var newMon=dk(d);
-  var todayMon=dk(getMonday(NOW));
-  if(newMon>todayMon)return;
-  _weekViewMon=newMon;
-  _wvLoad(newMon);
+  _weekViewMon=dk(d);
+  _wvLoad(_weekViewMon);
 }
 async function _wvLoad(monKey){
   var el=document.getElementById('week-view-overlay');
@@ -3891,7 +3888,7 @@ async function _wvLoad(monKey){
   try{
     const res=await fetch(CLOUD_API+'/lines/week',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({monday:monKey})});
     const data=await res.json();
-    el.innerHTML=_wvRender(data.lines||{},monKey);
+    el.innerHTML=_wvRender(data.lines||{},monKey,data.current||monKey,!!data.isHistorical);
   }catch(e){
     el.innerHTML=_wvHeader(monKey)+'<div style="padding:20px;color:var(--text3);font-size:13px;text-align:center">Erreur de chargement</div>';
   }
@@ -3900,27 +3897,42 @@ function _wvHeader(monKey){
   var monDate=new Date(monKey+'T12:00:00');
   var sunDate=new Date(monDate);sunDate.setDate(sunDate.getDate()+6);
   var weekNum=isoWeek(monDate);
-  var todayMon=dk(getMonday(NOW));
-  var isCurrentWeek=monKey===todayMon;
   var lbl='S'+weekNum+' · '+monDate.getDate()+' — '+sunDate.getDate()+' '+MC[sunDate.getMonth()]+' '+sunDate.getFullYear();
   return '<div style="display:flex;align-items:center;padding:12px 12px 10px;gap:8px;border-bottom:0.5px solid var(--border);background:var(--bg0);flex-shrink:0">'
     +'<button onclick="closeWeekView()" style="background:transparent;border:none;color:var(--text2);cursor:pointer;padding:4px 6px;display:flex;align-items:center;font-size:20px"><i class="ti ti-arrow-left"></i></button>'
     +'<div style="flex:1;text-align:center;font-size:13px;font-weight:600;color:var(--text)">'+lbl+'</div>'
     +'<div style="display:flex;gap:4px">'
     +'<button onclick="weekViewNav(-1)" style="background:var(--bg2);border:0.5px solid var(--border);border-radius:8px;color:var(--text);cursor:pointer;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px"><i class="ti ti-chevron-left"></i></button>'
-    +'<button onclick="weekViewNav(1)" style="background:var(--bg2);border:0.5px solid var(--border);border-radius:8px;color:'+(isCurrentWeek?'var(--text3)':'var(--text)')+';cursor:'+(isCurrentWeek?'default':'pointer')+';width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px"><i class="ti ti-chevron-right"></i></button>'
+    +'<button onclick="weekViewNav(1)" style="background:var(--bg2);border:0.5px solid var(--border);border-radius:8px;color:var(--text);cursor:pointer;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px"><i class="ti ti-chevron-right"></i></button>'
     +'</div></div>';
 }
-function _wvRender(linesData,monKey){
+function _wvRender(linesData,monKey,currentMon,isHistorical){
   var monDate=new Date(monKey+'T12:00:00');
+  var currentDate=new Date(currentMon+'T12:00:00');
   var grid=getActiveCycleGrid(monDate)||CYCLE;
   var nLines=grid.length;
+  // Compute week offset from current week
+  var weekDelta=Math.round((getMonday(monDate)-getMonday(currentDate))/(7*864e5));
+  // For non-historical non-current weeks: shift user line assignments by weekDelta
+  var adjustedLines={};
+  if(isHistorical||weekDelta===0){
+    adjustedLines=linesData;
+  } else {
+    Object.keys(linesData).forEach(function(lineName){
+      var idx=parseInt(lineName.slice(1))-1;
+      var newIdx=((idx+weekDelta)%nLines+nLines)%nLines;
+      adjustedLines['S'+(newIdx+1)]=linesData[lineName];
+    });
+  }
+  // Current user's line for this week
   var userLine=null;
   if(S&&S.profile&&S.profile.anchorLine!==undefined){
     var _rDiff=Math.round((getMonday(monDate)-ANCHOR)/(7*864e5));
     var _rVisual=((S.profile.anchorLine+_rDiff)%nLines+nLines)%nLines;
     userLine='S'+(_rVisual+1);
   }
+  // Show user weekVacs only for current week or confirmed historical snapshots
+  var showUserVacs=isHistorical||weekDelta===0;
   var days=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
   var html=_wvHeader(monKey);
   html+='<div style="overflow:auto;flex:1;-webkit-overflow-scrolling:touch">';
@@ -3934,16 +3946,23 @@ function _wvRender(linesData,monKey){
   for(var i=0;i<nLines;i++){
     var lineName='S'+(i+1);
     var isUser=lineName===userLine;
-    var users=linesData[lineName]||[];
-    var userName=users.length>0?(users[0].profileName||users[0].userName||''):'';
+    var users=adjustedLines[lineName]||[];
+    var hasUser=users.length>0;
+    var userName=hasUser?(users[0].profileName||users[0].userName||''):'';
     var rowBg=isUser?'rgba(98,170,220,.07)':'transparent';
     html+='<tr style="border-top:0.5px solid var(--border2);background:'+rowBg+'">';
     html+='<td style="padding:5px 6px 5px 14px;white-space:nowrap">'
-      +'<div style="font-size:12px;font-weight:'+(isUser?'600':'400')+';color:'+(isUser?'var(--blue)':'var(--text3)')+'">'+lineName+'</div>'
+      +'<div style="font-size:12px;font-weight:'+(isUser?'600':'400')+';color:'+(isUser?'var(--blue)':hasUser?'var(--text)':'var(--text3)')+'">'+lineName+'</div>'
       +(userName?'<div style="font-size:10px;color:var(--text3);margin-top:1px">'+userName+'</div>':'')
       +'</td>';
     for(var d=0;d<7;d++){
-      var code=users.length>0&&users[0].weekVacs?users[0].weekVacs[d]:null;
+      // User weekVacs take priority (if available and reliable); fall back to cycle grid
+      var code=null;
+      if(hasUser&&showUserVacs&&users[0].weekVacs&&users[0].weekVacs[d]){
+        code=users[0].weekVacs[d];
+      } else {
+        code=grid[i]?grid[i][d]:null;
+      }
       html+='<td style="padding:3px 2px;text-align:center">'+_wvCell(code)+'</td>';
     }
     html+='</tr>';
