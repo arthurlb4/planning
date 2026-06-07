@@ -3956,17 +3956,24 @@ function _wvRender(linesData,monKey,currentMon,isHistorical){
       +(hasUser?'<div style="font-size:10px;color:'+(multiUser?'var(--amber)':'var(--text3)')+';margin-top:1px">'+profileNames.join(', ')+'</div>':'')
       +'</td>';
     for(var d=0;d<7;d++){
-      var wvCode=null;
+      var _cellHtml;
       if(isUser){
-        // Always use local state for the current user — accurate for all weeks
         var _dd=new Date(monDate.getTime()+d*864e5);
         var _dc=(S.conges||{})[dk(_dd)],_dv=getVac(_dd);
-        wvCode=_dc==='cg'?'CG':(_dc==='rend'||_dc==='rend-hist')?'RH':(_dc==='absent'||_dv.absent)?'Abs':(_dv.vac||'-');
-      } else if(showUserVacs&&hasUser&&users[0].weekVacs){
-        wvCode=users[0].weekVacs[d];
+        var _vc=_dv.vac||(grid[i]?grid[i][d]:null);
+        if(_dc==='cg'||_dc==='rend'||_dc==='rend-hist'){
+          _cellHtml=_vc?'<span style="font-size:11px;background:var(--rend-l);color:var(--rend-text);border-radius:4px;padding:2px 4px;display:inline-block;font-weight:500">'+_vc+'</span>':'<span style="font-size:11px;color:var(--text3)">—</span>';
+        } else if(_dc==='absent'||_dv.absent){
+          _cellHtml='<span style="font-size:11px;background:rgba(192,57,43,.4);color:var(--red);border-radius:4px;padding:2px 4px;display:inline-block;font-weight:500">Abs</span>';
+        } else {
+          _cellHtml=_wvCell(_vc);
+        }
+      } else {
+        var _wvCode=(showUserVacs&&hasUser&&users[0].weekVacs)?users[0].weekVacs[d]:null;
+        var _code=(_wvCode&&_wvCode!=='-')?_wvCode:(grid[i]?grid[i][d]:null);
+        _cellHtml=_wvCell(_code);
       }
-      var code=(wvCode&&wvCode!=='-')?wvCode:(grid[i]?grid[i][d]:null);
-      html+='<td style="padding:3px 2px;text-align:center">'+_wvCell(code)+'</td>';
+      html+='<td style="padding:3px 2px;text-align:center">'+_cellHtml+'</td>';
     }
     html+='</tr>';
   }
@@ -3976,7 +3983,7 @@ function _wvRender(linesData,monKey,currentMon,isHistorical){
 function _wvCell(code){
   if(!code||code==='-')return '<span style="font-size:11px;color:var(--text3)">—</span>';
   if(code==='CG')return '<span style="font-size:11px;background:var(--rend-l);color:var(--rend-text);border-radius:4px;padding:2px 4px;display:inline-block;font-weight:500">CG</span>';
-  if(code==='RH')return '<span style="font-size:11px;background:var(--rend-l);color:var(--rend-text);border-radius:4px;padding:2px 4px;display:inline-block;font-weight:500">RH</span>';
+  if(code==='RH')return '<span style="font-size:11px;color:var(--text3)">RH</span>';
   if(code==='Abs')return '<span style="font-size:11px;background:rgba(192,57,43,.4);color:var(--red);border-radius:4px;padding:2px 4px;display:inline-block;font-weight:500">Abs</span>';
   return '<span style="font-size:11px;background:var(--bg3);color:var(--text2);border-radius:4px;padding:2px 3px;display:inline-block">'+code+'</span>';
 }
