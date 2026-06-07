@@ -912,6 +912,8 @@ function _smhDel(key,ym){
 }
 // Global selection state for annual grid
 var _annualSel=new Set(),_annualSelYear=new Date().getFullYear();
+var _annualPending=null; // {ym,key} cell awaiting ce-mois/propagate choice
+var _annualActionState={dimRendu:true,rhRendu:true,ferRendu:true,hsRendu:true};
 
 // ================================================================
 // HELPERS EXPIRATION
@@ -2617,90 +2619,148 @@ function cancelExchange(key){
 function openMonthSettingsModal(mym){
   const y=Math.floor(mym/12),m=mym%12;
   const ML=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
-  const global=settingsForYM(mym); // effective (with override already applied)
-  const mo=(S.profile&&S.profile.settingsMonthly&&S.profile.settingsMonthly[mym])||{};
-  const hasOverride=Object.keys(mo).length>0;
-  function _tgl(id,key,label){
-    const isOverridden=key in mo;
+  const keys=['dimRendu','rhRendu','ferRendu','hsRendu'];
+  const labels=['Dimanches','RH travaillés','Fériés travaillés','Heures sup.'];
+  const ids=['dim','rh','fer','hs'];
+  const eff=settingsForYM(mym);
+  const hasAnyBp=keys.some(k=>!!_smhGet(k,mym));
+  function _tgl(i){
+    const k=keys[i],id=ids[i],lbl=labels[i];
+    const hasBp=!!_smhGet(k,mym);
     return '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-top:0.5px solid var(--border2)">'
-      +'<span style="font-size:13px;color:var(--text2)">'+label+(isOverridden?'<span style="margin-left:6px;font-size:9px;padding:1px 5px;border-radius:8px;background:var(--blue);color:#fff">modifié</span>':'')+'</span>'
-      +'<label class="tgl"><input type="checkbox" id="mo-'+id+'"'+(global[key]?' checked':'')+'><span class="tgl-s"></span></label>'
+      +'<span style="font-size:13px;color:var(--text2)">'+lbl+(hasBp?'<span style="margin-left:6px;font-size:9px;padding:1px 5px;border-radius:8px;background:var(--blue);color:#fff">●</span>':'')+'</span>'
+      +'<label class="tgl"><input type="checkbox" id="mo-'+id+'"'+(eff[k]?' checked':'')+'><span class="tgl-s"></span></label>'
       +'</div>';
   }
   document.getElementById('modal-root').innerHTML=
     '<div class="overlay" onclick="if(event.target===this)openMergedMoisModal('+mym+',1)"><div class="sheet">'
     +'<div class="sh"></div>'
     +'<div class="st">Rendus — '+ML[m]+' '+y+'</div>'
-    +'<div class="ss" style="margin-bottom:12px">Configuration uniquement pour ce mois.</div>'
-    +_tgl('dim','dimRendu','Dimanches')
-    +_tgl('rh','rhRendu','RH travaillés')
-    +_tgl('fer','ferRendu','Fériés travaillés')
-    +_tgl('hs','hsRendu','Heures sup.')
-    +(hasOverride?'<button onclick="resetMonthSettings('+mym+')" style="margin-top:14px;width:100%;height:32px;font-size:11px;color:var(--text3);background:transparent;border:0.5px solid var(--border);border-radius:var(--r);cursor:pointer;font-family:var(--font)">Réinitialiser au global</button>':'')
-    +'<button class="mb wide" style="margin-top:10px" onclick="saveMonthSettings('+mym+')">Enregistrer</button>'
+    +'<div class="ss" style="margin-bottom:12px">Les valeurs changées se propagent aux mois suivants jusqu\'au prochain point.</div>'
+    +ids.map((_,i)=>_tgl(i)).join('')
+    +(hasAnyBp?'<button onclick="resetMonthSettings('+mym+')" style="margin-top:14px;width:100%;height:32px;font-size:11px;color:var(--text3);background:transparent;border:0.5px solid var(--border);border-radius:var(--r);cursor:pointer;font-family:var(--font)">Supprimer les points de ce mois</button>':'')
+    +'<div style="display:flex;gap:8px;margin-top:10px">'
+    +'<button class="mb" style="flex:1;font-size:11px" onclick="saveMonthSettings('+mym+',false)">Ce mois</button>'
+    +'<button class="mb" style="flex:1;font-size:11px" onclick="saveMonthSettings('+mym+',true)">Ce mois et les suivants</button>'
+    +'</div>'
     +'<button class="mcancel" onclick="openMergedMoisModal('+mym+',1)">Annuler</button>'
     +'</div></div>';
 }
-function saveMonthSettings(mym){
-  if(!S.profile.settingsMonthly)S.profile.settingsMonthly={};
-  S.profile.settingsMonthly[mym]={
-    dimRendu:!!document.getElementById('mo-dim').checked,
-    rhRendu:!!document.getElementById('mo-rh').checked,
-    ferRendu:!!document.getElementById('mo-fer').checked,
-    hsRendu:!!document.getElementById('mo-hs').checked,
-  };
+function saveMonthSettings(mym,propagate){
+  const keys=['dimRendu','rhRendu','ferRendu','hsRendu'];
+  const ids=['dim','rh','fer','hs'];
+  const eff=settingsForYM(mym);
+  for(let i=0;i<4;i++){
+    const k=keys[i];
+    const newVal=!!document.getElementById('mo-'+ids[i]).checked;
+    if(newVal!==eff[k]){
+      _smhSet(k,mym,newVal);
+      if(!propagate&&!_smhGet(k,mym+1))_smhSet(k,mym+1,eff[k]);
+    }
+  }
   saveState();render();openMergedMoisModal(mym,1);
 }
 function resetMonthSettings(mym){
-  if(S.profile.settingsMonthly){delete S.profile.settingsMonthly[mym];}
+  _SMH_KEYS.forEach(k=>_smhDel(k,mym));
   saveState();render();openMergedMoisModal(mym,1);
 }
 function openAnnualSettingsModal(y){
   if(!y)y=new Date().getFullYear();
+  _annualSelYear=y;
   const ML=['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
   const keys=['dimRendu','rhRendu','ferRendu','hsRendu'];
   const hdrs=['Dim','RH','Fér','HS'];
   let rows='';
   for(let m=0;m<12;m++){
     const ym=y*12+m;
-    const sett=settingsForYM(ym);
-    const mo=(S.profile&&S.profile.settingsMonthly&&S.profile.settingsMonthly[ym])||{};
-    const hasOv=Object.keys(mo).length>0;
+    const eff=settingsForYM(ym);
+    const hasBp=keys.some(k=>!!_smhGet(k,ym));
+    const isSel=_annualSel.has(ym);
+    const isPending=!!(_annualPending&&_annualPending.ym===ym);
     const isPast=ym<TODAY_YM,isCur=ym===TODAY_YM;
-    rows+='<tr style="border-top:0.5px solid var(--border2)">'
-      +'<td style="padding:6px 4px;font-size:11px;color:'+(isCur?'var(--blue)':isPast?'var(--text3)':'var(--text)')+'">'+ML[m]+(hasOv?'<span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--blue);vertical-align:middle;margin-left:4px"></span>':'')+'</td>';
+    rows+='<tr style="border-top:0.5px solid var(--border2);'+(isSel?'background:rgba(59,130,246,.10)':isPending?'background:rgba(245,158,11,.08)':'')+'">'
+      +'<td style="padding:6px 4px;font-size:11px;color:'+(isCur?'var(--blue)':isPast?'var(--text3)':'var(--text)')+';cursor:pointer" onclick="toggleAnnualSel('+ym+')">'
+      +ML[m]+(hasBp?'<span style="display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--blue);vertical-align:middle;margin-left:3px"></span>':'')
+      +(isSel?'<span style="font-size:9px;color:var(--blue);margin-left:3px">✓</span>':'')+'</td>';
     for(let k=0;k<4;k++){
-      const val=sett[keys[k]];
-      const isOv=keys[k] in mo;
+      const key=keys[k];
+      const val=eff[key];
+      const hasBpKey=!!_smhGet(key,ym);
+      const isPendingCell=isPending&&_annualPending.key===key;
       rows+='<td style="text-align:center;padding:6px 2px">'
-        +'<button onclick="toggleAnnualCell('+ym+',\''+keys[k]+'\')" style="width:28px;height:22px;border-radius:5px;border:0.5px solid '+(isOv?'var(--blue)':'var(--border)')+';background:'+(val?(isOv?'rgba(59,130,246,.25)':'rgba(255,255,255,.06)'):'transparent')+';color:'+(val?'var(--text)':'var(--text3)')+';font-size:11px;cursor:pointer;font-family:var(--font)">'+(val?'✓':'–')+'</button>'
+        +'<button onclick="selectAnnualCell('+ym+',\''+key+'\')" style="width:28px;height:22px;border-radius:5px;border:0.5px solid '+(isPendingCell?'var(--amber)':hasBpKey?'var(--blue)':'var(--border)')+';background:'+(isPendingCell?'rgba(245,158,11,.25)':val?(hasBpKey?'rgba(59,130,246,.25)':'rgba(255,255,255,.06)'):'transparent')+';color:'+(val?'var(--text)':'var(--text3)')+';font-size:11px;cursor:pointer;font-family:var(--font)">'+(val?'✓':'–')+'</button>'
         +'</td>';
     }
     rows+='</tr>';
   }
+  let actionBar='';
+  if(_annualPending){
+    const {ym,key}=_annualPending;
+    const lm=ym%12;
+    const lk={'dimRendu':'Dim','rhRendu':'RH','ferRendu':'Fér','hsRendu':'HS'}[key];
+    const cur=settingsForYM(ym)[key];
+    actionBar='<div style="margin-top:10px;padding:10px;border-radius:var(--r);background:rgba(245,158,11,.08);border:0.5px solid var(--amber)">'
+      +'<div style="font-size:11px;color:var(--amber);margin-bottom:8px">'+ML[lm]+' – '+lk+' : '+(cur?'ON → OFF':'OFF → ON')+'</div>'
+      +'<div style="display:flex;gap:8px">'
+      +'<button onclick="applyAnnualCell('+ym+',\''+key+'\',false)" style="flex:1;height:32px;font-size:11px;font-family:var(--font);background:var(--bg2);color:var(--text);border:0.5px solid var(--border);border-radius:var(--r);cursor:pointer">Ce mois</button>'
+      +'<button onclick="applyAnnualCell('+ym+',\''+key+'\',true)" style="flex:1;height:32px;font-size:11px;font-family:var(--font);background:var(--amber);color:#000;border:none;border-radius:var(--r);cursor:pointer">Ce mois et les suivants</button>'
+      +'</div></div>';
+  }else if(_annualSel.size>0){
+    const sc=_annualSel.size;
+    actionBar='<div style="margin-top:10px;padding:10px;border-radius:var(--r);background:rgba(59,130,246,.08);border:0.5px solid var(--blue)">'
+      +'<div style="font-size:11px;color:var(--blue);margin-bottom:8px">'+sc+' mois sélectionné'+(sc>1?'s':'')+' — valeurs à appliquer</div>'
+      +'<div style="display:flex;justify-content:space-around;margin-bottom:10px">'
+      +keys.map((k,i)=>'<div style="display:flex;flex-direction:column;align-items:center;gap:4px"><span style="font-size:10px;color:var(--text3)">'+hdrs[i]+'</span><label class="tgl"><input type="checkbox" id="aa-'+k+'"'+(_annualActionState[k]?' checked':'')+'><span class="tgl-s"></span></label></div>').join('')
+      +'</div>'
+      +'<div style="display:flex;gap:8px">'
+      +'<button onclick="applyAnnualSel()" style="flex:1;height:32px;font-size:11px;font-family:var(--font);background:var(--blue);color:#fff;border:none;border-radius:var(--r);cursor:pointer">Appliquer</button>'
+      +'<button onclick="clearAnnualSel()" style="height:32px;padding:0 12px;font-size:11px;font-family:var(--font);background:transparent;border:0.5px solid var(--border);border-radius:var(--r);cursor:pointer;color:var(--text3)">✕</button>'
+      +'</div></div>';
+  }
   document.getElementById('modal-root').innerHTML=
-    '<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet">'
+    '<div class="overlay" onclick="if(event.target===this){_annualPending=null;_annualSel.clear();closeModal();}"><div class="sheet">'
     +'<div class="sh"></div>'
-    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">'
-    +'<button onclick="openAnnualSettingsModal('+(y-1)+')" style="background:transparent;border:none;color:var(--text2);cursor:pointer;font-size:18px;padding:0 8px">‹</button>'
+    +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">'
+    +'<button onclick="_annualPending=null;_annualSel.clear();openAnnualSettingsModal('+(y-1)+')" style="background:transparent;border:none;color:var(--text2);cursor:pointer;font-size:18px;padding:0 8px">‹</button>'
     +'<span style="font-size:16px;font-weight:600">'+y+'</span>'
-    +'<button onclick="openAnnualSettingsModal('+(y+1)+')" style="background:transparent;border:none;color:var(--text2);cursor:pointer;font-size:18px;padding:0 8px">›</button>'
+    +'<button onclick="_annualPending=null;_annualSel.clear();openAnnualSettingsModal('+(y+1)+')" style="background:transparent;border:none;color:var(--text2);cursor:pointer;font-size:18px;padding:0 8px">›</button>'
     +'</div>'
-    +'<div class="ss" style="margin-bottom:8px">Appuyer sur une case pour basculer l\'override mensuel. Point bleu = ce mois a une config spécifique.</div>'
+    +'<div class="ss" style="margin-bottom:8px">● = point de propagation. Cellule : changer. Nom du mois : sélectionner (multi).</div>'
     +'<table style="width:100%;border-collapse:collapse">'
-    +'<thead><tr>'
-    +'<th style="padding:4px;font-size:10px;color:var(--text3);font-weight:500;text-align:left"></th>'
+    +'<thead><tr><th style="padding:4px;font-size:10px;color:var(--text3);font-weight:500;text-align:left"></th>'
     +hdrs.map(h=>'<th style="padding:4px 2px;font-size:10px;color:var(--text3);font-weight:500;text-align:center">'+h+'</th>').join('')
     +'</tr></thead><tbody>'+rows+'</tbody></table>'
-    +'<button class="mcancel mclose" onclick="closeModal()">Fermer</button>'
+    +actionBar
+    +'<button class="mcancel mclose" onclick="_annualPending=null;_annualSel.clear();closeModal()">Fermer</button>'
     +'</div></div>';
 }
-function toggleAnnualCell(ym,key){
-  if(!S.profile.settingsMonthly)S.profile.settingsMonthly={};
-  if(!S.profile.settingsMonthly[ym])S.profile.settingsMonthly[ym]={};
-  const mo=S.profile.settingsMonthly[ym];
-  mo[key]=!(settingsForYM(ym)[key]);
-  saveState();render();openAnnualSettingsModal(Math.floor(ym/12));
+function selectAnnualCell(ym,key){
+  if(_smhGet(key,ym)!==null){
+    _smhDel(key,ym);_annualPending=null;
+    saveState();render();openAnnualSettingsModal(_annualSelYear);return;
+  }
+  if(_annualPending&&_annualPending.ym===ym&&_annualPending.key===key){
+    _annualPending=null;openAnnualSettingsModal(_annualSelYear);return;
+  }
+  _annualPending={ym,key};openAnnualSettingsModal(_annualSelYear);
+}
+function applyAnnualCell(ym,key,propagate){
+  const eff=settingsForYM(ym)[key];
+  _smhSet(key,ym,!eff);
+  if(!propagate&&!_smhGet(key,ym+1))_smhSet(key,ym+1,eff);
+  _annualPending=null;saveState();render();openAnnualSettingsModal(_annualSelYear);
+}
+function toggleAnnualSel(ym){
+  _annualPending=null;
+  if(_annualSel.has(ym))_annualSel.delete(ym);else _annualSel.add(ym);
+  openAnnualSettingsModal(_annualSelYear);
+}
+function clearAnnualSel(){_annualSel.clear();openAnnualSettingsModal(_annualSelYear);}
+function applyAnnualSel(){
+  const keys=['dimRendu','rhRendu','ferRendu','hsRendu'];
+  keys.forEach(k=>{const el=document.getElementById('aa-'+k);if(el)_annualActionState[k]=el.checked;});
+  _annualSel.forEach(ym=>{keys.forEach(k=>_smhSet(k,ym,_annualActionState[k]));});
+  _annualSel.clear();saveState();render();openAnnualSettingsModal(_annualSelYear);
 }
 function openHSModal(mym){
   document.querySelectorAll('[onclick*="openHSModal"]').forEach(el=>el.classList.add('active'));_lockBodyScroll();
@@ -3378,7 +3438,7 @@ function openMergedMoisModal(mym,tab){
     '<div style="display:flex;justify-content:space-between;padding:3px 0"><span style="font-size:11px;color:var(--text3)">HS>8h</span><b style="font-size:11px;color:var(--blue)">'+fmtMin(totRawHigh)+'</b></div>'
   );
   const hsColHdr=useRendu2?'<div style="display:flex;justify-content:space-between;padding:2px 0 4px"><span></span><div style="margin-left:auto;display:flex;gap:16px"><span style="font-size:10px;color:var(--text3);width:52px;text-align:right">brutes</span><span style="font-size:10px;color:var(--text3);width:52px;text-align:right">rendus</span></div></div>':'';
-  const _hasMo=!!(S.profile&&S.profile.settingsMonthly&&S.profile.settingsMonthly[mym]&&Object.keys(S.profile.settingsMonthly[mym]).length);
+  const _hasMo=!!(S.profile&&S.profile.settingsMonthlyHistory&&_SMH_KEYS.some(k=>{const h=S.profile.settingsMonthlyHistory[k];return h&&h.some(e=>e.ym===mym);}));
   const _moCfgBtn='<div style="margin-top:14px;padding-top:12px;border-top:0.5px solid var(--border2);display:flex;align-items:center;justify-content:space-between">'
     +'<span style="font-size:11px;color:var(--text3)">Génération des rendus'+(_hasMo?'<span style="margin-left:6px;font-size:9px;padding:1px 5px;border-radius:8px;background:var(--blue);color:#fff">ce mois</span>':'')+'</span>'
     +'<button onclick="openMonthSettingsModal('+mym+')" style="font-size:11px;color:var(--blue);background:transparent;border:0.5px solid var(--blue);border-radius:var(--r);padding:4px 10px;cursor:pointer;font-family:var(--font)">Configurer</button>'
@@ -4125,7 +4185,7 @@ function openSettingsModal(tab){
     +mkTgl('ps-rh','RH travaillés'+_inf('repos hebdomadaire'),computeSettForProfile(pr,TODAY_YM+1,'rhRendu'),pr.settings&&pr.settings.settingsHistory,'rhRendu',pid)
     +mkTgl('ps-fer','Fériés travaillés'+_inf('+100 % taux horaire'),computeSettForProfile(pr,TODAY_YM+1,'ferRendu'),pr.settings&&pr.settings.settingsHistory,'ferRendu',pid)
     +mkTgl('ps-hs','Heures sup.'+_inf('+25 / 50 %'),computeSettForProfile(pr,TODAY_YM+1,'hsRendu'),pr.settings&&pr.settings.settingsHistory,'hsRendu',pid)
-    +'<div class="srow" style="padding:8px 0"><div class="slbl">Par mois'+_inf('overrides mensuels')+'</div><button class="mb" style="width:120px;height:32px;min-height:32px;padding:0;font-size:12px;background:var(--bg0)" onclick="closeModal();setTimeout(()=>openAnnualSettingsModal('+(new Date().getFullYear()+'),80)">Vue annuelle</button></div>'
+    +'<div class="srow" style="padding:8px 0"><div class="slbl">Par mois'+_inf('overrides mensuels')+'</div><button class="mb" style="width:120px;height:32px;min-height:32px;padding:0;font-size:12px;background:var(--bg0)" onclick="closeModal();setTimeout(()=>openAnnualSettingsModal('+new Date().getFullYear()+'),80)">Vue annuelle</button></div>'
     +_sh+'Soldes initiaux</div>'
     +'<div class="srow" '+_sr+'><div class="slbl">Matelas'+_inf('crédit de rendus')+'</div><input id="ps-matelas" '+_onb+' value="'+fmtMin(pr.profile.matelas||0)+'" onfocus="if(this.value)this.select()" style="'+_inpR+'"></div>'
     +'<div class="srow" '+_sr+'><div class="slbl">Stock éphem.'+_inf('rendus éphémères')+'</div><input id="ps-eph" '+_onb+' value="'+fmtMin(Math.round((pr.profile.ephSolde||0)*60))+'" onfocus="if(this.value)this.select()" style="'+_inpR+'"></div>'
