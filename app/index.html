@@ -879,6 +879,7 @@ function isWeekFullCG(monday){
   for(let i=0;i<7;i++){const d=new Date(monday);d.setDate(monday.getDate()+i);const key=dk(d),{vac,cycleVac,absent}=getVac(d);const cv=cycleVac||vac;if(cv&&cv!=='RH'&&!FERIES.has(key)){hasWorked=true;if(!absent&&(S.conges||{})[key]!=='cg')return false;}}
   return hasWorked;
 }
+var _SMH_KEYS=['dimRendu','rhRendu','ferRendu','hsRendu'];
 function settingsForYM(ym){
   const ss=S.settings||{};
   const base={dimRendu:ss.dimRendu!==false,rhRendu:ss.rhRendu!==false,ferRendu:ss.ferRendu!==false,hsRendu:ss.hsRendu!==false};
@@ -889,13 +890,28 @@ function settingsForYM(ym){
     for(const h of ss.settingsHistory){const hym=parseInt(h.since.split('-')[0])*12+(parseInt(h.since.split('-')[1])-1);if(hym<=ym)active=h;}
     result=active?{dimRendu:active.dimRendu!==false,rhRendu:active.rhRendu!==false,ferRendu:active.ferRendu!==false,hsRendu:active.hsRendu!==false}:base;
   }
-  const mo=(S.profile&&S.profile.settingsMonthly&&S.profile.settingsMonthly[ym])||{};
-  if('dimRendu'in mo)result.dimRendu=mo.dimRendu;
-  if('rhRendu'in mo)result.rhRendu=mo.rhRendu;
-  if('ferRendu'in mo)result.ferRendu=mo.ferRendu;
-  if('hsRendu'in mo)result.hsRendu=mo.hsRendu;
+  // Per-key monthly breakpoints (settingsMonthlyHistory)
+  const smh=S.profile&&S.profile.settingsMonthlyHistory;
+  if(smh){for(const k of _SMH_KEYS){const hist=smh[k];if(!hist||!hist.length)continue;let v=null;for(const e of hist){if(e.ym<=ym)v=e.value;}if(v!==null)result[k]=v;}}
   return result;
 }
+// Get the breakpoint at exactly ym for key (null if none)
+function _smhGet(key,ym){const h=(S.profile&&S.profile.settingsMonthlyHistory&&S.profile.settingsMonthlyHistory[key])||[];return h.find(e=>e.ym===ym)||null;}
+// Set or update a breakpoint
+function _smhSet(key,ym,value){
+  if(!S.profile.settingsMonthlyHistory)S.profile.settingsMonthlyHistory={};
+  if(!S.profile.settingsMonthlyHistory[key])S.profile.settingsMonthlyHistory[key]=[];
+  const hist=S.profile.settingsMonthlyHistory[key];
+  const ex=hist.find(e=>e.ym===ym);
+  if(ex){ex.value=value;}else{hist.push({ym,value});hist.sort((a,b)=>a.ym-b.ym);}
+}
+// Remove a breakpoint
+function _smhDel(key,ym){
+  if(!S.profile.settingsMonthlyHistory||!S.profile.settingsMonthlyHistory[key])return;
+  S.profile.settingsMonthlyHistory[key]=S.profile.settingsMonthlyHistory[key].filter(e=>e.ym!==ym);
+}
+// Global selection state for annual grid
+var _annualSel=new Set(),_annualSelYear=new Date().getFullYear();
 
 // ================================================================
 // HELPERS EXPIRATION
