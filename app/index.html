@@ -916,7 +916,8 @@ function _smhDel(key,ym){
 // Global selection state for annual grid
 var _annualSel=new Set(),_annualSelYear=new Date().getFullYear();
 var _annualPending=null; // {ym,key} cell awaiting ce-mois/propagate choice
-var _annualActionState={dimRendu:true,rhRendu:true,ferRendu:true,hsRendu:true};
+var _annualActionState={dimRendu:null,rhRendu:null,ferRendu:null,hsRendu:null};
+var _annualActionManual=false;
 
 // ================================================================
 // HELPERS EXPIRATION
@@ -2700,9 +2701,8 @@ function openAnnualSettingsModal(y,dir){
     const ym=y*12+m;
     const eff=settingsForYM(ym);
     const isSel=_annualSel.has(ym);
-    const isPending=!!(_annualPending&&_annualPending.ym===ym);
     const isPast=ym<TODAY_YM,isCur=ym===TODAY_YM;
-    const rowBg=isSel?'rgba(59,130,246,.10)':isPending?'rgba(245,158,11,.07)':'';
+    const rowBg=isSel?'rgba(59,130,246,.10)':'';
     const pillBg=isSel?'rgba(59,130,246,.20)':'rgba(128,128,128,.13)';
     const pillColor=isSel?'var(--blue)':isCur?'var(--blue)':isPast?'var(--text3)':'var(--text)';
     rows+='<tr data-row="'+ym+'" style="border-top:0.5px solid var(--border2);background:'+rowBg+'">'
@@ -2712,9 +2712,8 @@ function openAnnualSettingsModal(y,dir){
     for(let k=0;k<4;k++){
       const key=keys[k];
       const val=eff[key];
-      const isPendingCell=isPending&&_annualPending.key===key;
       rows+='<td style="text-align:center;padding:4px 2px">'
-        +'<button onclick="selectAnnualCell('+ym+',\''+key+'\')" style="width:28px;height:24px;border-radius:5px;border:0.5px solid '+(isPendingCell?'var(--amber)':'var(--border)')+';background:'+(isPendingCell?'rgba(245,158,11,.10)':'transparent')+';color:'+(val?'var(--blue)':'var(--text3)')+';font-size:14px;line-height:1;cursor:pointer;font-family:var(--font);display:inline-flex;align-items:center;justify-content:center">'+(val?'●':'○')+'</button>'
+        +'<button onclick="toggleAnnualSel('+ym+')" style="width:28px;height:24px;border-radius:5px;border:0.5px solid var(--border);background:'+(isSel?'rgba(59,130,246,.08)':'transparent')+';color:'+(val?'var(--blue)':'var(--text3)')+';font-size:14px;line-height:1;cursor:pointer;font-family:var(--font);display:inline-flex;align-items:center;justify-content:center">'+(val?'●':'○')+'</button>'
         +'</td>';
     }
     rows+='</tr>';
@@ -2724,46 +2723,41 @@ function openAnnualSettingsModal(y,dir){
   const _allSel12=Array.from({length:12},(_,m)=>y*12+m).every(ym=>_annualSel.has(ym));
   const colHeaders='<th style="padding:4px;text-align:left"><button onclick="selectAllAnnual()" style="font-size:11px;padding:2px 7px;border-radius:6px;font-family:var(--font);font-weight:500;cursor:pointer;border:'+(_allSel12?'none':'0.5px solid var(--border)')+';background:'+(_allSel12?'var(--blue)':'rgba(128,128,128,.13)')+';color:'+(_allSel12?'#fff':'var(--text2)')+'">Tout</button></th>'
     +keys.map((_,i)=>'<th style="padding:4px 2px;font-size:10px;color:var(--text3);font-weight:500;text-align:center">'+hdrs[i]+'</th>').join('');
-  // Action bar — fixed min-height covers all states without growing modal
   let actionContent='';
-  if(_annualPending){
-    const {ym,key}=_annualPending;
-    const lm=ym%12;
-    const lk={'dimRendu':'Dim','rhRendu':'RH','ferRendu':'Fér','hsRendu':'HS'}[key];
-    const cur=settingsForYM(ym)[key];
-    actionContent='<div style="font-size:11px;color:var(--amber);margin-bottom:6px">'+ML[lm]+' – '+lk+' : '+(cur?'● → ○':'○ → ●')+'</div>'
-      +'<div style="display:flex;gap:8px">'
-      +'<button onclick="applyAnnualCell('+ym+',\''+key+'\',false)" style="flex:1;height:28px;font-size:11px;font-family:var(--font);background:var(--bg2);color:var(--text);border:0.5px solid var(--border);border-radius:var(--r);cursor:pointer">Ce mois</button>'
-      +'<button onclick="applyAnnualCell('+ym+',\''+key+'\',true)" style="flex:1;height:28px;font-size:11px;font-family:var(--font);background:var(--amber);color:#000;border:none;border-radius:var(--r);cursor:pointer">Ce mois et les suivants</button>'
-      +'</div>';
-  }else if(_annualSel.size>0){
+  if(_annualSel.size>0){
     const sc=_annualSel.size;
     actionContent='<div style="display:flex;align-items:center;margin-bottom:8px">'
       +'<span style="width:52px;flex-shrink:0;font-size:11px;color:var(--blue);font-weight:500">'+sc+' mois</span>'
-      +keys.map((k,i)=>{const on=_annualActionState[k];return '<div style="flex:1;display:flex;justify-content:center">'
-        +'<button onclick="toggleAnnualDot(\''+k+'\')" style="width:28px;height:24px;border-radius:5px;border:0.5px solid '+(on?'var(--blue)':'var(--border)')+';background:'+(on?'rgba(59,130,246,.12)':'transparent')+';color:'+(on?'var(--blue)':'var(--text3)')+';font-size:14px;line-height:1;cursor:pointer;font-family:var(--font);display:inline-flex;align-items:center;justify-content:center">'+(on?'●':'○')+'</button>'
-        +'</div>';}).join('')
+      +keys.map((k,i)=>{
+        const v=_annualActionState[k]; // true=on, false=off, null=mixed
+        const dotColor=v===true?'var(--blue)':v===null?'var(--amber)':'var(--text3)';
+        const dotBorder=v===true?'var(--blue)':v===null?'var(--amber)':'var(--border)';
+        const dotBg=v===true?'rgba(59,130,246,.12)':v===null?'rgba(245,158,11,.08)':'transparent';
+        const dotSymbol=v===true?'●':'○';
+        return '<div style="flex:1;display:flex;justify-content:center">'
+          +'<button onclick="toggleAnnualDot(\''+k+'\')" style="width:28px;height:24px;border-radius:5px;border:0.5px solid '+dotBorder+';background:'+dotBg+';color:'+dotColor+';font-size:14px;line-height:1;cursor:pointer;font-family:var(--font);display:inline-flex;align-items:center;justify-content:center">'+dotSymbol+'</button>'
+          +'</div>';}).join('')
       +'</div>'
       +'<div style="display:flex;gap:8px">'
       +'<button onclick="clearAnnualSel()" style="flex:1;height:28px;font-size:11px;font-family:var(--font);background:var(--bg2);color:var(--text);border:0.5px solid var(--border);border-radius:var(--r);cursor:pointer">Annuler</button>'
       +'<button onclick="applyAnnualSel()" style="flex:1;height:28px;font-size:11px;font-family:var(--font);background:var(--blue);color:#fff;border:none;border-radius:var(--r);cursor:pointer">Appliquer</button>'
       +'</div>';
   }
-  const actionBorderColor=_annualPending?'var(--amber)':_annualSel.size>0?'var(--blue)':'transparent';
-  const actionBg=_annualPending?'rgba(245,158,11,.07)':_annualSel.size>0?'rgba(59,130,246,.07)':'transparent';
+  const actionBorderColor=_annualSel.size>0?'var(--blue)':'transparent';
+  const actionBg=_annualSel.size>0?'rgba(59,130,246,.07)':'transparent';
   // Capture current table for outgoing animation before wiping DOM
   let _oldTblClone=null;
   if(dir){const _ot=document.querySelector('#modal-root .annual-tbl-wrap table');if(_ot)_oldTblClone=_ot.cloneNode(true);}
   document.getElementById('modal-root').innerHTML=
-    '<div class="overlay"'+(_wasOpen?' style="animation:none"':'')+' onclick="if(event.target===this){_annualPending=null;_annualSel.clear();closeModal();}"><div class="sheet"'+(_wasOpen?' style="animation:none"':'')+' >'
+    '<div class="overlay"'+(_wasOpen?' style="animation:none"':'')+' onclick="if(event.target===this){_annualSel.clear();closeModal();}"><div class="sheet"'+(_wasOpen?' style="animation:none"':'')+' >'
     +'<div class="sh"></div>'
     +'<div style="display:flex;align-items:center;margin-bottom:2px">'
-    +'<button onclick="_annualPending=null;_annualSel.clear();openSettingsModal(2)" style="background:transparent;border:none;color:var(--blue);cursor:pointer;font-size:11px;padding:0;display:flex;align-items:center;gap:3px">‹ Paramètres</button>'
+    +'<button onclick="_annualSel.clear();openSettingsModal(2)" style="background:transparent;border:none;color:var(--blue);cursor:pointer;font-size:11px;padding:0;display:flex;align-items:center;gap:3px">‹ Paramètres</button>'
     +'</div>'
     +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
-    +'<button onclick="_annualPending=null;_annualSel.clear();openAnnualSettingsModal('+(y-1)+',\'prev\')" style="background:transparent;border:none;color:var(--text2);cursor:pointer;font-size:18px;padding:0 8px">‹</button>'
-    +'<span onclick="_annualPending=null;_annualSel.clear();openAnnualSettingsModal(new Date().getFullYear())" style="font-size:16px;font-weight:600;cursor:pointer;padding:2px 10px;border-radius:6px;background:'+(y===new Date().getFullYear()?'transparent':'rgba(128,128,128,.1)')+'">'+y+'</span>'
-    +'<button onclick="_annualPending=null;_annualSel.clear();openAnnualSettingsModal('+(y+1)+',\'next\')" style="background:transparent;border:none;color:var(--text2);cursor:pointer;font-size:18px;padding:0 8px">›</button>'
+    +'<button onclick="_annualSel.clear();openAnnualSettingsModal('+(y-1)+',\'prev\')" style="background:transparent;border:none;color:var(--text2);cursor:pointer;font-size:18px;padding:0 8px">‹</button>'
+    +'<span onclick="_annualSel.clear();openAnnualSettingsModal(new Date().getFullYear())" style="font-size:16px;font-weight:600;cursor:pointer;padding:2px 10px;border-radius:6px;background:'+(y===new Date().getFullYear()?'transparent':'rgba(128,128,128,.1)')+'">'+y+'</span>'
+    +'<button onclick="_annualSel.clear();openAnnualSettingsModal('+(y+1)+',\'next\')" style="background:transparent;border:none;color:var(--text2);cursor:pointer;font-size:18px;padding:0 8px">›</button>'
     +'</div>'
     +'<div class="annual-tbl-wrap">'
     +'<table style="width:100%;border-collapse:collapse;table-layout:fixed">'
@@ -2773,7 +2767,7 @@ function openAnnualSettingsModal(y,dir){
     +'<div style="margin-top:10px;min-height:85px;padding:8px;border-radius:var(--r);background:'+actionBg+';border:0.5px solid '+actionBorderColor+';box-sizing:border-box">'
     +actionContent
     +'</div>'
-    +'<button class="mcancel mclose" onclick="_annualPending=null;_annualSel.clear();closeModal()">Fermer</button>'
+    +'<button class="mcancel mclose" onclick="_annualSel.clear();closeModal()">Fermer</button>'
     +'</div></div>';
   // Smooth dual-direction slide animation
   const _newWrap=document.querySelector('#modal-root .annual-tbl-wrap');
@@ -2805,7 +2799,7 @@ function openAnnualSettingsModal(y,dir){
       if(_sb||_dAct2)return;
       const dx=e.changedTouches[0].clientX-_sx,dy=Math.abs(e.changedTouches[0].clientY-_sy);
       if(Math.abs(dx)<50||dy>Math.abs(dx))return;
-      _annualPending=null;_annualSel.clear();
+      _annualSel.clear();
       openAnnualSettingsModal(dx<0?y+1:y-1,dx<0?'next':'prev');
     },{passive:true});
   }
@@ -2853,12 +2847,12 @@ function openAnnualSettingsModal(y,dir){
       if(_dDir==='h'){
         const dx=e.changedTouches[0].clientX-_dSX,dy=Math.abs(e.changedTouches[0].clientY-_dSY);
         if(Math.abs(dx)>=50&&dy<=Math.abs(dx)){
-          _annualPending=null;_annualSel.clear();
+          _annualSel.clear();
           openAnnualSettingsModal(dx<0?y+1:y-1,dx<0?'next':'prev');
         }
         return;
       }
-      if(_dAct){if(_dWasEmpty&&_annualSel.size>0)_initAnnualDots();_dAct=false;_dAct2=false;openAnnualSettingsModal(_annualSelYear);}
+      if(_dAct){if(_annualSel.size>0&&(_dWasEmpty||!_annualActionManual))_initAnnualDots();_dAct=false;_dAct2=false;openAnnualSettingsModal(_annualSelYear);}
       // tap (_dDir===null): onclick on td fires and calls toggleAnnualSel
     },{passive:true});
   }
@@ -2898,36 +2892,39 @@ function applyAnnualCell(ym,key,propagate){
 }
 function _initAnnualDots(){
   ['dimRendu','rhRendu','ferRendu','hsRendu'].forEach(k=>{
-    _annualActionState[k]=Array.from(_annualSel).every(ym=>settingsForYM(ym)[k]);
+    const vals=Array.from(_annualSel).map(ym=>!!settingsForYM(ym)[k]);
+    _annualActionState[k]=vals.every(v=>v)?true:vals.every(v=>!v)?false:null;
   });
+  _annualActionManual=false;
 }
 function toggleAnnualSel(ym){
-  _annualPending=null;
   const prev=_annualSel.size;
   if(_annualSel.has(ym))_annualSel.delete(ym);else _annualSel.add(ym);
-  if(prev===0&&_annualSel.size>0)_initAnnualDots();
+  if(_annualSel.size===0){_annualActionManual=false;}
+  else if(prev===0||!_annualActionManual){_initAnnualDots();}
   openAnnualSettingsModal(_annualSelYear);
 }
-function clearAnnualSel(){_annualSel.clear();openAnnualSettingsModal(_annualSelYear);}
-function toggleAnnualDot(key){_annualActionState[key]=!_annualActionState[key];openAnnualSettingsModal(_annualSelYear);}
+function clearAnnualSel(){_annualActionManual=false;_annualSel.clear();openAnnualSettingsModal(_annualSelYear);}
+function toggleAnnualDot(key){_annualActionManual=true;_annualActionState[key]=(_annualActionState[key]!==true)?true:false;openAnnualSettingsModal(_annualSelYear);}
 function selectAllAnnual(){
-  _annualPending=null;
   const allYms=Array.from({length:12},(_,m)=>_annualSelYear*12+m);
   const allSel=allYms.every(ym=>_annualSel.has(ym));
   const prev=_annualSel.size;
   allYms.forEach(ym=>allSel?_annualSel.delete(ym):_annualSel.add(ym));
-  if(prev===0&&_annualSel.size>0)_initAnnualDots();
+  if(_annualSel.size===0){_annualActionManual=false;}
+  else if(prev===0||!_annualActionManual){_initAnnualDots();}
   openAnnualSettingsModal(_annualSelYear);
 }
 function applyAnnualSel(){
   if(!S.profile.settingsMonthly)S.profile.settingsMonthly={};
   _annualSel.forEach(ym=>{
-    if(!S.profile.settingsMonthly[ym])S.profile.settingsMonthly[ym]={};
     ['dimRendu','rhRendu','ferRendu','hsRendu'].forEach(k=>{
+      if(_annualActionState[k]===null)return;
+      if(!S.profile.settingsMonthly[ym])S.profile.settingsMonthly[ym]={};
       S.profile.settingsMonthly[ym][k]=_annualActionState[k];
     });
   });
-  _annualSel.clear();saveState();render();openAnnualSettingsModal(_annualSelYear);
+  _annualActionManual=false;_annualSel.clear();saveState();render();openAnnualSettingsModal(_annualSelYear);
 }
 function selectAnnualCol(key){
   _annualPending=null;
