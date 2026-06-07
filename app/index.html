@@ -3956,10 +3956,19 @@ function _wvRender(linesData,monKey,currentMon,isHistorical){
       +(hasUser?'<div style="font-size:10px;color:'+(multiUser?'var(--amber)':'var(--text3)')+';margin-top:1px">'+profileNames.join(', ')+'</div>':'')
       +'</td>';
     for(var d=0;d<7;d++){
-      // weekVacs priority: use if meaningful (not '-'), else fall back to cycle grid
-      var wvCode=hasUser&&showUserVacs&&users[0].weekVacs?users[0].weekVacs[d]:null;
+      var wvCode=null;
+      if(showUserVacs){
+        if(isUser){
+          // For the current user, calculate fresh from local state (avoids stale KV data)
+          var _dd=new Date(monDate.getTime()+d*864e5);
+          var _dc=(S.conges||{})[dk(_dd)],_dv=getVac(_dd);
+          wvCode=_dc==='cg'?'CG':_dc==='rh'?'RH':_dv.absent?'Abs':(_dv.vac||'-');
+        } else if(hasUser&&users[0].weekVacs){
+          wvCode=users[0].weekVacs[d];
+        }
+      }
       var code=(wvCode&&wvCode!=='-')?wvCode:(grid[i]?grid[i][d]:null);
-      html+='<td style="padding:3px 2px;text-align:center">'+ _wvCell(code)+'</td>';
+      html+='<td style="padding:3px 2px;text-align:center">'+_wvCell(code)+'</td>';
     }
     html+='</tr>';
   }
