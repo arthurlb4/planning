@@ -1339,11 +1339,36 @@ async function loadLines() {
                   return '<span style="color:' + (v==='-'?'var(--text3)':v==='CG'?'var(--green)':v==='RH'?'var(--orange)':'var(--text)') + '">' + v + '</span>';
                 }).join('')
               + '</div>';
-            return '<div class="line-user">👤 ' + (u.userName||'?') + ' — ' + (u.profileName||u.profileId) + '</div>' + row;
+            const uid = encodeURIComponent(u.userId), pid = encodeURIComponent(u.profileId||''), ln = encodeURIComponent(l);
+            return '<div class="line-user" style="display:flex;justify-content:space-between;align-items:center">'
+              + '<span>👤 ' + (u.userName||'?') + ' — ' + (u.profileName||u.profileId) + '</span>'
+              + '<button class="btn btn-sm btn-red" style="padding:2px 8px;font-size:10px" onclick="removeFromLine(\''+l+'\',\''+u.userId+'\',\''+u.profileId+'\')">✕</button>'
+              + '</div>' + row;
           }).join('')
         + '</div>';
-    }).join('') + '</div>';
+    }).join('') + '</div>'
+      + '<button class="btn btn-sm btn-ghost" style="margin-top:8px" onclick="cleanupLines()">🧹 Nettoyer les comptes supprimés</button>';
   } catch(e) { el.innerHTML = '<div class="err">Erreur réseau</div>'; }
+}
+
+async function removeFromLine(ligne, userId, profileId) {
+  if (!confirm('Retirer cet utilisateur de la ligne ' + ligne + ' ?')) return;
+  try {
+    const res = await fetch(API + '/admin/remove-from-line', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ ligne, userId, profileId }) });
+    const data = await res.json();
+    if (data.ok) loadLines();
+    else alert('Erreur : ' + (data.error || 'inconnue'));
+  } catch(e) { alert('Erreur réseau'); }
+}
+
+async function cleanupLines() {
+  if (!confirm('Supprimer toutes les entrées des comptes supprimés ?')) return;
+  try {
+    const res = await fetch(API + '/admin/cleanup-lines', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({}) });
+    const data = await res.json();
+    alert('Nettoyage terminé : ' + (data.removed||0) + ' entrée(s) supprimée(s)');
+    loadLines();
+  } catch(e) { alert('Erreur réseau'); }
 }
 
 // CYCLES

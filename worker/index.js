@@ -292,6 +292,21 @@ export default {
       return resp({ ok: true, removed: removed, lines: linesMap });
     }
 
+    if (path === '/admin/remove-from-line') {
+      if (!await verifyAdmin(request, env)) return resp({ error: 'Non autorise' }, 401);
+      var ligne = body.ligne, userId = body.userId, profileId = body.profileId;
+      if (!ligne || !userId) return resp({ error: 'Donnees manquantes' }, 400);
+      var linesMap = await env.PLANNING_DB.get('global:lines_used', { type: 'json' }) || {};
+      if (linesMap[ligne]) {
+        linesMap[ligne] = linesMap[ligne].filter(function(e){
+          return !(e.userId === userId && (!profileId || e.profileId === profileId));
+        });
+        if (linesMap[ligne].length === 0) delete linesMap[ligne];
+      }
+      await env.PLANNING_DB.put('global:lines_used', JSON.stringify(linesMap));
+      return resp({ ok: true, lines: linesMap });
+    }
+
     if (path === '/admin/cycles') {
       if (!await verifyAdmin(request, env)) return resp({ error: 'Non autorise' }, 401);
       var cycles = await env.PLANNING_DB.get('global:cycles', { type: 'json' }) || [];
