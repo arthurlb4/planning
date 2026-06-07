@@ -890,9 +890,12 @@ function settingsForYM(ym){
     for(const h of ss.settingsHistory){const hym=parseInt(h.since.split('-')[0])*12+(parseInt(h.since.split('-')[1])-1);if(hym<=ym)active=h;}
     result=active?{dimRendu:active.dimRendu!==false,rhRendu:active.rhRendu!==false,ferRendu:active.ferRendu!==false,hsRendu:active.hsRendu!==false}:base;
   }
-  // Per-key monthly breakpoints (settingsMonthlyHistory)
+  // Per-key monthly breakpoints — propagate forward (settingsMonthlyHistory)
   const smh=S.profile&&S.profile.settingsMonthlyHistory;
   if(smh){for(const k of _SMH_KEYS){const hist=smh[k];if(!hist||!hist.length)continue;let v=null;for(const e of hist){if(e.ym<=ym)v=e.value;}if(v!==null)result[k]=v;}}
+  // Exact per-month overrides — this month only, highest priority (settingsMonthly)
+  const sme=S.profile&&S.profile.settingsMonthly;
+  if(sme&&sme[ym]){for(const k of _SMH_KEYS){if(k in sme[ym])result[k]=sme[ym][k];}}
   return result;
 }
 // Get the breakpoint at exactly ym for key (null if none)
@@ -2623,7 +2626,7 @@ function openMonthSettingsModal(mym){
   const labels=['Dimanches','RH travaillés','Fériés travaillés','Heures sup.'];
   const ids=['dim','rh','fer','hs'];
   const eff=settingsForYM(mym);
-  const hasAnyBp=keys.some(k=>!!_smhGet(k,mym));
+  const hasAnyBp=keys.some(k=>!!_smhGet(k,mym)||(S.profile.settingsMonthly&&S.profile.settingsMonthly[mym]&&k in S.profile.settingsMonthly[mym]));
   function _tgl(i){
     const k=keys[i],id=ids[i],lbl=labels[i];
     const hasBp=!!_smhGet(k,mym);
@@ -2654,13 +2657,23 @@ function saveMonthSettings(mym,propagate){
     const k=keys[i];
     const newVal=!!document.getElementById('mo-'+ids[i]).checked;
     if(newVal!==eff[k]){
-      _smhSet(k,mym,newVal);
-      if(!propagate&&!_smhGet(k,mym+1))_smhSet(k,mym+1,eff[k]);
+      if(!propagate){
+        _smhDel(k,mym);
+        if(!S.profile.settingsMonthly)S.profile.settingsMonthly={};
+        if(!S.profile.settingsMonthly[mym])S.profile.settingsMonthly[mym]={};
+        S.profile.settingsMonthly[mym][k]=newVal;
+      }else{
+        if(S.profile.settingsMonthly&&S.profile.settingsMonthly[mym])
+          delete S.profile.settingsMonthly[mym][k];
+        _smhSet(k,mym,newVal);
+      }
     }
   }
   saveState();render();openMergedMoisModal(mym,1);
 }
 function resetMonthSettings(mym){
+  if(S.profile.settingsMonthly&&S.profile.settingsMonthly[mym])
+    delete S.profile.settingsMonthly[mym];
   _SMH_KEYS.forEach(k=>_smhDel(k,mym));
   saveState();render();openMergedMoisModal(mym,1);
 }
@@ -2750,13 +2763,18 @@ function selectAnnualCell(ym,key){
   _annualPending={ym,key};openAnnualSettingsModal(_annualSelYear);
 }
 function applyAnnualCell(ym,key,propagate){
-  const eff=settingsForYM(ym)[key]; // displayed value (includes any existing breakpoint)
-  const newVal=!eff;
-  _smhDel(key,ym); // clear existing breakpoint at this month
-  const inherited=settingsForYM(ym)[key]; // inherited value without this month's breakpoint
-  if(newVal!==inherited){
+  const newVal=!settingsForYM(ym)[key];
+  if(!propagate){
+    // Ce mois uniquement: exact isolated override, remove any breakpoint at this month
+    _smhDel(key,ym);
+    if(!S.profile.settingsMonthly)S.profile.settingsMonthly={};
+    if(!S.profile.settingsMonthly[ym])S.profile.settingsMonthly[ym]={};
+    S.profile.settingsMonthly[ym][key]=newVal;
+  }else{
+    // Ce mois et les suivants: breakpoint that propagates, remove any exact override
+    if(S.profile.settingsMonthly&&S.profile.settingsMonthly[ym])
+      delete S.profile.settingsMonthly[ym][key];
     _smhSet(key,ym,newVal);
-    if(!propagate&&!_smhGet(key,ym+1))_smhSet(key,ym+1,inherited);
   }
   _annualPending=null;saveState();render();openAnnualSettingsModal(_annualSelYear);
 }
@@ -3455,7 +3473,10 @@ function openMergedMoisModal(mym,tab){
     '<div style="display:flex;justify-content:space-between;padding:3px 0"><span style="font-size:11px;color:var(--text3)">HS>8h</span><b style="font-size:11px;color:var(--blue)">'+fmtMin(totRawHigh)+'</b></div>'
   );
   const hsColHdr=useRendu2?'<div style="display:flex;justify-content:space-between;padding:2px 0 4px"><span></span><div style="margin-left:auto;display:flex;gap:16px"><span style="font-size:10px;color:var(--text3);width:52px;text-align:right">brutes</span><span style="font-size:10px;color:var(--text3);width:52px;text-align:right">rendus</span></div></div>':'';
-  const _hasMo=!!(S.profile&&S.profile.settingsMonthlyHistory&&_SMH_KEYS.some(k=>{const h=S.profile.settingsMonthlyHistory[k];return h&&h.some(e=>e.ym===mym);}));
+  const _hasMo=!!(
+    (S.profile&&S.profile.settingsMonthly&&S.profile.settingsMonthly[mym]&&Object.keys(S.profile.settingsMonthly[mym]).length)
+    ||(S.profile&&S.profile.settingsMonthlyHistory&&_SMH_KEYS.some(k=>{const h=S.profile.settingsMonthlyHistory[k];return h&&h.some(e=>e.ym===mym);}))
+  );
   const _moCfgBtn='<div style="margin-top:14px;padding-top:12px;border-top:0.5px solid var(--border2);display:flex;align-items:center;justify-content:space-between">'
     +'<span style="font-size:11px;color:var(--text3)">Génération des rendus'+(_hasMo?'<span style="margin-left:6px;font-size:9px;padding:1px 5px;border-radius:8px;background:var(--blue);color:#fff">ce mois</span>':'')+'</span>'
     +'<button onclick="openMonthSettingsModal('+mym+')" style="font-size:11px;color:var(--blue);background:transparent;border:0.5px solid var(--blue);border-radius:var(--r);padding:4px 10px;cursor:pointer;font-family:var(--font)">Configurer</button>'
