@@ -2719,17 +2719,7 @@ function openAnnualSettingsModal(y,dir){
     }
     rows+='</tr>';
   }
-  // tfoot with action dots aligned to columns when selection active
-  let tfoot='';
-  if(_annualSel.size>0){
-    const sc=_annualSel.size;
-    tfoot='<tfoot><tr style="border-top:1px solid var(--blue);background:rgba(59,130,246,.07)">'
-      +'<td style="padding:4px;font-size:11px;color:var(--blue);font-weight:500">'+sc+' mois</td>'
-      +keys.map((k,i)=>{const on=_annualActionState[k];return '<td style="text-align:center;padding:4px 2px">'
-        +'<button onclick="toggleAnnualDot(\''+k+'\')" style="width:28px;height:24px;border-radius:5px;border:0.5px solid '+(on?'var(--blue)':'var(--border)')+';background:'+(on?'rgba(59,130,246,.12)':'transparent')+';color:'+(on?'var(--blue)':'var(--text3)')+';font-size:14px;line-height:1;cursor:pointer;font-family:var(--font);display:inline-flex;align-items:center;justify-content:center">'+(on?'●':'○')+'</button>'
-        +'</td>';}).join('')
-      +'</tr></tfoot>';
-  }
+  const tfoot='';
   // "Tout" button + static column labels
   const _allSel12=Array.from({length:12},(_,m)=>y*12+m).every(ym=>_annualSel.has(ym));
   const colHeaders='<th style="padding:4px;text-align:left"><button onclick="selectAllAnnual()" style="font-size:11px;padding:2px 7px;border-radius:6px;font-family:var(--font);font-weight:500;cursor:pointer;border:'+(_allSel12?'none':'0.5px solid var(--border)')+';background:'+(_allSel12?'var(--blue)':'rgba(128,128,128,.13)')+';color:'+(_allSel12?'#fff':'var(--text2)')+'">Tout</button></th>'
@@ -2747,7 +2737,15 @@ function openAnnualSettingsModal(y,dir){
       +'<button onclick="applyAnnualCell('+ym+',\''+key+'\',true)" style="flex:1;height:28px;font-size:11px;font-family:var(--font);background:var(--amber);color:#000;border:none;border-radius:var(--r);cursor:pointer">Ce mois et les suivants</button>'
       +'</div>';
   }else if(_annualSel.size>0){
-    actionContent='<div style="display:flex;gap:8px">'
+    const sc=_annualSel.size;
+    actionContent='<table style="width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:8px">'
+      +'<colgroup><col style="width:52px"><col><col><col><col></colgroup>'
+      +'<tr><td style="padding:2px 4px;font-size:11px;color:var(--blue);font-weight:500">'+sc+' mois</td>'
+      +keys.map((k,i)=>{const on=_annualActionState[k];return '<td style="text-align:center;padding:2px">'
+        +'<button onclick="toggleAnnualDot(\''+k+'\')" style="width:28px;height:24px;border-radius:5px;border:0.5px solid '+(on?'var(--blue)':'var(--border)')+';background:'+(on?'rgba(59,130,246,.12)':'transparent')+';color:'+(on?'var(--blue)':'var(--text3)')+';font-size:14px;line-height:1;cursor:pointer;font-family:var(--font);display:inline-flex;align-items:center;justify-content:center">'+(on?'●':'○')+'</button>'
+        +'</td>';}).join('')
+      +'</tr></table>'
+      +'<div style="display:flex;gap:8px">'
       +'<button onclick="clearAnnualSel()" style="flex:1;height:28px;font-size:11px;font-family:var(--font);background:var(--bg2);color:var(--text);border:0.5px solid var(--border);border-radius:var(--r);cursor:pointer">Annuler</button>'
       +'<button onclick="applyAnnualSel()" style="flex:1;height:28px;font-size:11px;font-family:var(--font);background:var(--blue);color:#fff;border:none;border-radius:var(--r);cursor:pointer">Appliquer</button>'
       +'</div>';
@@ -2765,21 +2763,22 @@ function openAnnualSettingsModal(y,dir){
     +'<span style="font-size:16px;font-weight:600">'+y+'</span>'
     +'<button onclick="_annualPending=null;_annualSel.clear();openAnnualSettingsModal('+(y+1)+',\'next\')" style="background:transparent;border:none;color:var(--text2);cursor:pointer;font-size:18px;padding:0 8px">›</button>'
     +'</div>'
-    +'<table style="width:100%;border-collapse:collapse">'
-    +'<thead><tr>'+colHeaders+'</tr></thead><tbody>'+rows+'</tbody>'+tfoot+'</table>'
+    +'<table style="width:100%;border-collapse:collapse;table-layout:fixed">'
+    +'<colgroup><col style="width:52px"><col><col><col><col></colgroup>'
+    +'<thead><tr>'+colHeaders+'</tr></thead><tbody>'+rows+'</tbody></table>'
     +'<div style="margin-top:10px;min-height:85px;padding:8px;border-radius:var(--r);background:'+actionBg+';border:0.5px solid '+actionBorderColor+';box-sizing:border-box">'
     +actionContent
     +'</div>'
     +'<button class="mcancel mclose" onclick="_annualPending=null;_annualSel.clear();closeModal()">Fermer</button>'
     +'</div></div>';
-  if(dir){const _tbl=document.querySelector('#modal-root table');if(_tbl)_tbl.style.animation=(dir==='next'?'slideInLeft':'slideInRight')+' .22s ease';}
+  if(dir){const _tbl=document.querySelector('#modal-root table');if(_tbl){_tbl.style.animation='none';_tbl.offsetWidth;_tbl.style.animation=(dir==='next'?'slideInLeft':'slideInRight')+' .25s ease';}}
+  let _dAct2=false;
   const _sh2=document.querySelector('#modal-root .sheet');
   if(_sh2){
     let _sx=0,_sy=0,_st=0,_sb=false;
-    let _dAct2=false;
     _sh2.addEventListener('touchstart',function(e){_sx=e.touches[0].clientX;_sy=e.touches[0].clientY;_st=Date.now();_sb=!!e.target.closest('button,input,label,select,td');},{passive:true});
     _sh2.addEventListener('touchend',function(e){
-      if(_sb||_dAct2||Date.now()-_st<200)return;
+      if(_sb||_dAct2)return;
       const dx=e.changedTouches[0].clientX-_sx,dy=Math.abs(e.changedTouches[0].clientY-_sy);
       if(Math.abs(dx)<50||dy>Math.abs(dx))return;
       _annualPending=null;_annualSel.clear();
@@ -2809,7 +2808,9 @@ function openAnnualSettingsModal(y,dir){
       if(!_dAct)return;
       e.preventDefault();
       const t=e.touches[0],el=document.elementFromPoint(t.clientX,t.clientY);if(!el)return;
-      const td=el.closest('td[data-ym]');if(!td)return;
+      let td=el.closest('td[data-ym]');
+      if(!td){const tr=el.closest('tr[data-row]');if(tr)td=tr.querySelector('td[data-ym]');}
+      if(!td)return;
       const ym2=Number(td.dataset.ym);if(ym2===_dLast)return;
       _dLast=ym2;
       if(_dMode)_annualSel.add(ym2);else _annualSel.delete(ym2);
