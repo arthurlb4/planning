@@ -2667,6 +2667,8 @@ function resetMonthSettings(mym){
 function openAnnualSettingsModal(y){
   if(!y)y=new Date().getFullYear();
   _annualSelYear=y;
+  const _wasOpen=document.body.classList.contains('modal-open');
+  if(!_wasOpen)_lockBodyScroll();
   const ML=['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
   const keys=['dimRendu','rhRendu','ferRendu','hsRendu'];
   const hdrs=['Dim','RH','Fér','HS'];
@@ -2720,10 +2722,10 @@ function openAnnualSettingsModal(y){
   const actionBorderColor=_annualPending?'var(--amber)':_annualSel.size>0?'var(--blue)':'transparent';
   const actionBg=_annualPending?'rgba(245,158,11,.07)':_annualSel.size>0?'rgba(59,130,246,.07)':'transparent';
   document.getElementById('modal-root').innerHTML=
-    '<div class="overlay" onclick="if(event.target===this){_annualPending=null;_annualSel.clear();closeModal();}"><div class="sheet">'
+    '<div class="overlay"'+(_wasOpen?' style="animation:none"':'')+' onclick="if(event.target===this){_annualPending=null;_annualSel.clear();closeModal();}"><div class="sheet"'+(_wasOpen?' style="animation:none"':'')+' >'
     +'<div class="sh"></div>'
     +'<div style="display:flex;align-items:center;margin-bottom:2px">'
-    +'<button onclick="_annualPending=null;_annualSel.clear();closeModal();setTimeout(()=>openSettingsModal(2),80)" style="background:transparent;border:none;color:var(--blue);cursor:pointer;font-size:11px;padding:0;display:flex;align-items:center;gap:3px">‹ Paramètres</button>'
+    +'<button onclick="_annualPending=null;_annualSel.clear();openSettingsModal(2)" style="background:transparent;border:none;color:var(--blue);cursor:pointer;font-size:11px;padding:0;display:flex;align-items:center;gap:3px">‹ Paramètres</button>'
     +'</div>'
     +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
     +'<button onclick="_annualPending=null;_annualSel.clear();openAnnualSettingsModal('+(y-1)+')" style="background:transparent;border:none;color:var(--text2);cursor:pointer;font-size:18px;padding:0 8px">‹</button>'
@@ -3597,10 +3599,10 @@ function openMergedMoisModal(mym,tab){
   requestAnimationFrame(function(){
     moisTab(tab||0);
     if(wrap){
-      var _sxM=0,_syM=0,_swBlock=false;
-      wrap.addEventListener('touchstart',function(e){_sxM=e.touches[0].clientX;_syM=e.touches[0].clientY;_swBlock=!!e.target.closest('button,input,label,select,a');},{passive:true});
+      var _sxM=0,_syM=0,_swBlock=false,_swT=0;
+      wrap.addEventListener('touchstart',function(e){_sxM=e.touches[0].clientX;_syM=e.touches[0].clientY;_swT=Date.now();_swBlock=!!e.target.closest('button,input,label,select,a');},{passive:true});
       wrap.addEventListener('touchend',function(e){
-        if(_swBlock)return;
+        if(_swBlock||Date.now()-_swT<220)return;
         var dx=e.changedTouches[0].clientX-_sxM,dy=Math.abs(e.changedTouches[0].clientY-_syM);
         if(Math.abs(dx)<65||dy>80)return;
         var cur=0;for(var i=0;i<5;i++){var t=document.getElementById('mtc-'+i);if(t&&t.style.visibility!=='hidden')cur=i;}
@@ -4197,7 +4199,7 @@ function openSettingsModal(tab){
   // ── TAB 2: HEURES ──
   var tab2=''
     +_sh+'Génération des rendus</div>'
-    +'<div class="srow" '+_sr+'><div class="slbl">Par mois'+_inf('propagation par point')+'</div><button class="mb" style="width:120px;height:32px;min-height:32px;padding:0;font-size:12px;background:var(--bg0)" onclick="closeModal();setTimeout(()=>openAnnualSettingsModal('+new Date().getFullYear()+'),80)">Changer</button></div>'
+    +'<div class="srow" '+_sr+'><div class="slbl">Par mois'+_inf('propagation par point')+'</div><button class="mb" style="width:120px;height:32px;min-height:32px;padding:0;font-size:12px;background:var(--bg0)" onclick="openAnnualSettingsModal('+new Date().getFullYear()+')">Changer</button></div>'
     +_sh+'Soldes initiaux</div>'
     +'<div class="srow" '+_sr+'><div class="slbl">Matelas'+_inf('crédit de rendus')+'</div><input id="ps-matelas" '+_onb+' value="'+fmtMin(pr.profile.matelas||0)+'" onfocus="if(this.value)this.select()" style="'+_inpR+'"></div>'
     +'<div class="srow" '+_sr+'><div class="slbl">Stock éphem.'+_inf('rendus éphémères')+'</div><input id="ps-eph" '+_onb+' value="'+fmtMin(Math.round((pr.profile.ephSolde||0)*60))+'" onfocus="if(this.value)this.select()" style="'+_inpR+'"></div>'
