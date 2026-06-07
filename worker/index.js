@@ -276,6 +276,22 @@ export default {
       return resp({ lines: linesMap });
     }
 
+    if (path === '/admin/cleanup-lines') {
+      if (!await verifyAdmin(request, env)) return resp({ error: 'Non autorise' }, 401);
+      var linesMap = await env.PLANNING_DB.get('global:lines_used', { type: 'json' }) || {};
+      var removed = 0;
+      for (var l in linesMap) {
+        var cleaned = [];
+        for (var entry of linesMap[l]) {
+          if (await env.PLANNING_DB.get('user:' + entry.userId)) cleaned.push(entry);
+          else removed++;
+        }
+        if (cleaned.length > 0) linesMap[l] = cleaned; else delete linesMap[l];
+      }
+      await env.PLANNING_DB.put('global:lines_used', JSON.stringify(linesMap));
+      return resp({ ok: true, removed: removed, lines: linesMap });
+    }
+
     if (path === '/admin/cycles') {
       if (!await verifyAdmin(request, env)) return resp({ error: 'Non autorise' }, 401);
       var cycles = await env.PLANNING_DB.get('global:cycles', { type: 'json' }) || [];
@@ -491,9 +507,18 @@ export default {
       var ligne = body.ligne, profileId = body.profileId, profileName = body.profileName;
       if (!ligne || !profileId) return resp({ error: 'Donnees manquantes' }, 400);
       var linesMap = await env.PLANNING_DB.get('global:lines_used', { type: 'json' }) || {};
+      // Remove current profile's previous registration (any line)
       for (var l in linesMap) {
         linesMap[l] = linesMap[l].filter(function(e){ return !(e.userId === session.userId && e.profileId === profileId); });
         if (linesMap[l].length === 0) delete linesMap[l];
+      }
+      // Clean orphaned entries on the target line (verify user accounts still exist)
+      if (linesMap[ligne] && linesMap[ligne].length > 0) {
+        var cleaned = [];
+        for (var entry of linesMap[ligne]) {
+          if (await env.PLANNING_DB.get('user:' + entry.userId)) cleaned.push(entry);
+        }
+        if (cleaned.length > 0) linesMap[ligne] = cleaned; else delete linesMap[ligne];
       }
       if (!linesMap[ligne]) linesMap[ligne] = [];
       linesMap[ligne].push({ userId: session.userId, userName: body.userName || session.userId, profileId: profileId, profileName: profileName || profileId, weekVacs: body.weekVacs || [] });
