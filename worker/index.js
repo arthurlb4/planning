@@ -27,6 +27,14 @@ function randToken(len) {
   return Array.from(arr).map(function(b){ return b.toString(16).padStart(2,'0'); }).join('');
 }
 
+function getMondayKey(ts) {
+  var d = new Date(ts || Date.now());
+  var day = d.getUTCDay();
+  var diff = day === 0 ? -6 : 1 - day;
+  var mon = new Date(d.getTime() + diff * 86400000);
+  return mon.toISOString().slice(0, 10);
+}
+
 async function verifySession(request, env) {
   const auth = request.headers.get('Authorization') || '';
   const token = auth.replace('Bearer ', '').trim();
@@ -490,6 +498,8 @@ export default {
       if (!linesMap[ligne]) linesMap[ligne] = [];
       linesMap[ligne].push({ userId: session.userId, userName: body.userName || session.userId, profileId: profileId, profileName: profileName || profileId, weekVacs: body.weekVacs || [] });
       await env.PLANNING_DB.put('global:lines_used', JSON.stringify(linesMap));
+      var monKey = getMondayKey();
+      await env.PLANNING_DB.put('lines:week:' + monKey, JSON.stringify(linesMap), { expirationTtl: 90 * 24 * 3600 });
       return resp({ ok: true });
     }
 
@@ -509,6 +519,20 @@ export default {
     if (path === '/lines/available') {
       var linesMap = await env.PLANNING_DB.get('global:lines_used', { type: 'json' }) || {};
       return resp({ lines: linesMap });
+    }
+
+    if (path === '/lines/week') {
+      var session = await verifySession(request, env);
+      if (!session) return resp({ error: 'Non authentifie' }, 401);
+      var currentMon = getMondayKey();
+      var requestedMon = (body && body.monday) || currentMon;
+      var linesMap;
+      if (requestedMon === currentMon) {
+        linesMap = await env.PLANNING_DB.get('global:lines_used', { type: 'json' }) || {};
+      } else {
+        linesMap = await env.PLANNING_DB.get('lines:week:' + requestedMon, { type: 'json' }) || {};
+      }
+      return resp({ lines: linesMap, monday: requestedMon });
     }
 
     // ============================================================
