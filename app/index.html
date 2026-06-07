@@ -2738,13 +2738,12 @@ function openAnnualSettingsModal(y,dir){
       +'</div>';
   }else if(_annualSel.size>0){
     const sc=_annualSel.size;
-    actionContent='<table style="width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:8px">'
-      +'<colgroup><col style="width:52px"><col><col><col><col></colgroup>'
-      +'<tr><td style="padding:2px 4px;font-size:11px;color:var(--blue);font-weight:500">'+sc+' mois</td>'
-      +keys.map((k,i)=>{const on=_annualActionState[k];return '<td style="text-align:center;padding:2px">'
+    actionContent='<div style="display:flex;align-items:center;margin-bottom:8px">'
+      +'<span style="width:52px;flex-shrink:0;font-size:11px;color:var(--blue);font-weight:500">'+sc+' mois</span>'
+      +keys.map((k,i)=>{const on=_annualActionState[k];return '<div style="flex:1;display:flex;justify-content:center">'
         +'<button onclick="toggleAnnualDot(\''+k+'\')" style="width:28px;height:24px;border-radius:5px;border:0.5px solid '+(on?'var(--blue)':'var(--border)')+';background:'+(on?'rgba(59,130,246,.12)':'transparent')+';color:'+(on?'var(--blue)':'var(--text3)')+';font-size:14px;line-height:1;cursor:pointer;font-family:var(--font);display:inline-flex;align-items:center;justify-content:center">'+(on?'●':'○')+'</button>'
-        +'</td>';}).join('')
-      +'</tr></table>'
+        +'</div>';}).join('')
+      +'</div>'
       +'<div style="display:flex;gap:8px">'
       +'<button onclick="clearAnnualSel()" style="flex:1;height:28px;font-size:11px;font-family:var(--font);background:var(--bg2);color:var(--text);border:0.5px solid var(--border);border-radius:var(--r);cursor:pointer">Annuler</button>'
       +'<button onclick="applyAnnualSel()" style="flex:1;height:28px;font-size:11px;font-family:var(--font);background:var(--blue);color:#fff;border:none;border-radius:var(--r);cursor:pointer">Appliquer</button>'
@@ -2752,6 +2751,9 @@ function openAnnualSettingsModal(y,dir){
   }
   const actionBorderColor=_annualPending?'var(--amber)':_annualSel.size>0?'var(--blue)':'transparent';
   const actionBg=_annualPending?'rgba(245,158,11,.07)':_annualSel.size>0?'rgba(59,130,246,.07)':'transparent';
+  // Capture current table for outgoing animation before wiping DOM
+  let _oldTblClone=null;
+  if(dir){const _ot=document.querySelector('#modal-root .annual-tbl-wrap table');if(_ot)_oldTblClone=_ot.cloneNode(true);}
   document.getElementById('modal-root').innerHTML=
     '<div class="overlay"'+(_wasOpen?' style="animation:none"':'')+' onclick="if(event.target===this){_annualPending=null;_annualSel.clear();closeModal();}"><div class="sheet"'+(_wasOpen?' style="animation:none"':'')+' >'
     +'<div class="sh"></div>'
@@ -2763,20 +2765,42 @@ function openAnnualSettingsModal(y,dir){
     +'<span style="font-size:16px;font-weight:600">'+y+'</span>'
     +'<button onclick="_annualPending=null;_annualSel.clear();openAnnualSettingsModal('+(y+1)+',\'next\')" style="background:transparent;border:none;color:var(--text2);cursor:pointer;font-size:18px;padding:0 8px">›</button>'
     +'</div>'
+    +'<div class="annual-tbl-wrap">'
     +'<table style="width:100%;border-collapse:collapse;table-layout:fixed">'
     +'<colgroup><col style="width:52px"><col><col><col><col></colgroup>'
     +'<thead><tr>'+colHeaders+'</tr></thead><tbody>'+rows+'</tbody></table>'
+    +'</div>'
     +'<div style="margin-top:10px;min-height:85px;padding:8px;border-radius:var(--r);background:'+actionBg+';border:0.5px solid '+actionBorderColor+';box-sizing:border-box">'
     +actionContent
     +'</div>'
     +'<button class="mcancel mclose" onclick="_annualPending=null;_annualSel.clear();closeModal()">Fermer</button>'
     +'</div></div>';
-  if(dir){const _tbl=document.querySelector('#modal-root table');if(_tbl){_tbl.style.animation='none';_tbl.offsetWidth;_tbl.style.animation=(dir==='next'?'slideInLeft':'slideInRight')+' .25s ease';}}
+  // Smooth dual-direction slide animation
+  const _newWrap=document.querySelector('#modal-root .annual-tbl-wrap');
+  const _newTbl=_newWrap?_newWrap.querySelector('table'):null;
+  if(dir&&_oldTblClone&&_newWrap&&_newTbl){
+    const h=_newWrap.offsetHeight;
+    _newWrap.style.cssText='position:relative;overflow:hidden;height:'+h+'px';
+    _newTbl.style.cssText='width:100%;border-collapse:collapse;table-layout:fixed;position:absolute;top:0;left:0;transform:translateX('+(dir==='next'?'100%':'-100%')+')';
+    _oldTblClone.style.cssText='width:100%;border-collapse:collapse;table-layout:fixed;position:absolute;top:0;left:0';
+    _newWrap.appendChild(_oldTblClone);
+    requestAnimationFrame(function(){requestAnimationFrame(function(){
+      var tr='transform .32s cubic-bezier(.4,0,.2,1)';
+      _oldTblClone.style.transition=tr;_oldTblClone.style.transform='translateX('+(dir==='next'?'-100%':'100%')+')';
+      _newTbl.style.transition=tr;_newTbl.style.transform='translateX(0)';
+    });});
+    setTimeout(function(){
+      if(_oldTblClone.parentNode)_oldTblClone.parentNode.removeChild(_oldTblClone);
+      _newTbl.style.cssText='width:100%;border-collapse:collapse;table-layout:fixed';
+      _newWrap.style.cssText='';
+    },350);
+  }
+  // Year swipe from non-table area
   let _dAct2=false;
   const _sh2=document.querySelector('#modal-root .sheet');
   if(_sh2){
-    let _sx=0,_sy=0,_st=0,_sb=false;
-    _sh2.addEventListener('touchstart',function(e){_sx=e.touches[0].clientX;_sy=e.touches[0].clientY;_st=Date.now();_sb=!!e.target.closest('button,input,label,select,td');},{passive:true});
+    let _sx=0,_sy=0,_sb=false;
+    _sh2.addEventListener('touchstart',function(e){_sx=e.touches[0].clientX;_sy=e.touches[0].clientY;_sb=!!e.target.closest('button,input,label,select,td');},{passive:true});
     _sh2.addEventListener('touchend',function(e){
       if(_sb||_dAct2)return;
       const dx=e.changedTouches[0].clientX-_sx,dy=Math.abs(e.changedTouches[0].clientY-_sy);
@@ -2785,10 +2809,10 @@ function openAnnualSettingsModal(y,dir){
       openAnnualSettingsModal(dx<0?y+1:y-1,dx<0?'next':'prev');
     },{passive:true});
   }
-  // Drag-to-select on month cells
+  // Drag-to-select on month cells with direction disambiguation
   const _tb2=document.querySelector('#modal-root tbody');
   if(_tb2){
-    let _dAct=false,_dMode=true,_dLast=-1;
+    let _dAct=false,_dMode=true,_dLast=-1,_dSX=0,_dSY=0,_dSYm=-1,_dDir=null;
     function _annUpd(ym2,sel){
       const tr=document.querySelector('#modal-root tr[data-row="'+ym2+'"]');if(!tr)return;
       tr.style.background=sel?'rgba(59,130,246,.10)':'';
@@ -2797,28 +2821,45 @@ function openAnnualSettingsModal(y,dir){
     }
     _tb2.addEventListener('touchstart',function(e){
       const td=e.target.closest('td[data-ym]');if(!td)return;
-      e.preventDefault();
-      const ym2=Number(td.dataset.ym);
-      _annualPending=null;_dAct=true;_dAct2=true;_dLast=ym2;
-      _dMode=!_annualSel.has(ym2);
-      if(_dMode)_annualSel.add(ym2);else _annualSel.delete(ym2);
-      _annUpd(ym2,_dMode);
-    },{passive:false});
+      _dSX=e.touches[0].clientX;_dSY=e.touches[0].clientY;
+      _dSYm=Number(td.dataset.ym);_dDir=null;_dAct=false;
+      _dMode=!_annualSel.has(_dSYm);
+    },{passive:true});
     _tb2.addEventListener('touchmove',function(e){
-      if(!_dAct)return;
-      e.preventDefault();
+      if(_dSYm<0)return;
+      const dx=Math.abs(e.touches[0].clientX-_dSX),dy=Math.abs(e.touches[0].clientY-_dSY);
+      if(!_dDir){if(dx>8||dy>8)_dDir=dx>dy?'h':'v';else return;}
+      if(_dDir==='h')return; // horizontal → will navigate in touchend
+      // Vertical drag-to-select
+      e.preventDefault();e.stopPropagation();
+      if(!_dAct){
+        _dAct=true;_dAct2=true;_annualPending=null;_dLast=_dSYm;
+        if(_dMode)_annualSel.add(_dSYm);else _annualSel.delete(_dSYm);
+        _annUpd(_dSYm,_dMode);
+      }
       const t=e.touches[0],el=document.elementFromPoint(t.clientX,t.clientY);if(!el)return;
-      let td=el.closest('td[data-ym]');
-      if(!td){const tr=el.closest('tr[data-row]');if(tr)td=tr.querySelector('td[data-ym]');}
-      if(!td)return;
-      const ym2=Number(td.dataset.ym);if(ym2===_dLast)return;
+      let td2=el.closest('td[data-ym]');
+      if(!td2){const tr2=el.closest('tr[data-row]');if(tr2)td2=tr2.querySelector('td[data-ym]');}
+      if(!td2)return;
+      const ym2=Number(td2.dataset.ym);if(ym2===_dLast)return;
       _dLast=ym2;
       if(_dMode)_annualSel.add(ym2);else _annualSel.delete(ym2);
       _annUpd(ym2,_dMode);
     },{passive:false});
-    _tb2.addEventListener('touchend',function(){
-      if(!_dAct)return;_dAct=false;_dAct2=false;
-      openAnnualSettingsModal(_annualSelYear);
+    _tb2.addEventListener('touchend',function(e){
+      if(_dSYm<0)return;
+      e.stopPropagation(); // prevent global sheet-close handler
+      const sYm=_dSYm;_dSYm=-1;
+      if(_dDir==='h'){
+        const dx=e.changedTouches[0].clientX-_dSX,dy=Math.abs(e.changedTouches[0].clientY-_dSY);
+        if(Math.abs(dx)>=50&&dy<=Math.abs(dx)){
+          _annualPending=null;_annualSel.clear();
+          openAnnualSettingsModal(dx<0?y+1:y-1,dx<0?'next':'prev');
+        }
+        return;
+      }
+      if(_dAct){_dAct=false;_dAct2=false;openAnnualSettingsModal(_annualSelYear);}
+      // tap (_dDir===null): onclick on td fires and calls toggleAnnualSel
     },{passive:true});
   }
 }
