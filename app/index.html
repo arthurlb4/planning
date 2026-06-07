@@ -212,6 +212,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 #week-view-overlay .dc{height:39px!important;aspect-ratio:unset!important;padding-top:0!important;min-width:0}
 #week-view-overlay .dci{cursor:default!important;pointer-events:none!important;box-shadow:none!important}
 #week-view-overlay .dci:active{transform:none!important}
+#week-view-overlay .dv{font-size:9px!important;letter-spacing:0!important;}
 
 /* Legend */
 .leg{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;align-items:center;justify-content:center;width:100%;}
@@ -3863,10 +3864,28 @@ function openWeekView(){
     el.id='week-view-overlay';
     el.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;z-index:900;background:var(--bg0);display:flex;flex-direction:column;transform:translateX(100%);transition:transform .25s ease;will-change:transform;overflow:hidden';
     document.body.appendChild(el);
+    _wvInitSwipe(el);
   }
   el.style.display='flex';
   requestAnimationFrame(function(){el.style.transform='translateX(0)';});
   _wvLoad(_weekViewMon);
+}
+function weekViewToday(){
+  _weekViewMon=dk(getMonday(NOW));
+  _wvLoad(_weekViewMon);
+}
+function _wvInitSwipe(el){
+  var _sx=0,_sy=0,_active=false;
+  el.addEventListener('touchstart',function(e){
+    if(e.target.closest('button'))return;
+    _sx=e.touches[0].clientX;_sy=e.touches[0].clientY;_active=true;
+  },{passive:true});
+  el.addEventListener('touchend',function(e){
+    if(!_active)return;_active=false;
+    var dx=e.changedTouches[0].clientX-_sx,dy=e.changedTouches[0].clientY-_sy;
+    if(Math.abs(dx)>60&&Math.abs(dx)>Math.abs(dy)*1.2)weekViewNav(dx<0?1:-1);
+  },{passive:true});
+  el.addEventListener('touchcancel',function(){_active=false;},{passive:true});
 }
 function closeWeekView(){
   var el=document.getElementById('week-view-overlay');
@@ -3897,6 +3916,7 @@ async function _wvLoad(monKey){
   }
 }
 function _wvHeader(monKey){
+  var isCurrent=monKey===dk(getMonday(NOW));
   var monDate=new Date(monKey+'T12:00:00');
   var sunDate=new Date(monDate);sunDate.setDate(sunDate.getDate()+6);
   var weekNum=isoWeek(monDate);
@@ -3904,7 +3924,8 @@ function _wvHeader(monKey){
   return '<div style="display:flex;align-items:center;padding:12px 12px 10px;gap:8px;border-bottom:0.5px solid var(--border);background:var(--bg0);flex-shrink:0">'
     +'<button onclick="closeWeekView()" style="background:transparent;border:none;color:var(--text2);cursor:pointer;padding:4px 6px;display:flex;align-items:center;font-size:20px"><i class="ti ti-arrow-left"></i></button>'
     +'<div style="flex:1;text-align:center;font-size:13px;font-weight:600;color:var(--text)">'+lbl+'</div>'
-    +'<div style="display:flex;gap:4px">'
+    +'<div style="display:flex;gap:4px;align-items:center">'
+    +(!isCurrent?'<button onclick="weekViewToday()" style="background:transparent;border:0.5px solid var(--blue);border-radius:8px;color:var(--blue);cursor:pointer;height:28px;padding:0 8px;font-size:11px;font-weight:500">Aujourd\'hui</button>':'')
     +'<button onclick="weekViewNav(-1)" style="background:var(--bg2);border:0.5px solid var(--border);border-radius:8px;color:var(--text);cursor:pointer;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px"><i class="ti ti-chevron-left"></i></button>'
     +'<button onclick="weekViewNav(1)" style="background:var(--bg2);border:0.5px solid var(--border);border-radius:8px;color:var(--text);cursor:pointer;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px"><i class="ti ti-chevron-right"></i></button>'
     +'</div></div>';
@@ -3934,14 +3955,14 @@ function _wvRender(linesData,monKey,currentMon,isHistorical){
     userLine='S'+(lineIdx(getMonday(monDate))+1);
   }
   var _myUid=window._authUser&&window._authUser.userId;
-  // Show user weekVacs only for current week or confirmed historical snapshots
-  var showUserVacs=isHistorical||weekDelta===0;
+  var showUserVacs=true;
+  var VAC=getVAC(monDate);
   var days=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
   var html=_wvHeader(monKey);
   html+='<div style="overflow:auto;flex:1;-webkit-overflow-scrolling:touch">';
-  html+='<table style="width:100%;border-collapse:collapse;min-width:360px">';
+  html+='<table style="width:100%;border-collapse:collapse;table-layout:fixed">';
   html+='<thead><tr style="position:sticky;top:0;background:var(--bg0);z-index:1">'
-    +'<th style="text-align:left;padding:8px 6px 8px 14px;font-size:11px;font-weight:500;color:var(--text3);min-width:54px;border-bottom:0.5px solid var(--border)">Ligne</th>';
+    +'<th style="text-align:left;padding:8px 4px 8px 10px;font-size:11px;font-weight:500;color:var(--text3);width:46px;border-bottom:0.5px solid var(--border)">Lgn</th>';
   days.forEach(function(d,di){
     var _hd=new Date(monDate.getTime()+di*864e5);
     var _hFer=FERIES.has(dk(_hd));
@@ -3959,29 +3980,29 @@ function _wvRender(linesData,monKey,currentMon,isHistorical){
     var profileNames=users.map(function(u){return u.profileName||u.profileId||'?';});
     var rowBg=isUser?'rgba(98,170,220,.07)':'transparent';
     html+='<tr style="border-top:0.5px solid var(--border2);background:'+rowBg+';height:43px">';
-    html+='<td style="padding:0 6px 0 14px;white-space:nowrap;overflow:hidden;max-width:80px">'
+    html+='<td style="padding:0 4px 0 10px;overflow:hidden">'
       +'<div style="font-size:12px;font-weight:'+(isUser?'600':'400')+';color:'+(isUser?'var(--blue)':hasUser?'var(--text)':'var(--text3)')+'">'+lineName+(multiUser?' <span style="font-size:9px;color:var(--amber)">✕'+users.length+'</span>':'')+'</div>'
-      +(hasUser?'<div style="font-size:10px;color:'+(multiUser?'var(--amber)':'var(--text3)')+'">'+profileNames.join(', ')+'</div>':'')
+      +(hasUser?'<div style="font-size:9px;color:'+(multiUser?'var(--amber)':'var(--text3)')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+profileNames.join(', ')+'</div>':'')
       +'</td>';
     for(var d=0;d<7;d++){
       var _cellHtml;
       if(isUser){
         var _dd=new Date(monDate.getTime()+d*864e5);
         var _st=getState(_dd),_dv2=getVac(_dd);
-        var _lbl=_st==='absent'?'abs.':_st==='rh'?'RH':(_dv2.vac&&_dv2.vac!=='RH'?_dv2.vac:'');
+        var _lbl=_st==='absent'?'abs.':_st==='rh'?'RH':(_dv2.vac&&_dv2.vac!=='RH'?vLbl(_dv2.vac,VAC):'');
         _cellHtml='<div class="dc s-'+_st+'"><div class="dci"><span class="dv">'+_lbl+'</span></div></div>';
       } else {
         var _wvCode=(showUserVacs&&hasUser&&users[0].weekVacs)?users[0].weekVacs[d]:null;
         var _cyc=grid[i]?grid[i][d]:null;
         if(_wvCode==='CG'){
-          _cellHtml='<div class="dc s-cg"><div class="dci"><span class="dv">'+(_cyc||'')+'</span></div></div>';
+          _cellHtml='<div class="dc s-cg"><div class="dci"><span class="dv">'+vLbl(_cyc,VAC)+'</span></div></div>';
         } else if(_wvCode==='REND'||(_wvCode==='RH'&&_cyc!=='RH')){
-          _cellHtml='<div class="dc s-rend"><div class="dci"><span class="dv">'+(_cyc||'')+'</span></div></div>';
+          _cellHtml='<div class="dc s-rend"><div class="dci"><span class="dv">'+vLbl(_cyc,VAC)+'</span></div></div>';
         } else if(_wvCode==='Abs'){
           _cellHtml='<div class="dc s-absent"><div class="dci"><span class="dv" style="color:var(--red)">abs.</span></div></div>';
         } else {
           var _code=(_wvCode&&_wvCode!=='-')?_wvCode:_cyc;
-          _cellHtml=_wvCell(_code);
+          _cellHtml=_wvCell(_code,VAC);
         }
       }
       html+='<td style="padding:2px 2px">'+_cellHtml+'</td>';
@@ -3991,12 +4012,12 @@ function _wvRender(linesData,monKey,currentMon,isHistorical){
   html+='</tbody></table></div>';
   return html;
 }
-function _wvCell(code){
+function _wvCell(code,VAC){
   if(!code||code==='-')return '<div class="dc s-sv"><div class="dci"></div></div>';
   if(code==='RH')return '<div class="dc s-rh"><div class="dci"><span class="dv">RH</span></div></div>';
   if(code==='CG')return '<div class="dc s-cg"><div class="dci"><span class="dv">CG</span></div></div>';
   if(code==='Abs')return '<div class="dc s-absent"><div class="dci"><span class="dv" style="color:var(--red)">abs.</span></div></div>';
-  return '<div class="dc s-tv"><div class="dci"><span class="dv">'+code+'</span></div></div>';
+  return '<div class="dc s-tv"><div class="dci"><span class="dv">'+vLbl(code,VAC)+'</span></div></div>';
 }
 
 // Swipe down to close modal
