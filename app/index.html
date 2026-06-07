@@ -3931,13 +3931,7 @@ function _wvRender(linesData,monKey,currentMon,isHistorical){
   if(S&&S.profile){
     userLine='S'+(lineIdx(getMonday(monDate))+1);
   }
-  // Filter current user's account out of all KV lines (avoids stale registration showing on wrong row)
   var _myUid=window._authUser&&window._authUser.userId;
-  var filteredLines={};
-  Object.keys(adjustedLines).forEach(function(ln){
-    var others=_myUid?(adjustedLines[ln]||[]).filter(function(u){return u.userId!==_myUid;}):(adjustedLines[ln]||[]);
-    if(others.length)filteredLines[ln]=others;
-  });
   // Show user weekVacs only for current week or confirmed historical snapshots
   var showUserVacs=isHistorical||weekDelta===0;
   var days=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
@@ -3955,11 +3949,12 @@ function _wvRender(linesData,monKey,currentMon,isHistorical){
   for(var i=0;i<nLines;i++){
     var lineName='S'+(i+1);
     var isUser=lineName===userLine;
-    // isUser row: always show current profile name; other rows: use filtered KV (excluding current user)
-    var users=isUser?[]:(filteredLines[lineName]||[]);
-    var hasUser=isUser||(users.length>0);
-    var multiUser=!isUser&&users.length>1;
-    var profileNames=isUser?[S.profile&&S.profile.name||_aid]:users.map(function(u){return u.profileName||u.profileId||'?';});
+    // Other users on this line (always exclude current user — handled separately via isUser)
+    var otherUsers=_myUid?(adjustedLines[lineName]||[]).filter(function(u){return u.userId!==_myUid;}):(adjustedLines[lineName]||[]);
+    var users=isUser?otherUsers.concat([{profileName:S.profile&&S.profile.name||_aid}]):otherUsers;
+    var hasUser=users.length>0;
+    var multiUser=users.length>1;
+    var profileNames=users.map(function(u){return u.profileName||u.profileId||'?';});
     var rowBg=isUser?'rgba(98,170,220,.07)':'transparent';
     html+='<tr style="border-top:0.5px solid var(--border2);background:'+rowBg+';height:43px">';
     html+='<td style="padding:0 6px 0 14px;white-space:nowrap;overflow:hidden;max-width:80px">'
