@@ -540,6 +540,9 @@ export default {
       await env.PLANNING_DB.put('global:lines_used', JSON.stringify(linesMap));
       var monKey = getMondayKey();
       await env.PLANNING_DB.put('lines:week:' + monKey, JSON.stringify(linesMap), { expirationTtl: 90 * 24 * 3600 });
+      if (body.weekVacs && body.weekVacs.length) {
+        await env.PLANNING_DB.put('weekvacs:' + session.userId + ':' + profileId + ':' + monKey, JSON.stringify(body.weekVacs), { expirationTtl: 90 * 24 * 3600 });
+      }
       return resp({ ok: true });
     }
 
@@ -573,6 +576,15 @@ export default {
         else { linesMap = await env.PLANNING_DB.get('global:lines_used', { type: 'json' }) || {}; }
       } else {
         linesMap = await env.PLANNING_DB.get('global:lines_used', { type: 'json' }) || {};
+      }
+      // For non-current non-historical weeks, fetch per-user weekVacs for the specific requested week
+      if (!isHistorical && requestedMon !== currentMon) {
+        var allEntries = [];
+        for (var l in linesMap) { for (var e of linesMap[l]) allEntries.push(e); }
+        await Promise.all(allEntries.map(async function(entry) {
+          var wv = await env.PLANNING_DB.get('weekvacs:' + entry.userId + ':' + entry.profileId + ':' + requestedMon, { type: 'json' });
+          if (wv) entry.weekVacs = wv;
+        }));
       }
       return resp({ lines: linesMap, monday: requestedMon, current: currentMon, isHistorical: isHistorical });
     }
