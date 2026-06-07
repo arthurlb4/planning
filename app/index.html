@@ -2812,7 +2812,7 @@ function openAnnualSettingsModal(y,dir){
   // Drag-to-select on month cells with direction disambiguation
   const _tb2=document.querySelector('#modal-root tbody');
   if(_tb2){
-    let _dAct=false,_dMode=true,_dLast=-1,_dSX=0,_dSY=0,_dSYm=-1,_dDir=null;
+    let _dAct=false,_dMode=true,_dLast=-1,_dSX=0,_dSY=0,_dSYm=-1,_dDir=null,_dWasEmpty=false;
     function _annUpd(ym2,sel){
       const tr=document.querySelector('#modal-root tr[data-row="'+ym2+'"]');if(!tr)return;
       tr.style.background=sel?'rgba(59,130,246,.10)':'';
@@ -2823,7 +2823,7 @@ function openAnnualSettingsModal(y,dir){
       const td=e.target.closest('td[data-ym]');if(!td)return;
       _dSX=e.touches[0].clientX;_dSY=e.touches[0].clientY;
       _dSYm=Number(td.dataset.ym);_dDir=null;_dAct=false;
-      _dMode=!_annualSel.has(_dSYm);
+      _dWasEmpty=(_annualSel.size===0);_dMode=!_annualSel.has(_dSYm);
     },{passive:true});
     _tb2.addEventListener('touchmove',function(e){
       if(_dSYm<0)return;
@@ -2858,7 +2858,7 @@ function openAnnualSettingsModal(y,dir){
         }
         return;
       }
-      if(_dAct){_dAct=false;_dAct2=false;openAnnualSettingsModal(_annualSelYear);}
+      if(_dAct){if(_dWasEmpty&&_annualSel.size>0)_initAnnualDots();_dAct=false;_dAct2=false;openAnnualSettingsModal(_annualSelYear);}
       // tap (_dDir===null): onclick on td fires and calls toggleAnnualSel
     },{passive:true});
   }
@@ -2896,9 +2896,16 @@ function applyAnnualCell(ym,key,propagate){
   }
   _annualPending=null;saveState();render();openAnnualSettingsModal(_annualSelYear);
 }
+function _initAnnualDots(){
+  ['dimRendu','rhRendu','ferRendu','hsRendu'].forEach(k=>{
+    _annualActionState[k]=Array.from(_annualSel).every(ym=>settingsForYM(ym)[k]);
+  });
+}
 function toggleAnnualSel(ym){
   _annualPending=null;
+  const prev=_annualSel.size;
   if(_annualSel.has(ym))_annualSel.delete(ym);else _annualSel.add(ym);
+  if(prev===0&&_annualSel.size>0)_initAnnualDots();
   openAnnualSettingsModal(_annualSelYear);
 }
 function clearAnnualSel(){_annualSel.clear();openAnnualSettingsModal(_annualSelYear);}
@@ -2907,12 +2914,19 @@ function selectAllAnnual(){
   _annualPending=null;
   const allYms=Array.from({length:12},(_,m)=>_annualSelYear*12+m);
   const allSel=allYms.every(ym=>_annualSel.has(ym));
+  const prev=_annualSel.size;
   allYms.forEach(ym=>allSel?_annualSel.delete(ym):_annualSel.add(ym));
+  if(prev===0&&_annualSel.size>0)_initAnnualDots();
   openAnnualSettingsModal(_annualSelYear);
 }
 function applyAnnualSel(){
-  const keys=['dimRendu','rhRendu','ferRendu','hsRendu'];
-  _annualSel.forEach(ym=>{keys.forEach(k=>_smhSet(k,ym,_annualActionState[k]));});
+  if(!S.profile.settingsMonthly)S.profile.settingsMonthly={};
+  _annualSel.forEach(ym=>{
+    if(!S.profile.settingsMonthly[ym])S.profile.settingsMonthly[ym]={};
+    ['dimRendu','rhRendu','ferRendu','hsRendu'].forEach(k=>{
+      S.profile.settingsMonthly[ym][k]=_annualActionState[k];
+    });
+  });
   _annualSel.clear();saveState();render();openAnnualSettingsModal(_annualSelYear);
 }
 function selectAnnualCol(key){
