@@ -538,7 +538,7 @@ export default {
       if (!linesMap[ligne]) linesMap[ligne] = [];
       linesMap[ligne].push({ userId: session.userId, userName: body.userName || session.userId, profileId: profileId, profileName: profileName || profileId, weekVacs: body.weekVacs || [], regLine: body.regLine !== undefined ? body.regLine : parseInt(ligne.slice(1))-1, regWeek: body.regWeek || getMondayKey() });
       await env.PLANNING_DB.put('global:lines_used', JSON.stringify(linesMap));
-      var monKey = getMondayKey();
+      var monKey = body.regWeek || getMondayKey();
       await env.PLANNING_DB.put('lines:week:' + monKey, JSON.stringify(linesMap), { expirationTtl: 90 * 24 * 3600 });
       if (body.weekVacs && body.weekVacs.length) {
         await env.PLANNING_DB.put('weekvacs:' + session.userId + ':' + profileId + ':' + monKey, JSON.stringify(body.weekVacs), { expirationTtl: 90 * 24 * 3600 });
@@ -577,12 +577,12 @@ export default {
       } else {
         linesMap = await env.PLANNING_DB.get('global:lines_used', { type: 'json' }) || {};
       }
-      if (!isHistorical && requestedMon !== currentMon) {
+      if (requestedMon !== currentMon) {
         var allEntries = [];
         for (var l in linesMap) { for (var e of linesMap[l]) allEntries.push(e); }
         await Promise.all(allEntries.map(async function(entry) {
           var wv = await env.PLANNING_DB.get('weekvacs:' + entry.userId + ':' + entry.profileId + ':' + requestedMon, { type: 'json' });
-          if (wv) entry.weekVacs = wv;
+          entry.weekVacs = wv || [];
         }));
       }
       return resp({ lines: linesMap, monday: requestedMon, current: currentMon, isHistorical: isHistorical });
