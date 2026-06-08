@@ -2783,36 +2783,59 @@ function openAnnualSettingsModal(y,dir){
     rows+='<td style="text-align:right;padding:4px 6px 4px 2px;font-size:11px;color:'+(ymTotal>0?'var(--rend-text)':'var(--text3)')+';white-space:nowrap">'+(ymTotal>0?fmtMin(ymTotal):'—')+'</td>';
     rows+='</tr>';
   }
-  const tfoot='';
   // "Tout" button + static column labels
   const _allSel12=Array.from({length:12},(_,m)=>y*12+m).every(ym=>_annualSel.has(ym));
   const colHeaders='<th style="padding:4px;text-align:left"><button onclick="selectAllAnnual()" style="font-size:11px;padding:2px 7px;border-radius:6px;font-family:var(--font);font-weight:500;cursor:pointer;border:'+(_allSel12?'none':'0.5px solid var(--border)')+';background:'+(_allSel12?'var(--blue)':'rgba(128,128,128,.13)')+';color:'+(_allSel12?'#fff':'var(--text2)')+'">Tout</button></th>'
     +keys.map((_,i)=>'<th style="padding:4px 2px;font-size:10px;color:var(--text3);font-weight:500;text-align:center">'+hdrs[i]+'</th>').join('')
     +'<th style="padding:4px 6px 4px 2px;font-size:10px;color:var(--text3);font-weight:500;text-align:right">Total</th>';
-  let actionContent='';
+  let tfoot='', actionContent='';
   if(_annualSel.size>0){
     const sc=_annualSel.size;
-    const dotsRow='<div style="display:flex;align-items:center;margin-bottom:8px;margin-left:-8px;margin-right:-8px">'
-      +'<div style="width:52px;flex-shrink:0"></div>'
-      +keys.map((k,i)=>{
+    // Compute preview total using raw per-component day iteration
+    let previewSum=0;
+    _annualSel.forEach(function(selYm){
+      const selEff=settingsForYM(selYm);
+      const selGm=_genYr[selYm]||{};
+      const sy=Math.floor(selYm/12),sm=selYm%12;
+      const lastD=new Date(sy,sm+1,0).getDate();
+      let rDim=0,rRh=0,rFer=0;
+      for(let dd=1;dd<=lastD;dd++){
+        const dt=new Date(sy,sm,dd),k2=dk(dt);
+        const v2=getVac(dt);
+        if(!v2.vac||v2.vac==='RH'||v2.absent)continue;
+        if(v2.echange&&!v2.ecSelf)continue;
+        const dur=(VAC[v2.vac]||{}).dur||0;if(!dur)continue;
+        const isDimD=dt.getDay()===0,isFerD=FERIES.has(k2),isRHD=isRHDay(dt);
+        if(isFerD)rFer+=Math.round(dur*2.0/60*100)/100*60;
+        if(isDimD)rDim+=Math.round(dur*0.5/60*100)/100*60;
+        else if(isRHD)rRh+=Math.round(dur*0.5/60*100)/100*60;
+      }
+      function actEff(key,dflt){return _annualActionState[key]!==null?_annualActionState[key]:dflt;}
+      previewSum+=(actEff('dimRendu',selEff.dimRendu)?rDim:0)
+        +(actEff('rhRendu',selEff.rhRendu)?rRh:0)
+        +(actEff('ferRendu',selEff.ferRendu)?rFer:0)
+        +(actEff('hsRendu',selEff.hsRendu)?selGm.hs||0:0)
+        +(selGm.ram||0);
+    });
+    tfoot='<tfoot><tr style="border-top:2px solid var(--blue);background:rgba(59,130,246,.07)">'
+      +'<td style="padding:4px 4px;text-align:left"><span style="font-size:9px;font-weight:600;color:var(--blue)">'+sc+'×</span></td>'
+      +keys.map(function(k){
         const v=_annualActionState[k];
-        const dotColor=v===true?'var(--blue)':v===null?'var(--amber)':'var(--text3)';
-        const dotBorder=v===true?'var(--blue)':v===null?'var(--amber)':'var(--border)';
-        const dotBg=v===true?'rgba(59,130,246,.12)':v===null?'rgba(245,158,11,.08)':'transparent';
-        return '<div style="flex:1;display:flex;justify-content:center">'
-          +'<button onclick="toggleAnnualDot(\''+k+'\')" style="width:28px;height:24px;border-radius:5px;border:0.5px solid '+dotBorder+';background:'+dotBg+';color:'+dotColor+';font-size:14px;line-height:1;cursor:pointer;font-family:var(--font);display:inline-flex;align-items:center;justify-content:center">'+(v===true?'●':'○')+'</button>'
-          +'</div>';}).join('')
-      +'</div>';
+        const dc=v===true?'var(--blue)':v===null?'var(--amber)':'var(--text3)';
+        const db=v===true?'var(--blue)':v===null?'var(--amber)':'var(--border)';
+        const dbg=v===true?'rgba(59,130,246,.12)':v===null?'rgba(245,158,11,.08)':'transparent';
+        return '<td style="text-align:center;padding:4px 2px"><button onclick="toggleAnnualDot(\''+k+'\')" style="width:28px;height:24px;border-radius:5px;border:0.5px solid '+db+';background:'+dbg+';color:'+dc+';font-size:14px;line-height:1;cursor:pointer;font-family:var(--font);display:inline-flex;align-items:center;justify-content:center">'+(v===true?'●':'○')+'</button></td>';
+      }).join('')
+      +'<td style="text-align:right;padding:4px 6px;font-size:11px;font-weight:600;color:var(--rend-text)">'+(sc===1&&previewSum>0?fmtMin(previewSum):'')+'</td>'
+      +'</tr></tfoot>';
     if(sc===1){
-      actionContent=dotsRow
-        +'<div style="display:flex;gap:6px">'
+      actionContent='<div style="display:flex;gap:6px;margin-top:8px">'
         +'<button onclick="clearAnnualSel()" style="flex:1;height:28px;font-size:10px;font-family:var(--font);background:var(--bg2);color:var(--text);border:0.5px solid var(--border);border-radius:var(--r);cursor:pointer">Annuler</button>'
         +'<button onclick="applyAnnualSel(false)" style="flex:1;height:28px;font-size:10px;font-family:var(--font);background:var(--blue);color:#fff;border:0.5px solid var(--blue);border-radius:var(--r);cursor:pointer">Ce mois</button>'
         +'<button onclick="applyAnnualSel(true)" style="flex:2;height:28px;font-size:10px;font-family:var(--font);background:var(--amber);color:#000;border:0.5px solid var(--amber);border-radius:var(--r);cursor:pointer">Ce mois et les suivants</button>'
         +'</div>';
     }else{
-      actionContent=dotsRow
-        +'<div style="display:flex;gap:8px">'
+      actionContent='<div style="display:flex;gap:8px;margin-top:8px">'
         +'<button onclick="clearAnnualSel()" style="flex:1;height:28px;font-size:11px;font-family:var(--font);background:var(--bg2);color:var(--text);border:0.5px solid var(--border);border-radius:var(--r);cursor:pointer">Annuler</button>'
         +'<button onclick="applyAnnualSel(false)" style="flex:1;height:28px;font-size:11px;font-family:var(--font);background:var(--blue);color:#fff;border:0.5px solid var(--blue);border-radius:var(--r);cursor:pointer">Appliquer</button>'
         +'</div>';
@@ -2836,12 +2859,10 @@ function openAnnualSettingsModal(y,dir){
     +'</div>'
     +'<div class="annual-tbl-wrap">'
     +'<table style="width:100%;border-collapse:collapse;table-layout:fixed">'
-    +'<colgroup><col style="width:52px"><col><col><col><col></colgroup>'
-    +'<thead><tr>'+colHeaders+'</tr></thead><tbody>'+rows+'</tbody></table>'
+    +'<colgroup><col style="width:52px"><col><col><col><col><col style="width:54px"></colgroup>'
+    +'<thead><tr>'+colHeaders+'</tr></thead><tbody>'+rows+'</tbody>'+tfoot+'</table>'
     +'</div>'
-    +'<div style="margin-top:10px;min-height:85px;padding:8px;border-radius:var(--r);background:'+actionBg+';box-sizing:border-box">'
     +actionContent
-    +'</div>'
     +'<button class="mcancel mclose" onclick="_annualSel.clear();closeModal()">Fermer</button>'
     +'</div></div>';
   // Smooth dual-direction slide animation
@@ -4679,28 +4700,9 @@ function openSettingsModal(tab){
       +'<span style="font-size:18px;color:'+(on?'var(--blue)':'var(--text3)')+'">'+(on?'●':'○')+'</span>'
       +'</div>';
   }).join('');
-  var _genData=(function(){
-    var cs=calcSoldes(),gen=cs.gen;
-    var rows='';
-    var startYm=TODAY_YM-6,endYm=TODAY_YM+12;
-    for(var ym=startYm;ym<=endYm;ym++){
-      var gm=gen[ym]||{};
-      var total=(gm.dim||0)+(gm.rh||0)+(gm.fer||0)+(gm.hs||0)+(gm.ram||0);
-      var y=Math.floor(ym/12),mo=ym%12;
-      var lbl=ML[mo]+' '+y;
-      var isCur=ym===TODAY_YM;
-      var col=total>0?'var(--rend-text)':'var(--text3)';
-      rows+='<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;'+(isCur?'font-weight:600':'')+'border-bottom:0.5px solid var(--border2)">'
-        +'<span style="font-size:11px;color:'+(isCur?'var(--text)':'var(--text2)')+'">'+lbl+'</span>'
-        +'<span style="font-size:11px;color:'+col+'">'+fmtMin(total)+'</span>'
-        +'</div>';
-    }
-    return rows;
-  })();
   var tab2=''
     +_sh+'Génération des rendus</div>'
     +'<div class="srow" '+_sr+'><div style="display:flex;gap:20px;align-items:center;flex:1;padding-left:4px">'+_rendDots+'</div><button '+_bS+' onclick="openAnnualSettingsModal('+new Date().getFullYear()+')">Changer</button></div>'
-    +'<div style="margin-top:8px">'+_genData+'</div>'
     +_sh+'Soldes initiaux</div>'
     +'<div class="srow" '+_sr+'><div class="slbl">Matelas <span style="color:var(--text3);font-size:10px">stock initial permanent</span></div><input id="ps-matelas" '+_onb+' value="'+fmtMin(pr.profile.matelas||0)+'" onfocus="if(this.value)this.select()" style="'+_inpR+'"></div>'
     +'<div class="srow" '+_sr+'><div class="slbl">Stock éphémère <span style="color:var(--text3);font-size:10px">stock initial éphémère</span></div><input id="ps-eph" '+_onb+' value="'+fmtMin(Math.round((pr.profile.ephSolde||0)*60))+'" onfocus="if(this.value)this.select()" style="'+_inpR+'"></div>'
