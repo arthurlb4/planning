@@ -206,7 +206,9 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .s-absent-fer .dci,.s-ec2-fer .dci{box-shadow:inset 0 0 0 1.5px var(--gold);cursor:pointer;}
 [data-theme=light] .ann-day.tv-fer{background:var(--blue-m);}
 .wdot{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:18px;filter:grayscale(1);pointer-events:none;z-index:2;border-radius:var(--r);}
-.pdot{position:absolute;top:3px;right:3px;width:5px;height:5px;border-radius:50%;background:#FFB300;}
+.sdot{position:absolute;top:3px;right:3px;width:5px;height:5px;border-radius:50%;}
+.sdot-ok{background:#4caf50;}
+.sdot-no{background:var(--red);}
 
 /* Quintic week view cells — compact, non-interactive, no ferie border */
 #week-view-overlay .dc{height:39px!important;aspect-ratio:unset!important;padding-top:0!important;min-width:0}
@@ -1456,7 +1458,8 @@ function renderMonth(el_heads,el_cal){
     else if(st==='rh')lbl='RH';
     else if(st==='fer')lbl=(vac&&vac!=='RH')?vLbl(vac,_VAC):'';
     else if(vac&&vac!=='RH'&&st!=='ec2'&&st!=='ec2-fer')lbl=vLbl(vac,_VAC);
-    const panDot=isPanier(date)&&!(S.conges||{})[key]?'<span class="pdot"></span>':'';
+    const _cst=(S.congesStatus||{})[key];
+    const panDot=_cst?'<span class="sdot sdot-'+(_cst==='ok'?'ok':'no')+'"></span>':'';
     const _inWarn=_warnKeys.has(key);
     const warnDot=_inWarn?'<span class="wdot">⚠️</span>':'';
     const _lbl=_inWarn?'':lbl;
@@ -2187,7 +2190,18 @@ function openDay(key){
     }
   }
 
-  document.getElementById('modal-root').innerHTML=`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="sh"></div><div class="st">${lbl}${tt?' - '+tt:''}</div>${vac&&vac!=='RH'&&!absent&&VAC[vac]?`<div class="ss">${VAC[vac].deb}→${VAC[vac].fin} · ${fmtMin(dur)}</div>`:''}${vgHtml}<div style="height:0.5px;background:var(--border);margin:16px 0;opacity:.5"></div>${ah}${echange?`<button class="mb del wide" style="font-size:11px;padding:8px;margin-bottom:4px" onclick="cancelExchange('${key}')">Annuler l'échange</button>`:ov?`<button class="mb wide ghost" style="font-size:11px;padding:8px;margin-bottom:4px" onclick="resetVac()">Remettre le cycle (${cycleVac?vLbl(cycleVac,VAC):'repos'})</button>`:''}<button class="mcancel mclose" onclick="closeModal()">Fermer</button></div></div>`;
+  var _cstKey=(S.congesStatus||{})[key];
+  var statusHtml='';
+  if(hasCg==='cg'||hasCg==='rend'||hasCg==='rend-hist'){
+    var _okA=_cstKey==='ok',_noA=_cstKey==='no';
+    statusHtml='<div style="display:flex;gap:6px;margin-bottom:10px">'
+      +'<button style="flex:1;padding:7px 4px;border-radius:var(--r);font-size:11px;font-weight:600;border:0.5px solid '+(_okA?'transparent':'var(--border)')+';cursor:pointer;background:'+(_okA?'rgba(76,175,80,.2)':'var(--bg2)')+';color:'+(_okA?'#4caf50':'var(--text3)')+'" onclick="setCongéStatus(\''+key+'\',\'ok\')">✓ Validé</button>'
+      +'<button style="flex:1;padding:7px 4px;border-radius:var(--r);font-size:11px;font-weight:600;border:0.5px solid '+(_noA?'transparent':'var(--border)')+';cursor:pointer;background:'+(_noA?'rgba(229,57,53,.2)':'var(--bg2)')+';color:'+(_noA?'var(--red)':'var(--text3)')+'" onclick="setCongéStatus(\''+key+'\',\'no\')">✗ Refusé</button>'
+      +(_cstKey?'<button style="flex:0 0 auto;padding:7px 8px;border-radius:var(--r);font-size:11px;border:0.5px solid var(--border);cursor:pointer;background:var(--bg2);color:var(--text3)" onclick="setCongéStatus(\''+key+'\',null)">—</button>':'')
+      +'</div>';
+  }
+
+  document.getElementById('modal-root').innerHTML=`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="sh"></div><div class="st">${lbl}${tt?' - '+tt:''}</div>${vac&&vac!=='RH'&&!absent&&VAC[vac]?`<div class="ss">${VAC[vac].deb}→${VAC[vac].fin} · ${fmtMin(dur)}</div>`:''}${vgHtml}<div style="height:0.5px;background:var(--border);margin:16px 0;opacity:.5"></div>${statusHtml}${ah}${echange?`<button class="mb del wide" style="font-size:11px;padding:8px;margin-bottom:4px" onclick="cancelExchange('${key}')">Annuler l'échange</button>`:ov?`<button class="mb wide ghost" style="font-size:11px;padding:8px;margin-bottom:4px" onclick="resetVac()">Remettre le cycle (${cycleVac?vLbl(cycleVac,VAC):'repos'})</button>`:''}<button class="mcancel mclose" onclick="closeModal()">Fermer</button></div></div>`;
 }
 function avw(sel){
   if(!sel)return;
@@ -2330,6 +2344,12 @@ function removeCongé(){
   recalcAllMatelas();
   saveState();closeModal();render();popCell(key);
   gcalTrigger();
+}
+function setCongéStatus(key,status){
+  if(!S.congesStatus)S.congesStatus={};
+  if(!status)delete S.congesStatus[key];
+  else S.congesStatus[key]=status;
+  saveState();render();openDay(key);
 }
 function showPoseSelect(){
   var w=document.getElementById('pose-select-wrap');
