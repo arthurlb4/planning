@@ -214,6 +214,19 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 #week-view-overlay .dci:active{transform:none!important}
 #week-view-overlay .dv{font-size:9px!important;letter-spacing:0!important;color:rgba(255,255,255,.72);}
 [data-theme=light] #week-view-overlay .dv{color:var(--text2);}
+#week-view-overlay .s-tv-ov .dv{color:var(--red);}
+/* Quintic week picker */
+#wv-picker{position:absolute;left:0;right:0;bottom:0;background:var(--bg0);z-index:5;overflow-y:auto;-webkit-overflow-scrolling:touch;animation:wvFadeIn .15s ease}
+@keyframes wvFadeIn{from{opacity:0}to{opacity:1}}
+.wv-wgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;padding:14px 12px}
+.wv-wpill{background:var(--bg2);border:0.5px solid var(--border);border-radius:8px;padding:8px 4px;text-align:center;cursor:pointer;transition:background .1s}
+.wv-wpill:active{background:var(--bg3)}
+.wv-wpill.wv-cur{background:var(--blue);border-color:transparent}
+.wv-wpill.wv-sel{border-color:var(--blue)}
+.wv-wpnum{font-size:13px;font-weight:600;color:var(--text)}
+.wv-wpdate{font-size:9px;color:var(--text3);margin-top:2px}
+.wv-wpill.wv-cur .wv-wpnum,.wv-wpill.wv-cur .wv-wpdate{color:#fff}
+.wv-wpill.wv-sel .wv-wpnum{color:var(--blue)}
 
 /* Legend */
 .leg{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;align-items:center;justify-content:center;width:100%;}
@@ -3919,6 +3932,42 @@ function _wvLimits(){
   var cur=new Date(dk(getMonday(NOW))+'T12:00:00');
   return{min:dk(new Date(cur.getTime()-4*7*864e5)),max:dk(new Date(cur.getTime()+26*7*864e5))};
 }
+function _wvPickerHtml(){
+  var curMon=dk(getMonday(NOW));
+  var curDate=new Date(curMon+'T12:00:00');
+  var _MC=['jan','fév','mar','avr','mai','jun','jui','aoû','sep','oct','nov','déc'];
+  var html='<div class="wv-wgrid">';
+  for(var w=-4;w<=26;w++){
+    var wMon=new Date(curDate.getTime()+w*7*864e5);
+    var wKey=dk(wMon);
+    var wNum=isoWeek(wMon);
+    var isCur=wKey===curMon,isSel=wKey===_weekViewMon;
+    var cls='wv-wpill'+(isCur?' wv-cur':'')+(isSel&&!isCur?' wv-sel':'');
+    html+='<div class="'+cls+'" onclick="wvGoWeek(\''+wKey+'\')">'
+      +'<div class="wv-wpnum">S'+wNum+'</div>'
+      +'<div class="wv-wpdate">'+wMon.getDate()+' '+_MC[wMon.getMonth()]+'</div>'
+      +'</div>';
+  }
+  return html+'</div>';
+}
+function _wvTogglePicker(){
+  var el=document.getElementById('week-view-overlay');
+  var picker=document.getElementById('wv-picker');
+  if(picker){picker.remove();return;}
+  var hdr=document.getElementById('wv-header');
+  var pickerEl=document.createElement('div');
+  pickerEl.id='wv-picker';
+  pickerEl.style.top=(hdr?hdr.offsetHeight:57)+'px';
+  pickerEl.innerHTML=_wvPickerHtml();
+  el.appendChild(pickerEl);
+  var sel=pickerEl.querySelector('.wv-sel,.wv-cur');
+  if(sel)setTimeout(function(){sel.scrollIntoView({block:'center'});},50);
+}
+function wvGoWeek(monKey){
+  document.getElementById('wv-picker')?.remove();
+  _weekViewMon=monKey;
+  _wvLoad(monKey);
+}
 function weekViewNav(delta){
   var lim=_wvLimits();
   var d=new Date(_weekViewMon+'T12:00:00');
@@ -3950,9 +3999,9 @@ function _wvHeader(monKey){
   var lbl='S'+weekNum+' · '+monDate.getDate()+' — '+sunDate.getDate()+' '+MC[sunDate.getMonth()]+' '+sunDate.getFullYear();
   var btnL='<button onclick="weekViewNav(-1)"'+(atMin?' disabled':'')+' style="background:var(--bg2);border:0.5px solid var(--border);border-radius:8px;color:'+(atMin?'var(--text3)':'var(--text)')+';cursor:'+(atMin?'default':'pointer')+';width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px;opacity:'+(atMin?'.35':'1')+'"><i class="ti ti-chevron-left"></i></button>';
   var btnR='<button onclick="weekViewNav(1)"'+(atMax?' disabled':'')+' style="background:var(--bg2);border:0.5px solid var(--border);border-radius:8px;color:'+(atMax?'var(--text3)':'var(--text)')+';cursor:'+(atMax?'default':'pointer')+';width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px;opacity:'+(atMax?'.35':'1')+'"><i class="ti ti-chevron-right"></i></button>';
-  return '<div style="display:flex;align-items:center;padding:12px 12px 10px;gap:8px;border-bottom:0.5px solid var(--border);background:var(--bg0);flex-shrink:0">'
+  return '<div id="wv-header" style="display:flex;align-items:center;padding:12px 12px 10px;gap:8px;border-bottom:0.5px solid var(--border);background:var(--bg0);flex-shrink:0">'
     +'<button onclick="closeWeekView()" style="background:transparent;border:none;color:var(--text2);cursor:pointer;padding:4px 6px;display:flex;align-items:center;font-size:20px"><i class="ti ti-arrow-left"></i></button>'
-    +'<div style="flex:1;text-align:center;font-size:13px;font-weight:600;color:var(--text)">'+lbl+'</div>'
+    +'<div onclick="_wvTogglePicker()" style="flex:1;text-align:center;font-size:13px;font-weight:600;color:var(--text);cursor:pointer;user-select:none;display:flex;align-items:center;justify-content:center;gap:5px">'+lbl+'<i class="ti ti-chevron-down" style="font-size:11px;opacity:.55"></i></div>'
     +'<div style="display:flex;gap:4px;align-items:center">'
     +(!isCurrent?'<button onclick="weekViewToday()" style="background:transparent;border:0.5px solid var(--blue);border-radius:8px;color:var(--blue);cursor:pointer;height:28px;padding:0 8px;font-size:11px;font-weight:500">Aujourd\'hui</button>':'')
     +btnL+btnR
