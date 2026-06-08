@@ -2791,42 +2791,31 @@ function openAnnualSettingsModal(y,dir){
   let tfoot='', actionContent='';
   if(_annualSel.size>0){
     const sc=_annualSel.size;
-    // Compute preview total using raw per-component day iteration
-    function _actEff(key,dflt){return _annualActionState[key]!==null?_annualActionState[key]:dflt;}
-    let previewSum=0;
-    _annualSel.forEach(function(selYm){
-      const selEff=settingsForYM(selYm);
-      const selGm=_genYr[selYm]||{};
-      const _sy=Math.floor(selYm/12),_sm=selYm%12;
-      const _lastD=new Date(_sy,_sm+1,0).getDate();
-      let _rDim=0,_rRh=0,_rFer=0;
-      for(let _dd=1;_dd<=_lastD;_dd++){
-        const _dt=new Date(_sy,_sm,_dd),_k2=dk(_dt);
-        const _v2=getVac(_dt);
-        if(!_v2.vac||_v2.vac==='RH'||_v2.absent)continue;
-        if(_v2.echange&&!_v2.ecSelf)continue;
-        const _dur=(VAC[_v2.vac]||{}).dur||0;if(!_dur)continue;
-        const _isDimD=_dt.getDay()===0,_isFerD=FERIES.has(_k2),_isRHD=isRHDay(_dt);
-        if(_isFerD)_rFer+=Math.round(_dur*2.0/60*100)/100*60;
-        if(_isDimD)_rDim+=Math.round(_dur*0.5/60*100)/100*60;
-        else if(_isRHD)_rRh+=Math.round(_dur*0.5/60*100)/100*60;
-      }
-      previewSum+=(_actEff('dimRendu',selEff.dimRendu)?_rDim:0)
-        +(_actEff('rhRendu',selEff.rhRendu)?_rRh:0)
-        +(_actEff('ferRendu',selEff.ferRendu)?_rFer:0)
-        +(_actEff('hsRendu',selEff.hsRendu)?selGm.hs||0:0)
-        +(selGm.ram||0);
-    });
+    // Preview total: apply action state to existing gen components
+    var _previewTxt='';
+    if(sc===1){
+      var _pYm=Array.from(_annualSel)[0];
+      var _pEff=settingsForYM(_pYm);
+      var _pGm=_genYr[_pYm]||{};
+      var _pSum=0;
+      ['dimRendu','rhRendu','ferRendu','hsRendu'].forEach(function(k,i){
+        var _st=_annualActionState[k]!==null?_annualActionState[k]:_pEff[k];
+        var _comp=[_pGm.dim||0,_pGm.rh||0,_pGm.fer||0,_pGm.hs||0][i];
+        if(_st)_pSum+=_comp;
+      });
+      _pSum+=(_pGm.ram||0);
+      _previewTxt=fmtMin(_pSum);
+    }
     tfoot='<tfoot><tr style="border-top:2px solid var(--blue);background:rgba(59,130,246,.07)">'
-      +'<td style="padding:4px 4px;text-align:left"><span style="font-size:9px;font-weight:600;color:var(--blue)">'+sc+'×</span></td>'
+      +'<td style="padding:4px;width:52px"></td>'
       +keys.map(function(k){
-        const v=_annualActionState[k];
-        const dc=v===true?'var(--blue)':v===null?'var(--amber)':'var(--text3)';
-        const db=v===true?'var(--blue)':v===null?'var(--amber)':'var(--border)';
-        const dbg=v===true?'rgba(59,130,246,.12)':v===null?'rgba(245,158,11,.08)':'transparent';
+        var v=_annualActionState[k];
+        var dc=v===true?'var(--blue)':v===null?'var(--amber)':'var(--text3)';
+        var db=v===true?'var(--blue)':v===null?'var(--amber)':'var(--border)';
+        var dbg=v===true?'rgba(59,130,246,.12)':v===null?'rgba(245,158,11,.08)':'transparent';
         return '<td style="text-align:center;padding:4px 2px"><button onclick="toggleAnnualDot(\''+k+'\')" style="width:28px;height:24px;border-radius:5px;border:0.5px solid '+db+';background:'+dbg+';color:'+dc+';font-size:14px;line-height:1;cursor:pointer;font-family:var(--font);display:inline-flex;align-items:center;justify-content:center">'+(v===true?'●':'○')+'</button></td>';
       }).join('')
-      +'<td style="text-align:right;padding:4px 6px;font-size:11px;font-weight:600;color:var(--rend-text)">'+(sc===1&&previewSum>0?fmtMin(previewSum):'')+'</td>'
+      +'<td style="text-align:right;padding:4px 6px;font-size:11px;font-weight:600;color:var(--rend-text)">'+_previewTxt+'</td>'
       +'</tr></tfoot>';
     if(sc===1){
       actionContent='<div style="display:flex;gap:6px;margin-top:8px">'
