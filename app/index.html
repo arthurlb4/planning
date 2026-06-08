@@ -627,7 +627,13 @@ function saveState(){
         for(let d=0;d<7;d++){
           const wd=new Date(wMon.getTime()+d*864e5);
           const wk=dk(wd),wc=(S.conges||{})[wk],wvac=getVac(wd);
-          wv.push(wc==='cg'?'CG':(wc==='rend'||wc==='rend-hist')?'REND':(wc==='absent'||wvac.absent)?'Abs':(wvac.vac||'-'));
+          let code;
+          if(wc==='cg')code='CG';
+          else if(wc==='rend'||wc==='rend-hist')code='REND';
+          else if(wc==='absent'||wvac.absent)code='Abs';
+          else if(wvac.echange&&!wvac.ecSelf)code='-';
+          else code=wvac.vac||'-';
+          wv.push(code);
         }
         return wv;
       };
@@ -4021,7 +4027,8 @@ function _wvRender(linesData,monKey,currentMon,isHistorical){
           _cellHtml='<div class="dc s-absent"><div class="dci"><span class="dv" style="color:var(--red)">abs.</span></div></div>';
         } else {
           var _code=(_wvCode&&_wvCode!=='-')?_wvCode:_cyc;
-          _cellHtml=_wvCell(_code,VAC);
+          var _isOv=!!(_wvCode&&_wvCode!=='-'&&_wvCode!==_cyc);
+          _cellHtml=_wvCell(_code,VAC,_isOv);
         }
       }
       html+='<td style="padding:2px 2px">'+_cellHtml+'</td>';
@@ -4031,12 +4038,12 @@ function _wvRender(linesData,monKey,currentMon,isHistorical){
   html+='</tbody></table></div>';
   return html;
 }
-function _wvCell(code,VAC){
+function _wvCell(code,VAC,isOv){
   if(!code||code==='-')return '<div class="dc s-sv"><div class="dci"></div></div>';
   if(code==='RH')return '<div class="dc s-rh"><div class="dci"><span class="dv">RH</span></div></div>';
   if(code==='CG')return '<div class="dc s-cg"><div class="dci"><span class="dv">CG</span></div></div>';
   if(code==='Abs')return '<div class="dc s-absent"><div class="dci"><span class="dv" style="color:var(--red)">abs.</span></div></div>';
-  return '<div class="dc s-tv"><div class="dci"><span class="dv">'+vLbl(code,VAC)+'</span></div></div>';
+  return '<div class="dc '+(isOv?'s-tv-ov':'s-tv')+'"><div class="dci"><span class="dv">'+vLbl(code,VAC)+'</span></div></div>';
 }
 
 // Swipe down to close modal
