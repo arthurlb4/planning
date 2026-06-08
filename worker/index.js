@@ -543,6 +543,11 @@ export default {
       if (body.weekVacs && body.weekVacs.length) {
         await env.PLANNING_DB.put('weekvacs:' + session.userId + ':' + profileId + ':' + monKey, JSON.stringify(body.weekVacs), { expirationTtl: 90 * 24 * 3600 });
       }
+      if (body.allWeekVacs && typeof body.allWeekVacs === 'object') {
+        await Promise.all(Object.entries(body.allWeekVacs).map(function([wk, wv]) {
+          return env.PLANNING_DB.put('weekvacs:' + session.userId + ':' + profileId + ':' + wk, JSON.stringify(wv), { expirationTtl: 180 * 24 * 3600 });
+        }));
+      }
       return resp({ ok: true });
     }
 

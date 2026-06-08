@@ -622,17 +622,30 @@ function saveState(){
     if(S&&S.profile&&window._authToken){
       const _mon=getMonday(NOW);
       const _rVisual=lineIdx(_mon);
-      const _weekVacs=[];
-      for(let _wi=0;_wi<7;_wi++){
-        const _wd=new Date(_mon.getTime()+_wi*864e5);
-        const _wk=dk(_wd),_wc=(S.conges||{})[_wk],_wv=getVac(_wd);
-        _weekVacs.push(_wc==='cg'?'CG':(_wc==='rend'||_wc==='rend-hist')?'REND':(_wc==='absent'||_wv.absent)?'Abs':(_wv.vac||'-'));
+      const _computeWeekVacs=function(wMon){
+        const wv=[];
+        for(let d=0;d<7;d++){
+          const wd=new Date(wMon.getTime()+d*864e5);
+          const wk=dk(wd),wc=(S.conges||{})[wk],wvac=getVac(wd);
+          wv.push(wc==='cg'?'CG':(wc==='rend'||wc==='rend-hist')?'REND':(wc==='absent'||wvac.absent)?'Abs':(wvac.vac||'-'));
+        }
+        return wv;
+      };
+      const _weekVacs=_computeWeekVacs(_mon);
+      // Collect weekVacs for all weeks with personal vacations (-4 to +26 weeks)
+      const _allWeekVacs={};
+      for(let w=-4;w<=26;w++){
+        const wMon=new Date(_mon.getTime()+w*7*864e5);
+        const wv=_computeWeekVacs(wMon);
+        if(wv.some(function(v){return v==='CG'||v==='REND'||v==='Abs';}))
+          _allWeekVacs[dk(wMon)]=wv;
       }
       fetch(CLOUD_API+'/lines/register',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({
         ligne:'S'+(_rVisual+1),profileId:_aid,
         profileName:S.profile.name||_aid,
         userName:(window._authUser&&window._authUser.name)||'',
         weekVacs:_weekVacs,
+        allWeekVacs:_allWeekVacs,
         regLine:_rVisual,
         regWeek:dk(_mon)
       })}).catch(function(){});
