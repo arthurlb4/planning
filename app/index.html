@@ -3937,40 +3937,32 @@ function _wvRender(linesData,monKey,currentMon,isHistorical){
   // Use client-local current Monday for weekDelta (avoids UTC/local timezone mismatch on Sunday evenings)
   var _clientCurMon=getMonday(NOW);
   var weekDelta=Math.round((getMonday(monDate)-_clientCurMon)/(7*864e5));
-  // For non-historical non-current weeks: shift user line assignments by weekDelta
+  // Universal line placement: always derive position from regLine+regWeek to correct snapshot corruption
+  var _viewedMon=getMonday(monDate);
   var adjustedLines={};
-  if(isHistorical||weekDelta===0){
-    adjustedLines=linesData;
-  } else {
-    var _viewedMon=getMonday(monDate);
-    Object.keys(linesData).forEach(function(lineName){
-      (linesData[lineName]||[]).forEach(function(user){
-        var newLineIdx;
-        if(user.regWeek&&user.regLine!==undefined){
-          var _regMon=new Date(user.regWeek+'T12:00:00');
-          var _diff=Math.round((_viewedMon-_regMon)/(7*864e5));
-          newLineIdx=((user.regLine+_diff)%nLines+nLines)%nLines;
-        }else{
-          var idx=parseInt(lineName.slice(1))-1;
-          newLineIdx=((idx+weekDelta)%nLines+nLines)%nLines;
+  Object.keys(linesData).forEach(function(lineName){
+    (linesData[lineName]||[]).forEach(function(user){
+      var nl=lineName,stale=false;
+      if(user.regWeek&&user.regLine!==undefined){
+        var _regMon=new Date(user.regWeek+'T12:00:00');
+        var _diff=Math.round((_viewedMon-_regMon)/(7*864e5));
+        if(_diff!==0){
+          nl='S'+(((user.regLine+_diff)%nLines+nLines)%nLines+1);
+          stale=true;
         }
-        var nl='S'+(newLineIdx+1);
-        if(!adjustedLines[nl])adjustedLines[nl]=[];
-        adjustedLines[nl].push(user);
-      });
+      }else if(weekDelta!==0){
+        var idx=parseInt(lineName.slice(1))-1;
+        nl='S'+(((idx+weekDelta)%nLines+nLines)%nLines+1);
+        stale=true;
+      }
+      var u=user;
+      if(stale&&user.weekVacs&&user.weekVacs.length){
+        u=Object.assign({},user,{weekVacs:user.weekVacs.map(function(v){return(v==='CG'||v==='REND'||v==='Abs')?v:null;})});
+      }
+      if(!adjustedLines[nl])adjustedLines[nl]=[];
+      adjustedLines[nl].push(u);
     });
-  }
-  // For non-current non-historical weeks: keep only personal vacation codes (CG/REND/Abs)
-  // Stale cycle codes from registration week would be wrong on a shifted line
-  if(!isHistorical&&weekDelta!==0){
-    Object.keys(adjustedLines).forEach(function(line){
-      (adjustedLines[line]||[]).forEach(function(u){
-        if(u.weekVacs&&u.weekVacs.length){
-          u.weekVacs=u.weekVacs.map(function(v){return(v==='CG'||v==='REND'||v==='Abs')?v:null;});
-        }
-      });
-    });
-  }
+  });
   // Current user's line for this week — use lineIdx() to respect lineHistory
   var userLine=null;
   if(S&&S.profile){
