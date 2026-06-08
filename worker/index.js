@@ -1293,6 +1293,82 @@ export default {
       return resp({ log: log });
     }
 
+    // ============================================================
+    // POWER AUTOMATE INTEGRATION
+    // ============================================================
+
+    if (path === '/pa/token') {
+      var session = await verifySession(request, env);
+      if (!session) return resp({ error: 'Non authentifie' }, 401);
+      var profileId = body.profileId || 'default';
+      var tokenKey = 'patoken:' + session.userId + ':' + profileId;
+      var existing = await env.PLANNING_DB.get(tokenKey);
+      if (existing) return resp({ token: existing });
+      var newTok = randToken(24);
+      await env.PLANNING_DB.put(tokenKey, newTok);
+      await env.PLANNING_DB.put('patokenrev:' + newTok, JSON.stringify({ userId: session.userId, profileId: profileId }));
+      return resp({ token: newTok });
+    }
+
+    if (path === '/pa/token-reset') {
+      var session = await verifySession(request, env);
+      if (!session) return resp({ error: 'Non authentifie' }, 401);
+      var profileId = body.profileId || 'default';
+      var tokenKey = 'patoken:' + session.userId + ':' + profileId;
+      var oldTok = await env.PLANNING_DB.get(tokenKey);
+      if (oldTok) await env.PLANNING_DB.delete('patokenrev:' + oldTok);
+      var newTok = randToken(24);
+      await env.PLANNING_DB.put(tokenKey, newTok);
+      await env.PLANNING_DB.put('patokenrev:' + newTok, JSON.stringify({ userId: session.userId, profileId: profileId }));
+      return resp({ token: newTok });
+    }
+
+    // Called by Power Automate — token auth, no session needed
+    if (path === '/pa/notify') {
+      var tok = body.token;
+      if (!tok) return resp({ error: 'Token manquant' }, 401);
+      var revData = await env.PLANNING_DB.get('patokenrev:' + tok, { type: 'json' });
+      if (!revData) return resp({ error: 'Token invalide' }, 401);
+      var action = (body.action || '').toLowerCase();
+      var dateDebut = body.dateDebut, dateFin = body.dateFin;
+      var type = (body.type || 'rend').toLowerCase();
+      var requestId = body.requestId || randToken(8);
+      if (!action || !dateDebut || !dateFin) return resp({ error: 'Donnees manquantes' }, 400);
+      function parseFrDate(s) {
+        var p = (s || '').split('/');
+        return p.length === 3 ? p[2] + '-' + p[1].padStart(2,'0') + '-' + p[0].padStart(2,'0') : null;
+      }
+      var debut = parseFrDate(dateDebut), fin = parseFrDate(dateFin);
+      if (!debut || !fin) return resp({ error: 'Format date invalide (DD/MM/YYYY)' }, 400);
+      var qKey = 'pa:queue:' + revData.userId + ':' + revData.profileId;
+      var queue = await env.PLANNING_DB.get(qKey, { type: 'json' }) || [];
+      queue = queue.filter(function(op) { return op.requestId !== requestId && op.ts > Date.now() - 90*24*3600*1000; });
+      queue.push({ requestId, action, debut, fin, type, ts: Date.now(), applied: false });
+      await env.PLANNING_DB.put(qKey, JSON.stringify(queue), { expirationTtl: 90 * 24 * 3600 });
+      return resp({ ok: true });
+    }
+
+    if (path === '/pa/sync') {
+      var session = await verifySession(request, env);
+      if (!session) return resp({ error: 'Non authentifie' }, 401);
+      var profileId = body.profileId || 'default';
+      var qKey = 'pa:queue:' + session.userId + ':' + profileId;
+      var queue = await env.PLANNING_DB.get(qKey, { type: 'json' }) || [];
+      return resp({ ops: queue.filter(function(op) { return !op.applied; }) });
+    }
+
+    if (path === '/pa/applied') {
+      var session = await verifySession(request, env);
+      if (!session) return resp({ error: 'Non authentifie' }, 401);
+      var profileId = body.profileId || 'default';
+      var ids = body.ids || [];
+      var qKey = 'pa:queue:' + session.userId + ':' + profileId;
+      var queue = await env.PLANNING_DB.get(qKey, { type: 'json' }) || [];
+      queue = queue.map(function(op) { return ids.indexOf(op.requestId) !== -1 ? Object.assign({}, op, { applied: true }) : op; });
+      await env.PLANNING_DB.put(qKey, JSON.stringify(queue), { expirationTtl: 90 * 24 * 3600 });
+      return resp({ ok: true });
+    }
+
     return resp({ error: 'Not found' }, 404);
     } catch(e) {
       return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: cors });

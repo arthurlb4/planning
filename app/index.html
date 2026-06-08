@@ -2351,6 +2351,83 @@ function setCongéStatus(key,status){
   else S.congesStatus[key]=status;
   saveState();render();openDay(key);
 }
+
+// ── Power Automate integration ──
+async function paGetToken(){
+  if(!window._authToken)return null;
+  var pid=_aid||'default';
+  var r=await fetch(CLOUD_API+'/pa/token',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+window._authToken},body:JSON.stringify({profileId:pid})});
+  var d=await r.json();return d.token||null;
+}
+async function paResetToken(){
+  if(!window._authToken)return null;
+  var pid=_aid||'default';
+  var r=await fetch(CLOUD_API+'/pa/token-reset',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+window._authToken},body:JSON.stringify({profileId:pid})});
+  var d=await r.json();return d.token||null;
+}
+async function _paSync(){
+  if(!window._authToken)return;
+  var pid=_aid||'default';
+  try{
+    var r=await fetch(CLOUD_API+'/pa/sync',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+window._authToken},body:JSON.stringify({profileId:pid})});
+    if(!r.ok)return;
+    var d=await r.json();
+    var ops=d.ops||[];
+    if(!ops.length)return;
+    var applied=[];
+    ops.forEach(function(op){
+      var debut=new Date(op.debut+'T12:00:00'),fin=new Date(op.fin+'T12:00:00');
+      if(isNaN(debut.getTime())||isNaN(fin.getTime()))return;
+      var action=op.action,type=op.type||'rend';
+      var vacCode=type==='cg'?'CG':type==='rend'?'REND':'CG';
+      pushUndo();
+      if(!S.conges)S.conges={};
+      if(!S.overrides)S.overrides={};
+      if(!S.paOrigin)S.paOrigin={};
+      if(!S.congesStatus)S.congesStatus={};
+      var d2=new Date(debut);
+      while(d2<=fin){
+        var k=dk(d2);
+        var dayOfWeek=d2.getDay();
+        if(dayOfWeek!==0&&dayOfWeek!==6){
+          if(action==='creation'||action==='validation'){
+            S.conges[k]=vacCode;
+            S.overrides[k]={vac:vacCode};
+            S.paOrigin[k]=op.requestId;
+            if(action==='validation')S.congesStatus[k]='ok';
+          } else if(action==='refus'){
+            if(S.paOrigin[k]===op.requestId){S.congesStatus[k]='no';}
+          } else if(action==='annulation'){
+            if(S.paOrigin[k]===op.requestId){
+              delete S.conges[k];delete S.overrides[k];delete S.paOrigin[k];delete S.congesStatus[k];
+            }
+          }
+        }
+        d2.setDate(d2.getDate()+1);
+      }
+      applied.push(op.requestId);
+    });
+    if(applied.length){
+      saveState();render();
+      fetch(CLOUD_API+'/pa/applied',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+window._authToken},body:JSON.stringify({profileId:pid,ids:applied})});
+    }
+  }catch(e){}
+}
+
+async function openPaSettings(){
+  var tok=await paGetToken();
+  var webhookUrl=CLOUD_API+'/pa/notify';
+  var el=document.getElementById('pa-token-display');
+  var wu=document.getElementById('pa-webhook-url');
+  if(el)el.textContent=tok||'—';
+  if(wu)wu.textContent=webhookUrl;
+}
+async function paResetAndRefresh(){
+  var tok=await paResetToken();
+  var el=document.getElementById('pa-token-display');
+  if(el)el.textContent=tok||'—';
+}
+
 function showPoseSelect(){
   var w=document.getElementById('pose-select-wrap');
   if(w)w.style.display='block';
@@ -4615,6 +4692,10 @@ function openSettingsModal(tab){
     +'<div class="srow" '+_sr+'><div class="slbl">Effacer'+_inf('événements Google Agenda')+'</div><button '+_bS+' id="gcal-clear-btn" onclick="gcalClear()">Effacer</button></div>'
     +'<div class="srow" '+_sr+'><div class="slbl">Déconnecter'+_inf('retirer l\'accès')+'</div><button '+_bS+' id="gcal-disconnect-btn" onclick="gcalDisconnect()">Déconnecter</button></div>'
     +'</div>'
+    // ─ Power Automate ─
+    +_sh+'Power Automate</div>'
+    +'<div class="srow" '+_sr+'><div class="slbl" style="font-size:11px">Token webhook</div><div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0;justify-content:flex-end"><span id="pa-token-display" style="font-size:9px;color:var(--text3);font-family:monospace;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">—</span><button '+_bS+' style="width:80px" onclick="paResetAndRefresh()">Renouveler</button></div></div>'
+    +'<div class="srow" '+_sr+'><div class="slbl" style="font-size:11px">URL webhook</div><div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0;justify-content:flex-end"><span id="pa-webhook-url" style="font-size:9px;color:var(--text3);font-family:monospace;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">—</span></div></div>'
     // ─ Compte ─
     +_sh+'Compte</div>'
     +(function(){
@@ -4709,6 +4790,7 @@ function openSettingsModal(tab){
     +'</div></div>';
   settingsTab(tab);
   gcalUpdateBtn();
+  openPaSettings();
   // Swipe left/right between tabs (mobile)
   requestAnimationFrame(function(){
     // Equalize tab heights: reveal all panels, measure, then lock minHeight on each
@@ -5474,6 +5556,7 @@ function init(){
     showPayPromptIfNeeded();
     // Register on load so the user appears in quintic without needing to make a change first
     if(S&&S.profile&&S.profile.anchorLine!==undefined&&window._authToken)saveState();
+    _paSync();
   }).catch(function(){
     document.body.style.opacity='1';document.body.style.transition='opacity .25s';setTimeout(function(){document.body.style.transition='';},300);
   });
