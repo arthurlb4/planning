@@ -582,7 +582,7 @@ export default {
         for (var l in linesMap) { for (var e of linesMap[l]) allEntries.push(e); }
         await Promise.all(allEntries.map(async function(entry) {
           var wv = await env.PLANNING_DB.get('weekvacs:' + entry.userId + ':' + entry.profileId + ':' + requestedMon, { type: 'json' });
-          entry.weekVacs = wv || [];
+          if (wv) entry.weekVacs = wv;
         }));
       }
       return resp({ lines: linesMap, monday: requestedMon, current: currentMon, isHistorical: isHistorical });
