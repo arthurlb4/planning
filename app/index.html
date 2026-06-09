@@ -230,6 +230,8 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .wv-wpdate{font-size:9px;color:var(--text3);margin-top:2px}
 .wv-wpill.wv-cur .wv-wpnum,.wv-wpill.wv-cur .wv-wpdate{color:#fff}
 .wv-wpill.wv-sel .wv-wpnum{color:var(--blue)}
+.wv-skel{background:var(--bg2);border-radius:4px;animation:wvPulse 1.4s ease-in-out infinite;}
+@keyframes wvPulse{0%,100%{opacity:.3}50%{opacity:.75}}
 
 /* Legend */
 .leg{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;align-items:center;justify-content:center;width:100%;}
@@ -4053,19 +4055,58 @@ function weekViewNav(delta){
   var next=dk(d);
   if(next<lim.min||next>lim.max)return;
   _weekViewMon=next;
-  _wvLoad(_weekViewMon);
+  _wvLoad(_weekViewMon,delta);
 }
-async function _wvLoad(monKey){
+var _wvPendingKey=null;
+async function _wvLoad(monKey,delta){
   var el=document.getElementById('week-view-overlay');
   if(!el)return;
-  el.innerHTML=_wvHeader(monKey);
+  _wvPendingKey=monKey;
+  // Update header in-place or create fresh
+  var hdrEl=document.getElementById('wv-header');
+  var _ht=document.createElement('div');_ht.innerHTML=_wvHeader(monKey);
+  if(hdrEl){hdrEl.replaceWith(_ht.firstChild);}
+  else{el.innerHTML='';el.appendChild(_ht.firstChild);}
+  // Ensure body wrapper
+  var wrap=document.getElementById('wv-body-wrap');
+  if(!wrap){
+    wrap=document.createElement('div');
+    wrap.id='wv-body-wrap';
+    wrap.style.cssText='flex:1;overflow:hidden;position:relative;';
+    el.appendChild(wrap);
+  }
+  // Remove any stale outgoing body
+  var outEl=document.getElementById('wv-body-out');
+  if(outEl)outEl.remove();
+  var oldBody=document.getElementById('wv-body');
+  var newBody=document.createElement('div');
+  newBody.id='wv-body';
+  newBody.style.cssText='position:absolute;inset:0;overflow:auto;-webkit-overflow-scrolling:touch;background:var(--bg0);';
+  newBody.innerHTML=_wvBodyHtml(null,monKey);
+  if(delta&&oldBody){
+    oldBody.id='wv-body-out';
+    var dx=delta>0?'100%':'-100%',dx2=delta>0?'-100%':'100%';
+    newBody.style.transform='translateX('+dx+')';
+    wrap.appendChild(newBody);
+    requestAnimationFrame(function(){requestAnimationFrame(function(){
+      newBody.style.transition='transform .22s ease';
+      newBody.style.transform='translateX(0)';
+      oldBody.style.transition='transform .22s ease';
+      oldBody.style.transform='translateX('+dx2+')';
+      setTimeout(function(){if(oldBody.parentNode)oldBody.remove();},240);
+    });});
+  } else {
+    if(oldBody)oldBody.remove();
+    wrap.appendChild(newBody);
+  }
   if(!window._authToken)return;
   try{
     const res=await fetch(CLOUD_API+'/lines/week',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({monday:monKey})});
     const data=await res.json();
-    el.innerHTML=_wvRender(data.lines||{},monKey,data.current||monKey,!!data.isHistorical);
-  }catch(e){
-  }
+    if(_wvPendingKey!==monKey)return;
+    var bEl=document.getElementById('wv-body');
+    if(bEl)bEl.innerHTML=_wvBodyHtml(data,monKey);
+  }catch(e){}
 }
 function _wvHeader(monKey){
   var isCurrent=monKey===dk(getMonday(NOW));
@@ -4089,45 +4130,14 @@ function _wvHeader(monKey){
     +(todayBtn?'<div style="display:flex;gap:8px;align-items:center">'+todayBtn+closeBtn+'</div>':closeBtn)
     +'</div>';
 }
-function _wvRender(linesData,monKey,currentMon,isHistorical){
+function _wvBodyHtml(data,monKey){
   var monDate=new Date(monKey+'T12:00:00');
-  var currentDate=new Date(currentMon+'T12:00:00');
   var grid=getActiveCycleGrid(monDate)||CYCLE;
   var nLines=grid.length;
-  // Use client-local current Monday for weekDelta (avoids UTC/local timezone mismatch on Sunday evenings)
-  var _clientCurMon=getMonday(NOW);
-  var weekDelta=Math.round((getMonday(monDate)-_clientCurMon)/(7*864e5));
-  // Universal line placement: always derive position from regLine+regWeek to correct snapshot corruption
-  var _viewedMon=getMonday(monDate);
-  var adjustedLines={};
-  Object.keys(linesData).forEach(function(lineName){
-    (linesData[lineName]||[]).forEach(function(user){
-      var nl=lineName;
-      if(user.regWeek&&user.regLine!==undefined){
-        var _regMon=new Date(user.regWeek+'T12:00:00');
-        var _diff=Math.round((_viewedMon-_regMon)/(7*864e5));
-        if(_diff!==0) nl='S'+(((user.regLine+_diff)%nLines+nLines)%nLines+1);
-      }else if(weekDelta!==0){
-        var idx=parseInt(lineName.slice(1))-1;
-        nl='S'+(((idx+weekDelta)%nLines+nLines)%nLines+1);
-      }
-      if(!adjustedLines[nl])adjustedLines[nl]=[];
-      adjustedLines[nl].push(user);
-    });
-  });
-  // Current user's line for this week — use lineIdx() to respect lineHistory
-  var userLine=null;
-  if(S&&S.profile){
-    userLine='S'+(lineIdx(getMonday(monDate))+1);
-  }
-  var _myUid=window._authUser&&window._authUser.userId;
-  var showUserVacs=true;
   var VAC=getVAC(monDate);
   var days=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'];
-  var html=_wvHeader(monKey);
-  html+='<div style="overflow:auto;flex:1;-webkit-overflow-scrolling:touch">';
-  html+='<table style="width:100%;border-collapse:collapse;table-layout:fixed">';
-  html+='<thead><tr style="position:sticky;top:0;background:var(--bg0);z-index:1">'
+  var html='<table style="width:100%;border-collapse:collapse;table-layout:fixed">'
+    +'<thead><tr style="position:sticky;top:0;background:var(--bg0);z-index:1">'
     +'<th style="text-align:left;padding:8px 4px 8px 10px;font-size:11px;font-weight:500;color:var(--text3);width:62px;border-bottom:0.5px solid var(--border)">Ligne</th>';
   days.forEach(function(d,di){
     var _hd=new Date(monDate.getTime()+di*864e5);
@@ -4135,48 +4145,70 @@ function _wvRender(linesData,monKey,currentMon,isHistorical){
     html+='<th style="padding:8px 2px;font-size:11px;font-weight:500;color:'+(_hFer?'var(--gold)':'var(--text3)')+';text-align:center;border-bottom:0.5px solid var(--border)">'+d+'</th>';
   });
   html+='</tr></thead><tbody>';
-  for(var i=0;i<nLines;i++){
-    var lineName='S'+(i+1);
-    var isUser=lineName===userLine;
-    // Other users on this line (always exclude current user — handled separately via isUser)
-    var otherUsers=_myUid?(adjustedLines[lineName]||[]).filter(function(u){return u.userId!==_myUid;}):(adjustedLines[lineName]||[]);
-    var users=isUser?otherUsers.concat([{profileName:S.profile&&S.profile.name||_aid}]):otherUsers;
-    var hasUser=users.length>0;
-    var multiUser=users.length>1;
-    var profileNames=users.map(function(u){return u.profileName||u.profileId||'?';});
-    var rowBg=isUser?'rgba(98,170,220,.07)':'transparent';
-    html+='<tr style="border-top:0.5px solid var(--border2);background:'+rowBg+';height:43px">';
-    html+='<td style="padding:0 4px 0 10px;overflow:hidden;width:62px">'
-      +'<div style="font-size:12px;font-weight:'+(isUser?'600':'400')+';color:'+(isUser?'var(--blue)':hasUser?'var(--text)':'var(--text3)')+'">'+lineName+(multiUser?' <span style="font-size:9px;color:var(--amber)">✕'+users.length+'</span>':'')+'</div>'
-      +(hasUser?'<div style="font-size:9px;color:'+(multiUser?'var(--amber)':'var(--text3)')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+profileNames.join(', ')+'</div>':'')
-      +'</td>';
-    for(var d=0;d<7;d++){
-      var _cellHtml;
-      if(isUser){
-        var _dd=new Date(monDate.getTime()+d*864e5);
-        var _st=getState(_dd),_dv2=getVac(_dd);
-        var _lbl=_st==='absent'?'abs.':_st==='rh'?'RH':(_dv2.vac&&_dv2.vac!=='RH'?vLbl(_dv2.vac,VAC):'');
-        _cellHtml='<div class="dc s-'+_st+'"><div class="dci"><span class="dv">'+_lbl+'</span></div></div>';
-      } else {
-        var _wvCode=(showUserVacs&&hasUser&&users[0].weekVacs)?users[0].weekVacs[d]:null;
-        var _cyc=grid[i]?grid[i][d]:null;
-        if(_wvCode==='CG'){
-          _cellHtml='<div class="dc s-cg"><div class="dci"><span class="dv">'+vLbl(_cyc,VAC)+'</span></div></div>';
-        } else if(_wvCode==='REND'||(_wvCode==='RH'&&_cyc!=='RH')){
-          _cellHtml='<div class="dc s-rend"><div class="dci"><span class="dv">'+vLbl(_cyc,VAC)+'</span></div></div>';
-        } else if(_wvCode==='Abs'){
-          _cellHtml='<div class="dc s-absent"><div class="dci"><span class="dv" style="color:var(--red)">abs.</span></div></div>';
-        } else {
-          var _code=(_wvCode&&_wvCode!=='-')?_wvCode:_cyc;
-          var _isOv=!!(_wvCode&&_wvCode!=='-'&&_wvCode!==_cyc);
-          _cellHtml=_wvCell(_code,VAC,_isOv);
-        }
-      }
-      html+='<td style="padding:2px 2px">'+_cellHtml+'</td>';
+  if(!data){
+    for(var i=0;i<nLines;i++){
+      html+='<tr style="border-top:0.5px solid var(--border2);height:43px">'
+        +'<td style="padding:0 4px 0 10px;width:62px"><div class="wv-skel" style="height:10px;width:26px;margin-bottom:4px"></div><div class="wv-skel" style="height:8px;width:38px"></div></td>';
+      for(var d=0;d<7;d++)html+='<td style="padding:2px 2px"><div class="wv-skel" style="height:39px;border-radius:var(--r)"></div></td>';
+      html+='</tr>';
     }
-    html+='</tr>';
+  } else {
+    var linesData=data.lines||{};
+    var _clientCurMon=getMonday(NOW);
+    var weekDelta=Math.round((getMonday(monDate)-_clientCurMon)/(7*864e5));
+    var _viewedMon=getMonday(monDate);
+    var adjustedLines={};
+    Object.keys(linesData).forEach(function(lineName){
+      (linesData[lineName]||[]).forEach(function(user){
+        var nl=lineName;
+        if(user.regWeek&&user.regLine!==undefined){
+          var _regMon=new Date(user.regWeek+'T12:00:00');
+          var _diff=Math.round((_viewedMon-_regMon)/(7*864e5));
+          if(_diff!==0)nl='S'+(((user.regLine+_diff)%nLines+nLines)%nLines+1);
+        }else if(weekDelta!==0){
+          var idx=parseInt(lineName.slice(1))-1;
+          nl='S'+(((idx+weekDelta)%nLines+nLines)%nLines+1);
+        }
+        if(!adjustedLines[nl])adjustedLines[nl]=[];
+        adjustedLines[nl].push(user);
+      });
+    });
+    var userLine=(S&&S.profile)?'S'+(lineIdx(getMonday(monDate))+1):null;
+    var _myUid=window._authUser&&window._authUser.userId;
+    for(var i=0;i<nLines;i++){
+      var lineName='S'+(i+1);
+      var isUser=lineName===userLine;
+      var otherUsers=_myUid?(adjustedLines[lineName]||[]).filter(function(u){return u.userId!==_myUid;}):(adjustedLines[lineName]||[]);
+      var users=isUser?otherUsers.concat([{profileName:S.profile&&S.profile.name||_aid}]):otherUsers;
+      var hasUser=users.length>0,multiUser=users.length>1;
+      var profileNames=users.map(function(u){return u.profileName||u.profileId||'?';});
+      var rowBg=isUser?'rgba(98,170,220,.07)':'transparent';
+      html+='<tr style="border-top:0.5px solid var(--border2);background:'+rowBg+';height:43px">'
+        +'<td style="padding:0 4px 0 10px;overflow:hidden;width:62px">'
+        +'<div style="font-size:12px;font-weight:'+(isUser?'600':'400')+';color:'+(isUser?'var(--blue)':hasUser?'var(--text)':'var(--text3)')+'">'+lineName+(multiUser?' <span style="font-size:9px;color:var(--amber)">✕'+users.length+'</span>':'')+'</div>'
+        +(hasUser?'<div style="font-size:9px;color:'+(multiUser?'var(--amber)':'var(--text3)')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+profileNames.join(', ')+'</div>':'')
+        +'</td>';
+      for(var d=0;d<7;d++){
+        var _cellHtml;
+        if(isUser){
+          var _dd=new Date(monDate.getTime()+d*864e5);
+          var _st=getState(_dd),_dv2=getVac(_dd);
+          var _lbl=_st==='absent'?'abs.':_st==='rh'?'RH':(_dv2.vac&&_dv2.vac!=='RH'?vLbl(_dv2.vac,VAC):'');
+          _cellHtml='<div class="dc s-'+_st+'"><div class="dci"><span class="dv">'+_lbl+'</span></div></div>';
+        } else {
+          var _wvCode=(hasUser&&users[0].weekVacs)?users[0].weekVacs[d]:null;
+          var _cyc=grid[i]?grid[i][d]:null;
+          if(_wvCode==='CG')_cellHtml='<div class="dc s-cg"><div class="dci"><span class="dv">'+vLbl(_cyc,VAC)+'</span></div></div>';
+          else if(_wvCode==='REND'||(_wvCode==='RH'&&_cyc!=='RH'))_cellHtml='<div class="dc s-rend"><div class="dci"><span class="dv">'+vLbl(_cyc,VAC)+'</span></div></div>';
+          else if(_wvCode==='Abs')_cellHtml='<div class="dc s-absent"><div class="dci"><span class="dv" style="color:var(--red)">abs.</span></div></div>';
+          else{var _code=(_wvCode&&_wvCode!=='-')?_wvCode:_cyc;var _isOv=!!(_wvCode&&_wvCode!=='-'&&_wvCode!==_cyc);_cellHtml=_wvCell(_code,VAC,_isOv);}
+        }
+        html+='<td style="padding:2px 2px">'+_cellHtml+'</td>';
+      }
+      html+='</tr>';
+    }
   }
-  html+='</tbody></table></div>';
+  html+='</tbody></table>';
   return html;
 }
 function _wvCell(code,VAC,isOv){
