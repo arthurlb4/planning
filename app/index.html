@@ -1018,6 +1018,38 @@ const dur=VAC[vac]?VAC[vac].dur:0;
   }
   return gen;
 }
+// Compute potential gen for a single month with given settings (used for preview)
+function buildPotentialForYM(ym,sett){
+  const ty=Math.floor(ym/12),tm=ym%12;
+  const VAC2=getVAC();
+  const createdYM=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:2026*12;
+  const maxYM=CUR_YEAR*12+11;
+  const res={dim:0,rh:0,fer:0,hs:0,ram:0};
+  const seenHS=new Set();
+  const start=new Date(ty,tm,1-6),end=new Date(ty,tm+1,0);
+  for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)){
+    const mon=getMonday(new Date(d));
+    const sun=new Date(mon);sun.setDate(mon.getDate()+6);
+    const sunYm=sun.getFullYear()*12+sun.getMonth();
+    if(sunYm!==ym)continue;
+    const mk2=dk(mon);
+    if(!seenHS.has(mk2)){
+      seenHS.add(mk2);
+      const sunInScope=sunYm>=createdYM&&(sunYm<=TODAY_YM||sunYm<=maxYM);
+      if(sett.hsRendu&&sunInScope){const hsW=calcHSWeek(mon);if(hsW.rendusMinHS>0)res.hs+=hsW.rendusMinHS;if(hsW.rendusMinRam>0)res.ram+=hsW.rendusMinRam;}
+    }
+    const key=dk(d);const v2e=getVac(d);const{vac,absent,echange,ecSelf}=v2e;
+    if(!vac||vac==='RH'||absent)continue;if(echange&&!ecSelf)continue;
+    const cKey=(S.conges||{})[key];if(cKey==='rend'||cKey==='rend-hist'||cKey==='cg'||cKey==='absent')continue;
+    const dur=VAC2[vac]?VAC2[vac].dur:0;
+    const isFer=FERIES.has(key),isDim=d.getDay()===0,isRH=isRHDay(d);
+    const ferF=isFer&&sett.ferRendu?2.0:0,dimF=isDim&&sett.dimRendu?0.5:0,rhF=(!echange&&!isDim&&isRH&&sett.rhRendu)?0.5:0;
+    if(ferF>0)res.fer+=Math.round(dur*ferF/60*100)/100*60;
+    if(dimF>0)res.dim+=Math.round(dur*dimF/60*100)/100*60;
+    if(rhF>0)res.rh+=Math.round(dur*rhF/60*100)/100*60;
+  }
+  return res;
+}
 
 function calcSoldes(){
   const gen=buildGen(),createdYM=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:2026*12;
@@ -2789,15 +2821,14 @@ function openAnnualSettingsModal(y,dir){
   if(_hasSel&&_annualSel.size===1){
     var _pYm=Array.from(_annualSel)[0];
     var _pEff=settingsForYM(_pYm);
-    var _pGm=_genYr[_pYm]||{};
-    var _pSum=0,_hsActive=false;
-    ['dimRendu','rhRendu','ferRendu','hsRendu'].forEach(function(k,i){
-      var _st=_annualActionState[k]!==null?_annualActionState[k]:_pEff[k];
-      var _comp=[_pGm.dim||0,_pGm.rh||0,_pGm.fer||0,_pGm.hs||0][i];
-      if(_st)_pSum+=_comp;
-      if(k==='hsRendu')_hsActive=!!_st;
-    });
-    _pSum+=(_hsActive?(_pGm.ram||0):0);
+    var _prSett={
+      dimRendu:_annualActionState.dimRendu!==null?_annualActionState.dimRendu:_pEff.dimRendu,
+      rhRendu:_annualActionState.rhRendu!==null?_annualActionState.rhRendu:_pEff.rhRendu,
+      ferRendu:_annualActionState.ferRendu!==null?_annualActionState.ferRendu:_pEff.ferRendu,
+      hsRendu:_annualActionState.hsRendu!==null?_annualActionState.hsRendu:_pEff.hsRendu
+    };
+    var _potGm=buildPotentialForYM(_pYm,_prSett);
+    var _pSum=(_potGm.dim||0)+(_potGm.rh||0)+(_potGm.fer||0)+(_potGm.hs||0)+(_potGm.ram||0);
     _previewTxt=fmtMin(_pSum);
   }
   var tfoot='<tfoot><tr style="border-top:2px solid '+(_hasSel?'var(--blue)':'var(--border2)')
