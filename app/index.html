@@ -2803,7 +2803,7 @@ function openAnnualSettingsModal(y,dir){
     _hasSel?'2px solid var(--blue)':'0.5px solid var(--border2)'
   )+';background:'+(_hasSel?'rgba(59,130,246,.07)':'')+'"><td style="padding:4px;width:52px"></td>'
     +keys.map(function(k){
-      if(!_hasSel)return '<td style="padding:4px 2px"></td>';
+      if(!_hasSel)return '<td style="padding:4px 2px;height:24px"></td>';
       var v=_annualActionState[k];
       var dc=v===true?'var(--blue)':v===null?'var(--amber)':'var(--text3)';
       var db=v===true?'var(--blue)':v===null?'var(--amber)':'var(--border)';
@@ -3738,25 +3738,26 @@ function openMergedMoisModal(mym,tab){
     const hsW=calcHSWeek(mon);
     const sun2=new Date(mon);sun2.setDate(mon.getDate()+6);
     const sunYm2=sun2.getFullYear()*12+sun2.getMonth();
+    // Align with buildGen: rendus are attributed to the week's Sunday month
+    if(sunYm2!==mym)return'';
+    const sett3=settingsForYM(sunYm2);
     let weekDim=0,weekRH=0,weekFer=0;
     for(let i=0;i<7;i++){
       const d=new Date(mon);d.setDate(mon.getDate()+i);
-      if(d.getFullYear()*12+d.getMonth()!==mym)continue;
       const key=dk(d);
       const v2=getVac(d);const{vac,absent,echange,ecSelf}=v2;
       if(!vac||vac==='RH'||absent)continue;if(echange&&!ecSelf)continue;
-      const cKey=(S.conges||{})[key];if(cKey==='rend'||cKey==='cg'||cKey==='absent')continue;
+      const cKey=(S.conges||{})[key];if(cKey==='rend'||cKey==='rend-hist'||cKey==='cg'||cKey==='absent')continue;
       const dur=VAC[vac]?VAC[vac].dur:0;
       const isFer3=FERIES.has(key),isDim3=d.getDay()===0,isRH3=isRHDay(d);
-      const sett3=settingsForYM(mym);
       const ferF3=isFer3&&sett3.ferRendu?2.0:0,dimF3=isDim3&&sett3.dimRendu?0.5:0,rhF3=(!v2.echange&&!isDim3&&isRH3&&sett3.rhRendu)?0.5:0;
       if(ferF3+dimF3+rhF3===0)continue;
       if(ferF3>0)weekFer+=Math.round(dur*ferF3/60*100)/100*60;
       if(dimF3>0)weekDim+=Math.round(dur*dimF3/60*100)/100*60;
       if(rhF3>0)weekRH+=Math.round(dur*rhF3/60*100)/100*60;
     }
-    const hsHS2=sunYm2===mym?hsW.rendusMinHS:0;
-    const hsRam2=sunYm2===mym?hsW.rendusMinRam:0;
+    const hsHS2=sett3.hsRendu?hsW.rendusMinHS:0;
+    const hsRam2=sett3.hsRendu?hsW.rendusMinRam:0;
     const total=hsHS2+hsRam2+weekDim+weekRH+weekFer;
     if(total<=0)return'';
     const partRows=[{label:'Dimanches',val:weekDim,color:'#9c80e0'},{label:'RH',val:weekRH,color:'#7b9ce0'},{label:'Fériés',val:weekFer,color:'var(--gold)'},{label:'Heures supp.',val:hsHS2,color:'var(--blue)'},{label:'Ramenée',val:hsRam2,color:'var(--gold-dark)'}].filter(r=>r.val>0);
