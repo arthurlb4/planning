@@ -4135,6 +4135,7 @@ function weekViewNav(delta){
   _wvLoad(_weekViewMon,delta);
 }
 var _wvPendingKey=null;
+var _wvFetchTimer=null;
 async function _wvLoad(monKey,delta){
   var el=document.getElementById('week-view-overlay');
   if(!el)return;
@@ -4177,13 +4178,18 @@ async function _wvLoad(monKey,delta){
     wrap.appendChild(newBody);
   }
   if(!window._authToken)return;
-  try{
-    const res=await fetch(CLOUD_API+'/lines/week',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({monday:monKey})});
-    const data=await res.json();
-    if(_wvPendingKey!==monKey)return;
-    var bEl=document.getElementById('wv-body');
-    if(bEl)bEl.innerHTML=_wvBodyHtml(data,monKey);
-  }catch(e){}
+  clearTimeout(_wvFetchTimer);
+  var _fKey=monKey;
+  _wvFetchTimer=setTimeout(async function(){
+    if(_wvPendingKey!==_fKey)return;
+    try{
+      const res=await fetch(CLOUD_API+'/lines/week',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({monday:_fKey})});
+      const data=await res.json();
+      if(_wvPendingKey!==_fKey)return;
+      var bEl=document.getElementById('wv-body');
+      if(bEl)bEl.innerHTML=_wvBodyHtml(data,_fKey);
+    }catch(e){}
+  },300);
 }
 function _wvHeader(monKey){
   var isCurrent=monKey===dk(getMonday(NOW));
