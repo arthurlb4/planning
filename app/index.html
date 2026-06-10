@@ -526,13 +526,17 @@ body.modal-open{overflow:hidden;position:fixed;width:100%;left:0;right:0;overscr
         <div class="eph-sol-lbl" id="eph-dispo-lbl">Dispo mois</div>
         <div id="eph-total-dispo" class="eph-sol-val"></div>
       </div>
+      <div class="eph-sol-sep" id="eph-exp-sep" style="display:none"></div>
+      <div class="eph-sol" id="eph-exp-sol" style="display:none">
+        <div class="eph-sol-lbl" id="eph-exp-lbl"></div>
+        <div id="eph-exp-val" class="eph-sol-val" style="color:var(--red)"></div>
+      </div>
       <div class="eph-sol-sep"></div>
       <div class="eph-sol" onclick="event.stopPropagation();openMergedRenduCgModal(6,1)" style="cursor:pointer">
         <div class="eph-sol-lbl">Congés</div>
         <div id="eph-total-cg" class="eph-sol-val" style="color:var(--green)"></div>
       </div>
     </div>
-    <div id="eph-unified-list"></div>
   </div>
   <div class="ctr-grid" id="ctr-main"></div>
 </div>
@@ -1774,55 +1778,16 @@ function updateCounters(){
     });
   }
 
-  // Unified eph table (créé + dispo + expiry per month)
-  const allUYms=new Set();
-  const extendedUsed=Object.keys(S.ephExtend||{}).map(Number).filter(ym=>ym<=TODAY_YM&&getExpYm(ym)>TODAY_YM);
-  Object.keys(gen).map(Number).filter(ym=>ym<=TODAY_YM).sort().slice(-6).forEach(ym=>allUYms.add(ym));
-  Object.keys(gen).map(Number).filter(ym=>ym>TODAY_YM).sort().slice(0,3).forEach(ym=>allUYms.add(ym));
-  Object.keys(realAvail).map(Number).filter(ym=>realAvail[ym]>0).forEach(ym=>allUYms.add(ym));
-  Object.keys(prevEph).map(Number).filter(ym=>prevEph[ym]>0).sort().slice(0,3).forEach(ym=>allUYms.add(ym));
-  extendedUsed.forEach(ym=>allUYms.add(ym));
-  // First pass: collect rows and compute maxVal for bar widths
-  const uniRows=[];
-  [...allUYms].sort().forEach(ym=>{
-    const y2=Math.floor(ym/12),m2=ym%12;
-    const orig=gen[ym]?Object.values(gen[ym]).reduce((s,v)=>s+v,0):0;
-    const isFut=ym>TODAY_YM;
-    const avail=isFut?(prevEph[ym]||0):(realAvail[ym]||0);
-    const hasActiveExt=!isFut&&getEphExtensions(ym)>0;
-    if(orig===0&&avail===0&&!hasActiveExt)return;
-    const expYm=getExpYm(ym);
-    const isExp=!isFut&&expYm<TODAY_YM;
-    uniRows.push({ym,y2,m2,orig,avail,isFut,isExp,expYm});
-  });
-  const maxVal=Math.max(...uniRows.map(r=>Math.max(r.orig,r.avail)),1);
-  // Second pass: render
-  let uniHtml='';
-  uniRows.forEach(({ym,y2,m2,orig,avail,isFut,isExp,expYm})=>{
-    const expY=Math.floor(expYm/12),expM=expYm%12;
-    const moLeft=expYm-TODAY_YM;
-    const extCount=getEphExtensions(ym);
-    const isAutoRep=!!(S.autoExtend&&S.autoExtend[ym]>0);
-    const isExtended=extCount>0;
-    const baseExpYm=ym+3+extCount*3;
-    const isWarn=!isExp&&!isFut&&avail>0&&avail<=420&&baseExpYm===TODAY_YM;
-    const lostMin=isExp?(preExpiry[ym]||0):0;
-    const extSpan=isExtended?'<span style="background:rgba(99,153,34,.35);border-radius:3px;padding:0 2px;color:var(--text)">'+MC[expM].slice(0,3)+' '+String(expY).slice(2)+'</span>':MC[expM].slice(0,3)+' '+String(expY).slice(2);
-    const expLbl=isExp?(lostMin>0?'<span style="color:var(--red);font-size:10px">-'+fmtMin(lostMin)+'</span>':'<span style="color:var(--text3);font-size:10px">00h00</span>'):'→'+extSpan;
-    const barPct=Math.round(avail/maxVal*100);
-    const origPct=Math.round(orig/maxVal*100);
-    const greenOpacity=isExp?'.15':isFut?'.35':'1';
-    const availColor=isExp?'var(--text3)':isFut?'var(--text3)':(isAutoRep||isWarn)?'var(--rend-text)':'var(--text2)';
-uniHtml+=`<div class="eph-urow${isExp?' expired':''}${isFut?' fut':''}">
-      <div class="eph-u-mc">${MC[m2]+' '+String(y2).slice(2)}</div>
-      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
-        <div class="eph-u-flow">${orig>0?`<span class="eph-u-cre" style="color:var(--blue)">${fmtMin(orig)}</span><span style="color:var(--text3);font-size:9px;margin:0 1px">→</span>`:''}<span class="eph-u-dispo" style="color:${availColor}">${isExp?'0':fmtMin(avail)}</span></div>
-      </div>
-      <div class="eph-u-exp">${expLbl}</div>
-    </div>`;
-  });
-  const uniEl=document.getElementById('eph-unified-list');
-  if(uniEl)uniEl.innerHTML=uniHtml||'<div style="font-size:11px;color:var(--text3);padding:4px 0">Aucun rendu.</div>';
+  // Expiry next month warning
+  const _nextYM=TODAY_YM+1;
+  let _expNext=0;
+  Object.keys(realAvail).map(Number).forEach(function(ym){if(getExpYm(ym)===_nextYM&&realAvail[ym]>0)_expNext+=realAvail[ym];});
+  const _expSep=document.getElementById('eph-exp-sep'),_expSol=document.getElementById('eph-exp-sol');
+  const _expVal=document.getElementById('eph-exp-val'),_expLbl=document.getElementById('eph-exp-lbl');
+  if(_expSep)_expSep.style.display=_expNext>0?'':'none';
+  if(_expSol)_expSol.style.display=_expNext>0?'':'none';
+  if(_expVal)_expVal.textContent=fmtMin(_expNext);
+  if(_expLbl){const _nm=_nextYM%12,_ny=Math.floor(_nextYM/12);_expLbl.textContent=MC[_nm].slice(0,3)+' '+String(_ny).slice(2);}
   const viewedYM=curY*12+curM;
   const {total:dispAtView}=calcTrueDispo(viewedYM);
   const dispoEl=document.getElementById('eph-total-dispo');
