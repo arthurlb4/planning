@@ -1539,8 +1539,16 @@ function renderMonth(el_heads,el_cal){
   const _warnKeys=_cs0.warnKeys;
   const _expYmNext=TODAY_YM+1;const _expAlertDate=new Date(Math.floor(_expYmNext/12),_expYmNext%12+1,0).getTime()-14*864e5;
   const _expNext=Object.keys(_cs0.realAvail).map(Number).filter(function(ym){const av=_cs0.realAvail[ym];return av>0&&getExpYm(ym)===_expYmNext&&NOW.getTime()>=_expAlertDate&&!(S.autoExtend&&S.autoExtend[ym]>0);}).map(function(ym){return{ym,avail:_cs0.realAvail[ym]};});
-  const cells=[];for(let i=0;i<sdow;i++)cells.push(null);
+  const cells=[];
   const _VAC=getVAC();
+  // Previous month overflow days (greyed)
+  const _prevLast=new Date(curY,curM,0);
+  for(let i=sdow;i>0;i--){
+    const _od=new Date(_prevLast.getFullYear(),_prevLast.getMonth(),_prevLast.getDate()-i+1);
+    const _ok=dk(_od),_ost=getState(_od);const {vac:_ov}=getVac(_od);
+    let _ol='';if(_ost==='rh')_ol='RH';else if(_ost==='fer')_ol=(_ov&&_ov!=='RH')?vLbl(_ov,_VAC):'';else if(_ov&&_ov!=='RH'&&_ost!=='ec2'&&_ost!=='ec2-fer')_ol=vLbl(_ov,_VAC);
+    cells.push({d:_od.getDate(),date:_od,key:_ok,st:_ost,lbl:_ol.length>5?_ol.slice(0,5)+'.':_ol,panDot:'',warnDot:'',today:false,overflow:true});
+  }
   for(let d=1;d<=last.getDate();d++){
     const date=new Date(curY,curM,d),key=dk(date),st=getState(date),{vac,ov,fromSV,echange}=getVac(date);
     let lbl='';
@@ -1558,11 +1566,17 @@ function renderMonth(el_heads,el_cal){
     const _lbl2=_lbl.length>5?_lbl.slice(0,5)+'.':_lbl;
     cells.push({d:_dn,date,key,st,lbl:_lbl2,panDot,warnDot,today:key===dk(NOW)});
   }
-  // Always render 6 rows (42 cells) so the calendar height is fixed
-  while(cells.length<42)cells.push(null);
+  // Next month overflow days (greyed, to always total 42 cells = 6 rows)
+  {const _nf=new Date(curY,curM+1,1);let _nd=1;while(cells.length<42){
+    const _od=new Date(_nf.getFullYear(),_nf.getMonth(),_nd);
+    const _ok=dk(_od),_ost=getState(_od);const {vac:_ov}=getVac(_od);
+    let _ol='';if(_ost==='rh')_ol='RH';else if(_ost==='fer')_ol=(_ov&&_ov!=='RH')?vLbl(_ov,_VAC):'';else if(_ov&&_ov!=='RH'&&_ost!=='ec2'&&_ost!=='ec2-fer')_ol=vLbl(_ov,_VAC);
+    cells.push({d:_od.getDate(),date:_od,key:_ok,st:_ost,lbl:_ol.length>5?_ol.slice(0,5)+'.':_ol,panDot:'',warnDot:'',today:false,overflow:true});
+    _nd++;
+  }}
   const todayMon=dk(getMonday(NOW));let html='';
   for(let r=0;r<Math.ceil(cells.length/7);r++){
-    const row=cells.slice(r*7,(r+1)*7),firstReal=row.find(x=>x&&x.date);
+    const row=cells.slice(r*7,(r+1)*7),firstReal=row.find(x=>x&&x.date&&!x.overflow)||row.find(x=>x&&x.date);
     const wn=firstReal?isoWeek(firstReal.date):'';
     const rowMon=firstReal?dk(getMonday(firstReal.date)):'';
     const rowRamee=firstReal&&rameeSet.has(dk(firstReal.date));
@@ -1575,7 +1589,7 @@ function renderMonth(el_heads,el_cal){
     html+=`<tr class="${rowCls.trim()}"><td class="wkn ${wknCls}" data-wn="${wn}"${cycleStartName?` data-cyc="${cycleStartName}"`:''}>${wn}</td>`;
     row.forEach(cell=>{
       if(!cell){html+='<td><div class="dc"></div></td>';return;}
-      html+=`<td><div class="dc s-${cell.st}${cell.today?' today':''}" style="position:relative;">${cell.warnDot}<div class="dci" data-key="${cell.key}" onclick="openDay('${cell.key}')"><span class="dn">${cell.d}</span><span class="dv">${cell.lbl}</span></div>${cell.panDot}</div></td>`;
+      html+=`<td><div class="dc s-${cell.st}${cell.today?' today':''}" style="position:relative;${cell.overflow?'opacity:0.3;':''}">${cell.warnDot}<div class="dci" data-key="${cell.key}" onclick="openDay('${cell.key}')"><span class="dn">${cell.d}</span><span class="dv">${cell.lbl}</span></div>${cell.panDot}</div></td>`;
     });
     if(isCurWeek){for(let _p=row.length;_p<7;_p++)html+='<td></td>';}
     html+='</tr>';
