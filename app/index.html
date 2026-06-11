@@ -1792,13 +1792,26 @@ function updateCounters(){
     });
   }
 
-  // Expiry current viewed month
+  // Expiry current viewed month — split between truly expiring and reported
   const _viewExpYM=curY*12+curM;
-  let _expViewAmt=0;
-  Object.keys(realAvail).map(Number).forEach(function(ym){if(getExpYm(ym)===_viewExpYM&&realAvail[ym]>0)_expViewAmt+=realAvail[ym];});
+  let _expViewAmt=0,_repViewAmt=0;
+  Object.keys(realAvail).map(Number).forEach(function(ym){
+    if(getExpYm(ym)===_viewExpYM&&realAvail[ym]>0){
+      if(getEphExtensions(ym)>0)_repViewAmt+=realAvail[ym];
+      else _expViewAmt+=realAvail[ym];
+    }
+  });
   const _expVal=document.getElementById('eph-exp-val'),_expLbl=document.getElementById('eph-exp-lbl');
-  if(_expVal){_expVal.textContent=_expViewAmt>0?fmtMin(_expViewAmt):'—';_expVal.style.color=_expViewAmt>0?'var(--red)':'var(--text3)';}
-  if(_expLbl)_expLbl.textContent='Expire '+MC[curM].slice(0,3);
+  if(_expViewAmt>0){
+    if(_expVal){_expVal.textContent=fmtMin(_expViewAmt);_expVal.style.color='var(--red)';}
+    if(_expLbl)_expLbl.textContent='Expire '+MC[curM].slice(0,3);
+  }else if(_repViewAmt>0){
+    if(_expVal){_expVal.textContent=fmtMin(_repViewAmt);_expVal.style.color='var(--green)';}
+    if(_expLbl)_expLbl.textContent='Report '+MC[curM].slice(0,3);
+  }else{
+    if(_expVal){_expVal.textContent='—';_expVal.style.color='var(--text3)';}
+    if(_expLbl)_expLbl.textContent='Expire '+MC[curM].slice(0,3);
+  }
   const viewedYM=curY*12+curM;
   const {total:dispAtView}=calcTrueDispo(viewedYM);
   const dispoEl=document.getElementById('eph-total-dispo');
