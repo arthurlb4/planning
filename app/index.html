@@ -1833,18 +1833,22 @@ function updateCounters(){
       const isFut=ym>TODAY_YM,avail=isFut?(prevEph[ym]||0):(realAvail[ym]||0);
       const orig=gen[ym]?Object.values(gen[ym]).reduce(function(s,v){return s+v;},0):0;
       if(orig<=0&&avail<=0)return;
-      const y=Math.floor(ym/12),m=ym%12,expYm=getExpYm(ym),isExp=expYm<TODAY_YM;
+      const y=Math.floor(ym/12),m=ym%12,expYm=getExpYm(ym),expY=Math.floor(expYm/12),expM=expYm%12;
+      const isExp=expYm<TODAY_YM,ext=getEphExtensions(ym);
       const origPct=Math.round(orig/_bMaxV*100),barPct=Math.round(avail/_bMaxV*100);
       const gOp=isExp?'.15':isFut?'.35':'1',bOp=isFut?'.2':'.4';
       const aColor=isExp?'var(--text3)':isFut?'var(--text3)':'var(--text2)';
-      _bHtml+='<div style="display:flex;align-items:center;gap:6px;padding:2px 0'+(isExp?';opacity:.45':'')+'">'
-        +'<div style="width:38px;flex-shrink:0;font-size:10px;color:var(--text2)">'+_ML2[m]+' '+String(y).slice(2)+'</div>'
-        +'<div style="flex:1;position:relative;height:5px;background:var(--bg3);border-radius:3px;overflow:hidden">'
-          +'<div style="position:absolute;left:0;top:0;height:100%;width:'+origPct+'%;background:var(--blue);opacity:'+bOp+'"></div>'
-          +'<div style="position:absolute;left:0;top:0;height:100%;width:'+barPct+'%;background:var(--rend-text);opacity:'+gOp+'"></div>'
+      const lostMin=isExp?(preExpiry[ym]||0):0;
+      const extSpan=(ext>0)?'<span style="background:rgba(99,153,34,.35);border-radius:3px;padding:0 2px;color:var(--text)">'+_ML2[expM]+' '+String(expY).slice(2)+'</span>':_ML2[expM]+' '+String(expY).slice(2);
+      const expLbl=isExp?(lostMin>0?'<span style="color:var(--red)">-'+fmtMin(lostMin)+'</span>':'<span>00h00</span>'):'→'+extSpan;
+      _bHtml+='<div class="eph-urow'+(isExp?' expired':'')+(isFut?' fut':'')+'">'
+        +'<div class="eph-u-mc">'+_ML2[m]+' '+String(y).slice(2)+'</div>'
+        +'<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">'
+        +'<div class="eph-u-flow"><span style="color:var(--blue);font-size:9px">'+fmtMin(orig)+'</span><span style="color:var(--text3);font-size:9px;margin:0 2px">→</span><span style="font-weight:500;color:'+aColor+'">'+fmtMin(avail)+'</span></div>'
+        +'<div class="eph-bw"><div class="eph-b2" style="width:'+origPct+'%;background:var(--blue);opacity:'+bOp+'"></div><div class="eph-b" style="width:'+barPct+'%;background:var(--rend-text);opacity:'+gOp+'"></div></div>'
         +'</div>'
-        +'<div style="width:36px;text-align:right;font-size:10px;font-weight:600;color:'+aColor+'">'+fmtMin(avail)+'</div>'
-      +'</div>';
+        +'<div class="eph-u-exp">'+expLbl+'</div>'
+        +'</div>';
     });
     _barsEl.innerHTML=_bHtml||'';
   }
