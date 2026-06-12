@@ -275,6 +275,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .eph-sol-val{font-size:17px;font-weight:600;color:var(--blue);line-height:1;}
 .eph-sol-sub{font-size:9px;color:var(--text3);margin-top:2px;}
 .eph-sol-sep{width:0.5px;background:var(--border);flex-shrink:0;align-self:stretch;margin:4px 0;}
+@media(max-width:720px){#eph-tile-bars{display:none;}}
 /* Eph unified table */
 .eph-urow{display:flex;align-items:flex-start;font-size:11px;gap:4px;padding:3px 0;}
 .eph-u-mc{width:42px;flex-shrink:0;color:var(--text2);font-size:10px;padding-top:1px;}
@@ -541,6 +542,7 @@ body.modal-open{overflow:hidden;position:fixed;width:100%;left:0;right:0;overscr
         <div id="eph-total-cg" class="eph-sol-val" style="color:var(--green)"></div>
       </div>
     </div>
+    <div id="eph-tile-bars" style="border-top:0.5px solid var(--border);margin-top:8px;padding:6px 4px 2px"></div>
   </div>
   <div class="ctr-grid" id="ctr-main"></div>
 </div>
@@ -1811,6 +1813,36 @@ function updateCounters(){
   }else{
     if(_expVal){_expVal.textContent='—';_expVal.style.color='var(--text3)';}
     if(_expLbl)_expLbl.textContent='Expire '+MC[curM].slice(0,3);
+  }
+  // Bars in recap tile (PC only)
+  const _barsEl=document.getElementById('eph-tile-bars');
+  if(_barsEl){
+    const _ML2=['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
+    const _bGenPast=Object.keys(gen).map(Number).filter(ym=>ym<=TODAY_YM).sort();
+    const _bFut=Object.keys(gen).map(Number).filter(ym=>ym>TODAY_YM).sort();
+    const _bPrev=Object.keys(prevEph).map(Number).filter(ym=>prevEph[ym]>0).sort();
+    const _bExt=Object.keys(S.ephExtend||{}).map(Number).filter(ym=>ym<=TODAY_YM&&getExpYm(ym)>TODAY_YM);
+    const _bYms=[...new Set([..._bGenPast,..._bPrev,..._bExt,..._bFut])].sort();
+    const _bMaxV=Math.max(..._bYms.map(function(ym){const o=gen[ym]?Object.values(gen[ym]).reduce(function(s,v){return s+v;},0):0;return Math.max(o,ym>TODAY_YM?(prevEph[ym]||0):(realAvail[ym]||0));}),1);
+    let _bHtml='';
+    _bYms.forEach(function(ym){
+      const isFut=ym>TODAY_YM,avail=isFut?(prevEph[ym]||0):(realAvail[ym]||0);
+      const orig=gen[ym]?Object.values(gen[ym]).reduce(function(s,v){return s+v;},0):0;
+      if(orig<=0&&avail<=0)return;
+      const y=Math.floor(ym/12),m=ym%12,expYm=getExpYm(ym),isExp=expYm<TODAY_YM;
+      const origPct=Math.round(orig/_bMaxV*100),barPct=Math.round(avail/_bMaxV*100);
+      const gOp=isExp?'.15':isFut?'.35':'1',bOp=isFut?'.2':'.4';
+      const aColor=isExp?'var(--text3)':isFut?'var(--text3)':'var(--text2)';
+      _bHtml+='<div style="display:flex;align-items:center;gap:6px;padding:2px 0'+(isExp?';opacity:.45':'')+'">'
+        +'<div style="width:38px;flex-shrink:0;font-size:10px;color:var(--text2)">'+_ML2[m]+' '+String(y).slice(2)+'</div>'
+        +'<div style="flex:1;position:relative;height:5px;background:var(--bg3);border-radius:3px;overflow:hidden">'
+          +'<div style="position:absolute;left:0;top:0;height:100%;width:'+origPct+'%;background:var(--blue);opacity:'+bOp+'"></div>'
+          +'<div style="position:absolute;left:0;top:0;height:100%;width:'+barPct+'%;background:var(--rend-text);opacity:'+gOp+'"></div>'
+        +'</div>'
+        +'<div style="width:36px;text-align:right;font-size:10px;font-weight:600;color:'+aColor+'">'+fmtMin(avail)+'</div>'
+      +'</div>';
+    });
+    _barsEl.innerHTML=_bHtml||'';
   }
   const viewedYM=curY*12+curM;
   const {total:dispAtView}=calcTrueDispo(viewedYM);
