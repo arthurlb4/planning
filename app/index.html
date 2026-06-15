@@ -1608,17 +1608,18 @@ function updateCounters(){
         <div style="font-size:${_tlfs};color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">Primes</div>
         ${primesHTML}
       </div>
-      <div style="width:0.5px;background:var(--border2);flex-shrink:0;margin:2px 0"></div>
-      <div style="flex:1;display:flex;flex-direction:column;align-items:center;padding:${_tpad};gap:2px;min-width:0" onclick="event.stopPropagation();openMergedMoisModal(${mym},3)">
-        <div style="font-size:${_tlfs};color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">Nuit</div>
-        <div style="font-size:${_tvfs};font-weight:600;color:#9c7fe0">${nuitTotal?fmtMin(nuitTotal):'—'}</div>
-        <div style="font-size:${_tsfs};color:var(--text3)">heures</div>
-      </div>
-      <div style="width:0.5px;background:var(--border2);flex-shrink:0;margin:2px 0"></div>
-      <div style="flex:1;display:flex;flex-direction:column;align-items:center;padding:${_tpad};gap:2px;min-width:0" onclick="event.stopPropagation();openMergedMoisModal(${mym},4)">
-        <div style="font-size:${_tlfs};color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">Brut</div>
-        <div style="font-size:${_tvfs};font-weight:600;color:${(paye_tc.configured&&paye_tc.salQ&&paye_tc.heures)?'var(--gold-pay)':'var(--text3)'};text-align:center">${(paye_tc.configured&&paye_tc.salQ&&paye_tc.heures)?(function(n){const abs=Math.abs(Math.round(n));const intFmt=String(abs);return(n<0?'-':'')+intFmt+' €';})(paye_tc.total):'—'}</div>
-        <div style="font-size:${_tsfs};color:var(--text3)">${(paye_tc.configured&&paye_tc.salQ&&paye_tc.heures)?'estimé':''}</div>
+      <div style="width:0.5px;background:var(--border);flex-shrink:0;margin:4px 0"></div>
+      <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+        <div data-col="nuit" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:${_tpad};gap:2px;min-width:0" onclick="event.stopPropagation();openMergedMoisModal(${mym},3)">
+          <div style="font-size:${_tlfs};color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">Nuit</div>
+          <div style="font-size:${_tvfs};font-weight:600;color:#9c7fe0">${nuitTotal?fmtMin(nuitTotal):'—'}</div>
+          <div style="font-size:${_tsfs};color:var(--text3)">heures</div>
+        </div>
+        <div style="height:0.5px;background:var(--border);margin:5px 0"></div>
+        <div data-col="brut" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:${_tpad};gap:2px;min-width:0" onclick="event.stopPropagation();openMergedMoisModal(${mym},4)">
+          <div style="font-size:${_tlfs};color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">Net</div>
+          ${(()=>{if(!(paye_tc.configured&&paye_tc.salQ&&paye_tc.heures))return '<div style="font-size:'+_tvfs+';font-weight:600;color:var(--text3);text-align:center">—</div><div style="font-size:'+_tsfs+';color:var(--text3)"></div>';const _net=calcNetPaye(paye_tc.total,paye_tc.vars.paniers,mym);return '<div style="font-size:'+_tvfs+';font-weight:600;color:var(--gold-pay);text-align:center">'+fmtEuro(_net.net)+'</div><div style="font-size:'+_tsfs+';color:var(--text3)">estimé</div>';})()}
+        </div>
       </div>
     </div>
   </div>`;
@@ -1758,6 +1759,9 @@ function calcAncYearsFromYM(entreeYM,ym){const eY=Math.floor(entreeYM/12),eM=ent
 function _getAncYrsForYM(ym){const pr=S.profile||{};if(pr.ancYears!=null&&pr.ancRefYM!=null){const anni=typeof pr.ancMoisAnni==='number'&&pr.ancMoisAnni>=0?pr.ancMoisAnni:-1;let yrs=pr.ancYears;if(anni>=0){const minYM=Math.min(pr.ancRefYM,ym),maxYM=Math.max(pr.ancRefYM,ym);let cnt=0;for(let y=Math.floor(minYM/12);y<=Math.floor(maxYM/12)+1;y++){const aym=y*12+anni;if(aym>minYM&&aym<=maxYM)cnt++;}yrs=ym>=pr.ancRefYM?yrs+cnt:yrs-cnt;}return Math.max(0,yrs);}if(pr.ancEntreeYM!=null)return calcAncYearsFromYM(pr.ancEntreeYM,ym);if(pr.ancYearsHistory&&pr.ancYearsHistory.length)return _getHistVal(pr.ancYearsHistory,pr.ancYears||0,ym);return pr.ancYears!=null?pr.ancYears:0;}
 function _getHistVal(hist,fb,ym){if(hist&&hist.length){let v=null;for(const e of hist)if(e.ym<=ym)v=e.v;if(v!==null)return v;}return fb;}
 function getPalierForYM(ym){return _getHistVal((S.profile||{}).palierHistory,(S.profile||{}).palierNum||0,ym);}
+function getGroupeForYM(ym){const pr=S.profile||{};return _getHistVal(pr.groupeHistory||[],pr.groupeClassif||0,ym);}
+function getPasTauxForYM(ym){const pr=S.profile||{};return _getHistVal(pr.pasTauxHistory||[],pr.pasTaux!=null?pr.pasTaux:5.9,ym);}
+function getSupFamilialForYM(ym){const pr=S.profile||{};return _getHistVal(pr.supFamilialHistory||[],pr.supFamilial||0,ym);}
 function getAncForYM(ym){const pr=S.profile||{};if(pr.ancYears!=null&&pr.ancRefYM!=null){const anni=typeof pr.ancMoisAnni==='number'&&pr.ancMoisAnni>=0?pr.ancMoisAnni:-1;let yrs=pr.ancYears;if(anni>=0){const minYM=Math.min(pr.ancRefYM,ym),maxYM=Math.max(pr.ancRefYM,ym);let cnt=0;for(let y=Math.floor(minYM/12);y<=Math.floor(maxYM/12)+1;y++){const aym=y*12+anni;if(aym>minYM&&aym<=maxYM)cnt++;}yrs=ym>=pr.ancRefYM?yrs+cnt:yrs-cnt;}return calcAncPrime(Math.max(0,yrs),ym);}if(pr.ancEntreeYM!=null)return calcAncPrime(calcAncYearsFromYM(pr.ancEntreeYM,ym),ym);if(pr.ancYearsHistory&&pr.ancYearsHistory.length){const y=_getHistVal(pr.ancYearsHistory,pr.ancYears||0,ym);return calcAncPrime(y,ym);}if(pr.ancYears!=null)return calcAncPrime(pr.ancYears,ym);return _getHistVal(pr.ancHistory,pr.primeAnciennete||0,ym);}
 function getHeuresForYM(ym){return _getHistVal((S.profile||{}).heuresHistory,(S.profile||{}).heuresMensuelles||151.67,ym);}
 function calcDimRHFerMinsMois(y,m){
@@ -1801,14 +1805,29 @@ function calcPayeMois(y,m){
   const prevTauxH=_prevHeur>0?Math.round(_prevBase/_prevHeur*100)/100:0;
   const vars=calcVariablesMois(prevY,prevM,prevTauxH);
   const _primesConv=getPrimesConvForYM(mym_cp);const _pcTotal=_primesConv.reduce(function(s,p){return s+p.montant;},0);
-  const gpe=calcGPE(pr.groupeClassif||0,mym_cp);
+  const gpe=calcGPE(getGroupeForYM(mym_cp),mym_cp);
   const pfaM=_pn>0?calcPFA(_pn,mym_cp):(pr.palierNum?calcPFA(pr.palierNum,mym_cp):190);
   let pfa=pr.pfaMensuelle?pfaM:(m===5||m===11?pfaM*6:0);
-  const totalFixes=_pcTotal+gpe+pfa;
+  const supFamilial=getSupFamilialForYM(mym_cp);
+  const totalFixes=_pcTotal+gpe+pfa+supFamilial;
   const primesCustom=getPrimesFixesCustomForYM(mym_cp);
   const totalPrimesCustom=primesCustom.reduce(function(s,p){return s+p.montant;},0);
   let compCP=0;if(m===0){let yv=0;for(let pm=0;pm<12;pm++)yv+=calcVariablesMois(y-1,pm).total;compCP=yv/10;}
-  return{base,salQ,salAnc,tauxH,heures,prevM,prevY,vars,primesConv:_primesConv,gpe,groupeClassif:pr.groupeClassif||0,pfa,pfaMensuelle:pr.pfaMensuelle,totalFixes,primesCustom,totalPrimesCustom,compCP,total:base+vars.total+totalFixes+totalPrimesCustom+compCP,configured:salQ>0||salAnc>0||heures>0};
+  return{base,salQ,salAnc,tauxH,heures,prevM,prevY,vars,primesConv:_primesConv,gpe,groupeClassif:getGroupeForYM(mym_cp),pfa,pfaMensuelle:pr.pfaMensuelle,totalFixes,primesCustom,totalPrimesCustom,compCP,total:base+vars.total+totalFixes+totalPrimesCustom+compCP,configured:salQ>0||salAnc>0||heures>0};
+}
+function calcNetPaye(brut,paniers,ym){
+  const r2=v=>Math.round(v*100)/100,PMSS=3925,ta=Math.min(brut,PMSS);
+  const c_incap=r2(ta*0.00616),c_sf=31.72,c_sta=r2(ta*0.00304);
+  const c_rp=r2(ta*0.069),c_rd=r2(brut*0.004),c_ag=r2(ta*0.0401);
+  const pat=r2(ta*(0.00924+0.00456))+47.57;
+  const cb=r2((brut+pat)*0.9825);
+  const c_cd=r2(cb*0.068),c_cnd=r2(cb*0.029);
+  const cot=r2(c_incap+c_sf+c_sta+c_rp+c_rd+c_ag+c_cd+c_cnd);
+  const ns=r2(brut-cot),pan_e=r2(paniers*7.50),nav=r2(ns+pan_e);
+  const pat_s=r2(47.57+ta*0.00456),ni=r2(brut-r2(cot-c_cnd)+pat_s);
+  const pas_t=getPasTauxForYM(ym!=null?ym:TODAY_YM)/100;
+  const pas=r2(ni*pas_t);
+  return{net:r2(nav-pas),brut,cot,pas,pasTaux:getPasTauxForYM(ym!=null?ym:TODAY_YM)};
 }
 function calcNuitMinShift(v){
   if(!v||!v.deb||!v.fin)return 0;
@@ -3736,13 +3755,20 @@ function openMergedMoisModal(mym,tab){
       if(v.reel>0)varLines+=_row('P. réal ('+v.reel+' × 34,76 €)',v.supReal,'var(--amber)');
       if(v.coord>0)varLines+=_row('P. coord ('+v.coord+' × 17,38 €)',v.supCoord,'var(--amber)');
       if(!varLines)varLines='<div style="font-size:11px;color:var(--text3);padding:3px 0">Aucun.</div>';
+      const _netCalc=calcNetPaye(paye.total,v.paniers,mym);
       payeSection=
         _tabSpacer
         +'<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0">'
         +'<span style="font-size:11px;color:var(--text3)">brut estimé</span>'
-        +'<b style="font-size:15px;color:var(--gold-pay)">'+_fe(paye.total)+'</b>'
+        +'<b style="font-size:13px;color:var(--text2)">'+_fe(paye.total)+'</b>'
         +'</div>'
-        +(v.paniers>0?'<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;margin-bottom:8px"><span style="font-size:11px;color:var(--text3)">Paniers '+v.paniers+' × 7,50 € <span style="font-size:9px">(hors brut)</span></span><b style="font-size:11px;color:var(--amber)">'+_fe(v.supPaniers)+'</b></div>':'<div style="margin-bottom:8px"></div>')
+        +(v.paniers>0?'<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0"><span style="font-size:11px;color:var(--text3)">Paniers '+v.paniers+' × 7,50 € <span style="font-size:9px">(exonéré)</span></span><b style="font-size:11px;color:var(--amber)">'+_fe(v.supPaniers)+'</b></div>':'')
+        +'<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0"><span style="font-size:11px;color:var(--text3)">cotisations</span><b style="font-size:11px;color:var(--red)">−'+_fe(_netCalc.cot)+'</b></div>'
+        +'<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0"><span style="font-size:11px;color:var(--text3)">PAS ('+_netCalc.pasTaux+' %)</span><b style="font-size:11px;color:var(--red)">−'+_fe(_netCalc.pas)+'</b></div>'
+        +'<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-top:1px solid var(--border);margin-top:4px;margin-bottom:8px">'
+        +'<span style="font-size:12px;font-weight:600">net à payer estimé</span>'
+        +'<b style="font-size:16px;color:var(--gold-pay)">'+_fe(_netCalc.net)+'</b>'
+        +'</div>'
         +'<div class="sep" style="margin-bottom:10px"></div>'
         +'<div class="btit" style="margin-bottom:4px">Salaire de base</div>'
         +'<div style="font-size:11px">'+_rowb('Qualification',paye.salQ)+_rowb('Ancienneté',paye.salAnc)+_sub('Sous-total',paye.base)+'</div>'
@@ -4357,7 +4383,7 @@ function renderProfilesDropdown(){
         +'</div>'
         +'<div class="mr2">'
         +'<div>'+_lbl('Contrat (%)')+'<select id="ps-heures" style="'+_inpStyle+'">'+(function(){var o='<option value="">—</option>';for(var p=5;p<=100;p+=5){var h=Math.round(p*151.67/100*100)/100;o+='<option value="'+p+'"'+(p===Math.round(parseFloat(_curPct)||0)?' selected':'')+'>'+p+'% | '+h.toFixed(2).replace('.',',')+' h</option>';}return o;})()+'</select></div>'
-        +'<div>'+_lbl('Groupe')+'<select id="ps-groupe" style="'+_inpStyle+'">'+'<option value="">—</option>'+[1,2,3,4,5,6,7,8,9].map(function(g){return'<option value="'+g+'"'+(g===(pr.profile.groupeClassif||0)?' selected':'')+'>Gr. '+g+' | '+calcGPE(g,TODAY_YM)+' €</option>';}).join('')+'</select></div>'
+        +'<div>'+_lbl('Groupe')+'<select id="ps-groupe" onchange="(function(v){var _gv=parseInt(v);S.profile.groupeClassif=(!isNaN(_gv)&&_gv>=1)?_gv:0;saveState();})(this.value)" style="'+_inpStyle+'">'+'<option value="">—</option>'+[1,2,3,4,5,6,7,8,9].map(function(g){return'<option value="'+g+'"'+(g===(getGroupeForYM(TODAY_YM)||0)?' selected':'')+'>Gr. '+g+' | '+calcGPE(g,TODAY_YM)+' €</option>';}).join('')+'</select></div>'
         +'</div>'
         +'<div class="srow" style="padding:5px 0"><div class="slbl" style="font-size:12px">PFA mensualisée</div><label class="tgl"><input type="checkbox" id="ps-pfamens"'+(pr.profile.pfaMensuelle?' checked':'')+'><span class="tgl-s"></span></label></div>'
         +'</div></div>'
@@ -4513,24 +4539,24 @@ function openSettingsModal(tab){
   for(var ai=0;ai<=50;ai++){var al=ai===0?'0 an':(ai===1?'1 an':ai+' ans');ancOpts+='<option value="'+ai+'"'+((_curAncYears!==''&&ai===Math.round(parseFloat(_curAncYears)||0))?' selected':'')+'>'+al+'</option>';}
   var heurOpts='<option value="">—</option>';
   for(var hp=5;hp<=100;hp+=5){heurOpts+='<option value="'+hp+'"'+(hp===Math.round(parseFloat(_curPct)||0)?' selected':'')+'>'+hp+'%</option>';}
-  var grpOpts='<option value="">—</option>';
-  [1,2,3,4,5,6,7,8,9].forEach(function(g){grpOpts+='<option value="'+g+'"'+(g===(pr.profile.groupeClassif||0)?' selected':'')+'>Gr. '+g+'</option>';});
   var _selR='width:120px;height:32px;box-sizing:border-box;padding:0 6px;border:0.5px solid var(--border);border-radius:var(--r);font-size:12px;background:var(--bg0);color:var(--text)';
   var _subV='style="font-size:10px;color:var(--text3);text-align:right;min-width:52px;flex-shrink:0"';
   var _rCol='style="display:flex;align-items:center;gap:6px"';
   var _palLbl=_curPalier?(_curPalier==='christophe'?fmtEuro(100000):fmtEuro(calcPalierSalaire(parseInt(_curPalier)))):'';
   var _ancLbl=_curAncYears!==''?fmtEuro(calcAncPrime(parseFloat(_curAncYears))):'';
   var _heurLbl=_curHeur?(Math.round(_curHeur*100)/100).toFixed(2).replace('.',',')+' h':'';
-  var _grpLbl=pr.profile.groupeClassif?calcGPE(pr.profile.groupeClassif,TODAY_YM)+' €':'';
+  var _curGrp=getGroupeForYM(TODAY_YM);
+  var _grpLbl=_curGrp?('Gr. '+_curGrp+' | '+calcGPE(_curGrp,TODAY_YM)+' €'):'—';
+  var _curPasTaux=getPasTauxForYM(TODAY_YM);
+  var _curSft=getSupFamilialForYM(TODAY_YM);
   var _oncPal='onchange="window._sMP=true;openPalierModal()"';
   var _oncAnc='onchange="window._sMP=true;openAncModal()"';
   var _oncHeur='onchange="window._sMP=true;openContratModal()"';
-  var _oncGrp='onchange="saveProfileFromDD('+_pidLit+');var _v=this.value,_l=document.getElementById(\'ps-groupe-lbl\');if(_l)_l.textContent=_v?calcGPE(+_v,TODAY_YM)+\' €\':\'\';"';
   var tab1=''
     +'<div class="srow" '+_sr+'><div class="slbl">Palier'+_inf('salaire de qualification')+'</div><div '+_rCol+'><div id="ps-palier-lbl" '+_subV+'>'+_palLbl+'</div><select id="ps-palier" '+_oncPal+' style="'+_selR+'">'+palierOpts+'</select></div></div>'
     +'<div class="srow" '+_sr+'><div class="slbl">Ancienneté'+_inf('prime mensuelle')+'</div><div '+_rCol+'><div id="ps-salanc-lbl" '+_subV+'>'+_ancLbl+'</div><select id="ps-salanc" '+_oncAnc+' style="'+_selR+'">'+ancOpts+'</select></div></div>'
     +'<div class="srow" '+_sr+'><div class="slbl">Contrat'+_inf('taux de travail')+'</div><div '+_rCol+'><div id="ps-heures-lbl" '+_subV+'>'+_heurLbl+'</div><select id="ps-heures" '+_oncHeur+' style="'+_selR+'">'+heurOpts+'</select></div></div>'
-    +'<div class="srow" '+_sr+'><div class="slbl">Groupe'+_inf('indemnité GPE')+'</div><div '+_rCol+'><div id="ps-groupe-lbl" '+_subV+'>'+_grpLbl+'</div><select id="ps-groupe" '+_oncGrp+' style="'+_selR+'">'+grpOpts+'</select></div></div>'
+    +'<div class="srow" '+_sr+'><div class="slbl">Groupe'+_inf('indemnité GPE')+'</div><div '+_rCol+'><div id="ps-groupe-lbl" '+_subV+'>'+_grpLbl+'</div><button onclick="window._sMP=true;openGroupeModal()" style="'+_selR+';cursor:pointer;text-align:center">Modifier</button></div></div>'
     +(function(){
       var _m=!!pr.profile.pfaMensuelle;
       var _tx=_m?'translateX(0)':'translateX(calc(100% + 4px))';
@@ -4543,6 +4569,23 @@ function openSettingsModal(tab){
         +'<span class="pfa-lbl" style="flex:1;text-align:center;font-size:10px;line-height:32px;position:relative;z-index:1;'+_s0+'">Mensuel</span>'
         +'<span class="pfa-lbl" style="flex:1;text-align:center;font-size:10px;line-height:32px;position:relative;z-index:1;'+_s1+'">Semestriel</span>'
         +'</div></div>';
+    })()
+    +_sh+'Paie nette</div>'
+    +'<div class="srow" '+_sr+'><div class="slbl">Taux PAS'+_inf('prélèvement à la source')+'</div><div '+_rCol+'><div id="ps-pas-lbl" '+_subV+'>'+_curPasTaux.toFixed(1).replace('.',',')+' %</div><button onclick="window._sMP=true;openPasTauxModal()" style="'+_selR+';cursor:pointer;text-align:center">Modifier</button></div></div>'
+    +'<div class="srow" '+_sr+'><div class="slbl">Suppl. familial'+_inf('SFT mensuel brut')+'</div><div '+_rCol+'><div id="ps-sft-lbl" '+_subV+'>'+(_curSft>0?fmtEuro(_curSft):'—')+'</div><button onclick="window._sMP=true;openSupFamilialModal()" style="'+_selR+';cursor:pointer;text-align:center">Modifier</button></div></div>'
+    +_sh+'Primes fixes</div>'
+    +(function(){
+      var pfc=pr.profile.primesFixesCustom||[];
+      var rows=pfc.filter(function(p){return p.finYM==null||p.finYM>=TODAY_YM;}).map(function(p){
+        return '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:0.5px solid var(--border)">'
+          +'<span style="font-size:12px;color:var(--text2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+p.label+'</span>'
+          +'<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">'
+          +'<span style="font-size:12px;color:var(--amber)">+'+fmtEuro(p.montant)+'</span>'
+          +'<button onclick="openDeletePrimeFixeModal(\''+p.id+'\',TODAY_YM);window._pfFromSettings=true" style="width:20px;height:20px;border-radius:50%;border:0.5px solid var(--border);background:transparent;color:var(--red);cursor:pointer;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center">×</button>'
+          +'</div></div>';
+      }).join('');
+      return (rows?'<div style="margin-bottom:8px">'+rows+'</div>':'')
+        +'<button onclick="openAddPrimeFixeModal(TODAY_YM,true)" style="width:100%;height:32px;font-size:12px;background:transparent;color:var(--blue);border:0.5px dashed var(--blue);border-radius:var(--r);cursor:pointer;font-family:var(--font)">+ Ajouter une prime</button>';
     })();
   // ── TAB 2: HEURES ──
   var _todayEff=settingsForYM(TODAY_YM);
@@ -4645,7 +4688,6 @@ function saveProfileFromDD(pid){
   const _psheur=document.getElementById('ps-heures'),_heurDepEl=document.getElementById('ps-heur-dep');
   if(_psheur){const _pct=parseFloat(_psheur.value);if(_pct>0){const _hv=Math.round(_pct*151.67/100*100)/100;pr.profile.heuresMensuelles=_hv;const _pd4=_pd(_heurDepEl&&_heurDepEl.value);if(_pd4!==null){if(!pr.profile.heuresHistory)pr.profile.heuresHistory=[];_histUps(pr.profile.heuresHistory,_pd4,_hv);}}}
   const _pfamens=document.getElementById('ps-pfamens');if(_pfamens)pr.profile.pfaMensuelle=_pfamens.checked;
-  const _grpEl=document.getElementById('ps-groupe');if(_grpEl){const _gv=parseInt(_grpEl.value);pr.profile.groupeClassif=(!isNaN(_gv)&&_gv>=1)?_gv:0;}
   const newLine=pr.profile.anchorLine;
   _profs[pid]=pr;if(pid===_aid)S=pr;saveState();render();
   const _hpn=document.getElementById('hdr-profile-name');if(_hpn&&S.profile)_hpn.textContent=S.profile.name||'Profil';
@@ -4725,7 +4767,94 @@ function openContratModal(){
 function _setContratResult(pct,date){var f=_depField;_depField=null;var _fn=!!window._sMP;window._sMP=false;if(pct>0&&f){var i=document.getElementById(f.inputId),d=document.getElementById(f.depId);if(i)i.value=pct;if(d)d.value=date||'';if(_fn){var _pr=_profs[_aid];if(_pr){var _hv=Math.round(pct*151.67/100*100)/100;_pr.profile.heuresMensuelles=_hv;if(date){var _p2=date.split('/'),_m2=parseInt(_p2[0]),_y2=parseInt(_p2[1]);if(!isNaN(_m2)&&!isNaN(_y2)){var _ym2=_y2*12+(_m2-1);if(!_pr.profile.heuresHistory)_pr.profile.heuresHistory=[];var _ix=_pr.profile.heuresHistory.findIndex(function(e){return e.ym===_ym2;});if(_ix>=0)_pr.profile.heuresHistory[_ix].v=_hv;else _pr.profile.heuresHistory.push({ym:_ym2,v:_hv});_pr.profile.heuresHistory.sort(function(a,b){return a.ym-b.ym;});}}S=_profs[_aid]=_pr;saveState();render();}openSettingsModal(1);}else{saveProfileFromDD(_aid);closeModal();}}else{if(_fn)openSettingsModal(1);else closeModal();}}
 function _confirmContratToujours(){_setContratResult(parseFloat((document.getElementById('_cont-pct')||{}).value)||0,'');}
 function _confirmContratDate(){var s=_depGetDate();if(s)_setContratResult(parseFloat((document.getElementById('_cont-pct')||{}).value)||0,s);}
-function openAddPrimeFixeModal(ym){
+function openGroupeModal(){
+  var curG=getGroupeForYM(TODAY_YM);
+  var now=new Date();
+  _lockBodyScroll();
+  var grpSelect='<select id="_grp-n" style="flex:1;height:48px;box-sizing:border-box;padding:0 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:16px;background:var(--bg2);color:var(--text)">'
+    +'<option value="">—</option>'
+    +[1,2,3,4,5,6,7,8,9].map(function(g){return'<option value="'+g+'"'+(g===curG?' selected':'')+'>Gr. '+g+' | '+calcGPE(g,TODAY_YM)+' €</option>';}).join('')
+    +'</select>';
+  document.getElementById('modal-root').innerHTML=
+    '<div class="overlay" onclick="if(event.target===this)openSettingsModal(1)">'
+    +'<div class="sheet"><div class="sh"></div><div class="st">Groupe</div>'
+    +grpSelect
+    +'<div style="height:14px"></div>'
+    +'<button class="mb" style="width:100%;height:44px;font-size:14px;background:var(--bg3);color:var(--text);border:0.5px solid var(--border);border-radius:var(--r);margin-bottom:10px" onclick="_confirmGroupeToujours()">Depuis toujours</button>'
+    +'<button id="_dep-date-btn" class="mb" style="width:100%;height:44px;font-size:14px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);margin-bottom:4px" onclick="var d=document.getElementById(\'_dep-date-pick\'),b=this;if(d)d.style.display=\'block\';b.style.display=\'none\'">Depuis une date</button>'
+    +_mkDepPick(now.getMonth()+1,now.getFullYear(),'_confirmGroupeDate')
+    +'<button class="mcancel" onclick="openSettingsModal(1)">Annuler</button>'
+    +'</div></div>';
+  window._sMP=true;
+}
+function _setGroupeResult(g,date){
+  window._sMP=false;
+  var _pr=_profs[_aid];if(!_pr||!g)return openSettingsModal(1);
+  _pr.profile.groupeClassif=g;
+  if(date){var _p=date.split('/'),_m=parseInt(_p[0]),_y=parseInt(_p[1]);if(!isNaN(_m)&&!isNaN(_y)){var _ym=_y*12+(_m-1);if(!_pr.profile.groupeHistory)_pr.profile.groupeHistory=[];var _ix=_pr.profile.groupeHistory.findIndex(function(e){return e.ym===_ym;});if(_ix>=0)_pr.profile.groupeHistory[_ix].v=g;else _pr.profile.groupeHistory.push({ym:_ym,v:g});_pr.profile.groupeHistory.sort(function(a,b){return a.ym-b.ym;});}}
+  var _ddG=document.getElementById('ps-groupe');if(_ddG)_ddG.value=g;
+  S=_profs[_aid]=_pr;saveState();render();openSettingsModal(1);
+}
+function _confirmGroupeToujours(){_setGroupeResult(parseInt((document.getElementById('_grp-n')||{}).value)||0,'');}
+function _confirmGroupeDate(){var s=_depGetDate();if(s)_setGroupeResult(parseInt((document.getElementById('_grp-n')||{}).value)||0,s);}
+function openPasTauxModal(){
+  var curT=getPasTauxForYM(TODAY_YM);
+  var now=new Date();
+  _lockBodyScroll();
+  document.getElementById('modal-root').innerHTML=
+    '<div class="overlay" onclick="if(event.target===this)openSettingsModal(1)">'
+    +'<div class="sheet"><div class="sh"></div><div class="st">Taux PAS</div>'
+    +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+    +'<input id="_pas-t" type="number" min="0" max="50" step="0.1" value="'+curT+'" placeholder="5.9" style="flex:1;height:48px;box-sizing:border-box;padding:0 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:20px;background:var(--bg2);color:var(--text)">'
+    +'<span style="font-size:16px;color:var(--text3)">%</span>'
+    +'</div>'
+    +'<div style="height:14px"></div>'
+    +'<button class="mb" style="width:100%;height:44px;font-size:14px;background:var(--bg3);color:var(--text);border:0.5px solid var(--border);border-radius:var(--r);margin-bottom:10px" onclick="_confirmPasTauxToujours()">Depuis toujours</button>'
+    +'<button id="_dep-date-btn" class="mb" style="width:100%;height:44px;font-size:14px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);margin-bottom:4px" onclick="var d=document.getElementById(\'_dep-date-pick\'),b=this;if(d)d.style.display=\'block\';b.style.display=\'none\'">Depuis une date</button>'
+    +_mkDepPick(now.getMonth()+1,now.getFullYear(),'_confirmPasTauxDate')
+    +'<button class="mcancel" onclick="openSettingsModal(1)">Annuler</button>'
+    +'</div></div>';
+  window._sMP=true;
+}
+function _setPasTauxResult(t,date){
+  window._sMP=false;
+  var _pr=_profs[_aid];if(!_pr||isNaN(t)||t<0||t>50)return openSettingsModal(1);
+  _pr.profile.pasTaux=t;
+  if(date){var _p=date.split('/'),_m=parseInt(_p[0]),_y=parseInt(_p[1]);if(!isNaN(_m)&&!isNaN(_y)){var _ym=_y*12+(_m-1);if(!_pr.profile.pasTauxHistory)_pr.profile.pasTauxHistory=[];var _ix=_pr.profile.pasTauxHistory.findIndex(function(e){return e.ym===_ym;});if(_ix>=0)_pr.profile.pasTauxHistory[_ix].v=t;else _pr.profile.pasTauxHistory.push({ym:_ym,v:t});_pr.profile.pasTauxHistory.sort(function(a,b){return a.ym-b.ym;});}}
+  S=_profs[_aid]=_pr;saveState();render();openSettingsModal(1);
+}
+function _confirmPasTauxToujours(){_setPasTauxResult(parseFloat((document.getElementById('_pas-t')||{}).value),'');}
+function _confirmPasTauxDate(){var s=_depGetDate();if(s)_setPasTauxResult(parseFloat((document.getElementById('_pas-t')||{}).value),s);}
+function openSupFamilialModal(){
+  var curSft=getSupFamilialForYM(TODAY_YM);
+  var now=new Date();
+  _lockBodyScroll();
+  document.getElementById('modal-root').innerHTML=
+    '<div class="overlay" onclick="if(event.target===this)openSettingsModal(1)">'
+    +'<div class="sheet"><div class="sh"></div><div class="st">Supplément familial</div>'
+    +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+    +'<input id="_sft-v" type="number" min="0" step="0.01" value="'+(curSft||'')+'" placeholder="0" style="flex:1;height:48px;box-sizing:border-box;padding:0 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:20px;background:var(--bg2);color:var(--text)">'
+    +'<span style="font-size:16px;color:var(--text3)">€</span>'
+    +'</div>'
+    +'<div style="height:14px"></div>'
+    +'<button class="mb" style="width:100%;height:44px;font-size:14px;background:var(--bg3);color:var(--text);border:0.5px solid var(--border);border-radius:var(--r);margin-bottom:10px" onclick="_confirmSupFamilialToujours()">Depuis toujours</button>'
+    +'<button id="_dep-date-btn" class="mb" style="width:100%;height:44px;font-size:14px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);margin-bottom:4px" onclick="var d=document.getElementById(\'_dep-date-pick\'),b=this;if(d)d.style.display=\'block\';b.style.display=\'none\'">Depuis une date</button>'
+    +_mkDepPick(now.getMonth()+1,now.getFullYear(),'_confirmSupFamilialDate')
+    +'<button class="mcancel" onclick="openSettingsModal(1)">Annuler</button>'
+    +'</div></div>';
+  window._sMP=true;
+}
+function _setSupFamilialResult(v,date){
+  window._sMP=false;
+  var _pr=_profs[_aid];if(!_pr||isNaN(v)||v<0)return openSettingsModal(1);
+  _pr.profile.supFamilial=v;
+  if(date){var _p=date.split('/'),_m=parseInt(_p[0]),_y=parseInt(_p[1]);if(!isNaN(_m)&&!isNaN(_y)){var _ym=_y*12+(_m-1);if(!_pr.profile.supFamilialHistory)_pr.profile.supFamilialHistory=[];var _ix=_pr.profile.supFamilialHistory.findIndex(function(e){return e.ym===_ym;});if(_ix>=0)_pr.profile.supFamilialHistory[_ix].v=v;else _pr.profile.supFamilialHistory.push({ym:_ym,v:v});_pr.profile.supFamilialHistory.sort(function(a,b){return a.ym-b.ym;});}}
+  S=_profs[_aid]=_pr;saveState();render();openSettingsModal(1);
+}
+function _confirmSupFamilialToujours(){_setSupFamilialResult(parseFloat((document.getElementById('_sft-v')||{}).value)||0,'');}
+function _confirmSupFamilialDate(){var s=_depGetDate();if(s)_setSupFamilialResult(parseFloat((document.getElementById('_sft-v')||{}).value)||0,s);}
+function openAddPrimeFixeModal(ym,fromSettings){
+  window._pfFromSettings=!!fromSettings;
   var y=Math.floor(ym/12),m=ym%12;
   _lockBodyScroll();
   document.getElementById('modal-root').innerHTML=
