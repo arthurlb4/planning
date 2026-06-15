@@ -1982,7 +1982,8 @@ function calcPayeMois(y,m){
   const gpe=calcGPE(pr.groupeClassif||0,mym_cp);
   const pfaM=_pn>0?calcPFA(_pn,mym_cp):(pr.palierNum?calcPFA(pr.palierNum,mym_cp):190);
   let pfa=pr.pfaMensuelle?pfaM:(m===5||m===11?pfaM*6:0);
-  const totalFixes=_pcTotal+gpe+pfa;
+  const supFamilial=pr.supFamilial||0;
+  const totalFixes=_pcTotal+gpe+pfa+supFamilial;
   const primesCustom=getPrimesFixesCustomForYM(mym_cp);
   const totalPrimesCustom=primesCustom.reduce(function(s,p){return s+p.montant;},0);
   let compCP=0;if(m===0){let yv=0;for(let pm=0;pm<12;pm++)yv+=calcVariablesMois(y-1,pm).total;compCP=yv/10;}
@@ -4898,6 +4899,23 @@ function openSettingsModal(tab){
         +'<span class="pfa-lbl" style="flex:1;text-align:center;font-size:10px;line-height:32px;position:relative;z-index:1;'+_s0+'">Mensuel</span>'
         +'<span class="pfa-lbl" style="flex:1;text-align:center;font-size:10px;line-height:32px;position:relative;z-index:1;'+_s1+'">Semestriel</span>'
         +'</div></div>';
+    })()
+    +_sh+'Paie nette</div>'
+    +'<div class="srow" '+_sr+'><div class="slbl">Taux PAS'+_inf('prélèvement à la source')+'</div><div '+_rCol+'><input id="ps-pas-taux" type="number" min="0" max="50" step="0.1" '+_onb+' value="'+(pr.profile.pasTaux!=null?pr.profile.pasTaux:5.9)+'" style="'+_inpR+';width:120px;text-align:right"><span style="font-size:12px;color:var(--text3);margin-left:4px">%</span></div></div>'
+    +'<div class="srow" '+_sr+'><div class="slbl">Suppl. familial'+_inf('SFT mensuel brut')+'</div><div '+_rCol+'><input id="ps-sup-fam" type="number" min="0" step="0.01" '+_onb+' value="'+(pr.profile.supFamilial||'')+'" placeholder="0" style="'+_inpR+';width:120px;text-align:right"><span style="font-size:12px;color:var(--text3);margin-left:4px">€</span></div></div>'
+    +_sh+'Primes fixes</div>'
+    +(function(){
+      var pfc=pr.profile.primesFixesCustom||[];
+      var rows=pfc.filter(function(p){return p.finYM==null||p.finYM>=TODAY_YM;}).map(function(p){
+        return '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:0.5px solid var(--border)">'
+          +'<span style="font-size:12px;color:var(--text2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+p.label+'</span>'
+          +'<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">'
+          +'<span style="font-size:12px;color:var(--amber)">+'+fmtEuro(p.montant)+'</span>'
+          +'<button onclick="openDeletePrimeFixeModal(\''+p.id+'\',TODAY_YM);window._pfFromSettings=true" style="width:20px;height:20px;border-radius:50%;border:0.5px solid var(--border);background:transparent;color:var(--red);cursor:pointer;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center">×</button>'
+          +'</div></div>';
+      }).join('');
+      return (rows?'<div style="margin-bottom:8px">'+rows+'</div>':'')
+        +'<button onclick="openAddPrimeFixeModal(TODAY_YM,true)" style="width:100%;height:32px;font-size:12px;background:transparent;color:var(--blue);border:0.5px dashed var(--blue);border-radius:var(--r);cursor:pointer;font-family:var(--font)">+ Ajouter une prime</button>';
     })();
   // ── TAB 2: HEURES ──
   var _todayEff=settingsForYM(TODAY_YM);
@@ -5001,6 +5019,8 @@ function saveProfileFromDD(pid){
   if(_psheur){const _pct=parseFloat(_psheur.value);if(_pct>0){const _hv=Math.round(_pct*151.67/100*100)/100;pr.profile.heuresMensuelles=_hv;const _pd4=_pd(_heurDepEl&&_heurDepEl.value);if(_pd4!==null){if(!pr.profile.heuresHistory)pr.profile.heuresHistory=[];_histUps(pr.profile.heuresHistory,_pd4,_hv);}}}
   const _pfamens=document.getElementById('ps-pfamens');if(_pfamens)pr.profile.pfaMensuelle=_pfamens.checked;
   const _grpEl=document.getElementById('ps-groupe');if(_grpEl){const _gv=parseInt(_grpEl.value);pr.profile.groupeClassif=(!isNaN(_gv)&&_gv>=1)?_gv:0;}
+  const _pasEl=document.getElementById('ps-pas-taux');if(_pasEl&&_pasEl.value!==''){const _pv=parseFloat(_pasEl.value);if(!isNaN(_pv)&&_pv>=0&&_pv<=50)pr.profile.pasTaux=_pv;}
+  const _sfEl=document.getElementById('ps-sup-fam');if(_sfEl&&_sfEl.value!==''){const _sv=parseFloat(_sfEl.value);if(!isNaN(_sv)&&_sv>=0)pr.profile.supFamilial=_sv;}else if(_sfEl&&_sfEl.value===''){pr.profile.supFamilial=0;}
   const newLine=pr.profile.anchorLine;
   _profs[pid]=pr;if(pid===_aid)S=pr;saveState();render();
   const _hpn=document.getElementById('hdr-profile-name');if(_hpn&&S.profile)_hpn.textContent=S.profile.name||'Profil';
@@ -5080,7 +5100,8 @@ function openContratModal(){
 function _setContratResult(pct,date){var f=_depField;_depField=null;var _fn=!!window._sMP;window._sMP=false;if(pct>0&&f){var i=document.getElementById(f.inputId),d=document.getElementById(f.depId);if(i)i.value=pct;if(d)d.value=date||'';if(_fn){var _pr=_profs[_aid];if(_pr){var _hv=Math.round(pct*151.67/100*100)/100;_pr.profile.heuresMensuelles=_hv;if(date){var _p2=date.split('/'),_m2=parseInt(_p2[0]),_y2=parseInt(_p2[1]);if(!isNaN(_m2)&&!isNaN(_y2)){var _ym2=_y2*12+(_m2-1);if(!_pr.profile.heuresHistory)_pr.profile.heuresHistory=[];var _ix=_pr.profile.heuresHistory.findIndex(function(e){return e.ym===_ym2;});if(_ix>=0)_pr.profile.heuresHistory[_ix].v=_hv;else _pr.profile.heuresHistory.push({ym:_ym2,v:_hv});_pr.profile.heuresHistory.sort(function(a,b){return a.ym-b.ym;});}}S=_profs[_aid]=_pr;saveState();render();}openSettingsModal(1);}else{saveProfileFromDD(_aid);closeModal();}}else{if(_fn)openSettingsModal(1);else closeModal();}}
 function _confirmContratToujours(){_setContratResult(parseFloat((document.getElementById('_cont-pct')||{}).value)||0,'');}
 function _confirmContratDate(){var s=_depGetDate();if(s)_setContratResult(parseFloat((document.getElementById('_cont-pct')||{}).value)||0,s);}
-function openAddPrimeFixeModal(ym){
+function openAddPrimeFixeModal(ym,fromSettings){
+  window._pfFromSettings=!!fromSettings;
   var y=Math.floor(ym/12),m=ym%12;
   _lockBodyScroll();
   document.getElementById('modal-root').innerHTML=
@@ -5107,7 +5128,9 @@ function _confirmAddPrimeFixe(ym){
   if(isNaN(montant)||montant<=0){alert('Montant invalide.');return;}
   if(!S.profile.primesFixesCustom)S.profile.primesFixesCustom=[];
   S.profile.primesFixesCustom.push({id:'pfc_'+Date.now(),label:label,montant:montant,debutYM:window._apfDebut||ym,finYM:null});
-  saveState();closeModal();openMergedMoisModal(ym,4);
+  saveState();render();
+  if(window._pfFromSettings){window._pfFromSettings=false;openSettingsModal(1);}
+  else{closeModal();openMergedMoisModal(ym,4);}
 }
 function openDeletePrimeFixeModal(id,ym){
   var primes=S.profile&&S.profile.primesFixesCustom||[];
@@ -5139,7 +5162,9 @@ function _deletePrimeFixeFrom(id,ym,fromYM){
       }
     }
   }
-  saveState();closeModal();openMergedMoisModal(ym,4);
+  saveState();render();
+  if(window._pfFromSettings){window._pfFromSettings=false;openSettingsModal(1);}
+  else{closeModal();openMergedMoisModal(ym,4);}
 }
 function openDepuisModal(inputId,btnId){
   _depField={inputId:inputId,btnId:btnId};
