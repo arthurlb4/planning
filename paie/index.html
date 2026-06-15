@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Simulateur de paie — Radio France</title>
+<style>
+:root {
+  --bg: #161616;
+  --s1: #1e1e1e;
+  --s2: #252525;
+  --border: #2e2e2e;
+  --text: #e2e2e2;
+  --t2: #999;
+  --t3: #555;
+  --blue: #5b9cf6;
+  --green: #63a022;
+  --red: #d94040;
+  --orange: #d48000;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 system-ui, sans-serif;
+  padding: 24px 16px 48px;
+  max-width: 600px;
+  margin: 0 auto;
+}
+h1 { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
+.subtitle { color: var(--t2); font-size: 12px; margin-bottom: 24px; }
+
+/* --- sections --- */
+.card {
+  background: var(--s1);
+  border: 0.5px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+.card-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--t2);
+  margin-bottom: 12px;
+}
+
+/* --- input rows --- */
+.irow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 0.5px solid var(--border);
+}
+.irow:last-child { border-bottom: none; }
+.irow label { flex: 1; color: var(--t2); font-size: 13px; }
+.irow .unit { color: var(--t3); font-size: 11px; margin-right: 4px; }
+.irow input[type=number] {
+  width: 90px;
+  background: var(--s2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-size: 13px;
+  padding: 5px 10px;
+  text-align: right;
+  -moz-appearance: textfield;
+}
+.irow input::-webkit-inner-spin-button { display: none; }
+
+/* --- result rows --- */
+.rrow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 5px 0;
+  border-bottom: 0.5px solid var(--border);
+  gap: 8px;
+  font-size: 13px;
+}
+.rrow:last-child { border-bottom: none; }
+.rrow .lbl { color: var(--t2); flex: 1; }
+.rrow .sub { color: var(--t3); font-size: 11px; }
+.rrow .amt { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.neg { color: var(--red); }
+.pos { color: var(--green); }
+.neutral { color: var(--text); }
+.dim { color: var(--t3); }
+
+.sep-line {
+  border-top: 1px solid var(--border);
+  margin: 8px 0;
+}
+.total-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 8px 0 0;
+  gap: 8px;
+}
+.total-row .lbl { font-weight: 600; font-size: 14px; }
+.total-row .amt { font-weight: 700; font-size: 20px; font-variant-numeric: tabular-nums; color: var(--blue); }
+
+.badge {
+  display: inline-block;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-weight: 500;
+  vertical-align: middle;
+  margin-left: 4px;
+}
+.badge-pct { background: rgba(91,156,246,.12); color: var(--blue); }
+
+.hint { font-size: 11px; color: var(--t3); margin-top: 10px; text-align: center; }
+.fixed-list { font-size: 12px; color: var(--t3); line-height: 2; }
+.fixed-list span { color: var(--t2); }
+</style>
+</head>
+<body>
+
+<h1>Simulateur de paie</h1>
+<p class="subtitle">Radio France — Arthur Lebreton · CDI 5B · Taux PAS 5,9 %</p>
+
+<div class="card">
+  <div class="card-title">Éléments variables du mois</div>
+
+  <div class="irow">
+    <label>Heures nuit majorées 40 %</label>
+    <span class="unit">h</span>
+    <input type="number" id="nuit" value="0" step="0.5" min="0">
+  </div>
+  <div class="irow">
+    <label>Vacations antenne info</label>
+    <span class="unit">vac.</span>
+    <input type="number" id="antenne" value="0" step="1" min="0">
+  </div>
+  <div class="irow">
+    <label>Ind. sup. vacations</label>
+    <span class="unit">vac.</span>
+    <input type="number" id="supvac" value="0" step="1" min="0">
+  </div>
+  <div class="irow">
+    <label>Paniers du mois</label>
+    <span class="unit">×</span>
+    <input type="number" id="paniers" value="0" step="1" min="0">
+  </div>
+  <div class="irow">
+    <label>Rappel brut mois précédent</label>
+    <span class="unit">€</span>
+    <input type="number" id="rappel" value="0" step="0.01" min="0">
+  </div>
+  <div class="irow">
+    <label>Rappel paniers mois précédent</label>
+    <span class="unit">×</span>
+    <input type="number" id="rappelpan" value="0" step="1" min="0">
+  </div>
+</div>
+
+<div class="card" id="result"></div>
+
+<div class="card">
+  <div class="card-title">Éléments fixes (contrat)</div>
+  <div class="fixed-list">
+    Salaire de qualification <span>2 187,29 €</span><br>
+    Prime ancienneté (8 %) <span>167,34 €</span><br>
+    Indemnité mensuelle GPE <span>154,00 €</span><br>
+    PFA NAC mensuel <span>190,00 €</span><br>
+    Mesure NAO CDI 2023 <span>130,00 €</span><br>
+    Mesure NAO CDI 2024 <span>55,00 €</span>
+  </div>
+</div>
+
+<p class="hint">Calcul basé sur les taux du bulletin avril 2026 · PMSS 2026 : 3 925 €/mois<br>Précision : ± 3 € (approximation base CSG)</p>
+
+<script>
+// ─── Constantes ───────────────────────────────────────────────────────────────
+const PMSS = 3925;         // Plafond mensuel SS 2026
+const PAS  = 5.9 / 100;   // Taux PAS personnalisé
+
+// Salaire brut fixe mensuel
+const BRUT_FIXE = 2187.29 + 167.34 + 154.00 + 190.00 + 130.00 + 55.00; // 2 883,63
+
+// Taux horaire / vacation
+const TAUX_NUIT    = 6.208;   // €/h
+const TAUX_ANTENNE = 17.38;   // €/vacation
+const TAUX_SUPVAC  = 17.38;   // €/vacation
+const TAUX_PANIER  = 7.50;    // €/panier
+
+// ─── Taux cotisations salariales ──────────────────────────────────────────────
+// (Source : bulletin Radio France avril 2026)
+const T_INCAP_TA   = 0.00616;   // Complémentaire Incap/Inv/Décès – Tranche A
+const SANTE_FLAT   = 31.72;     // Complémentaire Santé – montant fixe (base 4 005 × 0,792 %)
+const T_SANTE_TA   = 0.00304;   // Complémentaire Santé – Tranche A
+const T_RET_PLAF   = 0.06900;   // Retraite SS plafonnée – Tranche A
+const T_RET_DEP    = 0.00400;   // Retraite SS déplafonnée – total brut SS
+const T_AGIRC_T1   = 0.04010;   // Agirc-Arrco Tranche 1
+
+const T_CSG_DED    = 0.06800;   // CSG déductible IR
+const T_CSG_CRDS   = 0.02900;   // CSG/CRDS non déductible IR
+
+// Pour base CSG : (brut_ss + cotis. patronales prévoyance) × 98,25 %
+// Taux patronaux prévoyance (Incap TA + Santé TA) extraits du bulletin
+const T_PATRON_INCAP = 0.00924;  // patronal Incap/Inv/Décès TA
+const T_PATRON_SANTE_TA = 0.00456; // patronal Complémentaire Santé TA
+const PATRON_SANTE_FLAT = 47.57;   // patronal Santé (base 4 005 fixe, const mensuelle)
+
+// ─── Fonctions ────────────────────────────────────────────────────────────────
+function r2(n) { return Math.round(n * 100) / 100; }
+
+function fmt(n, sign = false) {
+  const s = Math.abs(n).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ').replace('.', ',');
+  if (sign && n < 0) return '− ' + s + ' €';
+  if (sign && n > 0) return '+ ' + s + ' €';
+  return s + ' €';
+}
+
+function pct(n, base) {
+  return base > 0 ? (n / base * 100).toFixed(1) + ' %' : '—';
+}
+
+function calc() {
+  const nuit      = Math.max(0, +document.getElementById('nuit').value    || 0);
+  const antenne   = Math.max(0, +document.getElementById('antenne').value || 0);
+  const supvac    = Math.max(0, +document.getElementById('supvac').value  || 0);
+  const paniers   = Math.max(0, +document.getElementById('paniers').value || 0);
+  const rappel    = Math.max(0, +document.getElementById('rappel').value  || 0);
+  const rappelpan = Math.max(0, +document.getElementById('rappelpan').value || 0);
+
+  // ── Brut ──────────────────────────────────────────────────────────────────
+  const v_nuit    = r2(nuit    * TAUX_NUIT);
+  const v_antenne = r2(antenne * TAUX_ANTENNE);
+  const v_supvac  = r2(supvac  * TAUX_SUPVAC);
+
+  const brut_variable = v_nuit + v_antenne + v_supvac;
+  const brut_courant  = BRUT_FIXE + brut_variable;  // hors rappel
+  const brut_paye     = brut_courant + rappel;
+
+  // Brut SS ≈ brut payé (franchise URSSAF négligeable)
+  const brut_ss = brut_paye;
+  const ta = Math.min(brut_ss, PMSS); // Tranche A
+
+  // ── Cotisations salariales ────────────────────────────────────────────────
+  const c_incap      = r2(ta * T_INCAP_TA);
+  const c_sante_flat = r2(SANTE_FLAT);
+  const c_sante_ta   = r2(ta * T_SANTE_TA);
+  const c_ret_plaf   = r2(ta * T_RET_PLAF);
+  const c_ret_dep    = r2(brut_ss * T_RET_DEP);
+  const c_agirc      = r2(ta * T_AGIRC_T1);
+
+  // Base CSG : (brut_ss + cotis. patronales prévoyance+santé) × 98,25 %
+  const patron_prev_ta   = r2(ta * (T_PATRON_INCAP + T_PATRON_SANTE_TA));
+  const patron_prev      = patron_prev_ta + PATRON_SANTE_FLAT;
+  const csg_base         = r2((brut_ss + patron_prev) * 0.9825);
+
+  const c_csg_ded        = r2(csg_base * T_CSG_DED);
+  const c_csg_crds       = r2(csg_base * T_CSG_CRDS);
+
+  const total_cot = r2(c_incap + c_sante_flat + c_sante_ta + c_ret_plaf + c_ret_dep + c_agirc + c_csg_ded + c_csg_crds);
+
+  // ── Net social ────────────────────────────────────────────────────────────
+  const net_social = r2(brut_paye - total_cot);
+
+  // ── Paniers (exonérés de cotisations et d'IR) ─────────────────────────────
+  const total_paniers = r2((paniers + rappelpan) * TAUX_PANIER);
+
+  // ── Net avant IR ──────────────────────────────────────────────────────────
+  const net_avant_ir = r2(net_social + total_paniers);
+
+  // ── Net imposable (base PAS) ──────────────────────────────────────────────
+  // = brut - cotisations déductibles + part patronale complémentaire santé (avantage taxable)
+  // Cotisations déductibles = total_cot − CSG/CRDS non déductibles
+  const patron_sante_total = r2(PATRON_SANTE_FLAT + ta * T_PATRON_SANTE_TA + (rappel > 0 ? rappel * T_PATRON_SANTE_TA : 0));
+  const cot_deductibles    = r2(total_cot - c_csg_crds);
+  const net_imposable      = r2(brut_paye - cot_deductibles + patron_sante_total);
+
+  // ── PAS ───────────────────────────────────────────────────────────────────
+  const pas_montant = r2(net_imposable * PAS);
+
+  // ── Net à payer ───────────────────────────────────────────────────────────
+  const net_payer = r2(net_avant_ir - pas_montant);
+
+  // ── Render ────────────────────────────────────────────────────────────────
+  const pctBrut = p => `<span class="badge badge-pct">${pct(p, brut_paye)}</span>`;
+
+  document.getElementById('result').innerHTML = `
+    <div class="card-title">Décomposition</div>
+
+    <div class="rrow">
+      <span class="lbl">Salaire de base (fixe)</span>
+      <span class="amt neutral">${fmt(BRUT_FIXE)}</span>
+    </div>
+    ${brut_variable > 0 ? `
+    <div class="rrow">
+      <span class="lbl">Éléments variables
+        ${v_nuit > 0    ? `<br><span class="sub">Nuit ×${nuit} h → ${fmt(v_nuit)}</span>` : ''}
+        ${v_antenne > 0 ? `<br><span class="sub">Antenne ×${antenne} → ${fmt(v_antenne)}</span>` : ''}
+        ${v_supvac > 0  ? `<br><span class="sub">Sup. vac. ×${supvac} → ${fmt(v_supvac)}</span>` : ''}
+      </span>
+      <span class="amt neutral">${fmt(brut_variable)}</span>
+    </div>` : ''}
+    ${rappel > 0 ? `
+    <div class="rrow">
+      <span class="lbl">Rappel brut (mois préc.)</span>
+      <span class="amt neutral">${fmt(rappel)}</span>
+    </div>` : ''}
+
+    <div class="sep-line"></div>
+
+    <div class="rrow" style="font-weight:600">
+      <span class="lbl">Total brut payé</span>
+      <span class="amt neutral">${fmt(brut_paye)}</span>
+    </div>
+
+    <div class="sep-line"></div>
+
+    <div class="rrow"><span class="lbl">Incapacité/Invalidité/Décès TA<br><span class="sub">${pct(T_INCAP_TA*100,100).replace(' %','')} % × ${fmt(ta)}</span></span><span class="amt neg">− ${fmt(c_incap)}</span></div>
+    <div class="rrow"><span class="lbl">Complémentaire Santé (forfait)<br><span class="sub">4 005 × 0,792 % — fixe</span></span><span class="amt neg">− ${fmt(c_sante_flat)}</span></div>
+    <div class="rrow"><span class="lbl">Complémentaire Santé TA<br><span class="sub">0,304 % × ${fmt(ta)}</span></span><span class="amt neg">− ${fmt(c_sante_ta)}</span></div>
+    <div class="rrow"><span class="lbl">Retraite SS plafonnée<br><span class="sub">6,900 % × ${fmt(ta)}</span></span><span class="amt neg">− ${fmt(c_ret_plaf)}</span></div>
+    <div class="rrow"><span class="lbl">Retraite SS déplafonnée<br><span class="sub">0,400 % × ${fmt(brut_ss)}</span></span><span class="amt neg">− ${fmt(c_ret_dep)}</span></div>
+    <div class="rrow"><span class="lbl">Agirc-Arrco T1<br><span class="sub">4,010 % × ${fmt(ta)}</span></span><span class="amt neg">− ${fmt(c_agirc)}</span></div>
+    <div class="rrow"><span class="lbl">CSG déductible IR<br><span class="sub">6,800 % × ${fmt(csg_base)} (base CSG)</span></span><span class="amt neg">− ${fmt(c_csg_ded)}</span></div>
+    <div class="rrow"><span class="lbl">CSG/CRDS non déductible<br><span class="sub">2,900 % × ${fmt(csg_base)}</span></span><span class="amt neg">− ${fmt(c_csg_crds)}</span></div>
+
+    <div class="sep-line"></div>
+
+    <div class="rrow" style="font-weight:600">
+      <span class="lbl">Total cotisations ${pctBrut(total_cot)}</span>
+      <span class="amt neg">− ${fmt(total_cot)}</span>
+    </div>
+
+    <div class="sep-line"></div>
+
+    <div class="rrow" style="font-weight:600">
+      <span class="lbl">Net social ${pctBrut(net_social)}</span>
+      <span class="amt neutral">${fmt(net_social)}</span>
+    </div>
+
+    ${total_paniers > 0 ? `
+    <div class="rrow">
+      <span class="lbl">Paniers (${paniers + rappelpan} × 7,50 € — exonéré)</span>
+      <span class="amt pos">+ ${fmt(total_paniers)}</span>
+    </div>` : ''}
+
+    <div class="sep-line"></div>
+
+    <div class="rrow" style="font-weight:600">
+      <span class="lbl">Net avant impôt</span>
+      <span class="amt neutral">${fmt(net_avant_ir)}</span>
+    </div>
+
+    <div class="rrow">
+      <span class="lbl">Net imposable (base PAS)<br><span class="sub">= brut − cot. déductibles + mutuelle patronale</span></span>
+      <span class="amt dim">${fmt(net_imposable)}</span>
+    </div>
+    <div class="rrow">
+      <span class="lbl">Prélèvement à la source (5,9 %)<br><span class="sub">5,9 % × ${fmt(net_imposable)}</span></span>
+      <span class="amt neg">− ${fmt(pas_montant)}</span>
+    </div>
+
+    <div class="sep-line"></div>
+
+    <div class="total-row">
+      <span class="lbl">Net à payer ${pctBrut(net_payer)}</span>
+      <span class="amt">${fmt(net_payer)}</span>
+    </div>
+  `;
+}
+
+document.querySelectorAll('input').forEach(el => el.addEventListener('input', calc));
+calc();
+</script>
+</body>
+</html>
