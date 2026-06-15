@@ -1758,9 +1758,8 @@ function updateCounters(){
         </div>
         <div style="height:0.5px;background:var(--border);margin:5px 0"></div>
         <div data-col="brut" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:${_tpad};gap:2px;min-width:0" onclick="event.stopPropagation();openMergedMoisModal(${mym},4)">
-          <div style="font-size:${_tlfs};color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">Brut</div>
-          <div style="font-size:${_tvfs};font-weight:600;color:${(paye_tc.configured&&paye_tc.salQ&&paye_tc.heures)?'var(--gold-pay)':'var(--text3)'};text-align:center">${(paye_tc.configured&&paye_tc.salQ&&paye_tc.heures)?fmtEuro(paye_tc.total):'—'}</div>
-          <div style="font-size:${_tsfs};color:var(--text3)">${(paye_tc.configured&&paye_tc.salQ&&paye_tc.heures)?'estimé':''}</div>
+          <div style="font-size:${_tlfs};color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">Net</div>
+          ${(()=>{if(!(paye_tc.configured&&paye_tc.salQ&&paye_tc.heures))return '<div style="font-size:'+_tvfs+';font-weight:600;color:var(--text3);text-align:center">—</div><div style="font-size:'+_tsfs+';color:var(--text3)"></div>';const _net=calcNetPaye(paye_tc.total,paye_tc.vars.paniers);return '<div style="font-size:'+_tvfs+';font-weight:600;color:var(--gold-pay);text-align:center">'+fmtEuro(_net.net)+'</div><div style="font-size:'+_tsfs+';color:var(--text3)">estimé</div>';})()}
         </div>
       </div>
     </div>
@@ -1988,6 +1987,20 @@ function calcPayeMois(y,m){
   const totalPrimesCustom=primesCustom.reduce(function(s,p){return s+p.montant;},0);
   let compCP=0;if(m===0){let yv=0;for(let pm=0;pm<12;pm++)yv+=calcVariablesMois(y-1,pm).total;compCP=yv/10;}
   return{base,salQ,salAnc,tauxH,heures,prevM,prevY,vars,primesConv:_primesConv,gpe,groupeClassif:pr.groupeClassif||0,pfa,pfaMensuelle:pr.pfaMensuelle,totalFixes,primesCustom,totalPrimesCustom,compCP,total:base+vars.total+totalFixes+totalPrimesCustom+compCP,configured:salQ>0||salAnc>0||heures>0};
+}
+function calcNetPaye(brut,paniers){
+  const r2=v=>Math.round(v*100)/100,PMSS=3925,ta=Math.min(brut,PMSS);
+  const c_incap=r2(ta*0.00616),c_sf=31.72,c_sta=r2(ta*0.00304);
+  const c_rp=r2(ta*0.069),c_rd=r2(brut*0.004),c_ag=r2(ta*0.0401);
+  const pat=r2(ta*(0.00924+0.00456))+47.57;
+  const cb=r2((brut+pat)*0.9825);
+  const c_cd=r2(cb*0.068),c_cnd=r2(cb*0.029);
+  const cot=r2(c_incap+c_sf+c_sta+c_rp+c_rd+c_ag+c_cd+c_cnd);
+  const ns=r2(brut-cot),pan_e=r2(paniers*7.50),nav=r2(ns+pan_e);
+  const pat_s=r2(47.57+ta*0.00456),ni=r2(brut-r2(cot-c_cnd)+pat_s);
+  const pas_t=((S.profile&&S.profile.pasTaux)||5.9)/100;
+  const pas=r2(ni*pas_t);
+  return{net:r2(nav-pas),brut,cot,pas};
 }
 function calcNuitMinShift(v){
   if(!v||!v.deb||!v.fin)return 0;
@@ -3947,13 +3960,20 @@ function openMergedMoisModal(mym,tab){
       if(v.reel>0)varLines+=_row('P. réal ('+v.reel+' × 34,76 €)',v.supReal,'var(--amber)');
       if(v.coord>0)varLines+=_row('P. coord ('+v.coord+' × 17,38 €)',v.supCoord,'var(--amber)');
       if(!varLines)varLines='<div style="font-size:11px;color:var(--text3);padding:3px 0">Aucun.</div>';
+      const _netCalc=calcNetPaye(paye.total,v.paniers);
       payeSection=
         _tabSpacer
-        +'<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0">'
+        +'<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0">'
         +'<span style="font-size:11px;color:var(--text3)">brut estimé</span>'
-        +'<b style="font-size:15px;color:var(--gold-pay)">'+_fe(paye.total)+'</b>'
+        +'<b style="font-size:13px;color:var(--text2)">'+_fe(paye.total)+'</b>'
         +'</div>'
-        +(v.paniers>0?'<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;margin-bottom:8px"><span style="font-size:11px;color:var(--text3)">Paniers '+v.paniers+' × 7,50 € <span style="font-size:9px">(hors brut)</span></span><b style="font-size:11px;color:var(--amber)">'+_fe(v.supPaniers)+'</b></div>':'<div style="margin-bottom:8px"></div>')
+        +(v.paniers>0?'<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0"><span style="font-size:11px;color:var(--text3)">Paniers '+v.paniers+' × 7,50 € <span style="font-size:9px">(exonéré)</span></span><b style="font-size:11px;color:var(--amber)">'+_fe(v.supPaniers)+'</b></div>':'')
+        +'<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0"><span style="font-size:11px;color:var(--text3)">cotisations</span><b style="font-size:11px;color:var(--red)">−'+_fe(_netCalc.cot)+'</b></div>'
+        +'<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0"><span style="font-size:11px;color:var(--text3)">PAS ('+((S.profile&&S.profile.pasTaux)||5.9)+' %)</span><b style="font-size:11px;color:var(--red)">−'+_fe(_netCalc.pas)+'</b></div>'
+        +'<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-top:1px solid var(--border);margin-top:4px;margin-bottom:8px">'
+        +'<span style="font-size:12px;font-weight:600">net à payer estimé</span>'
+        +'<b style="font-size:16px;color:var(--gold-pay)">'+_fe(_netCalc.net)+'</b>'
+        +'</div>'
         +'<div class="sep" style="margin-bottom:10px"></div>'
         +'<div class="btit" style="margin-bottom:4px">Salaire de base</div>'
         +'<div style="font-size:11px">'+_rowb('Qualification',paye.salQ)+_rowb('Ancienneté',paye.salAnc)+_sub('Sous-total',paye.base)+'</div>'
