@@ -1969,7 +1969,7 @@ function calcPayeMois(y,m){
   const primesCustom=getPrimesFixesCustomForYM(mym_cp);
   const totalPrimesCustom=primesCustom.reduce(function(s,p){return s+p.montant;},0);
   let compCP=0;if(m===0){let yv=0;for(let pm=0;pm<12;pm++)yv+=calcVariablesMois(y-1,pm).total;compCP=yv/10;}
-  return{base,salQ,salAnc,tauxH,heures,prevM,prevY,vars,primesConv:_primesConv,gpe,groupeClassif:getGroupeForYM(mym_cp),pfa,pfaMensuelle:pr.pfaMensuelle,totalFixes,primesCustom,totalPrimesCustom,compCP,total:base+vars.total+totalFixes+totalPrimesCustom+compCP,configured:salQ>0||salAnc>0||heures>0};
+  return{base,salQ,salAnc,tauxH,heures,prevM,prevY,vars,primesConv:_primesConv,gpe,groupeClassif:getGroupeForYM(mym_cp),pfa,pfaM,pfaMensuelle:pr.pfaMensuelle,supFamilial,totalFixes,primesCustom,totalPrimesCustom,compCP,total:base+vars.total+totalFixes+totalPrimesCustom+compCP,configured:salQ>0||salAnc>0||heures>0};
 }
 function calcNetPaye(brut,paniers,ym){
   const r2=v=>Math.round(v*100)/100,PMSS=3925,ta=Math.min(brut,PMSS);
@@ -3980,7 +3980,8 @@ function openMergedMoisModal(mym,tab){
         +'<div class="btit" style="margin-top:12px;margin-bottom:4px">Primes fixes</div>'
         +'<div style="font-size:11px">'
         +paye.primesConv.map(function(p){return _row(p.label,p.montant,'var(--text2)');}).join('')+_row('Ind. GPE'+(paye.groupeClassif?' (Gr.'+paye.groupeClassif+')':''),paye.gpe,'var(--text2)')
-        +_row('PFA'+(paye.pfa>0&&!paye.pfaMensuelle?' (sem.)':''),paye.pfa,'var(--text2)')
+        +_row('PFA ('+fmtEuro(paye.pfaM)+'/mois)'+(paye.pfaMensuelle?'':' (sem.)'),paye.pfa,'var(--text2)')
+        +(paye.supFamilial>0?_row('Suppl. familial',paye.supFamilial,'var(--text2)'):'')
         +_subp('Sous-total',paye.totalFixes)+'</div>'
         +(paye.primesCustom.length>0?'<div class="btit" style="margin-top:12px;margin-bottom:4px">Primes personnalisées</div>':'')
         +'<div style="font-size:11px" id="paie-primes-custom">'
@@ -4977,7 +4978,7 @@ function _setGroupeResult(g,date){
   window._sMP=false;
   var _pr=_profs[_aid];if(!_pr||!g)return openSettingsModal(1);
   _pr.profile.groupeClassif=g;
-  if(date){var _p=date.split('/'),_m=parseInt(_p[0]),_y=parseInt(_p[1]);if(!isNaN(_m)&&!isNaN(_y)){var _ym=_y*12+(_m-1);if(!_pr.profile.groupeHistory)_pr.profile.groupeHistory=[];var _ix=_pr.profile.groupeHistory.findIndex(function(e){return e.ym===_ym;});if(_ix>=0)_pr.profile.groupeHistory[_ix].v=g;else _pr.profile.groupeHistory.push({ym:_ym,v:g});_pr.profile.groupeHistory.sort(function(a,b){return a.ym-b.ym;});}}
+  if(date){var _p=date.split('/'),_m=parseInt(_p[0]),_y=parseInt(_p[1]);if(!isNaN(_m)&&!isNaN(_y)){var _ym=_y*12+(_m-1);if(!_pr.profile.groupeHistory)_pr.profile.groupeHistory=[];var _ix=_pr.profile.groupeHistory.findIndex(function(e){return e.ym===_ym;});if(_ix>=0)_pr.profile.groupeHistory[_ix].v=g;else _pr.profile.groupeHistory.push({ym:_ym,v:g});_pr.profile.groupeHistory.sort(function(a,b){return a.ym-b.ym;});}}else{_pr.profile.groupeHistory=[];}
   var _ddG=document.getElementById('ps-groupe');if(_ddG)_ddG.value=g;
   S=_profs[_aid]=_pr;saveState();render();openSettingsModal(1);
 }
@@ -5006,7 +5007,7 @@ function _setPasTauxResult(t,date){
   window._sMP=false;
   var _pr=_profs[_aid];if(!_pr||isNaN(t)||t<0||t>50)return openSettingsModal(1);
   _pr.profile.pasTaux=t;
-  if(date){var _p=date.split('/'),_m=parseInt(_p[0]),_y=parseInt(_p[1]);if(!isNaN(_m)&&!isNaN(_y)){var _ym=_y*12+(_m-1);if(!_pr.profile.pasTauxHistory)_pr.profile.pasTauxHistory=[];var _ix=_pr.profile.pasTauxHistory.findIndex(function(e){return e.ym===_ym;});if(_ix>=0)_pr.profile.pasTauxHistory[_ix].v=t;else _pr.profile.pasTauxHistory.push({ym:_ym,v:t});_pr.profile.pasTauxHistory.sort(function(a,b){return a.ym-b.ym;});}}
+  if(date){var _p=date.split('/'),_m=parseInt(_p[0]),_y=parseInt(_p[1]);if(!isNaN(_m)&&!isNaN(_y)){var _ym=_y*12+(_m-1);if(!_pr.profile.pasTauxHistory)_pr.profile.pasTauxHistory=[];var _ix=_pr.profile.pasTauxHistory.findIndex(function(e){return e.ym===_ym;});if(_ix>=0)_pr.profile.pasTauxHistory[_ix].v=t;else _pr.profile.pasTauxHistory.push({ym:_ym,v:t});_pr.profile.pasTauxHistory.sort(function(a,b){return a.ym-b.ym;});}}else{_pr.profile.pasTauxHistory=[];}
   S=_profs[_aid]=_pr;saveState();render();openSettingsModal(1);
 }
 function _confirmPasTauxToujours(){_setPasTauxResult(parseFloat((document.getElementById('_pas-t')||{}).value),'');}
@@ -5034,7 +5035,7 @@ function _setSupFamilialResult(v,date){
   window._sMP=false;
   var _pr=_profs[_aid];if(!_pr||isNaN(v)||v<0)return openSettingsModal(1);
   _pr.profile.supFamilial=v;
-  if(date){var _p=date.split('/'),_m=parseInt(_p[0]),_y=parseInt(_p[1]);if(!isNaN(_m)&&!isNaN(_y)){var _ym=_y*12+(_m-1);if(!_pr.profile.supFamilialHistory)_pr.profile.supFamilialHistory=[];var _ix=_pr.profile.supFamilialHistory.findIndex(function(e){return e.ym===_ym;});if(_ix>=0)_pr.profile.supFamilialHistory[_ix].v=v;else _pr.profile.supFamilialHistory.push({ym:_ym,v:v});_pr.profile.supFamilialHistory.sort(function(a,b){return a.ym-b.ym;});}}
+  if(date){var _p=date.split('/'),_m=parseInt(_p[0]),_y=parseInt(_p[1]);if(!isNaN(_m)&&!isNaN(_y)){var _ym=_y*12+(_m-1);if(!_pr.profile.supFamilialHistory)_pr.profile.supFamilialHistory=[];var _ix=_pr.profile.supFamilialHistory.findIndex(function(e){return e.ym===_ym;});if(_ix>=0)_pr.profile.supFamilialHistory[_ix].v=v;else _pr.profile.supFamilialHistory.push({ym:_ym,v:v});_pr.profile.supFamilialHistory.sort(function(a,b){return a.ym-b.ym;});}}else{_pr.profile.supFamilialHistory=[];}
   S=_profs[_aid]=_pr;saveState();render();openSettingsModal(1);
 }
 function _confirmSupFamilialToujours(){_setSupFamilialResult(parseFloat((document.getElementById('_sft-v')||{}).value)||0,'');}
