@@ -1271,17 +1271,15 @@ function adjCET(delta,year){
   if(!S.profile)return;
   if(delta>0&&computeCongesRest(year)<=0)return;
   if(!S.profile.congesCETParAnnee)S.profile.congesCETParAnnee={};
-  if(delta>0){
-    S.profile.congesCETParAnnee[year]=(getCETForYear(year)+1);
-  }else{
-    if(getCET()<=0)return;
-    const cur=getCETForYear(year);
-    if(cur>0){S.profile.congesCETParAnnee[year]=cur-1;}
-    else{
-      const yrs=Object.keys(S.profile.congesCETParAnnee).map(Number).sort((a,b)=>b-a);
-      for(const y of yrs){if((S.profile.congesCETParAnnee[y]||0)>0){S.profile.congesCETParAnnee[y]--;break;}}
-    }
+  const invalidYrs=Object.keys(S.profile.congesCETParAnnee).map(Number).filter(y=>y<2020||y>year+5);
+  if(invalidYrs.length){
+    const extra=invalidYrs.reduce((s,y)=>s+(S.profile.congesCETParAnnee[y]||0),0);
+    invalidYrs.forEach(y=>delete S.profile.congesCETParAnnee[y]);
+    S.profile.congesCETParAnnee[year]=(S.profile.congesCETParAnnee[year]||0)+extra;
   }
+  const cur=getCETForYear(year);
+  if(delta>0){S.profile.congesCETParAnnee[year]=cur+1;}
+  else{if(cur<=0)return;S.profile.congesCETParAnnee[year]=cur-1;}
   saveState();updateCounters();openMergedRenduCgModal(6,1);
 }
 
@@ -3370,7 +3368,7 @@ function openMergedRenduCgModal(limit,tab){
     +`<div class="recap-row"><span>Fériés sam./dim.</span><b style="color:${flottants>0?'var(--green)':'var(--text3)'}">${flottants} j</b></div>`
     +`<div style="margin-top:12px;padding-top:10px;border-top:0.5px solid var(--border2)">`
     +`<div class="recap-row" style="font-size:12px"><span>Total</span><b style="color:var(--text)">${soldeEffectif} j</b></div>`
-    +_rr('CET',cetTotal+' j','var(--amber)',_adjBtn('adjCET','-1,'+nowY,'−')+_adjBtn('adjCET','1,'+nowY,'+'))
+    +_rr('CET',cet+' j','var(--amber)',_adjBtn('adjCET','-1,'+nowY,'−')+_adjBtn('adjCET','1,'+nowY,'+'))
     +`</div>`;
   const cgSoldeHeader=''
     +'<div style="display:flex;gap:8px;padding:8px 10px;background:var(--bg3);border-radius:var(--r);border:0.5px solid var(--border);margin-bottom:10px">'
