@@ -987,7 +987,6 @@ function buildGen(){
     for(let d=1;d<=last;d++){const date=new Date(y,m,d),key=dk(date);const v2e=getVac(date);const{vac,absent,echange,ecSelf}=v2e;if(!vac||vac==='RH'||absent)continue;if(echange&&!ecSelf)continue;// ec2: I give away, no rendu for me
 const cKey=(S.conges||{})[key];if(cKey==='rend'||cKey==='rend-hist'||cKey==='cg'||cKey==='absent')continue;// vacation posée: pas de rendu dim/fer/RH
 const dur=VAC[vac]?VAC[vac].dur:0;
-      const[todayDur,nextDur]=_splitVacDur(vac);
       const isFer2=FERIES.has(key),isDim2=date.getDay()===0,isRH2=isRHDay(date);
       const _dMon=getMonday(date);const _dSun=new Date(_dMon);_dSun.setDate(_dMon.getDate()+6);const _dSunYm=_dSun.getFullYear()*12+_dSun.getMonth();
       const sett2b=settingsForYM(_dSunYm);
@@ -995,20 +994,10 @@ const dur=VAC[vac]?VAC[vac].dur:0;
       const dimF=(isDim2&&sett2b.dimRendu)?0.5:0;
       const rhF=(!echange&&!isDim2&&isRH2&&sett2b.rhRendu)?0.5:0;
       const totF=ferF+dimF+rhF;
-      if(totF>0){
-        if(ferF>0)add(_dSunYm,'fer',Math.round(todayDur*ferF/60*100)/100*60);
-        if(dimF>0)add(_dSunYm,'dim',Math.round(todayDur*dimF/60*100)/100*60);
-        if(rhF>0)add(_dSunYm,'rh',Math.round(todayDur*rhF/60*100)/100*60);
-      }
-      if(nextDur>0){const nd=new Date(date);nd.setDate(date.getDate()+1);const nk=dk(nd);
-        const nFer=FERIES.has(nk),nDim=nd.getDay()===0,nRH=isRHDay(nd);
-        const nMon=getMonday(nd);const nSun=new Date(nMon);nSun.setDate(nMon.getDate()+6);const nSunYm=nSun.getFullYear()*12+nSun.getMonth();
-        const nSett=settingsForYM(nSunYm);
-        const nFerF=nFer&&nSett.ferRendu?2.0:0,nDimF=nDim&&nSett.dimRendu?0.5:0,nRhF=(!echange&&!nDim&&nRH&&nSett.rhRendu)?0.5:0;
-        if(nFerF>0)add(nSunYm,'fer',Math.round(nextDur*nFerF/60*100)/100*60);
-        if(nDimF>0)add(nSunYm,'dim',Math.round(nextDur*nDimF/60*100)/100*60);
-        if(nRhF>0)add(nSunYm,'rh',Math.round(nextDur*nRhF/60*100)/100*60);
-      }}
+      if(totF===0)continue;
+      if(ferF>0)add(_dSunYm,'fer',Math.round(dur*ferF/60*100)/100*60);
+      if(dimF>0)add(_dSunYm,'dim',Math.round(dur*dimF/60*100)/100*60);
+      if(rhF>0)add(_dSunYm,'rh',Math.round(dur*rhF/60*100)/100*60);}
   }
   const seenHS=new Set();
   for(let y=2025;y<=2030;y++)for(let m=0;m<12;m++){
@@ -1051,19 +1040,11 @@ function buildPotentialForYM(ym,sett){
     if(!vac||vac==='RH'||absent)continue;if(echange&&!ecSelf)continue;
     const cKey=(S.conges||{})[key];if(cKey==='rend'||cKey==='rend-hist'||cKey==='cg'||cKey==='absent')continue;
     const dur=VAC2[vac]?VAC2[vac].dur:0;
-    const[todayDur,nextDur]=_splitVacDur(vac);
     const isFer=FERIES.has(key),isDim=d.getDay()===0,isRH=isRHDay(d);
     const ferF=isFer&&sett.ferRendu?2.0:0,dimF=isDim&&sett.dimRendu?0.5:0,rhF=(!echange&&!isDim&&isRH&&sett.rhRendu)?0.5:0;
-    if(ferF>0)res.fer+=Math.round(todayDur*ferF/60*100)/100*60;
-    if(dimF>0)res.dim+=Math.round(todayDur*dimF/60*100)/100*60;
-    if(rhF>0)res.rh+=Math.round(todayDur*rhF/60*100)/100*60;
-    if(nextDur>0){const nd=new Date(d);nd.setDate(d.getDate()+1);const nk=dk(nd);
-      const nFer=FERIES.has(nk),nDim=nd.getDay()===0,nRH=isRHDay(nd);
-      const nFerF=nFer&&sett.ferRendu?2.0:0,nDimF=nDim&&sett.dimRendu?0.5:0,nRhF=(!echange&&!nDim&&nRH&&sett.rhRendu)?0.5:0;
-      if(nFerF>0)res.fer+=Math.round(nextDur*nFerF/60*100)/100*60;
-      if(nDimF>0)res.dim+=Math.round(nextDur*nDimF/60*100)/100*60;
-      if(nRhF>0)res.rh+=Math.round(nextDur*nRhF/60*100)/100*60;
-    }
+    if(ferF>0)res.fer+=Math.round(dur*ferF/60*100)/100*60;
+    if(dimF>0)res.dim+=Math.round(dur*dimF/60*100)/100*60;
+    if(rhF>0)res.rh+=Math.round(dur*rhF/60*100)/100*60;
   }
   return res;
 }
@@ -1944,26 +1925,13 @@ function getPasTauxForYM(ym){const pr=S.profile||{};return _getHistVal(pr.pasTau
 function getSupFamilialForYM(ym){const pr=S.profile||{};return _getHistVal(pr.supFamilialHistory||[],pr.supFamilial||0,ym);}
 function getAncForYM(ym){const pr=S.profile||{};if(pr.ancYears!=null&&pr.ancRefYM!=null){const anni=typeof pr.ancMoisAnni==='number'&&pr.ancMoisAnni>=0?pr.ancMoisAnni:-1;let yrs=pr.ancYears;if(anni>=0){const minYM=Math.min(pr.ancRefYM,ym),maxYM=Math.max(pr.ancRefYM,ym);let cnt=0;for(let y=Math.floor(minYM/12);y<=Math.floor(maxYM/12)+1;y++){const aym=y*12+anni;if(aym>minYM&&aym<=maxYM)cnt++;}yrs=ym>=pr.ancRefYM?yrs+cnt:yrs-cnt;}return calcAncPrime(Math.max(0,yrs),ym);}if(pr.ancEntreeYM!=null)return calcAncPrime(calcAncYearsFromYM(pr.ancEntreeYM,ym),ym);if(pr.ancYearsHistory&&pr.ancYearsHistory.length){const y=_getHistVal(pr.ancYearsHistory,pr.ancYears||0,ym);return calcAncPrime(y,ym);}if(pr.ancYears!=null)return calcAncPrime(pr.ancYears,ym);return _getHistVal(pr.ancHistory,pr.primeAnciennete||0,ym);}
 function getHeuresForYM(ym){return _getHistVal((S.profile||{}).heuresHistory,(S.profile||{}).heuresMensuelles||151.67,ym);}
-function _splitVacDur(vac){
-  const VAC=getVAC(),v=VAC[vac];
-  if(!v||!v.dur)return[0,0];
-  const debMin=_toMinApp(v.deb),finMin=_toMinApp(v.fin);
-  if(debMin==null||finMin==null||finMin>=debMin)return[v.dur,0];
-  return[v.dur,finMin];
-}
 function calcDimRHFerMinsMois(y,m){
   const mym=y*12+m,sett=settingsForYM(mym),seenW=new Set(),last=new Date(y,m+1,0).getDate();const VAC=getVAC();let dim=0,rh=0,fer=0;
   for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd),mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);const sun=new Date(mon);sun.setDate(mon.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mym)continue;
     for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);const key=dk(d);const cKey=(S.conges||{})[key];if(cKey&&(cKey==='cg'||cKey==='rend'||cKey==='rend-hist'||cKey==='absent'))continue;const{vac,absent,echange,ecSelf}=getVac(d);if(!vac||vac==='RH'||absent)continue;if(echange&&!ecSelf)continue;const dur=VAC[vac]?VAC[vac].dur:0;if(!dur)continue;const isFer=FERIES.has(key),isDim=d.getDay()===0,isRH=isRHDay(d);
-      const[todayDur,nextDur]=_splitVacDur(vac);
-      if(isFer&&!sett.ferRendu)fer+=todayDur;
-      else if(isDim&&!sett.dimRendu)dim+=todayDur;
-      else if(isRH&&!echange&&!sett.rhRendu)rh+=todayDur;
-      if(nextDur>0){const nd=new Date(d);nd.setDate(d.getDate()+1);const nk=dk(nd);const nFer=FERIES.has(nk),nDim=nd.getDay()===0,nRH=isRHDay(nd);
-        if(nFer&&!sett.ferRendu)fer+=nextDur;
-        else if(nDim&&!sett.dimRendu)dim+=nextDur;
-        else if(nRH&&!echange&&!sett.rhRendu)rh+=nextDur;}
-    }}
+      if(isFer&&!sett.ferRendu)fer+=dur;
+      else if(isDim&&!sett.dimRendu)dim+=dur;
+      else if(isRH&&!echange&&!sett.rhRendu)rh+=dur;}}
   return{dim,rh,fer};
 }
 function calcHSMinsMois(y,m){
