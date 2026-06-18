@@ -624,6 +624,7 @@ function loadState(){
   // Migrate: autoReport1m → autoExtend level 1
   if(S.autoReport1m){if(!S.autoExtend)S.autoExtend={};Object.keys(S.autoReport1m).forEach(function(k){S.autoExtend[k]=Math.max((S.autoExtend[k]||0),1);});delete S.autoReport1m;}  // Mark all existing customVacs as hidden (not shown in grid)
   if(S.customVacs){Object.keys(S.customVacs).forEach(k=>{S.customVacs[k].hidden=true;});}
+  if(S.customVacs){Object.keys(S.customVacs).forEach(k=>{if(VAC_STD[k]){console.warn('customVacs shadow removed:',k,S.customVacs[k]);delete S.customVacs[k];}});}
 }
 function saveState(){
   try{localStorage.setItem('pl_v8',JSON.stringify({p:_profs,a:_aid}));}catch(e){}
@@ -5536,7 +5537,7 @@ function init(){
     fetch(CLOUD_API+'/get-cycle',{method:'POST',headers:cloudHeaders(),body:'{}'}).then(function(r){return r.json();})
   ]).then(function(results){
     const vd=results[0],cd=results[1];
-    if(vd&&vd.vacations)_globalVacs=vd.vacations;
+    if(vd&&vd.vacations){_globalVacs=vd.vacations;Object.keys(_globalVacs).forEach(function(k){if(VAC_STD[k]&&_globalVacs[k].deb&&_globalVacs[k].deb!==VAC_STD[k].deb)console.warn('Cloud vac override:',k,'deb',_globalVacs[k].deb,'(std:',VAC_STD[k].deb+')');});}
     if(cd&&cd.cycles)_globalCycles=cd.cycles;
     render();
     if(gcalTokens)gcalSync();
