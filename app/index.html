@@ -1952,9 +1952,11 @@ function calcVariablesMois(y,m,overrideTauxH){
   const supDim=r2(drf.dim/60*tauxH*0.30),supRH=r2(drf.rh/60*tauxH*0.30),supFer=r2(drf.fer/60*tauxH*1.00);
   const supHSlow=r2(hs.low/60*tauxH*1.25),supHShigh=r2(hs.high/60*tauxH*1.50);
   const supNuit=r2(nuitMin/60*tauxH*0.40);
+  const pc=getPayConfig();const absRestoRate=pc.absRestoRate!=null?pc.absRestoRate:5.34;
+  const supAbsResto=m===4?r2(absRestoRate):0;
   const supPaniers=paniers*7.50,supAntenne=primes.antenne*17.38,supMatin=primes.matin*17.38,supReal=primes.reel*34.76,supCoord=primes.coord*17.38;
-  const total=supDim+supRH+supFer+supHSlow+supHShigh+supNuit+supAntenne+supMatin+supReal+supCoord;
-  return{total,tauxH,supDim,supRH,supFer,supHSlow,supHShigh,supNuit,supPaniers,supAntenne,supMatin,supReal,supCoord,dimMin:drf.dim,rhMin:drf.rh,ferMin:drf.fer,hsLow:hs.low,hsHigh:hs.high,nuitMin,paniers,antenne:primes.antenne,matin:primes.matin,reel:primes.reel,coord:primes.coord};
+  const total=supDim+supRH+supFer+supHSlow+supHShigh+supNuit+supAbsResto+supAntenne+supMatin+supReal+supCoord;
+  return{total,tauxH,supDim,supRH,supFer,supHSlow,supHShigh,supNuit,supPaniers,supAbsResto,absRestoRate,supAntenne,supMatin,supReal,supCoord,dimMin:drf.dim,rhMin:drf.rh,ferMin:drf.fer,hsLow:hs.low,hsHigh:hs.high,nuitMin,paniers,antenne:primes.antenne,matin:primes.matin,reel:primes.reel,coord:primes.coord};
 }
 function getPrimesFixesCustomForYM(ym){
   const primes=(S.profile&&S.profile.primesFixesCustom)||[];
@@ -1969,10 +1971,6 @@ function calcPayeMois(y,m){
   const _prevBase=_prevSalQ+getAncForYM(_prevMym),_prevHeur=getHeuresForYM(_prevMym);
   const prevTauxH=_prevHeur>0?Math.round(_prevBase/_prevHeur*100)/100:0;
   const vars=calcVariablesMois(prevY,prevM,prevTauxH);
-  const pc=getPayConfig();const absRestoRate=pc.absRestoRate!=null?pc.absRestoRate:5.34;
-  const absRestoPaniers=calcPaniersMois(y,m);
-  const r2=v=>Math.round(v*100)/100;
-  const supAbsResto=r2(absRestoPaniers*absRestoRate);
   const _primesConv=getPrimesConvForYM(mym_cp);const _pcTotal=_primesConv.reduce(function(s,p){return s+p.montant;},0);
   const gpe=calcGPE(getGroupeForYM(mym_cp),mym_cp);
   const pfaM=_pn>0?calcPFA(_pn,mym_cp):(pr.palierNum?calcPFA(pr.palierNum,mym_cp):190);
@@ -1982,7 +1980,7 @@ function calcPayeMois(y,m){
   const primesCustom=getPrimesFixesCustomForYM(mym_cp);
   const totalPrimesCustom=primesCustom.reduce(function(s,p){return s+p.montant;},0);
   let compCP=0;if(m===0){let yv=0;for(let pm=0;pm<12;pm++)yv+=calcVariablesMois(y-1,pm).total;compCP=yv/10;}
-  return{base,salQ,salAnc,tauxH,heures,prevM,prevY,vars,absRestoPaniers,supAbsResto,absRestoRate,primesConv:_primesConv,gpe,groupeClassif:getGroupeForYM(mym_cp),pfa,pfaM,pfaMensuelle:pr.pfaMensuelle,supFamilial,totalFixes,primesCustom,totalPrimesCustom,compCP,total:base+vars.total+supAbsResto+totalFixes+totalPrimesCustom+compCP,configured:salQ>0||salAnc>0||heures>0};
+  return{base,salQ,salAnc,tauxH,heures,prevM,prevY,vars,primesConv:_primesConv,gpe,groupeClassif:getGroupeForYM(mym_cp),pfa,pfaM,pfaMensuelle:pr.pfaMensuelle,supFamilial,totalFixes,primesCustom,totalPrimesCustom,compCP,total:base+vars.total+totalFixes+totalPrimesCustom+compCP,configured:salQ>0||salAnc>0||heures>0};
 }
 function calcNetPaye(brut,paniers,ym){
   const r2=v=>Math.round(v*100)/100,PMSS=3925,ta=Math.min(brut,PMSS);
@@ -3962,7 +3960,7 @@ function openMergedMoisModal(mym,tab){
       if(v.matin>0)varLines+=_row('P. matin ('+v.matin+' × 17,38 €)',v.supMatin,'var(--amber)');
       if(v.reel>0)varLines+=_row('P. réal ('+v.reel+' × 34,76 €)',v.supReal,'var(--amber)');
       if(v.coord>0)varLines+=_row('P. coord ('+v.coord+' × 17,38 €)',v.supCoord,'var(--amber)');
-      if(paye.absRestoPaniers>0)varLines+=_row('Abs. resto ('+paye.absRestoPaniers+' × '+paye.absRestoRate.toFixed(2).replace('.',',')+' €)',paye.supAbsResto,'var(--amber)');
+      if(v.supAbsResto>0)varLines+=_row('Abs. restauration',v.supAbsResto,'var(--amber)');
       if(!varLines)varLines='<div style="font-size:11px;color:var(--text3);padding:3px 0">Aucun.</div>';
       payeSection=
         '<div style="display:flex;justify-content:space-between;padding:2px 0 4px"><span></span><span style="font-size:10px;color:var(--text3)">euros</span></div>'
@@ -3975,7 +3973,7 @@ function openMergedMoisModal(mym,tab){
         +'<div class="btit" style="margin-bottom:4px">Salaire de base</div>'
         +'<div style="font-size:11px">'+_rowb('Qualification',paye.salQ)+_rowb('Ancienneté',paye.salAnc)+_sub('Sous-total',paye.base)+'</div>'
         +'<div class="btit" style="margin-top:12px;margin-bottom:4px">Variables <span style="font-weight:400;color:var(--text3);font-size:10px">('+_MLp[paye.prevM]+')</span></div>'
-        +'<div style="font-size:11px">'+varLines+_subp('Sous-total',v.total+paye.supAbsResto)+'</div>'
+        +'<div style="font-size:11px">'+varLines+_subp('Sous-total',v.total)+'</div>'
         +(m===0?'<div class="btit" style="margin-top:12px;margin-bottom:4px">Complément CP</div>'+(paye.compCP>0?'<div style="font-size:11px">'+_subp('1/10 variables '+(y-1),paye.compCP)+'</div>':'<div style="font-size:11px;color:var(--amber);display:flex;align-items:flex-start;gap:5px;padding:4px 0"><span style="flex-shrink:0">⚠</span><span>1/10 des variables '+(y-1)+' non calculable — les données de l\'année précédente sont incomplètes.</span></div>'):'')
         +'<div class="btit" style="margin-top:12px;margin-bottom:4px">Primes fixes</div>'
         +'<div style="font-size:11px">'
