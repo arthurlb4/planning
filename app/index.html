@@ -834,7 +834,8 @@ function getVac(date){
   return{vac:cycleVac,ov:false,fromSV:false,absent:false,echange:false,ecSelf:false,li,cycleVac};
 }
 function getDur(date){const{vac}=getVac(date);const VAC=getVAC();return(vac&&vac!=='RH'&&VAC[vac])?VAC[vac].dur:0;}
-function isPanier(date){const key=dk(date);const ov=(S.overrides||{})[key];if(ov&&ov.formation)return false;const{vac}=getVac(date);const VAC=getVAC();return!!(vac&&vac!=='RH'&&VAC[vac]&&VAC[vac].panier);}
+function getPayVac(date){const key=dk(date);const ov=(S.overrides||{})[key];if(ov&&ov.formation){const cv=getCycleVac(date).cycleVac;if(cv&&cv!=='RH')return cv;}return getVac(date).vac;}
+function isPanier(date){const key=dk(date);const ov=(S.overrides||{})[key];if(ov&&ov.formation)return false;const vac=getPayVac(date);const VAC=getVAC();return!!(vac&&vac!=='RH'&&VAC[vac]&&VAC[vac].panier);}
 function isRHDay(date){return getCycleVac(date).cycleVac==='RH';}
 function vLbl(code,VAC){return(code&&VAC&&VAC[code]&&VAC[code].label)||code||'';}
 
@@ -1907,7 +1908,7 @@ function calcPaniersMois(y,m){
 }
 function calcPrimesMois(y,m){
   let antenne=0,reel=0,coord=0,matin=0;const mym=y*12+m,seenW=new Set(),last=new Date(y,m+1,0).getDate();const VAC=getVAC();
-  for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd),mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);const sun=new Date(mon);sun.setDate(mon.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mym)continue;for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);const key=dk(d);if((S.conges||{})[key])continue;const{vac,absent,echange,ecSelf}=getVac(d);if(absent)continue;if(echange&&!ecSelf)continue;if(!vac||vac==='RH')continue;const v=VAC[vac];if(!v)continue;if(v.deb&&_toMinApp(v.deb)<240)matin++;if(!v.primes)continue;if(v.primes.antenne)antenne++;if(v.primes.reel)reel++;if(v.primes.coord)coord++;}}
+  for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd),mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);const sun=new Date(mon);sun.setDate(mon.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mym)continue;for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);const key=dk(d);if((S.conges||{})[key])continue;const{vac,absent,echange,ecSelf}=getVac(d);if(absent)continue;if(echange&&!ecSelf)continue;if(!vac||vac==='RH')continue;const pvac=getPayVac(d);const v=VAC[pvac];if(!v)continue;if(v.deb&&_toMinApp(v.deb)<240)matin++;if(!v.primes)continue;if(v.primes.antenne)antenne++;if(v.primes.reel)reel++;if(v.primes.coord)coord++;}}
   return{antenne,reel,coord,matin};
 }
 function fmtEuro(n){if(!isFinite(n)||isNaN(n))n=0;const abs=Math.abs(n).toFixed(2);const[int,dec]=abs.split('.');const intFmt=int.replace(/\B(?=(\d{3})+(?!\d))/g,' ');return(n<0?'-':'')+intFmt+','+dec+' €';}
@@ -1931,7 +1932,7 @@ function getHeuresForYM(ym){return _getHistVal((S.profile||{}).heuresHistory,(S.
 function calcDimRHFerMinsMois(y,m){
   const mym=y*12+m,sett=settingsForYM(mym),seenW=new Set(),last=new Date(y,m+1,0).getDate();const VAC=getVAC();let dim=0,rh=0,fer=0;
   for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd),mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);const sun=new Date(mon);sun.setDate(mon.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mym)continue;
-    for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);const key=dk(d);const cKey=(S.conges||{})[key];if(cKey&&(cKey==='cg'||cKey==='rend'||cKey==='rend-hist'||cKey==='absent'))continue;const{vac,absent,echange,ecSelf}=getVac(d);if(!vac||vac==='RH'||absent)continue;if(echange&&!ecSelf)continue;const dur=VAC[vac]?VAC[vac].dur:0;if(!dur)continue;const isFer=FERIES.has(key),isDim=d.getDay()===0,isRH=isRHDay(d);
+    for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);const key=dk(d);const cKey=(S.conges||{})[key];if(cKey&&(cKey==='cg'||cKey==='rend'||cKey==='rend-hist'||cKey==='absent'))continue;const{vac:_rawVac,absent,echange,ecSelf}=getVac(d);if(!_rawVac||_rawVac==='RH'||absent)continue;if(echange&&!ecSelf)continue;const pvac=getPayVac(d);const dur=VAC[pvac]?VAC[pvac].dur:0;if(!dur)continue;const isFer=FERIES.has(key),isDim=d.getDay()===0,isRH=isRHDay(d);
       if(isFer&&!sett.ferRendu)fer+=dur;
       else if(isDim&&!sett.dimRendu)dim+=dur;
       else if(isRH&&!echange&&!sett.rhRendu)rh+=dur;}}
@@ -2013,7 +2014,8 @@ function calcNuitWeek(monday){
     if(_cg&&(_cg==='cg'||_cg==='rend'||_cg==='rend-hist'||_cg==='absent'))continue;
     if(echange&&!ecSelf)continue;
     if(!vac||vac==='RH')continue;
-    nuit+=calcNuitMinShift(VAC[vac]);
+    const pvac=getPayVac(d);
+    nuit+=calcNuitMinShift(VAC[pvac]);
   }
   return nuit;
 }
