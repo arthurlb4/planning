@@ -832,7 +832,7 @@ function getVac(date){
   return{vac:cycleVac,ov:false,fromSV:false,absent:false,echange:false,ecSelf:false,li,cycleVac};
 }
 function getDur(date){const{vac}=getVac(date);const VAC=getVAC();return(vac&&vac!=='RH'&&VAC[vac])?VAC[vac].dur:0;}
-function isPanier(date){const{vac}=getVac(date);const VAC=getVAC();return!!(vac&&vac!=='RH'&&VAC[vac]&&VAC[vac].panier);}
+function isPanier(date){const key=dk(date);const ov=(S.overrides||{})[key];if(ov&&ov.formation)return false;const{vac}=getVac(date);const VAC=getVAC();return!!(vac&&vac!=='RH'&&VAC[vac]&&VAC[vac].panier);}
 function isRHDay(date){return getCycleVac(date).cycleVac==='RH';}
 function vLbl(code,VAC){return(code&&VAC&&VAC[code]&&VAC[code].label)||code||'';}
 
@@ -2255,7 +2255,8 @@ function openDay(key){
   var cs=calcSoldes(),totalReal=cs.totalReal,matelas=cs.matelas,totalDispo=totalReal+cs.totalPrev+Math.max(0,matelas);
   var cR=Math.max(0,getSoldeAnnee(date.getFullYear())-calcCongesUsedForYear(date.getFullYear()));
   var lbl=fmtDate(date),factor=renduFactor(date),ramee=isSemaineRamenée(getMonday(date)),hsW=calcHSWeek(getMonday(date)),sett=settingsForYM(date.getFullYear()*12+date.getMonth());
-  var tt=vac&&vac!=='RH'?vLbl(vac,VAC):'';if(absent)tt='Absent';else if(isFer)tt=vac&&vac!=='RH'?vLbl(vac,VAC):'Férié';else if(!vac)tt='Repos';if(echange)tt+=' (echange)';
+  var _ovData=(S.overrides||{})[key];
+  var tt=vac&&vac!=='RH'?vLbl(vac,VAC):'';if(absent)tt='Absent';else if(isFer)tt=vac&&vac!=='RH'?vLbl(vac,VAC):'Férié';else if(!vac)tt='Repos';if(echange)tt+=' (echange)';if(_ovData&&_ovData.formation)tt+=' (Formation)';
 
   var dw=date.getDay();
   var rows=[],cycleVacNames=_cycleVacList(date);
@@ -2341,7 +2342,8 @@ function avw(sel){
   // Show HS toggle before saving
   var curOv=S.overrides&&S.overrides[key];
   var curHs=curOv&&curOv.hs===true;
-  _pendingVacSel={key,sel,date,cv,hs:curHs};
+  var curFormation=curOv&&curOv.formation===true;
+  _pendingVacSel={key,sel,date,cv,hs:curHs,formation:curFormation};
   var durInfo='';
   const VAC=getVAC(date);
   const isSelSV=sel==='SV';
@@ -2360,9 +2362,14 @@ function avw(sel){
     +'<span style="font-size:13px;color:var(--text2)">Génère des HS</span>'
     +'<label class="tgl"><input type="checkbox" id="hs-toggle"'+(curHs?' checked':'')+'><span class="tgl-s"></span></label>'
     +'</div>';
+  const formToggle=
+    '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-top:0.5px solid var(--border)">'
+    +'<span style="font-size:13px;color:var(--text2)">Formation</span>'
+    +'<label class="tgl"><input type="checkbox" id="formation-toggle"'+(curFormation?' checked':'')+'><span class="tgl-s"></span></label>'
+    +'</div>';
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet">'
     +'<div class="sh"></div><div class="st">'+((VAC[sel]&&VAC[sel].label)||sel)+'</div>'
-    +durInfo+hsToggle
+    +durInfo+hsToggle+formToggle
     +'<button class="mb wide" style="margin-top:8px" onclick="avwConfirm()">Confirmer</button>'
     +'<button class="mcancel" onclick="closeModal()">Annuler</button>'
     +'</div></div>';
@@ -2373,9 +2380,10 @@ function avwConfirm(){
   pushUndo();
   var{key,sel,date,cv}=_pendingVacSel;
   var hs=document.getElementById('hs-toggle')?document.getElementById('hs-toggle').checked:false;
+  var formation=document.getElementById('formation-toggle')?document.getElementById('formation-toggle').checked:false;
   if(!S.overrides)S.overrides={};
-  S.overrides[key]={vac:sel==='SV'?null:sel,fromSV:!cv||cv==='RH'||sel==='SV',echange:false,hs:hs};
-  logH(fmtDate(date)+' -> '+sel+(hs?' (HS)':''),'#62aadc',key);
+  S.overrides[key]={vac:sel==='SV'?null:sel,fromSV:!cv||cv==='RH'||sel==='SV',echange:false,hs:hs,formation:formation};
+  logH(fmtDate(date)+' -> '+sel+(hs?' (HS)':'')+(formation?' (Formation)':''),'#62aadc',key);
   var _avwKey=key;
   _pendingVacSel=null;
   saveState();closeModal();render();popCell(_avwKey);
