@@ -4763,6 +4763,20 @@ function openSettingsModal(tab){
         +'<span class="as-lbl" style="flex:1;text-align:center;font-size:10px;line-height:32px;position:relative;z-index:1;'+_s1+'">Inactif</span>'
         +'</div></div>';
     })()
+    +(function(){
+      var _gcColors=[{id:'1',hex:'#7986cb',n:'Lavande'},{id:'2',hex:'#33b679',n:'Sauge'},{id:'3',hex:'#8e24aa',n:'Raisin'},{id:'4',hex:'#e67c73',n:'Flamant'},{id:'5',hex:'#f6bf26',n:'Banane'},{id:'6',hex:'#f4511e',n:'Mandarine'},{id:'7',hex:'#039be5',n:'Paon'},{id:'8',hex:'#616161',n:'Graphite'},{id:'9',hex:'#3f51b5',n:'Myrtille'},{id:'10',hex:'#0b8043',n:'Basilic'},{id:'11',hex:'#d50000',n:'Tomate'}];
+      var _gcTypes=[{key:'gcNormal',label:'Normal',def:'7'},{key:'gcModifie',label:'Modifié',def:'11'},{key:'gcRendu',label:'Rendu',def:'2'},{key:'gcConge',label:'Congé',def:'10'}];
+      var _gcCfg=(pr.profile&&pr.profile.gcalColors)||{};
+      return '<div style="font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin:10px 0 4px">Couleurs Google</div>'
+        +_gcTypes.map(function(t){
+          var cur=_gcCfg[t.key]||t.def;
+          var dots=_gcColors.map(function(c){
+            var sel=c.id===cur;
+            return '<span data-cid="'+c.id+'" onclick="setGcalColor(\''+t.key+'\',\''+c.id+'\',this)" style="width:20px;height:20px;border-radius:50%;background:'+c.hex+';cursor:pointer;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;border:'+(sel?'2px solid var(--text)':'2px solid transparent')+'" title="'+c.n+'">'+(sel?'<span style="width:6px;height:6px;border-radius:50%;background:#fff"></span>':'')+'</span>';
+          }).join('');
+          return '<div class="srow" style="padding:5px 0;align-items:center"><div class="slbl" style="font-size:12px">'+t.label+'</div><div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">'+dots+'</div></div>';
+        }).join('');
+    })()
     +'<div class="srow" '+_sr+'><div class="slbl">Effacer'+_inf('événements Google Agenda')+'</div><button '+_bS+' id="gcal-clear-btn" onclick="gcalClear()">Effacer</button></div>'
     +'<div class="srow" '+_sr+'><div class="slbl">Déconnecter'+_inf('retirer l\'accès')+'</div><button '+_bS+' id="gcal-disconnect-btn" onclick="gcalDisconnect()">Déconnecter</button></div>'
     +'</div>'
@@ -5772,9 +5786,22 @@ function gcalSetAutoSync(enabled){
 function gcalToggleAutoSync(){
   const cur=S.profile&&S.profile.gcalAutoSync!==false;
   gcalSetAutoSync(!cur);
-  // If enabling auto-sync, trigger a full sync
   if(cur===false&&gcalTokens)gcalSync();
 }
+function setGcalColor(key,cid,el){
+  if(!S.profile)return;
+  if(!S.profile.gcalColors)S.profile.gcalColors={};
+  S.profile.gcalColors[key]=cid;
+  saveState();
+  var row=el.parentElement;
+  if(row){row.querySelectorAll('span[data-cid]').forEach(function(s){
+    var sel=s.dataset.cid===cid;
+    s.style.border=sel?'2px solid var(--text)':'2px solid transparent';
+    s.innerHTML=sel?'<span style="width:6px;height:6px;border-radius:50%;background:#fff"></span>':'';
+  });}
+  gcalTrigger();
+}
+function _gcCol(key,def){var c=S.profile&&S.profile.gcalColors;return(c&&c[key])||def;}
 
 // ============================================================
 // CLOUD SYNC
@@ -6485,12 +6512,12 @@ function gcalBuildDayEvent(dateKey){
   if(congesType==='cg'){
     const dur=getDur(d);
     summary=vac&&vac!=='RH'?vacLbl:'Congé';
-    colorId='10';
+    colorId=_gcCol('gcConge','10');
     description='congé'+(dur?' - '+fmtMin(dur):'');
   } else if(congesType==='rend'){
     const dur=getDur(d);
     summary=vac&&vac!=='RH'?vacLbl:'Rendu';
-    colorId='2';
+    colorId=_gcCol('gcRendu','2');
     description='rendu - '+fmtMin(dur);
   } else if(congesType==='absent'){
     summary=(vac&&vac!=='RH'?vacLbl+' ':'')+'Absent';
@@ -6501,10 +6528,10 @@ function gcalBuildDayEvent(dateKey){
     const dur=getDur(d);
     const panier=isPanier(d)?' - panier':'';
     if(v2.echange&&!v2.ecSelf){summary=vacLbl+' (donne)';colorId='8';}
-    else if(v2.echange&&v2.ecSelf){summary=vacLbl+' (echange)';colorId='11';}
-    else if(v2.ov&&!v2.fromSV){summary=vacLbl;colorId='11';}
-    else if(v2.ov&&v2.fromSV){summary=vacLbl+' +';colorId='11';}
-    else{summary=vacLbl;colorId='7';}
+    else if(v2.echange&&v2.ecSelf){summary=vacLbl+' (echange)';colorId=_gcCol('gcModifie','11');}
+    else if(v2.ov&&!v2.fromSV){summary=vacLbl;colorId=_gcCol('gcModifie','11');}
+    else if(v2.ov&&v2.fromSV){summary=vacLbl+' +';colorId=_gcCol('gcModifie','11');}
+    else{summary=vacLbl;colorId=_gcCol('gcNormal','7');}
     description=fmtMin(dur)+panier;
   }
 
