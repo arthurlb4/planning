@@ -887,11 +887,12 @@ function calcHSWeek(monday){
       }
     }
   }
+  function _ceilHS(m){return m>0?Math.ceil(m/30)*30:0;}
   // Ramenée = 7h fixes + surplus normal éventuel (ex: vacation plus longue avec HS)
   if(isRam){
     const ramMin=7*60;
-    const normalSurplus=Math.max(0,weekWorked-weekBase);
-    const rendusRam=hsRenduFromSurplus(ramMin);   // forfait fixe 7h×1.25 indépendant des HS
+    const normalSurplus=_ceilHS(Math.max(0,weekWorked-weekBase));
+    const rendusRam=hsRenduFromSurplus(ramMin);
     const rendusPure=hsRenduFromSurplus(normalSurplus);
     const surplusTotal=ramMin+normalSurplus;
     const rawLow=Math.min(surplusTotal,480);
@@ -900,7 +901,7 @@ function calcHSWeek(monday){
       rendusMin:rendusPure+rendusRam,rendusH:Math.round((rendusPure+rendusRam)/60*100)/100,
       rendusMinHS:rendusPure,rendusMinRam:rendusRam,isRam,rawLow,rawHigh};
   }
-  const surplusTotal=Math.max(0,weekWorked-weekBase);
+  const surplusTotal=_ceilHS(Math.max(0,weekWorked-weekBase));
   const surplusPure=Math.max(0,weekWorked-weekBase);
   const rendusTotal=hsRenduFromSurplus(surplusTotal);
   const rendusPure=hsRenduFromSurplus(surplusPure);
@@ -978,7 +979,7 @@ function getExpYm(ym){return ym+3+getEphExtensions(ym)*3;}
 // BUILD GEN
 // ================================================================
 function buildGen(){
-  const gen={};function add(ym,k,v){if(!gen[ym])gen[ym]={dim:0,rh:0,fer:0,hs:0,ram:0,solde:0};gen[ym][k]+=v;}
+  const gen={};function add(ym,k,v){if(!gen[ym])gen[ym]={dim:0,rh:0,fer:0,hs:0,ram:0,extra:0,solde:0};gen[ym][k]+=v;}
   const START=2026*12,maxYM=CUR_YEAR*12+11,maxYMDisplay=(CUR_YEAR+2)*12+11,VAC=getVAC();
   const createdYM=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:START;
   const solde=(S.profile&&S.profile.ephSolde)||0;
@@ -1016,6 +1017,11 @@ const dur=VAC[vac]?VAC[vac].dur:0;
         if(hsW.rendusMinRam>0)add(sunYm,'ram',hsW.rendusMinRam);
       }}
   }
+  Object.keys(S.extraRendus||{}).forEach(function(key){
+    var d=new Date(key+'T12:00:00'),mon=getMonday(d),sun=new Date(mon);sun.setDate(mon.getDate()+6);
+    var sunYm=sun.getFullYear()*12+sun.getMonth();
+    if(sunYm>=createdYM)add(sunYm,'extra',(S.extraRendus[key].dur||0));
+  });
   return gen;
 }
 // Compute potential gen for a single month with given settings (used for preview)
@@ -1024,7 +1030,7 @@ function buildPotentialForYM(ym,sett){
   const VAC2=getVAC();
   const createdYM=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:2026*12;
   const maxYM=CUR_YEAR*12+11;
-  const res={dim:0,rh:0,fer:0,hs:0,ram:0};
+  const res={dim:0,rh:0,fer:0,hs:0,ram:0,extra:0};
   const seenHS=new Set();
   const start=new Date(ty,tm,1-6),end=new Date(ty,tm+1,0);
   for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)){
@@ -1681,7 +1687,7 @@ function updateCounters(){
     else{hsTotal+=hsW.rawLow+hsW.rawHigh;hsTotalLow+=hsW.rawLow;hsTotalHigh+=hsW.rawHigh;}
     rawLowTotal+=hsW.rawLow;rawHighTotal+=hsW.rawHigh;
   }}
-  const mym=curY*12+curM,gm=gen[mym]||{};const gt=((gm.dim||0)+(gm.rh||0)+(gm.fer||0)+(gm.hs||0)+(gm.ram||0));// excludes solde initial
+  const mym=curY*12+curM,gm=gen[mym]||{};const gt=((gm.dim||0)+(gm.rh||0)+(gm.fer||0)+(gm.hs||0)+(gm.ram||0)+(gm.extra||0));
   const panCount=calcPaniersMois(curY,curM);const primes=calcPrimesMois(curY,curM);const nuitTotal=calcNuitMois(curY,curM);const paye_tc=calcPayeMois(curY,curM);
   const el=document.getElementById('ctr-main');if(!el)return;
   const primeParts=[];
@@ -1701,7 +1707,7 @@ function updateCounters(){
   const primesHTML=primeParts.length?'<div style="display:flex;flex-direction:column;gap:3px;width:100%">'+primeParts.map(function(p){return '<div style="display:flex;align-items:center"><span style="flex:1;text-align:right;font-size:'+_tvfs+';color:var(--text2)"><i class="ti '+(_primeIco[p[0]]||'ti-star')+'"></i></span><span style="width:6px;flex-shrink:0"></span><span style="flex:1;text-align:left;font-size:'+_tpmfs+';font-weight:600;color:var(--amber)">'+p[1]+'</span></div>';}).join('')+'</div>':'<div style="font-size:'+_tvfs+';font-weight:600;color:var(--text3)">—</div>';
   // Detail dots for "Créés ce mois"
   function detRow(color,val,lbl){return val>0?'<div style="display:flex;justify-content:center;align-items:center;width:100%;line-height:1.7"><span style="font-size:10px;color:var(--text3);padding-right:3px;width:26px;flex-shrink:0;text-align:right">'+lbl+'</span><span class="rdot" style="background:'+color+';flex-shrink:0;margin-right:3px"></span><span style="width:0.5px;height:9px;background:var(--border2);flex-shrink:0"></span><span style="padding-left:3px;font-size:10px;color:var(--text3);width:36px;flex-shrink:0;overflow:hidden">'+fmtMin(val)+'</span></div>':'';}
-  const det=detRow('#9c80e0',gm.dim||0,'Dim')+detRow('#7b9ce0',gm.rh||0,'RH')+detRow('var(--gold)',gm.fer||0,'Fér')+detRow('var(--gold-dark)',gm.ram||0,'Ram')+detRow('var(--blue)',gm.hs||0,'HS')||'<div style="font-size:10px;color:var(--text3)">-</div>';
+  const det=detRow('#9c80e0',gm.dim||0,'Dim')+detRow('#7b9ce0',gm.rh||0,'RH')+detRow('var(--gold)',gm.fer||0,'Fér')+detRow('var(--gold-dark)',gm.ram||0,'Ram')+detRow('var(--blue)',gm.hs||0,'HS')+detRow('var(--rend-text)',gm.extra||0,'Extra')||'<div style="font-size:10px;color:var(--text3)">-</div>';
   const matEl=document.getElementById('eph-total-mat');
   if(matEl)matEl.textContent=fmtMin(Math.max(0,matelas));
   var _doNumAnim=el._lastMym!==undefined&&el._lastMym!==mym;
@@ -2361,7 +2367,10 @@ function openDay(key){
       +'</div>';
   }
   var _stTitle=_dayBox?'':'<div class="st">'+lbl+(tt?' - '+tt:'')+'</div>';
-  document.getElementById('modal-root').innerHTML=`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="sh"></div>${_stTitle}${_dayBox}${vgHtml}<div style="height:0.5px;background:var(--border);margin:16px 0;opacity:.5"></div>${ah}${echange?`<button class="mb del wide" style="font-size:11px;padding:8px;margin-bottom:4px" onclick="cancelExchange('${key}')">Annuler l'échange</button>`:ov?`<button class="mb wide ghost" style="font-size:11px;padding:8px;margin-bottom:4px" onclick="resetVac()">Remettre le cycle (${cycleVac?vLbl(cycleVac,VAC):'repos'})</button>`:''}<button class="mcancel mclose" onclick="closeModal()">Fermer</button></div></div>`;
+  var _exr=(S.extraRendus||{})[key];
+  var _exrHtml=_exr?'<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;font-size:12px"><span style="color:var(--rend-text)">+'+fmtMin(_exr.dur)+' rendu'+(_exr.label?' · '+_exr.label:'')+'</span><button style="background:none;border:none;color:var(--text3);font-size:16px;cursor:pointer;padding:2px 6px" onclick="removeExtraRendu(\''+key+'\')"><i class="ti ti-x"></i></button></div>':'';
+  var _addRenduBtn='<button class="mb wide ghost" style="font-size:11px;padding:8px;margin-bottom:4px" onclick="openExtraRenduModal(\''+key+'\')">+ Rendu</button>';
+  document.getElementById('modal-root').innerHTML=`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="sh"></div>${_stTitle}${_dayBox}${vgHtml}<div style="height:0.5px;background:var(--border);margin:16px 0;opacity:.5"></div>${ah}${_exrHtml}${_addRenduBtn}${echange?`<button class="mb del wide" style="font-size:11px;padding:8px;margin-bottom:4px" onclick="cancelExchange('${key}')">Annuler l'échange</button>`:ov?`<button class="mb wide ghost" style="font-size:11px;padding:8px;margin-bottom:4px" onclick="resetVac()">Remettre le cycle (${cycleVac?vLbl(cycleVac,VAC):'repos'})</button>`:''}<button class="mcancel mclose" onclick="closeModal()">Fermer</button></div></div>`;
 }
 function avw(sel){
   if(!sel)return;
@@ -2419,6 +2428,30 @@ function avwConfirm(){
   gcalTrigger();
 }
 
+function openExtraRenduModal(key){
+  var _ex=(S.extraRendus||{})[key];
+  document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)openDay(\''+key+'\')"><div class="sheet"><div class="sh"></div><div class="st">Ajouter un rendu</div>'
+    +'<div class="mrow"><label>Label</label><input id="exr-label" placeholder="Réunion, formation…" value="'+(_ex?_ex.label:'')+'"></div>'
+    +'<div class="mrow" style="margin-bottom:30px"><label>Durée</label><select id="exr-dur" style="padding:10px 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--bg2);color:var(--text);width:100%;-webkit-appearance:none;">'
+    +'<option value="30">0h30</option><option value="60">1h00</option><option value="90">1h30</option><option value="120">2h00</option><option value="150">2h30</option><option value="180">3h00</option><option value="210">3h30</option><option value="240">4h00</option><option value="300">5h00</option><option value="360">6h00</option><option value="420">7h00</option><option value="480">8h00</option></select></div>'
+    +'<div class="mbtns"><button class="mb" onclick="openDay(\''+key+'\')">Annuler</button><button class="mb pri" onclick="confirmExtraRendu(\''+key+'\')">Ajouter</button></div>'
+    +'</div></div>';
+  if(_ex)document.getElementById('exr-dur').value=String(_ex.dur);
+}
+function confirmExtraRendu(key){
+  var dur=parseInt(document.getElementById('exr-dur').value)||0;
+  var label=(document.getElementById('exr-label').value||'').trim();
+  if(dur<=0)return;
+  pushUndo();
+  if(!S.extraRendus)S.extraRendus={};
+  S.extraRendus[key]={dur:dur,label:label};
+  saveState();openDay(key);
+}
+function removeExtraRendu(key){
+  pushUndo();
+  if(S.extraRendus)delete S.extraRendus[key];
+  saveState();openDay(key);
+}
 function resetVac(){pushUndo();var _pk=pendingKey;removeHistoryForKey(_pk);if(!S.overrides)S.overrides={};delete S.overrides[_pk];if(!S.conges)S.conges={};delete S.conges[_pk];saveState();closeModal();render();popCell(_pk);gcalTrigger();}
 function setAbsent(){pushUndo();var date=new Date(pendingKey+'T12:00:00');if(!S.overrides)S.overrides={};S.overrides[pendingKey]={absent:true};if(!S.conges)S.conges={};S.conges[pendingKey]='absent';logH(fmtDate(date)+' -> absent','#c88048',pendingKey);saveState();closeModal();render();gcalTrigger();}
 function resetAbsent(){pushUndo();removeHistoryForKey(pendingKey);if(!S.overrides)S.overrides={};delete S.overrides[pendingKey];if(!S.conges)S.conges={};delete S.conges[pendingKey];saveState();closeModal();render();gcalTrigger();}
@@ -2930,7 +2963,7 @@ function openAnnualSettingsModal(y,dir){
     const pillBg=isSel?'rgba(59,130,246,.20)':'rgba(128,128,128,.13)';
     const pillColor=isSel?'var(--blue)':isCur?'var(--blue)':isPast?'var(--text3)':'var(--text)';
     const gm=_genYr[ym]||{};
-    const ymTotal=(gm.dim||0)+(gm.rh||0)+(gm.fer||0)+(gm.hs||0)+(gm.ram||0);
+    const ymTotal=(gm.dim||0)+(gm.rh||0)+(gm.fer||0)+(gm.hs||0)+(gm.ram||0)+(gm.extra||0);
     rows+='<tr data-row="'+ym+'" style="border-top:0.5px solid var(--border2);background:'+rowBg+'">'
       +'<td data-ym="'+ym+'" style="padding:4px;cursor:pointer;user-select:none" onclick="toggleAnnualSel('+ym+')">'
       +'<div style="display:inline-block;padding:2px 7px;border-radius:8px;font-size:11px;font-weight:500;background:'+pillBg+';color:'+pillColor+'">'+ML[m]+'</div>'
@@ -2958,7 +2991,7 @@ function openAnnualSettingsModal(y,dir){
       hsRendu:_annualActionState.hsRendu!==null?_annualActionState.hsRendu:_pEff.hsRendu
     };
     var _potGm=buildPotentialForYM(_pYm,_prSett);
-    var _pSum=(_potGm.dim||0)+(_potGm.rh||0)+(_potGm.fer||0)+(_potGm.hs||0)+(_potGm.ram||0);
+    var _pSum=(_potGm.dim||0)+(_potGm.rh||0)+(_potGm.fer||0)+(_potGm.hs||0)+(_potGm.ram||0)+(_potGm.extra||0);
     _previewTxt=fmtMin(_pSum);
   }
   var tfoot='<tfoot><tr style="border-top:2px solid '+(_hasSel?'var(--blue)':'var(--border2)')
