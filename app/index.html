@@ -834,7 +834,7 @@ function getVac(date){
   return{vac:cycleVac,ov:false,fromSV:false,absent:false,echange:false,ecSelf:false,li,cycleVac};
 }
 function getDur(date){const{vac}=getVac(date);const VAC=getVAC();return(vac&&vac!=='RH'&&VAC[vac])?VAC[vac].dur:0;}
-function getPayVac(date){const key=dk(date);const ov=(S.overrides||{})[key];if(ov&&ov.formation){const cv=getCycleVac(date).cycleVac;const _vac=getVAC();if(!window._dbgFormation)window._dbgFormation=[];window._dbgFormation.push('FORM '+key+' cv='+cv+' ovVac='+ov.vac+' VAC[cv].primes='+JSON.stringify((_vac[cv]||{}).primes||null));if(cv&&cv!=='RH')return cv;}return getVac(date).vac;}
+function getPayVac(date){const key=dk(date);const ov=(S.overrides||{})[key];if(ov&&ov.formation){const cv=getCycleVac(date).cycleVac;if(cv&&cv!=='RH')return cv;}return getVac(date).vac;}
 function isPanier(date){const key=dk(date);const ov=(S.overrides||{})[key];if(ov&&ov.formation)return false;const vac=getPayVac(date);const VAC=getVAC();return!!(vac&&vac!=='RH'&&VAC[vac]&&VAC[vac].panier);}
 function isRHDay(date){return getCycleVac(date).cycleVac==='RH';}
 function vLbl(code,VAC){return(code&&VAC&&VAC[code]&&VAC[code].label)||code||'';}
@@ -1907,9 +1907,8 @@ function calcPaniersMois(y,m){
   return c;
 }
 function calcPrimesMois(y,m){
-  let antenne=0,reel=0,coord=0,matin=0;const mym=y*12+m,seenW=new Set(),last=new Date(y,m+1,0).getDate();const VAC=getVAC();const _dbg=y===2026&&m===4;const _dbgLines=[];
-  for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd),mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);const sun=new Date(mon);sun.setDate(mon.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mym)continue;for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);const key=dk(d);if((S.conges||{})[key]){if(_dbg)_dbgLines.push(key+' SKIP conge='+(S.conges||{})[key]);continue;}const{vac,absent,echange,ecSelf}=getVac(d);if(absent){if(_dbg)_dbgLines.push(key+' SKIP absent vac='+vac);continue;}if(echange&&!ecSelf){if(_dbg)_dbgLines.push(key+' SKIP echange vac='+vac);continue;}if(!vac||vac==='RH'){if(_dbg)_dbgLines.push(key+' SKIP novac/RH vac='+vac);continue;}const pvac=getPayVac(d);const v=VAC[pvac];if(!v){if(_dbg)_dbgLines.push(key+' SKIP VAC['+pvac+'] undefined');continue;}if(v.deb&&_toMinApp(v.deb)<240)matin++;if(!v.primes){if(_dbg)_dbgLines.push(key+' SKIP no primes vac='+vac+' pvac='+pvac);continue;}if(v.primes.antenne){antenne++;if(_dbg)_dbgLines.push(key+' +ANTENNE vac='+vac+' pvac='+pvac);}else{if(_dbg)_dbgLines.push(key+' NO-ANT vac='+vac+' pvac='+pvac);}if(v.primes.reel)reel++;if(v.primes.coord)coord++;}}
-  if(_dbg)window._dbgPrimesMai=(window._dbgFormation||[]).join('\n')+'\n---\n'+_dbgLines.join('\n');window._dbgFormation=[];
+  let antenne=0,reel=0,coord=0,matin=0;const mym=y*12+m,seenW=new Set(),last=new Date(y,m+1,0).getDate();const VAC=getVAC();
+  for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd),mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);const sun=new Date(mon);sun.setDate(mon.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mym)continue;for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);const key=dk(d);if((S.conges||{})[key])continue;const{vac,absent,echange,ecSelf}=getVac(d);if(absent)continue;if(echange&&!ecSelf)continue;if(!vac||vac==='RH')continue;const pvac=getPayVac(d);const v=VAC[pvac];if(!v)continue;if(v.deb&&_toMinApp(v.deb)<240)matin++;if(!v.primes)continue;if(v.primes.antenne)antenne++;if(v.primes.reel)reel++;if(v.primes.coord)coord++;}}
   return{antenne,reel,coord,matin};
 }
 function fmtEuro(n){if(!isFinite(n)||isNaN(n))n=0;const abs=Math.abs(n).toFixed(2);const[int,dec]=abs.split('.');const intFmt=int.replace(/\B(?=(\d{3})+(?!\d))/g,' ');return(n<0?'-':'')+intFmt+','+dec+' €';}
@@ -4013,7 +4012,6 @@ function openMergedMoisModal(mym,tab){
     +'<div id="mtc-2" style="grid-area:1/1;visibility:hidden;pointer-events:none">'+paniersHtml+'</div>'
     +'<div id="mtc-3" style="grid-area:1/1;visibility:hidden;pointer-events:none">'+nuitSection+'</div>'
     +'<div id="mtc-4" style="grid-area:1/1;visibility:hidden;pointer-events:none">'+payeSection
-    +(window._dbgPrimesMai?'<div style="margin-top:12px"><button onclick="navigator.clipboard.writeText(window._dbgPrimesMai).then(function(){this.textContent=\'Copié !\';}.bind(this))" style="font-size:11px;padding:6px 16px;background:var(--blue);color:#fff;border:none;border-radius:8px;cursor:pointer">Copier debug primes mai</button></div>':'')
     +'</div>'
     +'</div>'
     +'<button class="mcancel mclose" onclick="closeModal()">Fermer</button>'
@@ -5434,10 +5432,13 @@ function confirmCustomVac(){
   if(dur<=0){alert('Duree invalide');return;}
   if(!S.customVacs)S.customVacs={};
   var vacKey=name;
-  if(VAC_STD[name]||_globalVacs[name]){
+  var sourceVac=VAC_STD[name]||_globalVacs[name];
+  if(sourceVac){
     vacKey='_p_'+name+'_'+Date.now();
   }
-  S.customVacs[vacKey]={deb:debStr,fin:finStr,dur,panier,hidden:true,label:name};
+  var newVac={deb:debStr,fin:finStr,dur,panier,hidden:true,label:name};
+  if(sourceVac&&sourceVac.primes)newVac.primes=sourceVac.primes;
+  S.customVacs[vacKey]=newVac;
   saveState();render();
   if(pendingKey){avw(vacKey);return;}
   closeModal();
@@ -5747,6 +5748,11 @@ async function cloudLoadAll(){
         var dirty=false;
         Object.keys(pr.customVacs).forEach(function(k){
           if(VAC_STD[k]||_globalVacs[k]){console.warn('customVacs shadow removed:',k,pr.customVacs[k]);delete pr.customVacs[k];dirty=true;}
+          if(k.startsWith('_p_')&&!pr.customVacs[k].primes){
+            var parts=k.replace(/^_p_/,'').replace(/_\d+$/,'');
+            var src=_globalVacs[parts]||VAC_STD[parts];
+            if(src&&src.primes){pr.customVacs[k].primes=src.primes;dirty=true;}
+          }
         });
         if(dirty&&pid===_aid)cloudSave(pid);
       }
