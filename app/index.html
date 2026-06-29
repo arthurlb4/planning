@@ -853,65 +853,57 @@ function hsRenduFromSurplus(surplus){
 }
 function calcHSWeek(monday){
   const li=lineIdx(monday),VAC=getVAC();
-  // Compute weekBase dynamically so admin-modified vacation durations are reflected
   const _grid=getActiveCycleGrid(monday)||CYCLE;
-  const weekBase=(_grid[li]||[]).reduce(function(s,v){return s+(!v||v==='RH'||v==='SV'?0:(VAC[v]?VAC[v].dur:0));},0);
+  const gridRow=_grid[li]||[];
+  const weekBase=gridRow.reduce(function(s,v){return s+(!v||v==='RH'||v==='SV'?0:(VAC[v]?VAC[v].dur:0));},0);
   let weekWorked=0;
+  function _ceilHS(m){return m>0?Math.ceil(m/30)*30:0;}
+  let roundedSurplus=0;
   const isRam=isSemaineRamenée(monday);
   for(let i=0;i<7;i++){const d=new Date(monday);d.setDate(monday.getDate()+i);const key=dk(d);const{vac,absent,echange,ecSelf,cycleVac}=getVac(d);if(absent)continue;const _cg=(S.conges||{})[key];
-    // Vacation posée (cg, rend, absent) ne contribue pas aux HS ni aux rendus
-    // En semaine ramenée, les 7h fixes sont un bonus forfaitaire indépendant du weekWorked
     if(_cg&&(_cg==='cg'||_cg==='rend'||_cg==='rend-hist'||_cg==='absent'))continue;
+    var _dayBase=gridRow[i]&&gridRow[i]!=='RH'&&gridRow[i]!=='SV'&&VAC[gridRow[i]]?VAC[gridRow[i]].dur:0;
+    var _dayWorked=0;
     if(echange){
       const _ecOv=(S.overrides||{})[key];
       const _hsFlag=_ecOv&&_ecOv.hs;
       if(_hsFlag){
-        // Échange avec HS: jour pris = durée réelle, jour donné = 0 (soustraction implicite via weekBase)
-        if(ecSelf&&vac&&vac!=='RH')weekWorked+=VAC[vac]?VAC[vac].dur:0;
-        // ecSelf=false: contribue 0 → le weekBase comptait ce jour mais on ne le travaille plus
+        if(ecSelf&&vac&&vac!=='RH')_dayWorked=VAC[vac]?VAC[vac].dur:0;
       } else {
-        // Échange sans HS: différentiel = 0, valoriser au cycle original des deux côtés
-        if(cycleVac&&cycleVac!=='RH')weekWorked+=VAC[cycleVac]?VAC[cycleVac].dur:0;
+        if(cycleVac&&cycleVac!=='RH')_dayWorked=VAC[cycleVac]?VAC[cycleVac].dur:0;
       }
     }else{
-      if(!vac||vac==='RH')continue;
+      if(!vac||vac==='RH'){weekWorked+=0;roundedSurplus+=0;continue;}
       const _ov=(S.overrides||{})[key];
       if(_ov&&_ov.vac&&!_ov.echange&&cycleVac&&VAC[cycleVac]&&VAC[cycleVac].mixte){
-        // MIXTE: base = dur MIXTE + minutes hors bornes MIXTE (HS automatique)
-        weekWorked+=(VAC[cycleVac].dur||0)+_calcMixteHsMin(cycleVac,_ov.vac,VAC);
+        _dayWorked=(VAC[cycleVac].dur||0)+_calcMixteHsMin(cycleVac,_ov.vac,VAC);
       } else if(_ov&&_ov.vac&&!_ov.echange&&!_ov.hs){
-        // Override sans HS: cycle original — sauf RH (jour de repos travaillé = toujours compter)
-        weekWorked+=cycleVac==='RH'?(VAC[vac]?VAC[vac].dur:0):(cycleVac&&VAC[cycleVac]?VAC[cycleVac].dur:0);
+        _dayWorked=cycleVac==='RH'?(VAC[vac]?VAC[vac].dur:0):(cycleVac&&VAC[cycleVac]?VAC[cycleVac].dur:0);
       } else {
-        weekWorked+=VAC[vac]?VAC[vac].dur:0;
+        _dayWorked=VAC[vac]?VAC[vac].dur:0;
       }
     }
+    weekWorked+=_dayWorked;
+    roundedSurplus+=_ceilHS(Math.max(0,_dayWorked-_dayBase));
   }
-  function _ceilHS(m){return m>0?Math.ceil(m/30)*30:0;}
-  // Ramenée = 7h fixes + surplus normal éventuel (ex: vacation plus longue avec HS)
   if(isRam){
     const ramMin=7*60;
-    const normalSurplus=_ceilHS(Math.max(0,weekWorked-weekBase));
     const rendusRam=hsRenduFromSurplus(ramMin);
-    const rendusPure=hsRenduFromSurplus(normalSurplus);
-    const surplusTotal=ramMin+normalSurplus;
+    const rendusPure=hsRenduFromSurplus(roundedSurplus);
+    const surplusTotal=ramMin+roundedSurplus;
     const rawLow=Math.min(surplusTotal,480);
     const rawHigh=Math.max(0,surplusTotal-480);
     return{surplus:surplusTotal,weekBase,weekWorked:weekBase+surplusTotal,
       rendusMin:rendusPure+rendusRam,rendusH:Math.round((rendusPure+rendusRam)/60*100)/100,
       rendusMinHS:rendusPure,rendusMinRam:rendusRam,isRam,rawLow,rawHigh};
   }
-  const surplusTotal=_ceilHS(Math.max(0,weekWorked-weekBase));
-  const surplusPure=Math.max(0,weekWorked-weekBase);
+  const surplusTotal=roundedSurplus;
   const rendusTotal=hsRenduFromSurplus(surplusTotal);
-  const rendusPure=hsRenduFromSurplus(surplusPure);
-  const rendusRam=rendusTotal-rendusPure;
-  // Raw brackets (no rate applied)
   const rawLow=Math.min(surplusTotal,480);
   const rawHigh=Math.max(0,surplusTotal-480);
   return{surplus:surplusTotal,weekBase,weekWorked:weekWorked,
     rendusMin:rendusTotal,rendusH:Math.round(rendusTotal/60*100)/100,
-    rendusMinHS:rendusPure,rendusMinRam:rendusRam,isRam,rawLow,rawHigh};
+    rendusMinHS:rendusTotal,rendusMinRam:0,isRam,rawLow,rawHigh};
 }
 function isSemaineRamenée(monday){
   let hasFérié=false,hasWork=false,allPosed=true,hasAbsent=false;
