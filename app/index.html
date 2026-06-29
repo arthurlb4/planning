@@ -5809,10 +5809,21 @@ function openGcalColorsModal(){
 // ============================================================
 function cloudHeaders(){return{'Content-Type':'application/json','Authorization':'Bearer '+(window._authToken||'')};}
 
+var _kvAlertShown=false;
+function _showKvAlert(){
+  if(_kvAlertShown)return;
+  _kvAlertShown=true;
+  var el=document.createElement('div');
+  el.style.cssText='position:fixed;top:0;left:0;right:0;z-index:99999;padding:10px 16px;background:#d32f2f;color:#fff;font-size:13px;text-align:center;font-weight:500;cursor:pointer;';
+  el.textContent='Quota cloud épuisé — vos modifications sont sauvegardées localement. La synchronisation reprendra demain (00h UTC).';
+  el.onclick=function(){el.remove();};
+  document.body.appendChild(el);
+}
 async function cloudSave(pid){
   if(!window._authToken)return;
   try{
-    await fetch(CLOUD_API+'/data/save',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({profileId:pid,data:_profs[pid]})});
+    var res=await fetch(CLOUD_API+'/data/save',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({profileId:pid,data:_profs[pid]})});
+    if(!res.ok)_showKvAlert();
   }catch(e){console.warn('cloud save error',e);}
 }
 
