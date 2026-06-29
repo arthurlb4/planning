@@ -2260,7 +2260,7 @@ function openDay(key){
   var cR=Math.max(0,getSoldeAnnee(date.getFullYear())-calcCongesUsedForYear(date.getFullYear()));
   var lbl=fmtDate(date),factor=renduFactor(date),ramee=isSemaineRamenée(getMonday(date)),hsW=calcHSWeek(getMonday(date)),sett=settingsForYM(date.getFullYear()*12+date.getMonth());
   var _ovData=(S.overrides||{})[key];
-  var tt=vac&&vac!=='RH'?vLbl(vac,VAC):'';if(absent)tt='Absent';else if(isFer)tt=vac&&vac!=='RH'?vLbl(vac,VAC):'Férié';else if(!vac)tt='Repos';if(echange)tt+=' (echange)';if(_ovData&&_ovData.formation)tt+=' (Formation)';
+  var tt=vac&&vac!=='RH'?vLbl(vac,VAC):'';if(absent)tt='Absent';else if(isFer)tt=vac&&vac!=='RH'?vLbl(vac,VAC):'Férié';else if(!vac)tt='Repos';if(echange)tt+=' (echange)';if(_ovData&&_ovData.formation)tt+=' (EPV cycle)';
 
   var dw=date.getDay();
   var rows=[],cycleVacNames=_cycleVacList(date);
@@ -2337,7 +2337,23 @@ function openDay(key){
     }
   }
 
-  document.getElementById('modal-root').innerHTML=`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="sh"></div><div class="st">${lbl}${tt?' - '+tt:''}</div>${vac&&vac!=='RH'&&!absent&&VAC[vac]?`<div class="ss">${VAC[vac].deb}→${VAC[vac].fin} · ${fmtMin(dur)}</div>`:''}${vgHtml}<div style="height:0.5px;background:var(--border);margin:16px 0;opacity:.5"></div>${ah}${echange?`<button class="mb del wide" style="font-size:11px;padding:8px;margin-bottom:4px" onclick="cancelExchange('${key}')">Annuler l'échange</button>`:ov?`<button class="mb wide ghost" style="font-size:11px;padding:8px;margin-bottom:4px" onclick="resetVac()">Remettre le cycle (${cycleVac?vLbl(cycleVac,VAC):'repos'})</button>`:''}<button class="mcancel mclose" onclick="closeModal()">Fermer</button></div></div>`;
+  var epvHtml='';
+  if(vac&&vac!=='RH'&&!absent&&!hasCg){
+    var _pvac=getPayVac(date),_pv=_pvac?VAC[_pvac]:null,_epv=[];
+    if(_pv){
+      var _nMin=calcNuitMinShift(_pv);if(_nMin>0)_epv.push('Nuit '+fmtMin(_nMin));
+      if(_pv.primes&&_pv.primes.antenne)_epv.push('Antenne');
+      if(_pv.primes&&_pv.primes.reel)_epv.push('Réal');
+      if(_pv.primes&&_pv.primes.coord)_epv.push('Coord');
+      if(_pv.deb&&_toMinApp(_pv.deb)<240)_epv.push('Matin');
+      if(isPanier(date))_epv.push('Panier');
+      if(isFer)_epv.push('Férié ×100%');
+      else if(date.getDay()===0)_epv.push('Dim ×30%');
+      else if(isRHDay(date))_epv.push('RH ×30%');
+    }
+    if(_epv.length)epvHtml='<div style="font-size:11px;color:var(--text3);margin-top:2px">EPV : '+_epv.join(' · ')+'</div>';
+  }
+  document.getElementById('modal-root').innerHTML=`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="sh"></div><div class="st">${lbl}${tt?' - '+tt:''}</div>${vac&&vac!=='RH'&&!absent&&VAC[vac]?`<div class="ss">${VAC[vac].deb}→${VAC[vac].fin} · ${fmtMin(dur)}</div>`:''}${epvHtml}${vgHtml}<div style="height:0.5px;background:var(--border);margin:16px 0;opacity:.5"></div>${ah}${echange?`<button class="mb del wide" style="font-size:11px;padding:8px;margin-bottom:4px" onclick="cancelExchange('${key}')">Annuler l'échange</button>`:ov?`<button class="mb wide ghost" style="font-size:11px;padding:8px;margin-bottom:4px" onclick="resetVac()">Remettre le cycle (${cycleVac?vLbl(cycleVac,VAC):'repos'})</button>`:''}<button class="mcancel mclose" onclick="closeModal()">Fermer</button></div></div>`;
 }
 function avw(sel){
   if(!sel)return;
@@ -2369,7 +2385,7 @@ function avw(sel){
   const isCustomVac=!!(S.customVacs&&S.customVacs[sel]);
   const formToggle=isCustomVac?
     '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-top:0.5px solid var(--border)">'
-    +'<span style="font-size:13px;color:var(--text2)">Formation</span>'
+    +'<span style="font-size:13px;color:var(--text2)">Garder EPV (formation, vacation modifiée…)</span>'
     +'<label class="tgl"><input type="checkbox" id="formation-toggle"'+(curFormation?' checked':'')+'><span class="tgl-s"></span></label>'
     +'</div>':'';
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet">'
