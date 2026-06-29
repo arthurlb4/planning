@@ -314,6 +314,8 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 /* Modal */
 @keyframes sheetUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
 @keyframes ptr-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+@keyframes ptr-arc{0%{stroke-dashoffset:125;transform:rotate(0deg)}50%{stroke-dashoffset:30;transform:rotate(180deg)}100%{stroke-dashoffset:125;transform:rotate(360deg)}}
+@keyframes ptr-pop{0%{transform:scale(0);opacity:0}60%{transform:scale(1.1);opacity:1}100%{transform:scale(1);opacity:1}}
 @keyframes overlayIn{from{opacity:0}to{opacity:1}}
 @keyframes dialogIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);z-index:200;display:flex;align-items:flex-end;justify-content:center;}
@@ -445,7 +447,7 @@ body.modal-open{overflow:hidden;position:fixed;width:100%;left:0;right:0;overscr
   <button onclick="this.parentElement.style.display='none'">x</button>
 </div>
 
-<div id="ptr-indicator" style="position:fixed;top:0;left:0;right:0;z-index:9999;display:flex;justify-content:center;pointer-events:none;transition:transform .2s ease"><div style="width:32px;height:32px;margin-top:8px;border-radius:50%;background:var(--bg2);box-shadow:0 2px 8px rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center"><i class="ti ti-refresh" id="ptr-icon" style="font-size:18px;color:var(--text2);transition:transform .2s ease"></i></div></div>
+<div id="ptr-indicator" style="position:fixed;top:0;left:0;right:0;z-index:9999;display:flex;justify-content:center;pointer-events:none;transition:transform .3s cubic-bezier(.4,0,.2,1);transform:translateY(-60px)"><div id="ptr-bubble" style="width:36px;height:36px;margin-top:6px;border-radius:50%;background:var(--bg0);box-shadow:0 2px 10px rgba(0,0,0,.22);display:flex;align-items:center;justify-content:center;transform:scale(0);transition:transform .2s cubic-bezier(.4,0,.2,1)"><svg id="ptr-svg" width="22" height="22" viewBox="0 0 44 44" style="transform:rotate(-90deg)"><circle cx="22" cy="22" r="20" fill="none" stroke="var(--border)" stroke-width="3" opacity=".2"></circle><circle id="ptr-arc" cx="22" cy="22" r="20" fill="none" stroke="var(--blue)" stroke-width="3" stroke-linecap="round" stroke-dasharray="125.6" stroke-dashoffset="125.6"></circle></svg></div></div>
 <!-- HEADER -->
 <div class="hdr">
   <span class="hdr-ver" style="display:flex;align-items:baseline;gap:4px;padding-left:4px;white-space:nowrap"><span id="hdr-profile-name" style="font-size:16px;font-weight:600;color:var(--text)">Profil</span><span style="font-size:15px;color:var(--text3);font-weight:400">| franceinfo:</span></span>
@@ -5599,40 +5601,55 @@ function init(){
       }, 100);
     }, {passive:true});
   }
-  // Pull-to-refresh
+  // Pull-to-refresh (Google Material style)
   (function(){
     var _ptrY0=0,_ptrActive=false,_ptrDist=0,_ptrTriggered=false;
     var _ptrEl=document.getElementById('ptr-indicator');
-    var _ptrIcon=document.getElementById('ptr-icon');
+    var _ptrBubble=document.getElementById('ptr-bubble');
+    var _ptrArc=document.getElementById('ptr-arc');
+    var _ptrSvg=document.getElementById('ptr-svg');
     var _ptrThreshold=70;
-    _ptrEl.style.transform='translateY(-50px)';
+    var _ptrMaxDash=125.6;
     document.addEventListener('touchstart',function(e){
       if(document.body.classList.contains('modal-open'))return;
       if(window.scrollY>0)return;
       _ptrY0=e.touches[0].clientY;_ptrActive=true;_ptrDist=0;_ptrTriggered=false;
+      _ptrArc.style.animation='none';
+      _ptrSvg.style.animation='none';
     },{passive:true});
     document.addEventListener('touchmove',function(e){
       if(!_ptrActive)return;
       var dy=e.touches[0].clientY-_ptrY0;
-      if(dy<0){_ptrDist=0;_ptrEl.style.transform='translateY(-50px)';return;}
+      if(dy<0){_ptrDist=0;_ptrEl.style.transition='transform .2s ease';_ptrEl.style.transform='translateY(-60px)';_ptrBubble.style.transform='scale(0)';return;}
       if(window.scrollY>0){_ptrActive=false;return;}
-      _ptrDist=Math.min(dy*.4,100);
+      _ptrDist=Math.min(dy*.45,110);
+      var progress=Math.min(_ptrDist/_ptrThreshold,1);
       _ptrEl.style.transition='none';
-      _ptrEl.style.transform='translateY('+(_ptrDist-50)+'px)';
-      _ptrIcon.style.transform='rotate('+Math.min(_ptrDist/_ptrThreshold*360,360)+'deg)';
-      if(_ptrDist>=_ptrThreshold-10)_ptrTriggered=true;else _ptrTriggered=false;
+      _ptrEl.style.transform='translateY('+(_ptrDist-60)+'px)';
+      var sc=Math.min(progress*1.2,1);
+      _ptrBubble.style.transform='scale('+sc+')';
+      var dashOff=_ptrMaxDash-(progress*_ptrMaxDash*0.8);
+      _ptrArc.style.strokeDashoffset=dashOff;
+      _ptrSvg.style.transform='rotate('+((-90)+progress*270)+'deg)';
+      if(progress>=0.85){_ptrTriggered=true;_ptrArc.style.stroke='var(--blue)';}
+      else{_ptrTriggered=false;_ptrArc.style.stroke='var(--text3)';}
     },{passive:true});
     document.addEventListener('touchend',function(){
       if(!_ptrActive)return;
       _ptrActive=false;
-      _ptrEl.style.transition='transform .2s ease';
+      _ptrEl.style.transition='transform .3s cubic-bezier(.4,0,.2,1)';
       if(_ptrTriggered){
-        _ptrIcon.style.animation='ptr-spin .6s linear infinite';
-        _ptrEl.style.transform='translateY(10px)';
-        setTimeout(function(){location.reload();},400);
+        _ptrEl.style.transform='translateY(12px)';
+        _ptrBubble.style.transform='scale(1)';
+        _ptrArc.style.stroke='var(--blue)';
+        _ptrArc.style.animation='ptr-arc 1.2s cubic-bezier(.4,0,.2,1) infinite';
+        _ptrSvg.style.animation='ptr-spin 1.8s linear infinite';
+        setTimeout(function(){location.reload();},600);
       }else{
-        _ptrEl.style.transform='translateY(-50px)';
-        _ptrIcon.style.transform='rotate(0deg)';
+        _ptrEl.style.transform='translateY(-60px)';
+        _ptrBubble.style.transform='scale(0)';
+        _ptrArc.style.strokeDashoffset=_ptrMaxDash;
+        _ptrSvg.style.transform='rotate(-90deg)';
       }
     },{passive:true});
   })();
