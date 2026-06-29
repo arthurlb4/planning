@@ -629,6 +629,8 @@ function loadState(){
   if(S.customVacs){Object.keys(S.customVacs).forEach(k=>{if(VAC_STD[k]){console.warn('customVacs shadow removed:',k,S.customVacs[k]);delete S.customVacs[k];}});}
 }
 function saveState(){
+  var _ts=Date.now();
+  Object.keys(_profs).forEach(function(pid){if(_profs[pid]&&_profs[pid].profile)_profs[pid].profile._lastSaved=_ts;});
   try{localStorage.setItem('pl_v8',JSON.stringify({p:_profs,a:_aid}));}catch(e){}
   // Cloud sync debounced
   clearTimeout(window._cloudSyncTimer);
@@ -5874,7 +5876,11 @@ async function cloudLoadAll(){
     } else {
       for(const pid of Object.keys(profiles)){
         const cloudData=await cloudLoad(pid);
-        if(cloudData){_profs[pid]=cloudData;} // KV always wins
+        if(cloudData){
+          var _localTs=(_profs[pid]&&_profs[pid].profile&&_profs[pid].profile._lastSaved)||0;
+          var _cloudTs=(cloudData.profile&&cloudData.profile._lastSaved)||0;
+          if(_cloudTs>=_localTs){_profs[pid]=cloudData;}
+        }
       }
       // Update active profile S from loaded data
       if(_profs[_aid]){S=_profs[_aid];}
