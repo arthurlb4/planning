@@ -917,7 +917,11 @@ export default {
           var entry = await calApi('GET', '/users/me/calendarList/' + encodeURIComponent(oldCal), null, token, refresh_token, env);
           if (entry.newToken) token = entry.newToken;
           savedColor = entry.data && entry.data.backgroundColor;
-          await calApi('DELETE', '/calendars/' + encodeURIComponent(oldCal), null, token, refresh_token, env);
+          var delR = await calApi('DELETE', '/calendars/' + encodeURIComponent(oldCal), null, token, refresh_token, env);
+          if (delR.newToken) token = delR.newToken;
+          if (delR.status !== 204 && delR.status !== 404) {
+            return resp({ error: 'Suppression du calendrier échouée', detail: delR.data, newToken: token !== access_token ? token : null }, 502);
+          }
         }
         var newR = await calApi('POST', '/calendars', { summary: 'franceinfo', timeZone: 'Europe/Paris' }, token, null, env);
         if (newR.newToken) token = newR.newToken;
