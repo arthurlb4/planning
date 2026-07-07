@@ -7,7 +7,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>planning franceinfo</title>
-<meta name="app-version" content="v4.89">
+<meta name="app-version" content="v4.90">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -530,7 +530,7 @@ body.modal-open{overflow:hidden;position:fixed;width:100%;left:0;right:0;overscr
 <div id="modal-root"></div>
 
 <script>
-var _appVer='v4.89';
+var _appVer='v4.90';
 var GCAL_CLIENT_ID='669191513748-a40uvl9k46kqsmjatpqokhnhgvrc7mdt.apps.googleusercontent.com';
 var GCAL_REDIRECT_URI='https://arthurlb4.github.io/planning/app/';
 var GCAL_SCOPE='https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events';
@@ -632,13 +632,17 @@ function saveState(){
   var _ts=Date.now();
   Object.keys(_profs).forEach(function(pid){if(_profs[pid]&&_profs[pid].profile)_profs[pid].profile._lastSaved=_ts;});
   try{localStorage.setItem('pl_v8',JSON.stringify({p:_profs,a:_aid}));}catch(e){}
-  // Cloud sync debounced
+  // Cloud sync debounced (5s)
   clearTimeout(window._cloudSyncTimer);
   window._cloudSyncTimer=setTimeout(function(){
     if(!_aid)return;
     cloudSave(_aid);
-    // Register line
-    if(S&&S.profile&&window._authToken){
+  },5000);
+  // Line registration throttled (5 min) — many KV writes, no need for near-real-time
+  if(!window._linesRegTimer){
+    window._linesRegTimer=setTimeout(function(){
+      window._linesRegTimer=null;
+      if(!S||!S.profile||!window._authToken)return;
       const _mon=getMonday(NOW);
       const _rVisual=lineIdx(_mon);
       const _computeWeekVacs=function(wMon){
@@ -674,8 +678,8 @@ function saveState(){
         regLine:_rVisual,
         regWeek:dk(_mon)
       })}).catch(function(){});
-    }
-  },2000);
+    },300000);
+  }
 }
 function switchProfile(id){_profs[_aid]=S;saveState();if(!_profs[id])_profs[id]=DEFAULT_PD();_aid=id;S=_profs[_aid];saveState();}
 function createProfile(id,data){_profs[id]=data;saveState();}
