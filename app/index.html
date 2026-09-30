@@ -5834,7 +5834,7 @@ function cloudHeaders(){return{'Content-Type':'application/json','Authorization'
 function setSyncStatus(st){
   var el=document.getElementById('sync-status');if(!el)return;
   window._syncStatus=st;
-  var cfg={pending:['ti-cloud-upload','var(--text3)','Synchronisation en attente…'],ok:['ti-cloud-check','var(--text3)','Synchronisé'],error:['ti-cloud-off','var(--amber)','Échec de synchronisation — vos modifications sont gardées sur cet appareil. Toucher pour réessayer.']}[st];
+  var cfg={pending:['ti-cloud-upload','var(--text3)','Synchronisation en attente…'],ok:['ti-cloud-check','var(--text3)','Synchronisé'],error:['ti-cloud-off','var(--amber)','Échec de synchronisation'+(window._syncErr?' ('+window._syncErr+')':'')+' — vos modifications sont gardées sur cet appareil. Nouvel essai automatique toutes les 10 min. Toucher pour réessayer maintenant.']}[st];
   if(!cfg){el.style.display='none';return;}
   el.innerHTML='<i class="ti '+cfg[0]+'"></i>';el.style.color=cfg[1];el.title=cfg[2];el.style.display='inline-flex';
 }
@@ -5842,14 +5842,31 @@ function syncStatusClick(){
   if(window._syncStatus==='error'){if(_aid)cloudSave(_aid);}
   else{var el=document.getElementById('sync-status');if(el)alert(el.title);}
 }
+// Contenu comparable d'un profil (sans l'horodatage, qui change à chaque saveState)
+function _syncSig(d){return JSON.stringify(d,function(k,v){return k==='_lastSaved'?undefined:v;});}
+function _cloudSaveFailed(pid,msg){
+  window._syncErr=msg;setSyncStatus('error');
+  clearTimeout(window._syncRetryTimer);
+  window._syncRetryTimer=setTimeout(function(){cloudSave(pid);},600000);
+}
 async function cloudSave(pid){
-  if(!window._authToken)return;
+  if(!window._authToken||!_profs[pid])return;
+  // Rien de nouveau depuis la dernière synchro réussie → pas d'écriture (quota KV)
+  var sig=_syncSig(_profs[pid]),sigKey='pl_synced_'+((window._authUser&&window._authUser.userId)||'')+'_'+pid;
+  try{if(localStorage.getItem(sigKey)===sig){setSyncStatus('ok');return;}}catch(e){}
   setSyncStatus('pending');
   try{
     var res=await fetch(CLOUD_API+'/data/save',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({profileId:pid,data:_profs[pid]})});
-    if(!res.ok){console.warn('cloud save failed',res.status);setSyncStatus('error');}
-    else setSyncStatus('ok');
-  }catch(e){console.warn('cloud save error',e);setSyncStatus('error');}
+    if(!res.ok){
+      var err='';try{err=(await res.json()).error||'';}catch(e){}
+      console.warn('cloud save failed',res.status,err);
+      _cloudSaveFailed(pid,'erreur '+res.status+(err?' : '+err:''));
+    }else{
+      window._syncErr='';clearTimeout(window._syncRetryTimer);
+      try{localStorage.setItem(sigKey,sig);}catch(e){}
+      setSyncStatus('ok');
+    }
+  }catch(e){console.warn('cloud save error',e);_cloudSaveFailed(pid,navigator.onLine===false?'hors ligne':'serveur injoignable');}
 }
 
 async function cloudLoad(pid){

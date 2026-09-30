@@ -769,8 +769,11 @@ export default {
       if (user) {
         if (!user.profiles) user.profiles = {};
         var profileName = data && data.profile && data.profile.name || profileId;
-        user.profiles[profileId] = { name: profileName, updatedAt: Date.now() };
-        await env.PLANNING_DB.put('user:' + session.userId, JSON.stringify(user));
+        // Quota KV : ne réécrire le compte que si le profil est nouveau ou renommé
+        if (!user.profiles[profileId] || user.profiles[profileId].name !== profileName) {
+          user.profiles[profileId] = { name: profileName, updatedAt: Date.now() };
+          await env.PLANNING_DB.put('user:' + session.userId, JSON.stringify(user));
+        }
       }
       return resp({ ok: true });
     }
