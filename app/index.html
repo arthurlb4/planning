@@ -452,6 +452,7 @@ body.modal-open{overflow:hidden;position:fixed;width:100%;left:0;right:0;overscr
 <div class="hdr">
   <span class="hdr-ver" style="display:flex;align-items:baseline;gap:4px;padding-left:4px;white-space:nowrap"><span id="hdr-profile-name" style="font-size:16px;font-weight:600;color:var(--text)">Profil</span><span style="font-size:15px;color:var(--text3);font-weight:400">| franceinfo:</span></span>
   <div class="hdr-btns" style="position:relative">
+    <span id="sync-status" title="Synchronisation cloud" onclick="syncStatusClick()" style="display:none;align-items:center;justify-content:center;width:22px;height:22px;margin-right:6px;cursor:pointer;font-size:16px;color:var(--text3)"></span>
     <span id="gcal-status-wrap" style="display:inline-flex;align-items:center;cursor:pointer;position:relative;width:22px;height:22px;margin-right:8px;" onclick="gcalHandleClick()">
       <svg style="position:absolute;top:-4px;left:-4px;transform:rotate(-90deg);pointer-events:none" width="30" height="30" viewBox="0 0 30 30">
         <circle id="gcal-progress-circle" cx="15" cy="15" r="13" fill="none" stroke="transparent" stroke-width="3" stroke-dasharray="81.68" stroke-dashoffset="81.68" stroke-linecap="round"/>
@@ -638,6 +639,7 @@ function saveState(){
     if(!_aid)return;
     cloudSave(_aid);
   },5000);
+  if(window._authToken)setSyncStatus('pending');
   // Line registration throttled (5 min) — many KV writes, no need for near-real-time
   if(!window._linesRegTimer){
     window._linesRegTimer=setTimeout(function(){
@@ -5816,12 +5818,26 @@ function openGcalColorsModal(){
 // ============================================================
 function cloudHeaders(){return{'Content-Type':'application/json','Authorization':'Bearer '+(window._authToken||'')};}
 
+// Indicateur discret de synchro : pending (en attente), ok, error (cliquable pour réessayer)
+function setSyncStatus(st){
+  var el=document.getElementById('sync-status');if(!el)return;
+  window._syncStatus=st;
+  var cfg={pending:['ti-cloud-upload','var(--text3)','Synchronisation en attente…'],ok:['ti-cloud-check','var(--text3)','Synchronisé'],error:['ti-cloud-off','var(--amber)','Échec de synchronisation — vos modifications sont gardées sur cet appareil. Toucher pour réessayer.']}[st];
+  if(!cfg){el.style.display='none';return;}
+  el.innerHTML='<i class="ti '+cfg[0]+'"></i>';el.style.color=cfg[1];el.title=cfg[2];el.style.display='inline-flex';
+}
+function syncStatusClick(){
+  if(window._syncStatus==='error'){if(_aid)cloudSave(_aid);}
+  else{var el=document.getElementById('sync-status');if(el)alert(el.title);}
+}
 async function cloudSave(pid){
   if(!window._authToken)return;
+  setSyncStatus('pending');
   try{
     var res=await fetch(CLOUD_API+'/data/save',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({profileId:pid,data:_profs[pid]})});
-    if(!res.ok)console.warn('cloud save failed',res.status);
-  }catch(e){console.warn('cloud save error',e);}
+    if(!res.ok){console.warn('cloud save failed',res.status);setSyncStatus('error');}
+    else setSyncStatus('ok');
+  }catch(e){console.warn('cloud save error',e);setSyncStatus('error');}
 }
 
 async function cloudLoad(pid){
