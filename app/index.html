@@ -1182,15 +1182,24 @@ function calcCongesUsedForYear(year){
   return total;
 }
 
+// Jours flottants : 1 par férié tombant un dimanche, 4 max par an
+function getFlottants(year){
+  let n=0;
+  for(const k of FERIES){if(k.startsWith(year+'')&&new Date(k+'T12:00:00').getDay()===0)n++;}
+  return Math.min(4,n);
+}
+// Fractionnés : forfait ancienneté (3 j) + 1 j si ≥5 CG du 15/01 au 15/03 + 1 j si ≥5 CG du 15/09 au 30/11
+function getFractionnes(year){
+  const d1s=new Date(year,0,15),d1e=new Date(year,2,15),d2s=new Date(year,8,15),d2e=new Date(year,10,30);
+  let cgWinter=0,cgAutumn=0;
+  Object.keys(S.conges||{}).forEach(function(k){if(S.conges[k]!=='cg'||!k.startsWith(year+''))return;const d=new Date(k+'T12:00:00');if(d>=d1s&&d<=d1e)cgWinter++;if(d>=d2s&&d<=d2e)cgAutumn++;});
+  const forfait=getFractForfait(year),base=forfait?3:0,hiver=cgWinter>=5?1:0,automne=cgAutumn>=5?1:0;
+  return{forfait,base,hiver,automne,cgWinter,cgAutumn,total:base+hiver+automne};
+}
+// Total des droits à congés de l'année (hors CET et jours posés)
+function getCongesDroits(year){return getSoldeAnnee(year)+getCongesAnc(year)+getFractionnes(year).total+getFlottants(year);}
 function computeCongesRest(year){
-  const _s=getSoldeAnnee(year),_u=calcCongesUsedForYear(year),_cet=getCET();
-  const _cgK=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='cg'&&k.startsWith(year+''));
-  const _d1s=new Date(year,0,15),_d1e=new Date(year,2,15),_d2s=new Date(year,8,15),_d2e=new Date(year,10,30);
-  let _w=0,_a=0;
-  _cgK.forEach(function(k){const d=new Date(k+'T12:00:00');if(d>=_d1s&&d<=_d1e)_w++;if(d>=_d2s&&d<=_d2e)_a++;});
-  const _ff=getFractForfait(year);let _fl=0;
-  for(const k of FERIES){if(!k.startsWith(year+''))continue;const dw=new Date(k+'T12:00:00').getDay();if(dw===0)_fl++;}
-  return _s+getCongesAnc(year)+(_ff?3:0)+(_w>=5?1:0)+(_a>=5?1:0)+Math.min(4,_fl)-_u-_cet;
+  return getCongesDroits(year)-calcCongesUsedForYear(year)-getCET();
 }
 
 function calcCongesUsed(){
@@ -1688,7 +1697,7 @@ function goToMonth(m){
 // ================================================================
 function updateCounters(){
   const{gen,realEph,realAvail,prevEph,preExpiry,matelas,totalReal,totalPrev}=calcSoldes();
-  const cRest=Math.max(0,(function(){const _y=curY,_s=getSoldeAnnee(_y),_u=calcCongesUsedForYear(_y),_cet=getCETForYear(_y);const _cgK=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='cg'&&k.startsWith(_y+''));const _d1s=new Date(_y,0,15),_d1e=new Date(_y,2,15),_d2s=new Date(_y,8,15),_d2e=new Date(_y,10,30);let _w=0,_a=0;_cgK.forEach(function(k){const d=new Date(k+'T12:00:00');if(d>=_d1s&&d<=_d1e)_w++;if(d>=_d2s&&d<=_d2e)_a++;});const _ff=getFractForfait(_y);let _fl=0;for(const k of FERIES){if(!k.startsWith(_y+''))continue;const dw=new Date(k+'T12:00:00').getDay();if(dw===0)_fl++;}return _s+getCongesAnc(_y)+(_ff?3:0)+(_w>=5?1:0)+(_a>=5?1:0)+Math.min(4,_fl)-_u-_cet;})());
+  const cRest=Math.max(0,getCongesDroits(curY)-calcCongesUsedForYear(curY)-getCETForYear(curY));
   // HS for current month (respect toggle and temporal settings)
   const settHS=settingsForYM(curY*12+curM);
   const useHSRendu=settHS.hsRendu;
@@ -3432,27 +3441,15 @@ function openMergedRenduCgModal(limit,tab){
   });
   const moreBtn=hasMore?'<button onclick="openMergedRenduCgModal('+(limit+4)+')" style="width:100%;margin-top:6px;padding:6px;font-size:12px;color:var(--blue);background:transparent;border:0.5px solid var(--border);border-radius:var(--r);cursor:pointer">＋ voir plus</button>':'';
   // === Congés ===
-  const allCgKeys2=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='cg').sort();
   const nowY=curY;
   const cet=getCETForYear(nowY);
   const cetTotal=getCET();
   // Only current year
   const soldeNow=getSoldeAnnee(nowY),usedNow=calcCongesUsedForYear(nowY);
   const ancNow=getCongesAnc(nowY);
-  // Fractionnés
-  const _cgNowY=allCgKeys2.filter(k=>k.startsWith(nowY+''));
-  const _d1s=new Date(nowY,0,15),_d1e=new Date(nowY,2,15);
-  const _d2s=new Date(nowY,8,15),_d2e=new Date(nowY,10,30);
-  let cgWinter=0,cgAutumn=0;
-  _cgNowY.forEach(function(k){const d=new Date(k+'T12:00:00');if(d>=_d1s&&d<=_d1e)cgWinter++;if(d>=_d2s&&d<=_d2e)cgAutumn++;});
-  const fractForfait=getFractForfait(nowY);
-  const fractBase=fractForfait?3:0;
-  const fractHiver=cgWinter>=5?1:0,fractAutomne=cgAutumn>=5?1:0;
-  const fractTotal=fractBase+fractHiver+fractAutomne;
-  // Flottants
-  let flottants=0;
-  for(const k of FERIES){if(!k.startsWith(nowY+''))continue;const dw=new Date(k+'T12:00:00').getDay();if(dw===0)flottants++;}
-  flottants=Math.min(4,flottants);
+  const _fr=getFractionnes(nowY);
+  const cgWinter=_fr.cgWinter,cgAutumn=_fr.cgAutumn,fractForfait=_fr.forfait,fractBase=_fr.base,fractHiver=_fr.hiver,fractAutomne=_fr.automne,fractTotal=_fr.total;
+  const flottants=getFlottants(nowY);
   // Effective total
   const soldeEffectif=soldeNow+ancNow+fractTotal+flottants;
   const restNow=Math.max(0,soldeEffectif-usedNow-cet);
