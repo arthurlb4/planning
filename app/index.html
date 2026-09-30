@@ -5817,7 +5817,7 @@ async function _silentRelogin(){
 }
 async function _sessionExpired(){
   if(await _silentRelogin()){if(_aid)cloudSave(_aid);return;}
-  window._syncErr='session expirée';window._sessionExpired=true;setSyncStatus('error');
+  window._syncErr='session expirée';window._sessionIsExpired=true;setSyncStatus('error');
   var el=document.getElementById('sync-status');if(el)el.title='Session expirée — vos modifications sont gardées sur cet appareil. Toucher pour vous reconnecter : elles seront envoyées ensuite.';
   if(!window._sessionExpiredAsked){window._sessionExpiredAsked=true;setTimeout(_relogin,300);}
 }
@@ -5827,10 +5827,16 @@ function _relogin(){
   localStorage.removeItem('auth_token');localStorage.removeItem('auth_user');
   window.location.href='/planning/';
 }
-function syncStatusClick(){
-  if(window._sessionExpired){_relogin();return;}
-  if(window._syncStatus==='error'){if(_aid)cloudSave(_aid);}
-  else{var el=document.getElementById('sync-status');if(el)alert(el.title);}
+async function syncStatusClick(){
+  if(window._sessionIsExpired){_relogin();return;}
+  if(window._syncStatus==='error'){if(_aid)cloudSave(_aid);return;}
+  // Synchronisé : vérifier réellement la session (simple lecture) avant de l'affirmer
+  try{
+    var r=await fetch(CLOUD_API+'/data/list',{method:'POST',headers:cloudHeaders(),body:'{}'});
+    if(r.status===401){await _sessionExpired();return;}
+  }catch(e){}
+  var t=window._lastSyncOk?new Date(window._lastSyncOk).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):'';
+  alert(window._syncStatus==='pending'?'Synchronisation en cours…':'Planning synchronisé ✓'+(t?' (dernier envoi à '+t+')':''));
 }
 // Contenu comparable d'un profil (sans l'horodatage, qui change à chaque saveState)
 function _syncKey(pid){return'pl_synced_'+((window._authUser&&window._authUser.userId)||'')+'_'+pid;}
@@ -5854,7 +5860,7 @@ async function cloudSave(pid){
       console.warn('cloud save failed',res.status,err);
       _cloudSaveFailed(pid,'erreur '+res.status+(err?' : '+err:''));
     }else{
-      window._syncErr='';clearTimeout(window._syncRetryTimer);
+      window._syncErr='';window._sessionIsExpired=false;window._lastSyncOk=Date.now();clearTimeout(window._syncRetryTimer);
       try{localStorage.setItem(sigKey,sig);}catch(e){}
       setSyncStatus('ok');
     }
