@@ -1274,7 +1274,7 @@ export default {
           await saveGTokens(env, session.userId, profileId, tokens);
         } else if (rt.error) {
           // invalid_grant = autorisation Google expirée ou révoquée → il faut reconnecter Google Agenda
-          return resp({ error: 'Google : ' + (rt.error_description || rt.error), reconnect: rt.error === 'invalid_grant' }, 502);
+          return resp({ error: 'Google : ' + (rt.error === 'invalid_grant' ? 'autorisation expirée ou révoquée' : (rt.error_description || rt.error)), reconnect: true }, 502);
         }
       }
 
