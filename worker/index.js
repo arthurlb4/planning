@@ -78,6 +78,11 @@ async function verifySession(request, env) {
   const session = await env.PLANNING_DB.get('session:' + token, { type: 'json' });
   if (!session) return null;
   if (session.expires < Date.now()) { await env.PLANNING_DB.delete('session:' + token); return null; }
+  // Session glissante : prolongée de 30 jours quand il en reste moins de 7 (≈ 1 écriture par mois et par utilisateur)
+  if (session.expires - Date.now() < 7 * 24 * 60 * 60 * 1000) {
+    session.expires = Date.now() + 30 * 24 * 60 * 60 * 1000;
+    try { await env.PLANNING_DB.put('session:' + token, JSON.stringify(session), { expirationTtl: 30 * 24 * 60 * 60 }); } catch (e) { /* quota : on réessaiera à la prochaine requête */ }
+  }
   return session;
 }
 

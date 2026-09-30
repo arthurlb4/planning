@@ -648,48 +648,6 @@ function saveState(){
     cloudSave(_aid);
   },5000);
   if(window._authToken)setSyncStatus('pending');
-  // Line registration throttled (5 min) — many KV writes, no need for near-real-time
-  if(!window._linesRegTimer){
-    window._linesRegTimer=setTimeout(function(){
-      window._linesRegTimer=null;
-      if(!S||!S.profile||!window._authToken)return;
-      const _mon=getMonday(NOW);
-      const _rVisual=lineIdx(_mon);
-      const _computeWeekVacs=function(wMon){
-        const wv=[];
-        for(let d=0;d<7;d++){
-          const wd=new Date(wMon.getTime()+d*864e5);
-          const wk=dk(wd),wc=(S.conges||{})[wk],wvac=getVac(wd);
-          let code;
-          if(wc==='cg')code='CG';
-          else if(wc==='rend'||wc==='rend-hist')code='REND';
-          else if(wc==='absent'||wvac.absent)code='Abs';
-          else if(wvac.echange&&!wvac.ecSelf)code='-';
-          else code=wvac.vac||'-';
-          wv.push(code);
-        }
-        return wv;
-      };
-      const _weekVacs=_computeWeekVacs(_mon);
-      // Collect weekVacs for all weeks with personal vacations (-4 to +26 weeks)
-      const _allWeekVacs={};
-      for(let w=-4;w<=26;w++){
-        const wMon=new Date(_mon.getTime()+w*7*864e5);
-        const wv=_computeWeekVacs(wMon);
-        if(wv.some(function(v){return v==='CG'||v==='REND'||v==='Abs';}))
-          _allWeekVacs[dk(wMon)]=wv;
-      }
-      fetch(CLOUD_API+'/lines/register',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({
-        ligne:'S'+(_rVisual+1),profileId:_aid,
-        profileName:S.profile.name||_aid,
-        userName:(window._authUser&&window._authUser.name)||'',
-        weekVacs:_weekVacs,
-        allWeekVacs:_allWeekVacs,
-        regLine:_rVisual,
-        regWeek:dk(_mon)
-      })}).catch(function(){});
-    },300000);
-  }
 }
 function switchProfile(id){_profs[_aid]=S;saveState();if(!_profs[id])_profs[id]=DEFAULT_PD();_aid=id;S=_profs[_aid];saveState();}
 function createProfile(id,data){_profs[id]=data;saveState();}
@@ -5736,8 +5694,8 @@ function init(){
     if(hpn&&S&&S.profile)hpn.textContent=S.profile.name||'Profil';
     document.body.style.opacity='1';document.body.style.transition='opacity .25s';setTimeout(function(){document.body.style.transition='';},300);
     showPayPromptIfNeeded();
-    // Register on load so the user appears in quintic without needing to make a change first
-    if(S&&S.profile&&S.profile.anchorLine!==undefined&&window._authToken)saveState();
+    // Pousse au chargement les modifs locales qui n'auraient pas encore été synchronisées
+    if(S&&S.profile&&window._authToken)cloudSave(_aid);
   }).catch(function(){
     document.body.style.opacity='1';document.body.style.transition='opacity .25s';setTimeout(function(){document.body.style.transition='';},300);
   });
@@ -5838,7 +5796,34 @@ function setSyncStatus(st){
   if(!cfg){el.style.display='none';return;}
   el.innerHTML='<i class="ti '+cfg[0]+'"></i>';el.style.color=cfg[1];el.title=cfg[2];el.style.display='inline-flex';
 }
+// Session expirée côté serveur : rien ne peut plus se synchroniser tant qu'on ne se reconnecte pas
+async function _silentRelogin(){
+  // Identifiants mémorisés (« Se souvenir de moi ») : nouvelle session sans rien demander
+  var cr=null;try{cr=JSON.parse(localStorage.getItem('remember_creds')||'null');}catch(e){}
+  if(!cr||!cr.email||!cr.password||window._silentReloginTried)return false;
+  window._silentReloginTried=true;
+  try{
+    var r=await fetch(CLOUD_API+'/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:cr.email,password:cr.password})});
+    if(!r.ok)return false;
+    var d=await r.json();if(!d.token)return false;
+    window._authToken=d.token;localStorage.setItem('auth_token',d.token);
+    return true;
+  }catch(e){return false;}
+}
+async function _sessionExpired(){
+  if(await _silentRelogin()){if(_aid)cloudSave(_aid);return;}
+  window._syncErr='session expirée';window._sessionExpired=true;setSyncStatus('error');
+  var el=document.getElementById('sync-status');if(el)el.title='Session expirée — vos modifications sont gardées sur cet appareil. Toucher pour vous reconnecter : elles seront envoyées ensuite.';
+  if(!window._sessionExpiredAsked){window._sessionExpiredAsked=true;setTimeout(_relogin,300);}
+}
+function _relogin(){
+  if(!confirm('Votre session a expiré : vos modifications ne sont plus synchronisées.\n\nSe reconnecter maintenant ? Vos modifications faites sur cet appareil sont conservées.'))return;
+  try{localStorage.setItem('pl_v8',JSON.stringify({p:_profs,a:_aid}));}catch(e){}
+  localStorage.removeItem('auth_token');localStorage.removeItem('auth_user');
+  window.location.href='/planning/';
+}
 function syncStatusClick(){
+  if(window._sessionExpired){_relogin();return;}
   if(window._syncStatus==='error'){if(_aid)cloudSave(_aid);}
   else{var el=document.getElementById('sync-status');if(el)alert(el.title);}
 }
@@ -5857,6 +5842,7 @@ async function cloudSave(pid){
   setSyncStatus('pending');
   try{
     var res=await fetch(CLOUD_API+'/data/save',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({profileId:pid,data:_profs[pid]})});
+    if(res.status===401){await _sessionExpired();return;}
     if(!res.ok){
       var err='';try{err=(await res.json()).error||'';}catch(e){}
       console.warn('cloud save failed',res.status,err);
