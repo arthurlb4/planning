@@ -1112,6 +1112,19 @@ function setVacScope(scope) {
   }
 }
 
+// Propose de remplacer l'ancien code par la copie dans la grille du cycle
+async function offerCycleGridSwap(oldName, newName, cycleId) {
+  const cyc = _allCycles.find(c => c.id === cycleId);
+  if (!cyc || !cyc.weeks) return;
+  const n = cyc.weeks.flat().filter(c => c === oldName).length;
+  if (!n) return;
+  if (!confirm(`Modifier le cycle avec cette nouvelle vacation ?\n\n${oldName} sera remplacée par ${newName} dans la grille de ${cyc.name || 'ce cycle'} (${n} case${n>1?'s':''}).`)) return;
+  const weeks = cyc.weeks.map(w => w.map(c => c === oldName ? newName : c));
+  const res = await fetch(API + '/admin/cycle/update', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ cycle: { id: cyc.id, weeks } }) });
+  if (res.ok) cyc.weeks = weeks;
+  else alert('Erreur lors de la mise à jour du cycle');
+}
+
 async function saveVac() {
   const name = document.getElementById('vf-name').value.trim();
   const deb = document.getElementById('vf-deb').value;
@@ -1157,6 +1170,7 @@ async function saveVac() {
         window._duplicateUnlinkOld = null;
         await fetch(API + '/admin/vacation/removecycle', { method:'POST', headers:adminHeaders(), body:JSON.stringify({ name: oldName, cycleId: _vacActiveTab }) });
         if (_allVacs[oldName]) _allVacs[oldName].cycleIds = (_allVacs[oldName].cycleIds||[]).filter(id => id !== _vacActiveTab);
+        await offerCycleGridSwap(oldName, name, _vacActiveTab);
       }
     } else if (!isNew) {
       // Existing vacation: apply cycle checkbox changes
@@ -1235,6 +1249,7 @@ async function saveVacDuplicate() {
     }
     // Unlink old vacation from current cycle
     await fetch(API + '/admin/vacation/removecycle', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ name: oldName, cycleId: _vacActiveTab }) });
+    if (_vacActiveTab && _vacActiveTab !== 'none') await offerCycleGridSwap(oldName, newName, _vacActiveTab);
     closeVacForm();
     loadVacations();
   } catch(e) { errEl.textContent = 'Erreur réseau'; }
