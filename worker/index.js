@@ -96,6 +96,22 @@ async function verifyAdmin(request, env) {
   return true;
 }
 
+// Met à jour uniquement les jetons Google du profil, sur une relecture fraîche :
+// ne jamais réécrire tout le profil avec une copie lue plus tôt (écraserait les modifs envoyées entre-temps)
+async function saveGTokens(env, userId, profileId, tokens) {
+  var key = 'data:' + userId + ':' + profileId;
+  var fresh = await env.PLANNING_DB.get(key, { type: 'json' });
+  if (!fresh || !fresh.profile) return;
+  fresh.profile.gcalTokens = Object.assign({}, fresh.profile.gcalTokens || {}, { access_token: tokens.access_token, expiry: tokens.expiry });
+  await env.PLANNING_DB.put(key, JSON.stringify(fresh));
+}
+
+function googleErr(r) {
+  var e = r && r.data && r.data.error;
+  var msg = e && (e.message || e.error_description || (typeof e === 'string' ? e : '')) || (r && r.data && r.data.error_description) || '';
+  return 'Google ' + (r && r.status || '') + (msg ? ' : ' + msg : '');
+}
+
 async function refreshGToken(refresh_token, env) {
   const res = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
@@ -841,8 +857,7 @@ export default {
         if (r2.access_token) {
           tokens.access_token = r2.access_token;
           tokens.expiry = Date.now() + (r2.expires_in || 3600) * 1000;
-          profileData.profile.gcalTokens = tokens;
-          await env.PLANNING_DB.put('data:' + session.userId + ':' + profileId, JSON.stringify(profileData));
+          await saveGTokens(env, session.userId, profileId, tokens);
         }
       }
       const events = body.events || [];
@@ -907,8 +922,7 @@ export default {
         if (rt.access_token) {
           tokens.access_token = rt.access_token;
           tokens.expiry = Date.now() + (rt.expires_in || 3600) * 1000;
-          profileData.profile.gcalTokens = tokens;
-          await env.PLANNING_DB.put('data:' + session.userId + ':' + profileId, JSON.stringify(profileData));
+          await saveGTokens(env, session.userId, profileId, tokens);
         }
       }
       const calPath3 = '/calendars/' + encodeURIComponent(calendarId2) + '/events';
@@ -1257,8 +1271,10 @@ export default {
         if (rt.access_token) {
           tokens.access_token = rt.access_token;
           tokens.expiry = Date.now() + (rt.expires_in || 3600) * 1000;
-          profileData.profile.gcalTokens = tokens;
-          await env.PLANNING_DB.put('data:' + session.userId + ':' + profileId, JSON.stringify(profileData));
+          await saveGTokens(env, session.userId, profileId, tokens);
+        } else if (rt.error) {
+          // invalid_grant = autorisation Google expirée ou révoquée → il faut reconnecter Google Agenda
+          return resp({ error: 'Google : ' + (rt.error_description || rt.error), reconnect: rt.error === 'invalid_grant' }, 502);
         }
       }
 
@@ -1272,6 +1288,8 @@ export default {
         if (fsPT) fsListUrl += '&pageToken=' + fsPT;
         var fsLR = await calApi('GET', fsListUrl, null, tokens.access_token, tokens.refresh_token, env);
         if (fsLR.newToken) tokens.access_token = fsLR.newToken;
+        // Échec de lecture de l'agenda : ne pas continuer comme si l'agenda était vide
+        if (fsLR.status >= 400) return resp({ error: googleErr(fsLR), reconnect: fsLR.status === 401 }, 502);
         var fsIt = (fsLR.data && fsLR.data.items) || [];
         for (var k = 0; k < fsIt.length; k++) { if (fsIt[k].id) fsExisting[fsIt[k].id] = fsIt[k]; }
         fsPT = fsLR.data && fsLR.data.nextPageToken;
@@ -1315,7 +1333,6 @@ export default {
       const _userId = session.userId;
       const _profileId = profileId;
       const _tokens = tokens;
-      const _profileData = profileData;
       const _fsOps = fsOps;
       const _calId = calId;
 
@@ -1324,12 +1341,15 @@ export default {
           var batchResult = await gcalBatchOps(_fsOps, _calId, _tokens.access_token, _tokens.refresh_token, env);
           if (batchResult.newToken) {
             _tokens.access_token = batchResult.newToken;
-            _profileData.profile.gcalTokens = _tokens;
-            await env.PLANNING_DB.put('data:' + _userId + ':' + _profileId, JSON.stringify(_profileData));
+            _tokens.expiry = Date.now() + 3600 * 1000;
+            await saveGTokens(env, _userId, _profileId, _tokens);
           }
-          await env.PLANNING_DB.put('gcal_last_sync:' + _userId + ':' + _profileId, Date.now().toString());
+          var allFailed = batchResult.failed > 0 && batchResult.failed === _fsOps.length;
+          if (!allFailed) await env.PLANNING_DB.put('gcal_last_sync:' + _userId + ':' + _profileId, Date.now().toString());
           await env.PLANNING_DB.put('sync_state:' + _userId,
-            JSON.stringify({ status: 'done', current: _fsOps.length - batchResult.failed, total: _fsOps.length, ts: Date.now() }),
+            JSON.stringify(allFailed
+              ? { status: 'error', message: 'Google a refusé toutes les modifications (' + batchResult.failed + ')', ts: Date.now() }
+              : { status: 'done', current: _fsOps.length - batchResult.failed, total: _fsOps.length, failed: batchResult.failed, ts: Date.now() }),
             { expirationTtl: 60 });
           await env.PLANNING_DB.put('gcal_debug:' + _userId + ':' + _profileId,
             JSON.stringify({ ts: Date.now(), ops: _fsOps.length, failed: batchResult.failed, ok: true }),
@@ -1339,7 +1359,7 @@ export default {
             JSON.stringify({ ts: Date.now(), error: e.message, stack: e.stack }),
             { expirationTtl: 300 });
           await env.PLANNING_DB.put('sync_state:' + _userId,
-            JSON.stringify({ status: 'error', ts: Date.now() }),
+            JSON.stringify({ status: 'error', message: e.message, ts: Date.now() }),
             { expirationTtl: 60 });
         }
       })());
