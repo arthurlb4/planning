@@ -2406,7 +2406,8 @@ const _DPC = {
   primes:[{id:'nao2022',label:'NAO 2022',montant:130,debutYM:0,finYM:null},{id:'nao2023',label:'NAO 2023',montant:55,debutYM:0,finYM:null}],
   gpe:[{debutYM:0,t:[20,52,62,128,154,159,172,187,231]}],
   pfa:[{debutYM:0,t:[{max:1,v:240},{max:3,v:230},{max:5,v:220},{max:8,v:210},{max:17,v:200},{max:22,v:190},{max:30,v:170},{max:9999,v:160}]}],
-  anc:[{debutYM:0,base:2091.75,rate1:0.01,rate2:0.005,threshold:20}]
+  anc:[{debutYM:0,base:2091.75,rate1:0.01,rate2:0.005,threshold:20}],
+  panier:[{debutYM:0,v:7.50}]
 };
 var _convConfig = null;
 
@@ -2442,6 +2443,8 @@ function _convEnsureDefaults() {
   if (!_convConfig.gpe) _convConfig.gpe = JSON.parse(JSON.stringify(_DPC.gpe));
   if (!_convConfig.pfa) _convConfig.pfa = JSON.parse(JSON.stringify(_DPC.pfa));
   if (!_convConfig.anc) _convConfig.anc = JSON.parse(JSON.stringify(_DPC.anc));
+  if (!_convConfig.panier) _convConfig.panier = [{debutYM:0, v:_convConfig.panierRate!=null?_convConfig.panierRate:_DPC.panier[0].v}];
+  delete _convConfig.panierRate;
 }
 
 function renderConvTab() {
@@ -2485,6 +2488,15 @@ function renderConvTab() {
     </div></td></tr>`
   ).join('');
 
+  // Panier history
+  const panierSrc = cfg.panier && cfg.panier.length ? cfg.panier : [{debutYM:0, v:cfg.panierRate!=null?cfg.panierRate:_DPC.panier[0].v}];
+  const panierHistHtml = panierSrc.slice().sort((a,b)=>b.debutYM-a.debutYM).map((e,i) =>
+    `<tr><td>${_ymLbl(e.debutYM)}</td><td>${e.v.toFixed(2)} €</td><td style="white-space:nowrap"><div class="btn-bar">
+      <button class="btn btn-sm btn-ghost" onclick="editPanierEntry(${i})">Éditer</button>
+      ${panierSrc.length>1?`<button class="btn btn-sm btn-red" onclick="deletePanierEntry(${i})">×</button>`:''}
+    </div></td></tr>`
+  ).join('');
+
   el.innerHTML = `
     <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
       <button id="conv-save-btn" class="btn btn-green" onclick="savePayConfig()">💾 Enregistrer</button>
@@ -2501,11 +2513,11 @@ function renderConvTab() {
     <div class="table-scroll"><table><thead><tr><th>Depuis</th><th>Montants par tranche</th><th></th></tr></thead><tbody>${pfaHistHtml}</tbody></table></div>
     <button class="btn btn-sm" style="margin-top:8px;margin-bottom:20px" onclick="addPFAEntry()">+ Nouvelle version PFA</button>
 
+    <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;padding-bottom:4px;border-bottom:0.5px solid var(--border)">Panier repas</div>
+    <div class="table-scroll"><table><thead><tr><th>Depuis</th><th>Prix par panier</th><th></th></tr></thead><tbody>${panierHistHtml}</tbody></table></div>
+    <button class="btn btn-sm" style="margin-top:8px;margin-bottom:20px" onclick="addPanierEntry()">+ Nouveau prix panier</button>
+
     <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;padding-bottom:4px;border-bottom:0.5px solid var(--border)">Taux variables journaliers</div>
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-      <label style="font-size:13px;white-space:nowrap">Panier repas (€/panier)</label>
-      <input id="_conv-panier" type="number" step="0.01" min="0" value="${cfg.panierRate!=null?cfg.panierRate:7.50}" style="width:100px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px" onchange="_convEnsureDefaults();_convConfig.panierRate=parseFloat(this.value)||0;">
-    </div>
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
       <label style="font-size:13px;white-space:nowrap">Abs. restauration (€/jour)</label>
       <input id="_conv-absresto" type="number" step="0.001" min="0" value="${cfg.absRestoRate!=null?cfg.absRestoRate:5.34}" style="width:100px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px" onchange="_convEnsureDefaults();_convConfig.absRestoRate=parseFloat(this.value)||0;">
@@ -2660,6 +2672,62 @@ function _confirmPFA(idx) {
 }
 
 // ─ Ancienneté ─
+// ─ Panier ─
+function addPanierEntry() {
+  _convEnsureDefaults();
+  const last = _pcLatestConv(_convConfig.panier, _DPC.panier[0]);
+  const n = new Date();
+  _openPanierModal(-1, {debutYM:n.getFullYear()*12+n.getMonth(), v:last.v});
+}
+function editPanierEntry(sortedIdx) {
+  _convEnsureDefaults();
+  const sorted = _convConfig.panier.slice().sort((a,b)=>b.debutYM-a.debutYM);
+  const e = sorted[sortedIdx]; const realIdx = _convConfig.panier.indexOf(e);
+  _openPanierModal(realIdx, {...e});
+}
+function deletePanierEntry(sortedIdx) {
+  if (!confirm('Supprimer ce prix ?')) return;
+  _convEnsureDefaults();
+  const sorted = _convConfig.panier.slice().sort((a,b)=>b.debutYM-a.debutYM);
+  const realIdx = _convConfig.panier.indexOf(sorted[sortedIdx]);
+  if (realIdx>=0) _convConfig.panier.splice(realIdx,1);
+  renderConvTab();
+}
+function _openPanierModal(idx, e) {
+  const ML = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+  const n = new Date(), always = !e.debutYM;
+  const cy = e.debutYM?Math.floor(e.debutYM/12):n.getFullYear(), cm = e.debutYM?e.debutYM%12:n.getMonth();
+  const mc = document.getElementById('modal-content');
+  mc.className = 'modal';
+  mc.innerHTML = `
+    <h2>${idx<0?'Nouveau prix panier':'Modifier prix panier'}</h2>
+    <div class="field"><label>Prix par panier (€)</label><input id="_pan-v" type="number" min="0" step="0.01" value="${e.v}"></div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-top:8px"><input id="_pan-always" type="checkbox"${always?' checked':''} onchange="document.getElementById('_pan-date').style.display=this.checked?'none':''"> Depuis toujours</label>
+    <div class="row mt8" id="_pan-date"${always?' style="display:none"':''}>
+      <div class="field flex1"><label>Depuis (mois travaillé)</label><select id="_pan-m">${ML.map((m,i)=>`<option value="${i}"${i===cm?' selected':''}>${m}</option>`).join('')}</select></div>
+      <div class="field"><label>Année</label><input id="_pan-y" type="number" value="${cy}" min="2020" max="2040" style="width:90px"></div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="closeModal()">Annuler</button>
+      <button class="btn" onclick="_confirmPanier(${idx})">Enregistrer</button>
+    </div>`;
+  document.getElementById('modal-bg').style.display = 'flex';
+}
+function _confirmPanier(idx) {
+  const v = parseFloat((document.getElementById('_pan-v')||{}).value);
+  if (isNaN(v) || v < 0) { alert('Prix invalide.'); return; }
+  const always = document.getElementById('_pan-always').checked;
+  const m = parseInt((document.getElementById('_pan-m')||{}).value);
+  const y = parseInt((document.getElementById('_pan-y')||{}).value);
+  const debutYM = always ? 0 : y*12+m;
+  _convEnsureDefaults();
+  if (_convConfig.panier.some((x,i) => i !== idx && x.debutYM === debutYM)) { alert('Un prix existe déjà pour ce mois.'); return; }
+  const entry = {debutYM, v};
+  if (idx<0) _convConfig.panier.push(entry);
+  else _convConfig.panier[idx] = entry;
+  closeModal(); renderConvTab();
+}
+
 function addAncEntry() { _openAncModal(-1, _pcLatestConv((_convConfig||{}).anc, _DPC.anc[0])); }
 function editAncEntry(sortedIdx) {
   _convEnsureDefaults();

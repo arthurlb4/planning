@@ -1950,7 +1950,7 @@ function calcHSMinsMois(y,m){
   for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd),mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);const sun=new Date(mon);sun.setDate(mon.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mym)continue;const hsW=calcHSWeek(mon);low+=hsW.rawLow;high+=hsW.rawHigh;}
   return{low,high};
 }
-function getPanierRate(){const pc=getPayConfig();return pc.panierRate!=null?pc.panierRate:7.50;}
+function getPanierRate(ym){const pc=getPayConfig();const arr=pc.panier&&pc.panier.length?pc.panier:[{debutYM:0,v:pc.panierRate!=null?pc.panierRate:7.50}];const srt=arr.slice().sort(function(a,b){return a.debutYM-b.debutYM;});let e=srt[0];if(ym!=null)srt.forEach(function(x){if(x.debutYM<=ym)e=x;});else e=srt[srt.length-1];return e.v;}
 function calcVariablesMois(y,m,overrideTauxH){
   const mym_cv=y*12+m;const pr=S.profile||{};const _pn=getPalierForYM(mym_cv);const salQ=_pn>0?calcPalierSalaire(_pn):(pr.salaireQualif||0);const salAnc=getAncForYM(mym_cv);const heures=getHeuresForYM(mym_cv);const base=salQ+salAnc;const tauxH=overrideTauxH!=null?overrideTauxH:(heures>0?Math.round(base/heures*100)/100:0);
   const drf=calcDimRHFerMinsMois(y,m);const hs=calcHSMinsMois(y,m);const nuitMin=calcNuitMois(y,m);const primes=calcPrimesMois(y,m);const paniers=calcPaniersMois(y,m);
@@ -1967,7 +1967,7 @@ function calcVariablesMois(y,m,overrideTauxH){
       if(_m1vi){var _m1total=parseHM(_m1vi.fin)-parseHM(_m1vi.deb);if(_m1total<0)_m1total+=1440;var _m1pause=_m1total-(_m1vi.dur||0);if(_m1pause>=45)supAbsResto=r2(absRestoRate);}
     }
   }
-  const panierRate=getPanierRate(),supPaniers=r2(paniers*panierRate),supAntenne=primes.antenne*17.38,supMatin=primes.matin*17.38,supReal=primes.reel*34.76,supCoord=primes.coord*17.38;
+  const panierRate=getPanierRate(mym_cv),supPaniers=r2(paniers*panierRate),supAntenne=primes.antenne*17.38,supMatin=primes.matin*17.38,supReal=primes.reel*34.76,supCoord=primes.coord*17.38;
   const total=supDim+supRH+supFer+supHSlow+supHShigh+supNuit+supAbsResto+supAntenne+supMatin+supReal+supCoord;
   return{total,tauxH,supDim,supRH,supFer,supHSlow,supHShigh,supNuit,supPaniers,panierRate,supAbsResto,absRestoRate,supAntenne,supMatin,supReal,supCoord,dimMin:drf.dim,rhMin:drf.rh,ferMin:drf.fer,hsLow:hs.low,hsHigh:hs.high,nuitMin,paniers,antenne:primes.antenne,matin:primes.matin,reel:primes.reel,coord:primes.coord};
 }
@@ -2003,7 +2003,7 @@ function calcNetPaye(brut,paniers,ym){
   const cb=r2((brut+pat)*0.9825);
   const c_cd=r2(cb*0.068),c_cnd=r2(cb*0.029);
   const cot=r2(c_incap+c_sf+c_sta+c_rp+c_rd+c_ag+c_cd+c_cnd);
-  const ns=r2(brut-cot),pan_e=r2(paniers*getPanierRate()),nav=r2(ns+pan_e);
+  const ns=r2(brut-cot),pan_e=r2(paniers*getPanierRate(ym)),nav=r2(ns+pan_e);
   const pat_s=r2(47.57+ta*0.00456),ni=r2(brut-r2(cot-c_cnd)+pat_s);
   const pas_t=getPasTauxForYM(ym!=null?ym:TODAY_YM)/100;
   const pas=r2(ni*pas_t);
