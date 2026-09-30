@@ -521,7 +521,8 @@ export default {
       if (!session) return resp({ error: 'Non authentifie' }, 401);
       var ligne = body.ligne, profileId = body.profileId, profileName = body.profileName;
       if (!ligne || !profileId) return resp({ error: 'Donnees manquantes' }, 400);
-      var linesMap = await env.PLANNING_DB.get('global:lines_used', { type: 'json' }) || {};
+      var linesBefore = await env.PLANNING_DB.get('global:lines_used');
+      var linesMap = linesBefore ? JSON.parse(linesBefore) : {};
       // Remove current profile's previous registration (any line)
       for (var l in linesMap) {
         linesMap[l] = linesMap[l].filter(function(e){ return !(e.userId === session.userId && e.profileId === profileId); });
@@ -537,17 +538,32 @@ export default {
       }
       if (!linesMap[ligne]) linesMap[ligne] = [];
       linesMap[ligne].push({ userId: session.userId, userName: body.userName || session.userId, profileId: profileId, profileName: profileName || profileId, weekVacs: body.weekVacs || [], regLine: body.regLine !== undefined ? body.regLine : parseInt(ligne.slice(1))-1, regWeek: body.regWeek || getMondayKey() });
-      await env.PLANNING_DB.put('global:lines_used', JSON.stringify(linesMap));
+      // Quota KV : les écritures sont limitées (lectures ~100x moins chères) → n'écrire que ce qui a changé
+      // Ordre stable (sinon chaque ré-inscription réordonne la ligne et force une écriture)
+      for (var l2 in linesMap) linesMap[l2].sort(function(a, b){ return (a.userId + ':' + a.profileId).localeCompare(b.userId + ':' + b.profileId); });
+      var linesJson = JSON.stringify(linesMap);
+      if (linesJson !== linesBefore) await env.PLANNING_DB.put('global:lines_used', linesJson);
       var monKey = body.regWeek || getMondayKey();
-      await env.PLANNING_DB.put('lines:week:' + monKey, JSON.stringify(linesMap), { expirationTtl: 90 * 24 * 3600 });
-      if (body.weekVacs && body.weekVacs.length) {
-        await env.PLANNING_DB.put('weekvacs:' + session.userId + ':' + profileId + ':' + monKey, JSON.stringify(body.weekVacs), { expirationTtl: 90 * 24 * 3600 });
+      var snapKey = 'lines:week:' + monKey;
+      if (await env.PLANNING_DB.get(snapKey) !== linesJson) {
+        await env.PLANNING_DB.put(snapKey, linesJson, { expirationTtl: 90 * 24 * 3600 });
       }
+      // Toutes les semaines du profil dans une seule clé (au lieu d'une clé par semaine)
+      var wvKey = 'weekvacs2:' + session.userId + ':' + profileId;
+      var wvBefore = await env.PLANNING_DB.get(wvKey);
+      var wvAll = wvBefore ? JSON.parse(wvBefore) : {};
       if (body.allWeekVacs && typeof body.allWeekVacs === 'object') {
-        await Promise.all(Object.entries(body.allWeekVacs).map(function([wk, wv]) {
-          return env.PLANNING_DB.put('weekvacs:' + session.userId + ':' + profileId + ':' + wk, JSON.stringify(wv), { expirationTtl: 180 * 24 * 3600 });
-        }));
+        // Le client envoie les semaines futures (jusqu'à +26) qui ont des congés/absences : les autres n'en ont plus.
+        // Les semaines passées sont conservées (historique de la vue semaine).
+        var rTo = new Date(new Date(monKey + 'T12:00:00Z').getTime() + 26 * 7 * 864e5).toISOString().slice(0, 10);
+        for (var wk0 in wvAll) if (wk0 > monKey && wk0 <= rTo) delete wvAll[wk0];
+        Object.assign(wvAll, body.allWeekVacs);
       }
+      if (body.weekVacs && body.weekVacs.length) wvAll[monKey] = body.weekVacs;
+      var wvCutoff = new Date(Date.now() - 180 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+      for (var wk in wvAll) if (wk < wvCutoff) delete wvAll[wk];
+      var wvJson = JSON.stringify(Object.keys(wvAll).sort().reduce(function(o, k){ o[k] = wvAll[k]; return o; }, {}));
+      if (wvJson !== (wvBefore || '{}')) await env.PLANNING_DB.put(wvKey, wvJson);
       return resp({ ok: true });
     }
 
@@ -586,7 +602,10 @@ export default {
         var allEntries = [];
         for (var l in linesMap) { for (var e of linesMap[l]) allEntries.push(e); }
         await Promise.all(allEntries.map(async function(entry) {
-          var wv = await env.PLANNING_DB.get('weekvacs:' + entry.userId + ':' + entry.profileId + ':' + requestedMon, { type: 'json' });
+          var all = await env.PLANNING_DB.get('weekvacs2:' + entry.userId + ':' + entry.profileId, { type: 'json' });
+          var wv = all && all[requestedMon];
+          // Ancien format (une clé par semaine), encore présent jusqu'à expiration
+          if (!wv) wv = await env.PLANNING_DB.get('weekvacs:' + entry.userId + ':' + entry.profileId + ':' + requestedMon, { type: 'json' });
           entry.weekVacs = wv || [];
         }));
       }
