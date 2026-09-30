@@ -758,6 +758,7 @@ export default {
         if (user.profiles) {
           for (var pid of Object.keys(user.profiles)) {
             await env.PLANNING_DB.delete('data:' + userId + ':' + pid);
+            await env.PLANNING_DB.delete('weekvacs2:' + userId + ':' + pid);
           }
         }
         // Delete email lookup + user record
