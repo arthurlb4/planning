@@ -21,6 +21,42 @@ async function sha256(str) {
   return Array.from(new Uint8Array(buf)).map(function(b){ return b.toString(16).padStart(2,'0'); }).join('');
 }
 
+// Mots de passe utilisateurs : PBKDF2-SHA256 salé, format "pbkdf2$<itérations>$<sel hex>$<hash hex>".
+// Les anciens hash (sha256(mot de passe + userId)) restent acceptés et sont convertis à la connexion.
+const PBKDF2_ITER = 100000; // maximum supporté par Cloudflare Workers
+
+function toHex(buf) {
+  return Array.from(new Uint8Array(buf)).map(function(b){ return b.toString(16).padStart(2,'0'); }).join('');
+}
+
+async function pbkdf2(password, saltHex, iter) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
+  const salt = new Uint8Array(saltHex.match(/../g).map(function(h){ return parseInt(h, 16); }));
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: salt, iterations: iter }, key, 256);
+  return toHex(bits);
+}
+
+async function hashPassword(password) {
+  const salt = randToken(16);
+  return 'pbkdf2$' + PBKDF2_ITER + '$' + salt + '$' + await pbkdf2(password, salt, PBKDF2_ITER);
+}
+
+function safeEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
+  var diff = 0;
+  for (var i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+// Renvoie { ok, legacy } — legacy = ancien format à convertir
+async function verifyPassword(password, userId, stored) {
+  if (typeof stored === 'string' && stored.startsWith('pbkdf2$')) {
+    var parts = stored.split('$');
+    return { ok: safeEqual(await pbkdf2(password, parts[2], parseInt(parts[1])), parts[3]), legacy: false };
+  }
+  return { ok: safeEqual(await sha256(password + userId), stored), legacy: true };
+}
+
 function randToken(len) {
   const arr = new Uint8Array(len || 32);
   crypto.getRandomValues(arr);
@@ -242,7 +278,7 @@ export default {
       if (!userId || !newPassword) return resp({ error: 'Donnees manquantes' }, 400);
       var user = await env.PLANNING_DB.get('user:' + userId, { type: 'json' });
       if (!user) return resp({ error: 'Utilisateur introuvable' }, 404);
-      user.pwHash = await sha256(newPassword + userId);
+      user.pwHash = await hashPassword(newPassword);
       await env.PLANNING_DB.put('user:' + userId, JSON.stringify(user));
       return resp({ ok: true });
     }
@@ -623,7 +659,7 @@ export default {
       var existing = await env.PLANNING_DB.get(emailKey);
       if (existing) return resp({ error: 'Email deja utilise' }, 409);
       var userId = randToken(16);
-      var pwHash = await sha256(password + userId);
+      var pwHash = await hashPassword(password);
       var user = { userId: userId, email: email.toLowerCase(), name: name, pwHash: pwHash, createdAt: Date.now(), profiles: {} };
       await env.PLANNING_DB.put(emailKey, userId);
       await env.PLANNING_DB.put('user:' + userId, JSON.stringify(user));
@@ -639,8 +675,13 @@ export default {
       if (!userId) return resp({ error: 'Email ou mot de passe incorrect' }, 401);
       var user = await env.PLANNING_DB.get('user:' + userId, { type: 'json' });
       if (!user) return resp({ error: 'Compte introuvable' }, 401);
-      var pwHash = await sha256(password + userId);
-      if (pwHash !== user.pwHash) return resp({ error: 'Email ou mot de passe incorrect' }, 401);
+      var pwCheck = await verifyPassword(password, userId, user.pwHash);
+      if (!pwCheck.ok) return resp({ error: 'Email ou mot de passe incorrect' }, 401);
+      if (pwCheck.legacy) {
+        // Conversion transparente de l'ancien hash SHA-256
+        user.pwHash = await hashPassword(password);
+        await env.PLANNING_DB.put('user:' + userId, JSON.stringify(user));
+      }
       var token = randToken();
       await env.PLANNING_DB.put('session:' + token, JSON.stringify({ userId: userId, email: user.email, expires: Date.now() + 30*24*60*60*1000 }), { expirationTtl: 30*24*60*60 });
       return resp({ token: token, userId: userId, name: user.name, email: user.email });
@@ -669,7 +710,7 @@ export default {
       if (!userId) return resp({ error: 'Lien invalide ou expire' }, 400);
       var user = await env.PLANNING_DB.get('user:' + userId, { type: 'json' });
       if (!user) return resp({ error: 'Compte introuvable' }, 400);
-      user.pwHash = await sha256(password + userId);
+      user.pwHash = await hashPassword(password);
       await env.PLANNING_DB.put('user:' + userId, JSON.stringify(user));
       await env.PLANNING_DB.delete('reset:' + token);
       return resp({ ok: true });
