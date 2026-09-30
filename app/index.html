@@ -1952,14 +1952,20 @@ function calcHSMinsMois(y,m){
   for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd),mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);const sun=new Date(mon);sun.setDate(mon.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mym)continue;const hsW=calcHSWeek(mon);low+=hsW.rawLow;high+=hsW.rawHigh;}
   return{low,high};
 }
-function getPanierRate(ym){const pc=getPayConfig();const arr=pc.panier&&pc.panier.length?pc.panier:[{debutYM:0,v:pc.panierRate!=null?pc.panierRate:7.50}];const srt=arr.slice().sort(function(a,b){return a.debutYM-b.debutYM;});let e=srt[0];if(ym!=null)srt.forEach(function(x){if(x.debutYM<=ym)e=x;});else e=srt[srt.length-1];return e.v;}
+// Version datée en vigueur au mois ym (la plus ancienne si ym précède toutes les versions, la plus récente si ym absent)
+function _pcPick(arr,ym){const srt=arr.slice().sort(function(a,b){return a.debutYM-b.debutYM;});let e=srt[0];if(ym!=null)srt.forEach(function(x){if(x.debutYM<=ym)e=x;});else e=srt[srt.length-1];return e;}
+function getPanierRate(ym){const pc=getPayConfig();const arr=pc.panier&&pc.panier.length?pc.panier:[{debutYM:0,v:pc.panierRate!=null?pc.panierRate:7.50}];return _pcPick(arr,ym).v;}
+// Taux des primes par vacation (€) et majorations (%) — éditables dans l'admin (onglet Convention)
+const _DEF_TAUX={debutYM:0,antenne:17.38,matin:17.38,reel:34.76,coord:17.38,dim:30,rh:30,fer:100,hsLow:125,hsHigh:150,nuit:40};
+function getTauxForYM(ym){const pc=getPayConfig();return Object.assign({},_DEF_TAUX,pc.taux&&pc.taux.length?_pcPick(pc.taux,ym):{});}
 function calcVariablesMois(y,m,overrideTauxH){
   const mym_cv=y*12+m;const pr=S.profile||{};const _pn=getPalierForYM(mym_cv);const salQ=_pn>0?calcPalierSalaire(_pn):(pr.salaireQualif||0);const salAnc=getAncForYM(mym_cv);const heures=getHeuresForYM(mym_cv);const base=salQ+salAnc;const tauxH=overrideTauxH!=null?overrideTauxH:(heures>0?Math.round(base/heures*100)/100:0);
   const drf=calcDimRHFerMinsMois(y,m);const hs=calcHSMinsMois(y,m);const nuitMin=calcNuitMois(y,m);const primes=calcPrimesMois(y,m);const paniers=calcPaniersMois(y,m);
   const r2=v=>Math.round(v*100)/100;
-  const supDim=r2(drf.dim/60*tauxH*0.30),supRH=r2(drf.rh/60*tauxH*0.30),supFer=r2(drf.fer/60*tauxH*1.00);
-  const supHSlow=r2(hs.low/60*tauxH*1.25),supHShigh=r2(hs.high/60*tauxH*1.50);
-  const supNuit=r2(nuitMin/60*tauxH*0.40);
+  const tx=getTauxForYM(mym_cv);
+  const supDim=r2(drf.dim/60*tauxH*tx.dim/100),supRH=r2(drf.rh/60*tauxH*tx.rh/100),supFer=r2(drf.fer/60*tauxH*tx.fer/100);
+  const supHSlow=r2(hs.low/60*tauxH*tx.hsLow/100),supHShigh=r2(hs.high/60*tauxH*tx.hsHigh/100);
+  const supNuit=r2(nuitMin/60*tauxH*tx.nuit/100);
   const pc=getPayConfig();const absRestoRate=pc.absRestoRate!=null?pc.absRestoRate:5.34;
   var supAbsResto=0;
   if(m===4){
@@ -1969,9 +1975,9 @@ function calcVariablesMois(y,m,overrideTauxH){
       if(_m1vi){var _m1total=parseHM(_m1vi.fin)-parseHM(_m1vi.deb);if(_m1total<0)_m1total+=1440;var _m1pause=_m1total-(_m1vi.dur||0);if(_m1pause>=45)supAbsResto=r2(absRestoRate);}
     }
   }
-  const panierRate=getPanierRate(mym_cv),supPaniers=r2(paniers*panierRate),supAntenne=primes.antenne*17.38,supMatin=primes.matin*17.38,supReal=primes.reel*34.76,supCoord=primes.coord*17.38;
+  const panierRate=getPanierRate(mym_cv),supPaniers=r2(paniers*panierRate),supAntenne=r2(primes.antenne*tx.antenne),supMatin=r2(primes.matin*tx.matin),supReal=r2(primes.reel*tx.reel),supCoord=r2(primes.coord*tx.coord);
   const total=supDim+supRH+supFer+supHSlow+supHShigh+supNuit+supAbsResto+supAntenne+supMatin+supReal+supCoord;
-  return{total,tauxH,supDim,supRH,supFer,supHSlow,supHShigh,supNuit,supPaniers,panierRate,supAbsResto,absRestoRate,supAntenne,supMatin,supReal,supCoord,dimMin:drf.dim,rhMin:drf.rh,ferMin:drf.fer,hsLow:hs.low,hsHigh:hs.high,nuitMin,paniers,antenne:primes.antenne,matin:primes.matin,reel:primes.reel,coord:primes.coord};
+  return{total,tauxH,supDim,supRH,supFer,supHSlow,supHShigh,supNuit,supPaniers,panierRate,tx,supAbsResto,absRestoRate,supAntenne,supMatin,supReal,supCoord,dimMin:drf.dim,rhMin:drf.rh,ferMin:drf.fer,hsLow:hs.low,hsHigh:hs.high,nuitMin,paniers,antenne:primes.antenne,matin:primes.matin,reel:primes.reel,coord:primes.coord};
 }
 function getPrimesFixesCustomForYM(ym){
   const primes=(S.profile&&S.profile.primesFixesCustom)||[];
@@ -4028,17 +4034,18 @@ function openMergedMoisModal(mym,tab){
       const _sub=(lbl,val)=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-top:0.5px solid var(--border2);margin-top:2px"><span>'+lbl+'</span>'+_stag(val)+'</div>';
       const _subp=(lbl,val)=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-top:0.5px solid var(--border2);margin-top:2px"><span>'+lbl+'</span>'+_stag(val)+'</div>';
       const v=paye.vars;
+      const _tx=v.tx||getTauxForYM(),_eu=n=>n.toFixed(2).replace('.',',')+' €';
       let varLines='';
-      if(v.dimMin>0)varLines+=_row('Dim ('+fmtMin(v.dimMin)+' × 30%)',v.supDim,'var(--text2)');
-      if(v.rhMin>0)varLines+=_row('RH ('+fmtMin(v.rhMin)+' × 30%)',v.supRH,'var(--text2)');
-      if(v.ferMin>0)varLines+=_row('Fériés ('+fmtMin(v.ferMin)+' × 100%)',v.supFer,'var(--text2)');
-      if(v.hsLow>0)varLines+=_row('HS ≤8h ('+fmtMin(v.hsLow)+' × 125%)',v.supHSlow,'var(--blue)');
-      if(v.hsHigh>0)varLines+=_row('HS >8h ('+fmtMin(v.hsHigh)+' × 150%)',v.supHShigh,'var(--blue)');
-      if(v.nuitMin>0)varLines+=_row('Nuit ('+fmtMin(v.nuitMin)+' × 40%)',v.supNuit,'#9c7fe0');
-      if(v.antenne>0)varLines+=_row('P. antenne ('+v.antenne+' × 17,38 €)',v.supAntenne,'var(--amber)');
-      if(v.matin>0)varLines+=_row('P. matin ('+v.matin+' × 17,38 €)',v.supMatin,'var(--amber)');
-      if(v.reel>0)varLines+=_row('P. réal ('+v.reel+' × 34,76 €)',v.supReal,'var(--amber)');
-      if(v.coord>0)varLines+=_row('P. coord ('+v.coord+' × 17,38 €)',v.supCoord,'var(--amber)');
+      if(v.dimMin>0)varLines+=_row('Dim ('+fmtMin(v.dimMin)+' × '+_tx.dim+'%)',v.supDim,'var(--text2)');
+      if(v.rhMin>0)varLines+=_row('RH ('+fmtMin(v.rhMin)+' × '+_tx.rh+'%)',v.supRH,'var(--text2)');
+      if(v.ferMin>0)varLines+=_row('Fériés ('+fmtMin(v.ferMin)+' × '+_tx.fer+'%)',v.supFer,'var(--text2)');
+      if(v.hsLow>0)varLines+=_row('HS ≤8h ('+fmtMin(v.hsLow)+' × '+_tx.hsLow+'%)',v.supHSlow,'var(--blue)');
+      if(v.hsHigh>0)varLines+=_row('HS >8h ('+fmtMin(v.hsHigh)+' × '+_tx.hsHigh+'%)',v.supHShigh,'var(--blue)');
+      if(v.nuitMin>0)varLines+=_row('Nuit ('+fmtMin(v.nuitMin)+' × '+_tx.nuit+'%)',v.supNuit,'#9c7fe0');
+      if(v.antenne>0)varLines+=_row('P. antenne ('+v.antenne+' × '+_eu(_tx.antenne)+')',v.supAntenne,'var(--amber)');
+      if(v.matin>0)varLines+=_row('P. matin ('+v.matin+' × '+_eu(_tx.matin)+')',v.supMatin,'var(--amber)');
+      if(v.reel>0)varLines+=_row('P. réal ('+v.reel+' × '+_eu(_tx.reel)+')',v.supReal,'var(--amber)');
+      if(v.coord>0)varLines+=_row('P. coord ('+v.coord+' × '+_eu(_tx.coord)+')',v.supCoord,'var(--amber)');
       if(v.supAbsResto>0)varLines+=_row('Abs. restauration',v.supAbsResto,'var(--amber)');
       if(!varLines)varLines='<div style="font-size:11px;color:var(--text3);padding:3px 0">Aucun.</div>';
       payeSection=

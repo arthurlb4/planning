@@ -2407,8 +2407,11 @@ const _DPC = {
   gpe:[{debutYM:0,t:[20,52,62,128,154,159,172,187,231]}],
   pfa:[{debutYM:0,t:[{max:1,v:240},{max:3,v:230},{max:5,v:220},{max:8,v:210},{max:17,v:200},{max:22,v:190},{max:30,v:170},{max:9999,v:160}]}],
   anc:[{debutYM:0,base:2091.75,rate1:0.01,rate2:0.005,threshold:20}],
-  panier:[{debutYM:0,v:7.50}]
+  panier:[{debutYM:0,v:7.50}],
+  taux:[{debutYM:0,antenne:17.38,matin:17.38,reel:34.76,coord:17.38,dim:30,rh:30,fer:100,hsLow:125,hsHigh:150,nuit:40}]
 };
+// Champs des taux : [clé, libellé, unité]
+const _TAUX_FIELDS = [['antenne','Prime antenne','€'],['matin','Prime matin','€'],['reel','Prime réalisation','€'],['coord','Prime coordination','€'],['dim','Dimanche','%'],['rh','RH travaillé','%'],['fer','Férié','%'],['hsLow','HS ≤ 8h','%'],['hsHigh','HS > 8h','%'],['nuit','Nuit','%']];
 var _convConfig = null;
 
 function _pcLatestConv(arr,def){if(!arr||!arr.length)return def;return arr.slice().sort((a,b)=>b.debutYM-a.debutYM)[0];}
@@ -2445,6 +2448,7 @@ function _convEnsureDefaults() {
   if (!_convConfig.anc) _convConfig.anc = JSON.parse(JSON.stringify(_DPC.anc));
   if (!_convConfig.panier) _convConfig.panier = [{debutYM:0, v:_convConfig.panierRate!=null?_convConfig.panierRate:_DPC.panier[0].v}];
   delete _convConfig.panierRate;
+  if (!_convConfig.taux) _convConfig.taux = JSON.parse(JSON.stringify(_DPC.taux));
 }
 
 function renderConvTab() {
@@ -2497,6 +2501,15 @@ function renderConvTab() {
     </div></td></tr>`
   ).join('');
 
+  // Taux history
+  const tauxSrc = cfg.taux && cfg.taux.length ? cfg.taux : _DPC.taux;
+  const tauxHistHtml = tauxSrc.slice().sort((a,b)=>b.debutYM-a.debutYM).map((e,i) =>
+    `<tr><td>${_ymLbl(e.debutYM)}</td><td style="font-size:11px">${_TAUX_FIELDS.map(([k,l,u])=>l+': '+(e[k]!=null?e[k]:_DPC.taux[0][k])+(u==='€'?'€':'%')).join(' · ')}</td><td style="white-space:nowrap"><div class="btn-bar">
+      <button class="btn btn-sm btn-ghost" onclick="editTauxEntry(${i})">Éditer</button>
+      ${tauxSrc.length>1?`<button class="btn btn-sm btn-red" onclick="deleteTauxEntry(${i})">×</button>`:''}
+    </div></td></tr>`
+  ).join('');
+
   el.innerHTML = `
     <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
       <button id="conv-save-btn" class="btn btn-green" onclick="savePayConfig()">💾 Enregistrer</button>
@@ -2512,6 +2525,10 @@ function renderConvTab() {
     <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;padding-bottom:4px;border-bottom:0.5px solid var(--border)">Indemnités PFA par palier</div>
     <div class="table-scroll"><table><thead><tr><th>Depuis</th><th>Montants par tranche</th><th></th></tr></thead><tbody>${pfaHistHtml}</tbody></table></div>
     <button class="btn btn-sm" style="margin-top:8px;margin-bottom:20px" onclick="addPFAEntry()">+ Nouvelle version PFA</button>
+
+    <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;padding-bottom:4px;border-bottom:0.5px solid var(--border)">Primes par vacation et majorations</div>
+    <div class="table-scroll"><table><thead><tr><th>Depuis</th><th>Taux</th><th></th></tr></thead><tbody>${tauxHistHtml}</tbody></table></div>
+    <button class="btn btn-sm" style="margin-top:8px;margin-bottom:20px" onclick="addTauxEntry()">+ Nouvelle version des taux</button>
 
     <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;padding-bottom:4px;border-bottom:0.5px solid var(--border)">Panier repas</div>
     <div class="table-scroll"><table><thead><tr><th>Depuis</th><th>Prix par panier</th><th></th></tr></thead><tbody>${panierHistHtml}</tbody></table></div>
@@ -2672,6 +2689,69 @@ function _confirmPFA(idx) {
 }
 
 // ─ Ancienneté ─
+// ─ Taux primes / majorations ─
+function addTauxEntry() {
+  _convEnsureDefaults();
+  const last = _pcLatestConv(_convConfig.taux, _DPC.taux[0]);
+  const n = new Date();
+  _openTauxModal(-1, {...last, debutYM:n.getFullYear()*12+n.getMonth()});
+}
+function editTauxEntry(sortedIdx) {
+  _convEnsureDefaults();
+  const sorted = _convConfig.taux.slice().sort((a,b)=>b.debutYM-a.debutYM);
+  const e = sorted[sortedIdx]; const realIdx = _convConfig.taux.indexOf(e);
+  _openTauxModal(realIdx, {...e});
+}
+function deleteTauxEntry(sortedIdx) {
+  if (!confirm('Supprimer cette version ?')) return;
+  _convEnsureDefaults();
+  const sorted = _convConfig.taux.slice().sort((a,b)=>b.debutYM-a.debutYM);
+  const realIdx = _convConfig.taux.indexOf(sorted[sortedIdx]);
+  if (realIdx>=0) _convConfig.taux.splice(realIdx,1);
+  renderConvTab();
+}
+function _openTauxModal(idx, e) {
+  const ML = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+  const n = new Date(), always = !e.debutYM;
+  const cy = e.debutYM?Math.floor(e.debutYM/12):n.getFullYear(), cm = e.debutYM?e.debutYM%12:n.getMonth();
+  const fld = ([k,l,u]) => `<div class="field" style="flex:1 1 140px"><label>${l} (${u==='€'?'€/vacation':'%'})</label><input id="_tx-${k}" type="number" min="0" step="${u==='€'?'0.01':'1'}" value="${e[k]!=null?e[k]:_DPC.taux[0][k]}"></div>`;
+  const mc = document.getElementById('modal-content');
+  mc.className = 'modal';
+  mc.innerHTML = `
+    <h2>${idx<0?'Nouvelle version des taux':'Modifier les taux'}</h2>
+    <div style="font-size:11px;color:var(--text3);margin:6px 0 2px">Primes par vacation</div>
+    <div class="row" style="flex-wrap:wrap">${_TAUX_FIELDS.filter(f=>f[2]==='€').map(fld).join('')}</div>
+    <div style="font-size:11px;color:var(--text3);margin:10px 0 2px">Majorations (% du taux horaire)</div>
+    <div class="row" style="flex-wrap:wrap">${_TAUX_FIELDS.filter(f=>f[2]==='%').map(fld).join('')}</div>
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-top:10px"><input id="_tx-always" type="checkbox"${always?' checked':''} onchange="document.getElementById('_tx-date').style.display=this.checked?'none':''"> Depuis toujours</label>
+    <div class="row mt8" id="_tx-date"${always?' style="display:none"':''}>
+      <div class="field flex1"><label>Depuis (mois travaillé)</label><select id="_tx-m">${ML.map((m,i)=>`<option value="${i}"${i===cm?' selected':''}>${m}</option>`).join('')}</select></div>
+      <div class="field"><label>Année</label><input id="_tx-y" type="number" value="${cy}" min="2020" max="2040" style="width:90px"></div>
+    </div>
+    <div class="modal-btns">
+      <button class="btn btn-ghost" onclick="closeModal()">Annuler</button>
+      <button class="btn" onclick="_confirmTaux(${idx})">Enregistrer</button>
+    </div>`;
+  document.getElementById('modal-bg').style.display = 'flex';
+}
+function _confirmTaux(idx) {
+  const entry = {};
+  for (const [k,l] of _TAUX_FIELDS) {
+    const v = parseFloat((document.getElementById('_tx-'+k)||{}).value);
+    if (isNaN(v) || v < 0) { alert(l + ' : valeur invalide.'); return; }
+    entry[k] = v;
+  }
+  const always = document.getElementById('_tx-always').checked;
+  const m = parseInt((document.getElementById('_tx-m')||{}).value);
+  const y = parseInt((document.getElementById('_tx-y')||{}).value);
+  entry.debutYM = always ? 0 : y*12+m;
+  _convEnsureDefaults();
+  if (_convConfig.taux.some((x,i) => i !== idx && x.debutYM === entry.debutYM)) { alert('Une version existe déjà pour ce mois.'); return; }
+  if (idx<0) _convConfig.taux.push(entry);
+  else _convConfig.taux[idx] = entry;
+  closeModal(); renderConvTab();
+}
+
 // ─ Panier ─
 function addPanierEntry() {
   _convEnsureDefaults();
