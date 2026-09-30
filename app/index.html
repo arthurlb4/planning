@@ -5828,6 +5828,7 @@ function syncStatusClick(){
   else{var el=document.getElementById('sync-status');if(el)alert(el.title);}
 }
 // Contenu comparable d'un profil (sans l'horodatage, qui change à chaque saveState)
+function _syncKey(pid){return'pl_synced_'+((window._authUser&&window._authUser.userId)||'')+'_'+pid;}
 function _syncSig(d){return JSON.stringify(d,function(k,v){return k==='_lastSaved'?undefined:v;});}
 function _cloudSaveFailed(pid,msg){
   window._syncErr=msg;setSyncStatus('error');
@@ -5837,7 +5838,7 @@ function _cloudSaveFailed(pid,msg){
 async function cloudSave(pid){
   if(!window._authToken||!_profs[pid])return;
   // Rien de nouveau depuis la dernière synchro réussie → pas d'écriture (quota KV)
-  var sig=_syncSig(_profs[pid]),sigKey='pl_synced_'+((window._authUser&&window._authUser.userId)||'')+'_'+pid;
+  var sig=_syncSig(_profs[pid]),sigKey=_syncKey(pid);
   try{if(localStorage.getItem(sigKey)===sig){setSyncStatus('ok');return;}}catch(e){}
   setSyncStatus('pending');
   try{
@@ -5867,7 +5868,31 @@ async function cloudLoad(pid){
   }catch(e){console.warn('cloud load error',e);return null;}
 }
 
+// Retour sur l'app : récupérer les modifs faites sur un autre appareil (lecture seule, pas d'écriture KV)
+async function cloudRefresh(){
+  if(!window._authToken||!_aid||!_profs[_aid])return;
+  if(Date.now()-(window._lastCloudRefresh||0)<20000)return;
+  window._lastCloudRefresh=Date.now();
+  var pid=_aid,sigKey=_syncKey(pid);
+  // Modif locale pas encore envoyée : on la garde, elle partira au prochain envoi
+  var localSig=_syncSig(_profs[pid]),syncedSig=null;
+  try{syncedSig=localStorage.getItem(sigKey);}catch(e){}
+  if(window._syncStatus==='pending'||window._syncStatus==='error'||localSig!==syncedSig)return;
+  var cloud=await cloudLoad(pid);
+  if(!cloud||pid!==_aid)return;
+  var cloudSig=_syncSig(cloud);
+  if(cloudSig===localSig)return;
+  // L'utilisateur a modifié entre-temps, ou une fenêtre est ouverte : ne pas écraser
+  if(_syncSig(_profs[pid])!==localSig||document.getElementById('modal-root').innerHTML)return;
+  _profs[pid]=cloud;S=cloud;_us=[];_rs=[];
+  try{localStorage.setItem('pl_v8',JSON.stringify({p:_profs,a:_aid}));localStorage.setItem(sigKey,cloudSig);}catch(e){}
+  applyTheme();render();updateUrBtns();
+  var hpn=document.getElementById('hdr-profile-name');if(hpn&&S.profile)hpn.textContent=S.profile.name||'Profil';
+  setSyncStatus('ok');
+}
+
 async function cloudLoadAll(){
+  window._lastCloudRefresh=Date.now();
   if(!window._authToken){gcalLoad();return;}
   try{
     const res=await fetch(CLOUD_API+'/data/list',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({})});
@@ -5905,7 +5930,7 @@ async function cloudLoadAll(){
         if(cloudData){
           var _localTs=(_profs[pid]&&_profs[pid].profile&&_profs[pid].profile._lastSaved)||0;
           var _cloudTs=(cloudData.profile&&cloudData.profile._lastSaved)||0;
-          if(_cloudTs>=_localTs){_profs[pid]=cloudData;}
+          if(_cloudTs>=_localTs){_profs[pid]=cloudData;try{localStorage.setItem(_syncKey(pid),_syncSig(cloudData));}catch(e){}}
         }
       }
       // Update active profile S from loaded data
@@ -5928,10 +5953,12 @@ async function cloudLoadAll(){
   gcalLoad();
   checkPendingLineChoice();
   gcalStartPoll();
+  window.addEventListener('focus',function(){cloudRefresh();});
   // Sync on visibility change (mobile: app comes back to foreground)
   document.addEventListener('visibilitychange',function(){
     if(document.visibilityState==='visible'){
       gcalStartPoll();
+      cloudRefresh();
       fetch(location.href,{cache:'no-store',headers:{'Cache-Control':'no-cache, no-store','Pragma':'no-cache'}})
         .then(function(r){return r.text();})
         .then(function(html){
