@@ -206,6 +206,7 @@ textarea{width:100%;padding:9px 12px;background:var(--bg);border:0.5px solid var
       <div class="row">
         <div class="flex1 field"><label>Code système</label><input type="text" id="vf-name" placeholder="ex : A1b"></div>
         <div class="flex1 field"><label>Label affiché</label><input type="text" id="vf-label" placeholder="ex : A1 (vide = code)"></div>
+        <div class="flex1 field"><label>Catégorie</label><select id="vf-cat"><option value="">Auto</option><option>Général</option><option>Coordination</option><option>Vidéo</option><option>Cadre</option></select></div>
         <div class="flex1 field"><label>Début</label><input type="time" id="vf-deb" step="900" oninput="onVfTimeChange()"></div>
         <div class="flex1 field"><label>Fin</label><input type="time" id="vf-fin" step="900" oninput="onVfTimeChange()"></div>
         <div class="flex1 field"><label>Durée</label><input type="text" id="vf-dur" placeholder="9h30" oninput="onVfDurChange()"></div>
@@ -505,6 +506,20 @@ function switchVacTab(id) {
   closeVacForm();
 }
 
+// Catégorie d'une vacation : celle choisie dans l'admin, sinon déduite du code (A3b → A3)
+const VAC_CAT = {
+  M:'Coordination',S:'Coordination',Pj:'Coordination',Pv:'Coordination',
+  MR:'Vidéo',SR:'Vidéo','Ms-R':'Vidéo','Md-R':'Vidéo',
+  B2V:'Cadre',C3V:'Cadre',P422V:'Cadre',BsV:'Cadre',Ds:'Cadre',BdV:'Cadre',Dd:'Cadre',
+};
+function vacCat(name){
+  if(_allVacs&&_allVacs[name]&&_allVacs[name].cat)return _allVacs[name].cat;
+  if(VAC_CAT[name])return VAC_CAT[name];
+  let b=name;
+  while(b.length>1&&b[b.length-1]>='a'&&b[b.length-1]<='z'){b=b.slice(0,-1);if(_allVacs&&_allVacs[b]&&_allVacs[b].cat)return _allVacs[b].cat;if(VAC_CAT[b])return VAC_CAT[b];}
+  return'Général';
+}
+
 function renderVacList() {
   const _detailsOpen = document.querySelector('#vac-list details')?.open ?? false;
   const el = document.getElementById('vac-list');
@@ -527,6 +542,18 @@ function renderVacList() {
   const gridCodes = activeCycle && activeCycle.weeks
     ? new Set(activeCycle.weeks.flat().filter(c => c && c !== 'RH'))
     : new Set();
+
+  // Copies rattachées au cycle alors que la grille utilise encore l'original de même label (ex. A3b vs A3)
+  const _lblOf = n => (_allVacs[n] && _allVacs[n].label) || n;
+  const swaps = [];
+  if (activeCycle) filtered.forEach(([n]) => {
+    if (gridCodes.has(n)) return;
+    const orig = [...gridCodes].find(g => g !== n && _lblOf(g) === _lblOf(n) && !((_allVacs[g]||{}).cycleIds||[]).includes(_vacActiveTab));
+    if (orig) swaps.push([orig, n]);
+  });
+  const swapHtml = swaps.map(([o, n]) => `<div class="alert alert-orange" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;font-size:12px">
+    <span style="flex:1;min-width:200px"><b>${_esc(n)}</b> est rattachée à ce cycle, mais la grille utilise encore <b>${_esc(o)}</b> (même label « ${_esc(_lblOf(n))} »).</span>
+    <button class="btn btn-sm" onclick="offerCycleGridSwap('${o}','${n}','${_vacActiveTab}').then(loadVacations)">Remplacer dans la grille</button></div>`).join('');
 
   function _hasType(v, t) { const ts=(v.type||'week').split(','); return ts.includes('all')||ts.includes(t); }
   const week = filtered.filter(([n,v]) => n !== 'RH' && _hasType(v,'week'));
@@ -588,11 +615,6 @@ function renderVacList() {
 
     const totalCount = avail.length + toCreate.length;
     if (totalCount) {
-      const AV_CAT = {
-        M:'Coordination',S:'Coordination',Pj:'Coordination',Pv:'Coordination',
-        MR:'Vidéo',SR:'Vidéo','Ms-R':'Vidéo','Md-R':'Vidéo',
-        B2V:'Cadre',C3V:'Cadre',P422V:'Cadre',BsV:'Cadre',Ds:'Cadre',BdV:'Cadre',Dd:'Cadre',
-      };
       function chip(name, v, onCreate) {
         const lbl = v.label || name;
         const action = onCreate ? `quickCreateAndLink('${name}')` : `quickAddToCycle('${name}')`;
@@ -625,7 +647,7 @@ function renderVacList() {
       function byCat(rows, onCreate) {
         const cats = ['Cycle','Coordination','Vidéo','Cadre'];
         return cats.map(cat => {
-          const subset = rows.filter(([n]) => (AV_CAT[n]||'Cycle') === cat);
+          const subset = rows.filter(([n]) => (vacCat(n)==='Général'?'Cycle':vacCat(n)) === cat);
           return catSection(cat, subset, onCreate, onCreate?'var(--blue)':'var(--text3)');
         }).join('');
       }
@@ -645,17 +667,6 @@ function renderVacList() {
   }
 
   const SPAN = `grid-column:1/-1`;
-  const VAC_CAT = {
-    M:'Coordination',S:'Coordination',Pj:'Coordination',Pv:'Coordination',
-    MR:'Vidéo',SR:'Vidéo','Ms-R':'Vidéo','Md-R':'Vidéo',
-    B2V:'Cadre',C3V:'Cadre',P422V:'Cadre',BsV:'Cadre',Ds:'Cadre',BdV:'Cadre',Dd:'Cadre',
-  };
-  function vacCat(name){
-    if(VAC_CAT[name])return VAC_CAT[name];
-    let b=name;
-    while(b.length>1&&b[b.length-1]>='a'&&b[b.length-1]<='z'){b=b.slice(0,-1);if(VAC_CAT[b])return VAC_CAT[b];}
-    return'Général';
-  }
 
   const CELL = `min-width:0`;
   let out = `<div style="${GRID}">`;
@@ -684,7 +695,7 @@ function renderVacList() {
   }
 
   out += '</div>';
-  el.innerHTML = out + availHtml;
+  el.innerHTML = swapHtml + out + availHtml;
 }
 function _toMinAdmin(t) {
   const m = /^(\d{1,2})h(\d{2})$/.exec((t||'').trim());
@@ -1013,6 +1024,7 @@ function showVacForm(name, v) {
   document.getElementById('vf-name').value = name || '';
   document.getElementById('vf-name').disabled = !!name;
   document.getElementById('vf-label').value = v ? (v.label || '') : '';
+  document.getElementById('vf-cat').value = v && v.cat ? v.cat : '';
   document.getElementById('vf-deb').value = v ? fmtTimeToHHMM(v.deb) : '';
   document.getElementById('vf-fin').value = v ? fmtTimeToHHMM(v.fin) : '';
   document.getElementById('vf-dur').value = v && v.dur ? fmtVacDur(v.dur) : '';
@@ -1102,6 +1114,11 @@ function setVacScope(scope) {
     if (!document.getElementById('vf-label').value) {
       document.getElementById('vf-label').value = window._vacScopeOrigName;
     }
+    // La copie garde la catégorie de l'original
+    if (!document.getElementById('vf-cat').value) {
+      const oc = vacCat(window._vacScopeOrigName);
+      document.getElementById('vf-cat').value = oc === 'Général' ? '' : oc;
+    }
     document.getElementById('vac-form-title').textContent = 'Copier comme nouvelle vacation';
     document.getElementById('vf-cycles-field').style.display = 'none';
   } else {
@@ -1130,6 +1147,7 @@ async function saveVac() {
   const deb = document.getElementById('vf-deb').value;
   const fin = document.getElementById('vf-fin').value;
   const label = document.getElementById('vf-label').value.trim();
+  const cat = document.getElementById('vf-cat').value;
   const durInput = document.getElementById('vf-dur').value;
   const panier = document.getElementById('vf-panier').checked;
   const mixte = document.getElementById('vf-mixte').checked;
@@ -1147,7 +1165,7 @@ async function saveVac() {
   const parsedDur = durInput ? parseVacDur(durInput) : null;
   const dur = parsedDur !== null ? parsedDur : calcDur(deb, fin);
   if (!dur) { errEl.textContent = 'Durée invalide.'; return; }
-  const vacation = { name, ...(label ? {label} : {}), deb: fmtHHMMToH(deb), fin: fmtHHMMToH(fin), dur, panier, mixte: mixte || false, primes, type, ...(days.length ? {days} : {}) };
+  const vacation = { name, ...(label ? {label} : {}), cat, deb: fmtHHMMToH(deb), fin: fmtHHMMToH(fin), dur, panier, mixte: mixte || false, primes, type, ...(days.length ? {days} : {}) };
 
   // Scope: 'copy' = create new vacation for this cycle only
   if (_editingVac && window._vacSaveScope === 'copy') {
