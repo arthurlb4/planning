@@ -296,6 +296,21 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 /* Le parent est tourné de 180° : translateY(-) apparaît vers le bas à l'écran */
 @keyframes smIn{from{transform:translateY(-16px);opacity:0}to{transform:none;opacity:1}}
 @keyframes smInRev{from{transform:translateY(16px);opacity:0}to{transform:none;opacity:1}}
+.dx-box{margin-top:8px;padding:10px 12px;background:var(--bg3);border-radius:var(--r);border:0.5px solid var(--border);font-size:11px}
+.dx-t{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px}
+.dx-line{padding:4px 0;border-radius:6px}
+.dx-l{display:flex;justify-content:space-between;align-items:baseline;gap:8px;color:var(--text2)}
+.dx-l b{white-space:nowrap}
+.dx-sign{display:inline-block;width:14px;color:var(--text3);font-weight:600}
+.dx-clk{cursor:pointer}
+.dx-chev{font-size:11px;color:var(--text3);transition:transform .15s;vertical-align:middle}
+.dx-line.open .dx-chev{transform:rotate(180deg)}
+.dx-det{display:none;margin:3px 0 2px 14px;padding-left:8px;border-left:1.5px solid var(--border2)}
+.dx-line.open .dx-det{display:block}
+.dx-dr{display:flex;justify-content:space-between;gap:8px;font-size:10px;color:var(--text3);padding:1px 0}
+.dx-tot{border-top:0.5px solid var(--border2);margin-top:4px;padding-top:6px}
+.dx-tot .dx-l{color:var(--text);font-weight:600}
+.dx-note{margin-top:8px;font-size:10px;line-height:1.5;color:var(--text3)}
 .sv2-t{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .sv2-t b{color:var(--text2);font-weight:600}
 .sv2-cols{display:flex;align-items:stretch;gap:6px}
@@ -3709,6 +3724,31 @@ function openMergedRenduCgModal(limit,tab){
     +'</div>'
     +'</div>'
     +'</div>';
+  // ── Encadré « Comment c'est calculé ? » : le dispo en 3 lignes, avec détail dépliable ──
+  const _MFd=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+  const _MSd=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
+  const _vm=_MFd[_viewedYM%12],_enVm='en '+_vm,_jusquVm='jusqu’en '+_vm;
+  const _ymLbl=function(ym){return _MSd[ym%12]+' '+String(Math.floor(ym/12)).slice(2);};
+  const _det=function(rows){return rows.length?'<div class="dx-det">'+rows.join('')+'</div>':'';};
+  const _detRow=function(l,v){return '<div class="dx-dr"><span>'+l+'</span><span>'+v+'</span></div>';};
+  const _pastRows=genSnapshot.map(function(e){const c=e.amount-(_as1Map[e.ym]||0);return c>0?_detRow('sur les heures acquises en '+_ymLbl(e.ym),'−'+fmtMin(c)):'';}).filter(Boolean);
+  const _acqRows=genSnapshot.map(function(e){const ey=e.expYm;return _detRow('acquises en '+_ymLbl(e.ym)+' <span style="opacity:.6">· valables jusqu’à fin '+_ymLbl(ey)+'</span>',fmtMin(e.amount));});
+  const _futRows=Object.keys(_rdByYm).map(Number).sort().map(function(ym){return _detRow('rendus posés en '+_ymLbl(ym),'−'+fmtMin(_rdByYm[ym]));});
+  const _dxLine=function(label,val,color,rows,sign){
+    const has=rows.length>0;
+    return '<div class="dx-line'+(has?' dx-clk':'')+'"'+(has?' onclick="this.classList.toggle(\'open\')"':'')+'>'
+      +'<div class="dx-l"><span>'+(sign?'<b class="dx-sign">'+sign+'</b>':'<b class="dx-sign"></b>')+label+(has?' <i class="ti ti-chevron-down dx-chev"></i>':'')+'</span><b style="color:'+color+'">'+val+'</b></div>'
+      +_det(rows)+'</div>';
+  };
+  const dispoExplainHtml=''
+    +'<div class="dx-box">'
+    +'<div class="dx-t">Comment est calculé le dispo '+_enVm+' ?</div>'
+    +_dxLine('Heures acquises encore valables '+_enVm,fmtMin(totalBrut),'var(--text)',_acqRows,'')
+    +_dxLine('Déjà posées '+_jusquVm,consumedByPast>0?'−'+fmtMin(consumedByPast):'—',consumedByPast>0?'var(--red)':'var(--text3)',_pastRows,'−')
+    +_dxLine('Réservées pour des rendus posés plus tard',reserved>0?'−'+fmtMin(reserved):'—',reserved>0?'var(--amber)':'var(--text3)',_futRows,'−')
+    +'<div class="dx-line dx-tot"><div class="dx-l"><span><b class="dx-sign">=</b>Dispo '+_enVm+'</span><b style="color:'+dispoColor+'">'+fmtMin(dispoMois)+'</b></div></div>'
+    +'<div class="dx-note"><i class="ti ti-info-circle"></i> Les heures restent valables 3 mois après leur mois d’acquisition (6 si reportées). Les plus anciennes sont utilisées en premier. Les rendus déjà posés plus tard sont retenus dès maintenant'+(reserved>0?' : c’est pourquoi ils réduisent le dispo '+_enVm:'')+'.</div>'
+    +'</div>';
   let _expAmt=0,_repAmt=0;
   Object.keys(realAvail).map(Number).forEach(function(ym){
     if(realAvail[ym]>0){
@@ -3753,7 +3793,7 @@ function openMergedRenduCgModal(limit,tab){
     +'<div class="stabs-body">'
     +'<div id="rcc-wrap" style="display:grid">'
     +'<div id="rcc-0" style="grid-area:1/1">'
-    +'<div style="margin-bottom:10px">'+rendSoldeHeader+dispoDetailHtml+'</div>'
+    +'<div style="margin-bottom:10px">'+rendSoldeHeader+dispoExplainHtml+dispoDetailHtml+'</div>'
     +(rendRows||'<div style="font-size:11px;color:var(--text3)">Aucun rendu disponible.</div>')
     +moreBtn
     +'</div>'
