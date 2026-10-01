@@ -489,10 +489,14 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .sheet select{touch-action:auto;}
 /* ── Liquid Glass sur les modals, menus et invites : fond translucide et flou, liseré de lumière fin
    (haut et gauche plus lumineux, bas et droite plus discrets) ── */
-.overlay{background:rgba(0,0,0,.34);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
-/* Glissé d'un modal : voile limité à la zone au-dessus du modal (hauteur, flou et assombrissement pilotés par le geste) */
-.overlay.ov-drag::before{content:"";position:fixed;left:0;right:0;top:0;height:var(--ovh,100%);pointer-events:none;
-  background:rgba(0,0,0,var(--ova,.34));-webkit-backdrop-filter:blur(var(--ovb,8px));backdrop-filter:blur(var(--ovb,8px))}
+.overlay{background:transparent;-webkit-backdrop-filter:none;backdrop-filter:none}
+/* Voile des modals en deux couches, avec la même structure avant et pendant un glissé :
+   au-dessus de --ovh (le haut du modal pendant un glissé), le flou et l'assombrissement s'estompent avec le geste ;
+   en dessous, derrière le modal, ils restent constants. Sans glissé, la première couche couvre tout l'écran. */
+.overlay::before,.overlay::after{content:"";position:fixed;left:0;right:0;pointer-events:none;z-index:0}
+.overlay::before{top:0;height:var(--ovh,100%);background:rgba(0,0,0,var(--ova,.34));-webkit-backdrop-filter:blur(var(--ovb,8px));backdrop-filter:blur(var(--ovb,8px))}
+.overlay::after{top:var(--ovh,100%);bottom:0;background:rgba(0,0,0,.34);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}
+.overlay>*{z-index:1} /* l'overlay est en flex : z-index suffit, sans toucher à la position */
 .sheet{background:rgba(32,32,31,.74);-webkit-backdrop-filter:blur(28px) saturate(170%);backdrop-filter:blur(28px) saturate(170%);
   box-shadow:inset .5px .5px 0 rgba(255,250,243,.16),inset -.5px -.5px 0 rgba(255,250,243,.06),0 -10px 40px rgba(0,0,0,.45)}
 .dropdown{background:rgba(48,47,45,.74);-webkit-backdrop-filter:blur(24px) saturate(170%);backdrop-filter:blur(24px) saturate(170%);
@@ -5054,7 +5058,7 @@ function _wvCell(code,VAC,isOv){
       if(dx>10||dyAbs>10) dirLocked=dx>dyAbs?'h':'v';
       else return;
     }
-    if(dirLocked==='h'){dragging=false;sheet.style.transform='';sheet.style.transition='';if(overlay){overlay.classList.remove('ov-drag');overlay.style.background='';overlay.style.backdropFilter='';overlay.style.webkitBackdropFilter='';}return;}
+    if(dirLocked==='h'){dragging=false;sheet.style.transform='';sheet.style.transition='';if(overlay){overlay.classList.remove('ov-drag');['--ovh','--ovb','--ova'].forEach(function(k){overlay.style.removeProperty(k);});}return;}
     // Swipe down at top = close gesture; swipe up at bottom = prevent body overscroll
     if(dy>0&&sheet.scrollTop<=0){
       e.preventDefault();
@@ -5063,7 +5067,7 @@ function _wvCell(code,VAC,isOv){
       // s'estompent avec le geste ; derrière le modal, c'est le modal lui-même qui floute ce qu'il recouvre.
       if(overlay){
         var _k=Math.min(1,dy/260);
-        if(!overlay.classList.contains('ov-drag')){overlay.classList.add('ov-drag');overlay.style.background='transparent';overlay.style.backdropFilter='none';overlay.style.webkitBackdropFilter='none';}
+        overlay.classList.add('ov-drag');
         overlay.style.setProperty('--ovh',(sheet.getBoundingClientRect().top+24)+'px');
         overlay.style.setProperty('--ovb',(8*(1-_k)).toFixed(2)+'px');
         overlay.style.setProperty('--ova',(.34*(1-_k)).toFixed(3));
@@ -5080,11 +5084,11 @@ function _wvCell(code,VAC,isOv){
     if(dy>80){
       sheet.style.transform='translateY(100%)';
       var _tr='background .2s ease,backdrop-filter .2s ease,-webkit-backdrop-filter .2s ease';
-      if(overlay){overlay.style.transition=_tr;overlay.style.background='rgba(0,0,0,0)';overlay.style.setProperty('--ovb','0px');overlay.style.setProperty('--ova','0');}
+      if(overlay){overlay.style.setProperty('--ovh','100%');overlay.style.setProperty('--ovb','0px');overlay.style.setProperty('--ova','0');}
       setTimeout(closeModal,200);
     }else{
       sheet.style.transform='';
-      if(overlay){overlay.classList.remove('ov-drag');overlay.style.background='';overlay.style.backdropFilter='';overlay.style.webkitBackdropFilter='';}
+      if(overlay){overlay.classList.remove('ov-drag');['--ovh','--ovb','--ova'].forEach(function(k){overlay.style.removeProperty(k);});}
     }
     sheet=null;overlay=null;
   },{passive:true});
