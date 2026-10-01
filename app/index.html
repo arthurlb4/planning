@@ -311,6 +311,9 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .dx-tot{border-top:0.5px solid var(--border2);margin-top:4px;padding-top:6px}
 .dx-tot .dx-l{color:var(--text);font-weight:600}
 .dx-note{margin-top:8px;font-size:10px;line-height:1.5;color:var(--text3)}
+.dx-sub{display:block;font-size:9.5px;color:var(--text3);margin-left:14px;font-weight:400}
+.dx-foot{display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px 12px;margin-top:8px;padding-top:6px;border-top:0.5px solid var(--border2);font-size:10.5px;color:var(--text3)}
+.dx-box{margin-top:0}
 .sv2-t{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .sv2-t b{color:var(--text2);font-weight:600}
 .sv2-cols{display:flex;align-items:stretch;gap:6px}
@@ -2866,6 +2869,29 @@ function calcTrueDispo(viewedYM){
   return{total:Math.max(0,dispo),breakdown,stockActif,reserved,reservedMonths,afterStep1,reservedDetail,genSnapshot};
 }
 
+// Solde « façon tableau RH » à aujourd'hui : heures des mois terminés encore valables,
+// moins les rendus déjà pris (jusqu'à aujourd'hui inclus), imputés sur les mois les plus anciens.
+// stockAll ajoute les heures du mois en cours (créditées par les RH seulement en fin de mois).
+function calcSoldeRH(){
+  const gen=buildGen(),todayKey=dk(NOW);
+  const _sim={};
+  Object.keys(gen).forEach(function(k){const ym=Number(k);_sim[ym]=Object.values(gen[ym]).reduce(function(s,v){return s+v;},0);});
+  const _yms=Object.keys(_sim).map(Number).sort(function(a,b){return a-b;});
+  const acquisRows=[];
+  _yms.forEach(function(ym){if(ym<TODAY_YM&&getExpYm(ym)>=TODAY_YM&&_sim[ym]>0)acquisRows.push({ym:ym,acquis:_sim[ym]});});
+  Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='rend'&&k<=todayKey;}).sort().forEach(function(k){
+    const _d=new Date(k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth();let _lft=getDur(_d);
+    _yms.forEach(function(_ym){
+      if(_lft<=0||_sim[_ym]<=0||getBaseExpYm(_ym)<_pym||_ym>_pym)return;
+      const _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;
+    });
+  });
+  let solde=0,courant=0;const rows=[];
+  acquisRows.forEach(function(r){const reste=_sim[r.ym]||0;solde+=reste;rows.push({ym:r.ym,acquis:r.acquis,conso:r.acquis-reste,reste:reste,expYm:getExpYm(r.ym)});});
+  if(getExpYm(TODAY_YM)>=TODAY_YM)courant=Math.max(0,_sim[TODAY_YM]||0);
+  return{solde:solde,courant:courant,stockAll:solde+courant,rows:rows};
+}
+
 function canPlaceRendu(newKeys){
   // Double FIFO: compare existing-only deficit vs existing+new deficit.
   // Blocks if new keys are uncovered OR if they increase existing rendus' deficit.
@@ -3742,14 +3768,38 @@ function openMergedRenduCgModal(limit,tab){
       +'<div class="dx-l"><span>'+(sign?'<b class="dx-sign">'+sign+'</b>':'<b class="dx-sign"></b>')+label+(has?' <i class="ti ti-chevron-down dx-chev"></i>':'')+'</span><b style="color:'+color+'">'+val+'</b></div>'
       +_det(rows)+'</div>';
   };
+  const _fmtDec=function(min){return (min/60).toFixed(2).replace('.',',')+' h';};
+  const _dateFr=NOW.getDate()+'/'+String(NOW.getMonth()+1).padStart(2,'0');
+  const _futRendus={};
+  Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='rend'&&k>dk(NOW);}).forEach(function(k){const d=new Date(k+'T12:00:00'),ym=d.getFullYear()*12+d.getMonth();_futRendus[ym]=(_futRendus[ym]||0)+getDur(d);});
+  const _futRendusRows=Object.keys(_futRendus).map(Number).sort().map(function(ym){return _detRow('rendus posés en '+_ymLbl(ym),fmtMin(_futRendus[ym]));});
+  let _calcLines;
+  if(_viewedYM===TODAY_YM){
+    // Mois en cours : on part du même chiffre que le tableau RH (« Cumul soldes »)
+    const _rh=calcSoldeRH();
+    const _promis=Math.max(0,_rh.stockAll-dispoMois);
+    const _rhRows=_rh.rows.map(function(r){return _detRow(_MFd[r.ym%12]+' '+String(Math.floor(r.ym/12)).slice(2)+' <span style="opacity:.6">· '+fmtMin(r.acquis)+' acquises'+(r.conso>0?' − '+fmtMin(r.conso)+' consommées':'')+' · valables jusqu’à fin '+_ymLbl(r.expYm)+'</span>',fmtMin(r.reste));});
+    _calcLines=''
+      +_dxLine('Solde au '+_dateFr+' <span class="dx-sub">comme ton tableau RH · '+_fmtDec(_rh.solde)+'</span>',fmtMin(_rh.solde),'var(--text)',_rhRows,'')
+      +(_rh.courant>0?_dxLine('Acquises en '+_vm+' <span class="dx-sub">créditées par les RH en fin de mois</span>','+'+fmtMin(_rh.courant),'var(--rend-text)',[],'+'):'')
+      +_dxLine('Déjà promises à tes rendus à venir <span class="dx-sub">posés après aujourd’hui</span>',_promis>0?'−'+fmtMin(_promis):'—',_promis>0?'var(--amber)':'var(--text3)',_futRendusRows.length?_futRendusRows.concat(['<div class="dx-dr" style="opacity:.8"><span>une partie sera couverte par les heures que tu acquerras d’ici là</span></div>']):[],'−');
+  }else{
+    // Autre mois : prévision à partir des heures valables ce mois-là
+    _calcLines=''
+      +_dxLine('Heures acquises encore valables '+_enVm,fmtMin(totalBrut),'var(--text)',_acqRows,'')
+      +_dxLine('Rendus posés '+_jusquVm,consumedByPast>0?'−'+fmtMin(consumedByPast):'—',consumedByPast>0?'var(--red)':'var(--text3)',_pastRows,'−')
+      +_dxLine('Promises à des rendus posés plus tard',reserved>0?'−'+fmtMin(reserved):'—',reserved>0?'var(--amber)':'var(--text3)',_futRows,'−');
+  }
   const dispoExplainHtml=''
     +'<div class="dx-box">'
-    +'<div class="dx-t">Comment est calculé le dispo '+_enVm+' ?</div>'
-    +_dxLine('Heures acquises encore valables '+_enVm,fmtMin(totalBrut),'var(--text)',_acqRows,'')
-    +_dxLine('Déjà posées '+_jusquVm,consumedByPast>0?'−'+fmtMin(consumedByPast):'—',consumedByPast>0?'var(--red)':'var(--text3)',_pastRows,'−')
-    +_dxLine('Réservées pour des rendus posés plus tard',reserved>0?'−'+fmtMin(reserved):'—',reserved>0?'var(--amber)':'var(--text3)',_futRows,'−')
-    +'<div class="dx-line dx-tot"><div class="dx-l"><span><b class="dx-sign">=</b>Dispo '+_enVm+'</span><b style="color:'+dispoColor+'">'+fmtMin(dispoMois)+'</b></div></div>'
-    +'<div class="dx-note"><i class="ti ti-info-circle"></i> Les heures restent valables 3 mois après leur mois d’acquisition (6 si reportées). Les plus anciennes sont utilisées en premier. Les rendus déjà posés plus tard sont retenus dès maintenant'+(reserved>0?' : c’est pourquoi ils réduisent le dispo '+_enVm:'')+'.</div>'
+    +'<div class="dx-t">'+(_viewedYM===TODAY_YM?'Tes heures à récupérer':'Prévision pour '+_vm)+'</div>'
+    +_calcLines
+    +'<div class="dx-line dx-tot"><div class="dx-l"><span><b class="dx-sign">=</b>Libre à poser'+(_viewedYM===TODAY_YM?'':' '+_enVm)+'</span><b style="color:'+dispoColor+';font-size:15px">'+fmtMin(dispoMois)+'</b></div></div>'
+    +'<div class="dx-foot">'
+    +(matelasVal>0?'<span>Matelas <b style="color:var(--blue)">'+fmtMin(matelasVal)+'</b> <span style="opacity:.7">('+_fmtDec(matelasVal)+')</span></span>':'')
+    +'<span>__EXPIRE__</span>'
+    +'</div>'
+    +'<div class="dx-note"><i class="ti ti-info-circle"></i> Le tableau RH est en heures décimales : 32,38 h = 32h23. Les heures restent valables 3 mois après leur mois d’acquisition (6 si reportées) et les plus anciennes sont utilisées en premier.</div>'
     +'</div>';
   let _expAmt=0,_repAmt=0;
   Object.keys(realAvail).map(Number).forEach(function(ym){
@@ -3763,6 +3813,8 @@ function openMergedRenduCgModal(limit,tab){
     :_repAmt>0
       ?'<div style="width:0.5px;background:var(--border2)"></div><div style="flex:1;text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Report '+MC[_viewedYM%12]+'</div><div style="font-size:15px;font-weight:600;color:var(--green)">'+fmtMin(_repAmt)+'</div></div>'
       :'<div style="width:0.5px;background:var(--border2)"></div><div style="flex:1;text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Expire '+MC[_viewedYM%12]+'</div><div style="font-size:15px;font-weight:600;color:var(--text3)">—</div></div>';
+  const _expTxt=_expAmt>0?'Expire en '+_vm+' <b style="color:var(--red)">'+fmtMin(_expAmt)+'</b>':_repAmt>0?'Reporté en '+_vm+' <b style="color:var(--green)">'+fmtMin(_repAmt)+'</b>':'Rien n’expire en '+_vm;
+  const dispoBoxHtml=dispoExplainHtml.replace('__EXPIRE__',_expTxt);
   const rendSoldeHeader=''
     +'<div style="display:flex;gap:8px;padding:8px 10px;background:var(--bg3);border-radius:var(--r);border:0.5px solid var(--border)">'
     +(matelasVal>0
@@ -3795,7 +3847,7 @@ function openMergedRenduCgModal(limit,tab){
     +'<div class="stabs-body">'
     +'<div id="rcc-wrap" style="display:grid">'
     +'<div id="rcc-0" style="grid-area:1/1">'
-    +'<div style="margin-bottom:10px">'+rendSoldeHeader+dispoExplainHtml+dispoDetailHtml+'</div>'
+    +'<div style="margin-bottom:10px">'+dispoBoxHtml+'</div>'
     +(rendRows||'<div style="font-size:11px;color:var(--text3)">Aucun rendu disponible.</div>')
     +moreBtn
     +'</div>'
