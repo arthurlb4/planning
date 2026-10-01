@@ -1,4 +1,4 @@
-const SW_VERSION = '10.1';
+const SW_VERSION = '10.2';
 const PAGES = 'pl-pages-v1';   // dernière version de l'app, pour l'ouvrir hors connexion
 const ASSETS = 'pl-assets-v1'; // icônes (CDN)
 
@@ -36,8 +36,8 @@ self.addEventListener('fetch', function(event) {
     );
     return;
   }
-  // Icônes (feuille de style + polices du CDN) : cache d'abord, mise à jour en arrière-plan
-  if (/cdn\.jsdelivr\.net\/npm\/@tabler\//.test(req.url)) {
+  // Icônes et police Inter (feuilles de style + fichiers de police) : cache d'abord, mise à jour en arrière-plan
+  if (/cdn\.jsdelivr\.net\/npm\/@tabler\/|fonts\.googleapis\.com\/css2|fonts\.gstatic\.com\//.test(req.url)) {
     event.respondWith(
       caches.open(ASSETS).then(function(c) {
         return c.match(req).then(function(hit) {
