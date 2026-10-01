@@ -2672,7 +2672,7 @@ function poseConge(t){
   if(t==='cg'){const _pcY=new Date(pendingKey+'T12:00:00').getFullYear();if(computeCongesRest(_pcY)<=0){showBlockAlert('Solde insuffisant','Plus de congés disponibles pour '+_pcY+'.');return;}}
   pushUndo();var date=new Date(pendingKey+'T12:00:00');
   var stored=t;
-  if(t==='rend'){const createdYM=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:2026*12;const dateYM=date.getFullYear()*12+date.getMonth();if(dateYM<createdYM)stored='rend-hist';}
+  if(t==='rend')stored=_rendStatus(dk(date));
   S.conges[pendingKey]=stored;logH(fmtDate(date)+' -> '+(t==='cg'?'congé':stored==='rend-hist'?'rendu hist. '+fmtMin(getDur(date)):'rendu '+fmtMin(getDur(date))),t==='cg'?'#6a9878':'#A8BF7A',pendingKey);
   saveState();closeModal();render();popCell(pendingKey);}
 function recalcAllMatelas(){
@@ -2897,6 +2897,15 @@ function calcTrueDispo(viewedYM){
 // Solde « façon tableau RH » à aujourd'hui : heures des mois terminés encore valables,
 // moins les rendus déjà pris (jusqu'à aujourd'hui inclus), imputés sur les mois les plus anciens.
 // stockAll ajoute les heures du mois en cours (créditées par les RH seulement en fin de mois).
+// Un rendu antérieur au début du suivi est « historique » : affiché mais pas décompté.
+// Après un import du tableau RH, le suivi démarre au jour du tableau (son solde a déjà ces rendus en moins).
+function _rendStatus(key){
+  const pr=S.profile||{},cym=pr.ephSoldeCreatedYM!==undefined?pr.ephSoldeCreatedYM:2026*12;
+  const d=new Date(key+'T12:00:00');
+  if(d.getFullYear()*12+d.getMonth()<cym)return'rend-hist';
+  if(pr.ephBaseDate&&key<=pr.ephBaseDate)return'rend-hist';
+  return'rend';
+}
 function calcSoldeRH(asOf){
   const _asOf=asOf||NOW,TODAY_YM=_asOf.getFullYear()*12+_asOf.getMonth(); // masque la constante globale : calcul « à la date »
   const gen=buildGen(),todayKey=dk(_asOf);
@@ -3000,14 +3009,89 @@ function _rhParse(cells,fileName){
 // Nature du tableau RH → clé(s) de l'app
 function _rhNatKey(n){const s=n.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');if(/feri/.test(s))return'fer';if(/dimanche/.test(s))return'dim';if(/rcr|\bhs\b|heures? sup/.test(s))return'hs';if(/^rh\b|repos hebdo/.test(s))return'rh';if(/rament|ramen/.test(s))return'hs';if(/extra/.test(s))return'extra';return'autre:'+n;}
 const _RH_NAT_LBL={fer:'Férié',dim:'Dimanche',rh:'RH',hs:'RCR (HS)',extra:'Extra'};
-function rhCompareOpen(){
+function rhCompareOpen(mode){
   let inp=document.getElementById('rh-file');
   if(!inp){inp=document.createElement('input');inp.type='file';inp.id='rh-file';inp.accept='.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';inp.style.display='none';document.body.appendChild(inp);
     inp.addEventListener('change',async function(){const f=inp.files&&inp.files[0];inp.value='';if(!f)return;
-      try{const cells=await _xlsxRead(f);rhCompareShow(_rhParse(cells,f.name));}
+      try{const cells=await _xlsxRead(f);const rh=_rhParse(cells,f.name);if(inp._mode==='import')rhImportPreview(rh);else rhCompareShow(rh);}
       catch(e){console.warn(e);showBlockAlert('Lecture impossible',e.message||'Ce fichier n’a pas pu être lu.');}});}
-  inp.click();
+  inp._mode=mode||'compare';inp.click();
 }
+// ── Import du tableau RH : point de départ du suivi (matelas, solde par mois d'origine, reports, date) ──
+function rhImportOpen(){rhCompareOpen('import');}
+function _rhImportPlan(rh){
+  const ed=new Date(rh.edition.getFullYear(),rh.edition.getMonth(),rh.edition.getDate(),12);
+  const baseKey=dk(ed),edYM=ed.getFullYear()*12+ed.getMonth();
+  // Solde restant de chaque mois encore valable à la date du tableau
+  const split={},reports={};
+  rh.lines.forEach(l=>{
+    if(!l.nature||l.solde<=0)return;
+    const v=l.rep?(l.validRep||l.valid):l.valid;
+    if(v){const vd=new Date(v.getUTCFullYear(),v.getUTCMonth(),v.getUTCDate(),12);if(vd<ed)return;}
+    split[l.ym]=(split[l.ym]||0)+l.solde;
+    if(l.rep)reports[l.ym]=Math.max(reports[l.ym]||0,l.rep);
+  });
+  const total=Object.values(split).reduce((a,b)=>a+b,0);
+  // Rendus déjà déduits par le tableau → deviennent historiques
+  const toHist=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='rend'&&(k<=baseKey||new Date(k+'T12:00:00').getFullYear()*12+new Date(k+'T12:00:00').getMonth()<edYM)).sort();
+  // Rendus postérieurs à la dernière semaine citée mais antérieurs au tableau : peut-être pas encore déduits par le gestionnaire
+  const edY=ed.getFullYear();
+  const maybeLate=rh.lastWeek?toHist.filter(k=>{const d=new Date(k+'T12:00:00');return d.getFullYear()===edY&&getISOWeek(getMonday(d))>rh.lastWeek;}):[];
+  return{ed,baseKey,edYM,split,reports,total,toHist,maybeLate,matelas:rh.tot.stockAct};
+}
+function rhImportPreview(rh){
+  window._rhLast=rh;
+  const P=_rhImportPlan(rh),pr=S.profile||{};
+  const MS=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
+  const ymL=ym=>MS[ym%12]+' '+String(Math.floor(ym/12)).slice(2);
+  const row=(l,a,b)=>'<tr><td>'+l+'</td><td>'+a+'</td><td><b>'+b+'</b></td></tr>';
+  const curSplit=pr.ephSoldeSplit&&Object.keys(pr.ephSoldeSplit).length?Object.keys(pr.ephSoldeSplit).map(Number).sort((a,b)=>a-b).map(ym=>ymL(ym)+' '+fmtMin(pr.ephSoldeSplit[ym])).join('<br>'):fmtMin(Math.round((pr.ephSolde||0)*60));
+  const newSplit=Object.keys(P.split).map(Number).sort((a,b)=>a-b).map(ym=>ymL(ym)+' '+fmtMin(P.split[ym])+(P.reports[ym]?' <span style="opacity:.7">(report '+P.reports[ym]*3+' mois)</span>':'')).join('<br>')||'0h00';
+  const curStart=pr.ephBaseDate?new Date(pr.ephBaseDate+'T12:00:00').toLocaleDateString('fr-FR'):(pr.ephSoldeCreatedYM!==undefined?'début '+ymL(pr.ephSoldeCreatedYM):'—');
+  const histH=P.toHist.reduce((t,k)=>t+getDur(new Date(k+'T12:00:00')),0);
+  const html='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet" style="max-height:88vh;overflow:auto">'
+    +'<div class="sh"></div><div class="st">Repartir de ton tableau RH</div>'
+    +'<div style="font-size:11px;color:var(--text3);margin:2px 0 10px">Tableau édité le '+P.ed.toLocaleDateString('fr-FR')+' · fichier lu sur ton appareil, rien n’est envoyé</div>'
+    +'<table class="rc-t rc-sum"><tr><th></th><th>Actuellement</th><th>Après import</th></tr>'
+    +(P.matelas!==null&&P.matelas!==undefined?row('Matelas',fmtMin(pr.matelas||0),fmtMin(P.matelas)):'')
+    +row('Solde de départ',curSplit,newSplit)
+    +row('Total',fmtMin(pr.ephSoldeSplit?Object.values(pr.ephSoldeSplit).reduce((a,b)=>a+b,0):Math.round((pr.ephSolde||0)*60)),fmtMin(P.total))
+    +row('Début du suivi',curStart,P.ed.toLocaleDateString('fr-FR'))
+    +'</table>'
+    +'<div class="rc-note">Ensuite, l’app calcule elle-même les heures acquises à partir de ton planning, à compter du '+P.ed.toLocaleDateString('fr-FR')+'.</div>'
+    +(P.toHist.length?'<div class="rc-note"><i class="ti ti-history" style="color:var(--blue)"></i> <b>'+P.toHist.length+' rendu'+(P.toHist.length>1?'s':'')+' jusqu’au '+P.ed.toLocaleDateString('fr-FR')+' ('+fmtMin(histH)+')</b> sont déjà déduits du solde du tableau : ils restent affichés dans le calendrier mais ne seront plus décomptés, pour ne pas les retirer deux fois.</div>':'')
+    +(P.maybeLate.length?'<div class="rc-note" style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Attention : '+P.maybeLate.length+' de ces rendus ('+P.maybeLate.map(k=>new Date(k+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'})).join(', ')+') sont postérieurs à la dernière semaine citée par le gestionnaire (S'+rh.lastWeek+'). S’il ne les a pas encore saisis, ils ne seront décomptés nulle part : vérifie-le à la réception du prochain tableau (bouton « Comparer »).</div>':'')
+    +'<button class="rc-btn" style="margin-top:10px;height:40px" onclick="rhImportApply()">Importer et repartir de ce tableau</button>'
+    +'<button class="rc-btn rc-btn2" style="margin-top:8px;height:36px" onclick="closeModal()">Annuler</button>'
+    +'</div></div>';
+  document.getElementById('modal-root').innerHTML=html;
+}
+function rhImportApply(){
+  const rh=window._rhLast;if(!rh)return;
+  const P=_rhImportPlan(rh),pr=S.profile;
+  // Sauvegarde pour pouvoir annuler l'import
+  pr._rhImportBackup={matelas:pr.matelas,ephSolde:pr.ephSolde,ephSoldeCreatedYM:pr.ephSoldeCreatedYM,ephSoldeSplit:pr.ephSoldeSplit?Object.assign({},pr.ephSoldeSplit):null,ephBaseDate:pr.ephBaseDate||null,ephExtend:Object.assign({},S.ephExtend||{}),toHist:P.toHist,at:Date.now()};
+  if(P.matelas!==null&&P.matelas!==undefined)pr.matelas=P.matelas;
+  pr.ephSoldeSplit=P.split;pr.ephSolde=Math.round(P.total/60*100)/100;
+  pr.ephSoldeCreatedYM=P.edYM;pr.ephBaseDate=P.baseKey;
+  if(!S.ephExtend)S.ephExtend={};Object.keys(P.reports).forEach(ym=>{S.ephExtend[ym]=P.reports[ym];});
+  P.toHist.forEach(k=>{S.conges[k]='rend-hist';});
+  pr.rhImportedAt=dk(P.ed);
+  saveState();render();
+  showBlockAlert('Import terminé','Ton suivi repart du tableau du '+P.ed.toLocaleDateString('fr-FR')+'. Tu peux annuler cet import depuis les réglages.');
+}
+function rhImportUndo(){
+  const pr=S.profile,b=pr&&pr._rhImportBackup;if(!b)return;
+  if(!confirm('Annuler l’import du tableau RH et revenir aux valeurs précédentes ?'))return;
+  pr.matelas=b.matelas;pr.ephSolde=b.ephSolde;pr.ephSoldeCreatedYM=b.ephSoldeCreatedYM;
+  if(b.ephSoldeSplit)pr.ephSoldeSplit=b.ephSoldeSplit;else delete pr.ephSoldeSplit;
+  if(b.ephBaseDate)pr.ephBaseDate=b.ephBaseDate;else delete pr.ephBaseDate;
+  S.ephExtend=b.ephExtend||{};
+  (b.toHist||[]).forEach(k=>{if(S.conges[k]==='rend-hist')S.conges[k]='rend';});
+  delete pr._rhImportBackup;delete pr.rhImportedAt;
+  saveState();closeModal();render();
+}
+
 function rhApplyReport(ym,n){
   if(!S.ephExtend)S.ephExtend={};
   const auto=(S.autoExtend&&typeof S.autoExtend[ym]==='number')?S.autoExtend[ym]:0;
@@ -3193,7 +3277,7 @@ function _applyPoseMatelas(type,startKey,endKey){
   var _s=new Date(startKey+'T12:00:00'),_e=new Date(endKey+'T12:00:00'),_d=new Date(_s);
   var _label=type==='rend'?'rendu':'congé';
   var _createdYM_m=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:2026*12;
-  while(_d<=_e){var k=dk(_d);var v2=getVac(_d);if(v2.vac&&v2.vac!=='RH'&&!v2.absent){var _mym=_d.getFullYear()*12+_d.getMonth();S.conges[k]=(type==='rend'&&_mym<_createdYM_m)?'rend-hist':type;}_d.setDate(_d.getDate()+1);}
+  while(_d<=_e){var k=dk(_d);var v2=getVac(_d);if(v2.vac&&v2.vac!=='RH'&&!v2.absent){var _mym=_d.getFullYear()*12+_d.getMonth();S.conges[k]=type==='rend'?_rendStatus(k):type;}_d.setDate(_d.getDate()+1);}
   if(type==='rend')recalcAllMatelas();
   logH(fmtDate(_s)+' -> '+_label+(_s<_e?' au '+fmtDate(_e):''),'#88b862',startKey);
   saveState();closeModal();render();gcalTrigger();
@@ -3264,7 +3348,7 @@ function applyPose(type,startKey,unique){
     const isWorked=v2.vac&&v2.vac!=='RH'&&!v2.absent;
     if(isWorked){
       if(type==='absent'){S.overrides[k]={absent:true};S.conges[k]='absent';}
-      else if(type==='rend'){const _dym=d.getFullYear()*12+d.getMonth();S.conges[k]=_dym<_createdYM_w?'rend-hist':'rend';}
+      else if(type==='rend'){S.conges[k]=_rendStatus(k);}
       else{S.conges[k]=type;}
     }
     d.setDate(d.getDate()+1);
@@ -5349,6 +5433,7 @@ function openSettingsModal(tab){
     +_sh+'Génération des rendus</div>'
     +'<div class="srow" '+_sr+'><div style="display:flex;gap:20px;align-items:center;flex:1;padding-left:4px">'+_rendDots+'</div><button '+_bS+' onclick="openAnnualSettingsModal('+new Date().getFullYear()+')">Changer</button></div>'
     +_sh+'Soldes initiaux</div>'
+    +'<div class="srow" '+_sr+'><div class="slbl">Tableau RH <span style="color:var(--text3);font-size:10px">'+(pr.profile.rhImportedAt?'importé, suivi depuis le '+new Date(pr.profile.rhImportedAt+'T12:00:00').toLocaleDateString('fr-FR'):'repartir de ton fichier Excel')+'</span></div><div style="display:flex;gap:6px">'+(pr.profile._rhImportBackup?'<button '+_bS+' onclick="rhImportUndo()">Annuler</button>':'')+'<button '+_bS+' onclick="closeModal();rhImportOpen()">Importer</button></div></div>'
     +'<div class="srow" '+_sr+'><div class="slbl">Matelas <span style="color:var(--text3);font-size:10px">stock initial permanent</span></div><input id="ps-matelas" '+_onb+' value="'+fmtMin(pr.profile.matelas||0)+'" onfocus="if(this.value)this.select()" style="'+_inpR+'"></div>'
     +'<div class="srow" '+_sr+'><div class="slbl">Stock éphémère <span style="color:var(--text3);font-size:10px">stock initial éphémère</span></div><input id="ps-eph" '+_onb+' value="'+fmtMin(Math.round((pr.profile.ephSolde||0)*60))+'" onfocus="if(this.value)this.select()" style="'+_inpR+'"></div>'
     +'<div class="srow" '+_sr+'><div class="slbl">CET <span style="color:var(--text3);font-size:10px">compte épargne-temps initial</span></div><input id="ps-cet-init" type="number" '+_onb+' value="'+(pr.profile.cetInit||0)+'" onfocus="if(this.value)this.select()" style="'+_inpR+'"></div>';
@@ -5423,7 +5508,9 @@ function saveProfileFromDD(pid){
   const n=document.getElementById('ps-name');if(n)pr.profile.name=n.value.trim()||pr.profile.name;
   // Line is now changed via openChangeLigneModal
   const mat=document.getElementById('ps-matelas');if(mat&&mat.value.trim()){const v=parseHM(mat.value);if(v>=0)pr.profile.matelas=v;}
-  const eph2=document.getElementById('ps-eph');if(eph2&&eph2.value.trim()){const ev=parseHM(eph2.value);pr.profile.ephSolde=Math.round(ev/60*100)/100;}
+  const eph2=document.getElementById('ps-eph');if(eph2&&eph2.value.trim()){const ev=parseHM(eph2.value);const _old=Math.round((pr.profile.ephSolde||0)*60);pr.profile.ephSolde=Math.round(ev/60*100)/100;
+    // Saisie manuelle d'un autre total : la répartition par mois (tableau RH) ne s'applique plus
+    if(pr.profile.ephSoldeSplit&&Math.abs(ev-_old)>1)delete pr.profile.ephSoldeSplit;}
   const cetInit=document.getElementById('ps-cet-init');if(cetInit){const v=parseInt(cetInit.value);if(!isNaN(v)&&v>=0)pr.profile.cetInit=v;}
   const _pd=s=>{const p=(s||'').trim().split('/');if(p.length!==2)return null;const _m=parseInt(p[0]),_y=parseInt(p[1]);return(!isNaN(_m)&&!isNaN(_y)&&_m>=1&&_m<=12&&_y>=2020&&_y<=2035)?_y*12+(_m-1):null;};
   const _histUps=(arr,ym,v)=>{const i=arr.findIndex(e=>e.ym===ym);if(i>=0)arr[i].v=v;else arr.push({ym,v});arr.sort((a,b)=>a.ym-b.ym);};
