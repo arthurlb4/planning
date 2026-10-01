@@ -3073,6 +3073,7 @@ function rhCompareShow(rh){
     if(tracked){sumAcqApp+=pm.acquis-(g.solde||0);sumConsApp+=pm.conso;sumSolApp+=appSol;}
     const dC=pm.conso-M.cons,dS=appSol-M.solde;
     const cmpSol=tracked||(g.solde||0)>0; // le solde d'un mois portant une part du solde de départ est comparable
+    if(!tracked&&cmpSol)sumSolApp+=appSol;
     // Rendus que l'app impute à ce mois ; ceux postérieurs à la dernière semaine citée par le gestionnaire = pas encore saisis
     const _al=(app.alloc[ym]||[]);
     const lagMin=_al.filter(x=>isLagged(x.key)).reduce((t,x)=>t+x.amt,0);
@@ -3083,7 +3084,8 @@ function rhCompareShow(rh){
     const rhRep=Math.max(0,...(rh.lines.filter(l=>l.ym===ym).map(l=>l.rep)),0),appRep=getEphExtensions(ym);
     // Le solde de départ saisi dans l'app est rattaché au mois précédant le suivi : ses reports comptent aussi
     const startSolde=(g.solde||0),hasStart=!tracked&&startSolde>0;
-    const repBad=(tracked||hasStart)&&sheet[ym]&&rhRep!==appRep;
+    // Report différent, mais sans effet si le mois est entièrement consommé des deux côtés
+    const repBad=(tracked||hasStart)&&sheet[ym]&&rhRep!==appRep&&!(M.solde<2&&(app.perMonth[ym]||{reste:0}).reste<2);
     // Validité : date du tableau antérieure à la fin de mois retenue par l'app
     const appEnd=new Date(Math.floor(getExpYm(ym)/12),getExpYm(ym)%12+1,0);
     const valNotes=[];rh.lines.filter(l=>l.ym===ym&&(l.validRep||l.valid)).forEach(l=>{const v=l.rep?(l.validRep||l.valid):l.valid;if(v&&!repBad){const vd=new Date(v.getUTCFullYear(),v.getUTCMonth(),v.getUTCDate());if(vd<appEnd&&vd.getMonth()===appEnd.getMonth()&&vd.getFullYear()===appEnd.getFullYear()){const t=fmtD(vd);if(!valNotes.includes(t))valNotes.push(t);}}});
@@ -3104,6 +3106,8 @@ function rhCompareShow(rh){
   // Décimales affichées telles qu'écrites dans le tableau RH (pas reconverties)
   const sumRow=(lbl,s,a,raw)=>{if(s===null||s===undefined)return'';const d=a-s,b=bad(d);return '<tr'+(b?' class="rc-bad"':'')+'><td>'+lbl+'</td><td>'+fmtMin(s)+'<span class="rc-dec">'+(typeof raw==='number'?String(Math.round(raw*1000)/1000).replace('.',','):dec(s))+'</span></td><td>'+fmtMin(a)+'<span class="rc-dec">'+dec(a)+'</span></td><td>'+fmtE(d)+'</td></tr>';};
   const firstTracked=yms.find(ym=>ym>=createdYM);
+  const _partial=yms.length&&yms[0]<createdYM;
+  const _rhT={acq:0,cons:0,stock:0};rh.lines.forEach(l=>{if(l.ym>=createdYM&&l.ym<asOfYM){_rhT.acq+=l.acq;_rhT.cons+=l.cons;_rhT.stock+=l.stock;}});
   // Rendus semaine par semaine : commentaires du gestionnaire vs app
   const _wk=Object.keys(rh.weeks||{}).map(Number).sort((a,b)=>a-b);
   const _isoMon=(y,w)=>{const j4=new Date(y,0,4),m=getMonday(j4);m.setDate(m.getDate()+(w-1)*7);return m;};
@@ -3129,12 +3133,17 @@ function rhCompareShow(rh){
     +'<div style="font-size:11px;color:var(--text3);margin:2px 0 10px">Tableau édité le '+asOf.toLocaleDateString('fr-FR')+' · l’app est recalculée à cette date · fichier lu sur ton appareil, rien n’est envoyé</div>'
     +'<table class="rc-t rc-sum"><tr><th></th><th>Tableau RH</th><th>App</th><th>Écart</th></tr>'
     +sumRow('Matelas (stock actualisé)',rh.tot.stockAct,matApp,rh.raw.stockAct)
-    +sumRow('Pris sur le matelas en '+asOf.getFullYear(),rh.tot.consoStock,app.surStock,rh.raw.consoStock)
-    +sumRow('Cumul acquisitions',rh.tot.cumAcq,sumAcqApp,rh.raw.cumAcq)
-    +sumRow('Cumul consommations',rh.tot.cumCons,sumConsApp,rh.raw.cumCons)
+    +(_partial
+      // Suivi commencé en cours d'année : on compare le tableau sur les mêmes mois que l'app
+      ?sumRow('Pris sur le matelas depuis '+ymL(createdYM),_rhT.stock,app.surStock)
+       +sumRow('Cumul acquisitions depuis '+ymL(createdYM),_rhT.acq,sumAcqApp)
+       +sumRow('Cumul consommations depuis '+ymL(createdYM),_rhT.cons,sumConsApp)
+      :sumRow('Pris sur le matelas en '+asOf.getFullYear(),rh.tot.consoStock,app.surStock,rh.raw.consoStock)
+       +sumRow('Cumul acquisitions',rh.tot.cumAcq,sumAcqApp,rh.raw.cumAcq)
+       +sumRow('Cumul consommations',rh.tot.cumCons,sumConsApp,rh.raw.cumCons))
     +sumRow('Cumul soldes',rh.tot.cumSol,sumSolApp,rh.raw.cumSol)
     +'</table>'
-    +(firstTracked!==undefined&&yms[0]<firstTracked?'<div class="rc-note">Les mois avant '+ymL(createdYM)+' ne sont pas suivis par l’app (date de création de ton solde) : les cumuls de l’app ne les incluent pas.</div>':'')
+    +(firstTracked!==undefined&&yms[0]<firstTracked?'<div class="rc-note">Les mois avant '+ymL(createdYM)+' ne sont pas suivis par l’app (début de ton suivi) : les acquisitions et consommations sont comparées à partir de '+ymL(createdYM)+'. Le cumul des soldes, lui, porte sur toute l’année.</div>':'')
     +(rh.lastWeek?'<div class="rc-note"><i class="ti ti-clock" style="color:var(--blue)"></i> Dernière semaine citée dans les commentaires du gestionnaire : <b>S'+rh.lastWeek+'</b>. Les rendus posés après n’y sont peut-être pas encore saisis'+(nbLag?' : '+nbLag+' écart'+(nbLag>1?'s':'')+' de consommation correspond'+(nbLag>1?'ent':'')+' exactement à ces rendus (en bleu)':'')+'.</div>':'')
     +(nbRep?'<div class="rc-note"><i class="ti ti-calendar-time" style="color:var(--amber)"></i> '+nbRep+' mois avec un report différent entre le tableau et l’app : un bouton permet d’appliquer celui du tableau.</div>':'')
     +'<div class="rc-note">'+(nbBad?'<b style="color:var(--amber)">'+nbBad+' mois avec un écart</b> (ouverts ci-dessous). Pour les acquisitions, l’app liste ses jours pour t’aider à retrouver l’erreur.':'<b style="color:var(--green)">Aucun écart par mois.</b>')+' Écarts de moins de 2 min ignorés (arrondis).</div>'
