@@ -335,6 +335,26 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .rc-st{margin-bottom:4px}.rc-sd{font-size:10.5px;color:var(--text3);line-height:1.5;margin-bottom:8px}
 .rc-btn{width:100%;height:34px;font-size:11.5px;border-radius:8px;border:none;background:var(--blue);color:#fff;cursor:pointer;font-family:inherit}
 .rc-btn2{background:transparent;color:var(--text3);border:0.5px solid var(--border)}
+.rv-hero{background:var(--bg3);border-radius:14px;padding:14px}
+.rv-hl{font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em}
+.rv-hr{display:flex;margin-top:8px}.rv-hr div{flex:1;text-align:center}.rv-hr b{display:block;font-size:20px;color:var(--text)}.rv-hr span{font-size:10.5px;color:var(--text3)}
+.rv-hr .e b{color:var(--amber)}.rv-hr .g b{color:var(--green)}
+.rv-hn{font-size:11px;color:var(--text3);margin-top:10px;padding-top:8px;border-top:0.5px solid var(--border);display:flex;gap:6px;line-height:1.45}.rv-hn i{color:var(--blue)}.rv-hn b{color:var(--blue);font-weight:600}
+.rv-sec{display:flex;justify-content:space-between;font-size:13px;font-weight:700;color:var(--text);margin:18px 0 8px}.rv-sec span{font-weight:400;font-size:11px;color:var(--text3)}
+.rv-it{background:var(--bg3);border-radius:12px;margin-bottom:6px;cursor:pointer}
+.rv-ih{display:flex;align-items:center;gap:10px;padding:11px 12px}
+.rv-dot{width:7px;height:7px;border-radius:50%;background:var(--amber);flex:none}
+.rv-tt{flex:1;font-size:13px;color:var(--text)}.rv-tt small{display:block;font-size:11px;color:var(--text3);margin-top:1px}
+.rv-v{font-size:13px;color:var(--amber);white-space:nowrap}.rv-v.n{color:var(--text2)}
+.rv-ch{font-size:13px;color:var(--text3);transition:transform .2s}.rv-it.on .rv-ch{transform:rotate(180deg)}
+.rv-ib{display:none;padding:0 12px 11px 29px;font-size:11.5px;color:var(--text2);line-height:1.55}.rv-it.on .rv-ib{display:block}
+.rv-cmp{display:flex;gap:14px;margin-bottom:4px;color:var(--text3)}.rv-cmp b{color:var(--text);font-weight:600}
+.rv-b2{display:block;width:100%;margin-top:8px;padding:8px;border:none;border-radius:8px;background:var(--bg2);color:var(--text);font-size:12px;font-family:inherit;cursor:pointer}
+.rv-ok{display:flex;gap:8px;font-size:12px;color:var(--text3);background:var(--bg3);border-radius:12px;padding:10px 12px;line-height:1.45}.rv-ok i{color:var(--green)}
+.rv-more{text-align:center;font-size:12.5px;color:var(--blue);margin:14px 0 6px;cursor:pointer}
+.rv-det{display:none;background:var(--bg3);border-radius:12px;padding:8px 10px}.rv-det.on{display:block}
+.rv-dh{font-size:12px;font-weight:700;color:var(--text);margin:14px 0 4px}
+.rv-foot{text-align:center;font-size:11.5px;color:var(--text3);margin:18px 0 6px}
 .rc-com{font-size:10px;color:var(--text3);margin:6px 6px 0;line-height:1.4}
 .sv2-t{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .sv2-t b{color:var(--text2);font-weight:600}
@@ -3154,145 +3174,128 @@ function rhApplySplit(on){
   }else delete S.profile.ephSoldeSplit;
   saveState();render();rhCompareShow(rh);
 }
+function rhApplyReports(list){
+  if(!S.ephExtend)S.ephExtend={};
+  list.forEach(([ym,n])=>{const auto=(S.autoExtend&&typeof S.autoExtend[ym]==='number')?S.autoExtend[ym]:0;if(n<auto)return;if(n>0)S.ephExtend[ym]=n;else delete S.ephExtend[ym];});
+  saveState();render();if(window._rhLast)rhCompareShow(window._rhLast);
+}
 function rhCompareShow(rh){
   window._rhLast=rh;
   const asOf=new Date(rh.edition.getFullYear(),rh.edition.getMonth(),rh.edition.getDate(),12);
   const asOfYM=asOf.getFullYear()*12+asOf.getMonth();
   const app=calcSoldeRH(asOf),G=buildGen(true),det=G.det,gen=G.gen;
   const MS=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
+  const MF=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
   const ymL=ym=>MS[ym%12]+' '+String(Math.floor(ym/12)).slice(2);
-  const dec=min=>(min/60).toFixed(2).replace('.',',');
+  const moisDe=ym=>{const m=MF[ym%12];return(/^[aeiouy]/.test(m)?'d’':'de ')+m;};
   const fmtE=d=>Math.abs(d)<2?'=':d>0?'+'+fmtMin(d):'−'+fmtMin(-d);
   const bad=d=>Math.abs(d)>=2; // tolérance d'arrondi : 2 min
+  const dayL=k=>new Date(k+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'});
+  const NAT_T={fer:'Fériés',dim:'Dimanches',rh:'RH',hs:'Heures sup',extra:'Extra'};
+  const natL=k=>k.startsWith('autre:')?k.slice(6):_RH_NAT_LBL[k];
   const createdYM=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:2026*12;
-  // Regroupement par mois et par nature
+  // Regroupement du tableau par mois et par nature
   const months=new Set();const sheet={};
   rh.lines.forEach(l=>{months.add(l.ym);const k=l.nature?_rhNatKey(l.nature):null;const M=(sheet[l.ym]=sheet[l.ym]||{nat:{},cons:0,stock:0,solde:0,com:[]});
     if(k)M.nat[k]=(M.nat[k]||0)+l.acq;M.cons+=l.cons;M.stock+=l.stock;M.solde+=l.solde;if(l.com)M.com.push(l.com);});
   Object.keys(gen).map(Number).forEach(ym=>{if(ym<asOfYM&&ym>=createdYM)months.add(ym);});
   const yms=[...months].filter(ym=>ym<asOfYM).sort((a,b)=>a-b);
-  let sumAcqApp=0,sumConsApp=0,sumSolApp=0,nbBad=0,nbLag=0,nbRep=0,lagTot=0,useBad=0;const lagKeys=[],useRows=[];
   const edY=asOf.getFullYear();
+  // Rendus posés après la dernière semaine notée par le gestionnaire : pas encore dans son tableau, mis de côté
   const isLagged=key=>{if(!rh.lastWeek)return false;const d=new Date(key+'T12:00:00');return d.getFullYear()===edY&&getISOWeek(getMonday(d))>rh.lastWeek;};
-  const fmtD=d=>d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'});
-  const sections=yms.map(ym=>{
+  const items=[],detRows=[],repList=[];let sumSolApp=0,lagTot=0,acqBad=0;const lagKeys=[];
+  const item=(t,sub,v,body,neutral)=>items.push('<div class="rv-it" onclick="if(event.target.tagName!==\'BUTTON\')this.classList.toggle(\'on\')"><div class="rv-ih"><span class="rv-dot"></span><div class="rv-tt">'+t+'<small>'+sub+'</small></div><b class="rv-v'+(neutral?' n':'')+'">'+v+'</b><i class="ti ti-chevron-down rv-ch"></i></div><div class="rv-ib">'+body+'</div></div>');
+  const cmp=(s,a)=>'<div class="rv-cmp"><span>Tableau <b>'+fmtMin(s)+'</b></span><span>App <b>'+fmtMin(a)+'</b></span></div>';
+  yms.forEach(ym=>{
     const M=sheet[ym]||{nat:{},cons:0,stock:0,solde:0,com:[]};const g=gen[ym]||{};
     const appNat={fer:g.fer||0,dim:g.dim||0,rh:g.rh||0,hs:(g.hs||0)+(g.ram||0),extra:g.extra||0};
-    const keys=[...new Set(Object.keys(appNat).filter(k=>appNat[k]>0).concat(Object.keys(M.nat)))];
     const tracked=ym>=createdYM;
-    let monthBad=false;
-    const natRows=keys.map(k=>{const s=M.nat[k]||0,a=k.startsWith('autre:')?0:(appNat[k]||0),d=a-s;const b=tracked&&bad(d);if(b)monthBad=true;
-      const days=(k==='hs'?(det[ym+':hs']||[]).concat(det[ym+':ram']||[]):(det[ym+':'+k]||[]));
-      const dayLst=b&&days.length?'<div class="rc-days">'+days.map(x=>(/^\d{4}-/.test(x.lbl)?new Date(x.lbl+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'}):x.lbl)+' '+fmtMin(x.v)).join(' · ')+'</div>':'';
-      return '<tr'+(b?' class="rc-bad"':'')+'><td>'+(k.startsWith('autre:')?k.slice(6):_RH_NAT_LBL[k])+'</td><td>'+(s?fmtMin(s):'—')+'</td><td>'+(tracked?(a?fmtMin(a):'—'):'<span style="opacity:.6">non suivi</span>')+'</td><td>'+(tracked?fmtE(d):'')+'</td></tr>'+(dayLst?'<tr class="rc-dr"><td colspan="4">'+dayLst+'</td></tr>':'');}).join('');
     const pm=app.perMonth[ym]||{acquis:0,conso:0,reste:0};
     const valid=getExpYm(ym)>=asOfYM;
-    // Rendus que l'app impute à ce mois ; ceux postérieurs à la dernière semaine citée par le gestionnaire = pas encore notés :
-    // mis à part pour comparer l'app à ce que le tableau a pu enregistrer
-    const _al=(app.alloc[ym]||[]);
+    const _al=app.alloc[ym]||[];
     const lagMin=_al.filter(x=>isLagged(x.key)).reduce((t,x)=>t+x.amt,0);
     _al.forEach(x=>{if(isLagged(x.key)&&!lagKeys.includes(x.key))lagKeys.push(x.key);});
+    lagTot+=lagMin;
     const consA=pm.conso-lagMin,appSol=valid?pm.reste+lagMin:0;
-    if(tracked){sumAcqApp+=pm.acquis-(g.solde||0);sumConsApp+=consA;sumSolApp+=appSol;lagTot+=lagMin;}
-    const dC=consA-M.cons,dS=appSol-M.solde;
-    const cmpSol=tracked||(g.solde||0)>0; // le solde d'un mois portant une part du solde de départ est comparable
-    if(!tracked&&cmpSol)sumSolApp+=appSol;
-    const consLag=tracked&&lagMin>0&&!bad(dC),solLag=false;
-    const consBad=tracked&&bad(dC)&&!consLag,solBad=cmpSol&&bad(dS)&&!solLag;
-    // Reports : tableau RH vs app
+    const startSolde=g.solde||0,cmpSol=tracked||startSolde>0;
+    if(cmpSol)sumSolApp+=appSol;
+    // Acquisitions par nature : une ligne « à vérifier » par écart
+    if(tracked){
+      const keys=[...new Set(Object.keys(appNat).filter(k=>appNat[k]>0).concat(Object.keys(M.nat)))];
+      const diffs=keys.map(k=>{const s=M.nat[k]||0,a=k.startsWith('autre:')?0:(appNat[k]||0);return{k,s,a,d:a-s};}).filter(x=>bad(x.d));
+      const daysOf=k=>(k==='hs'?(det[ym+':hs']||[]).concat(det[ym+':ram']||[]):(det[ym+':'+k]||[])).map(x=>(/^\d{4}-/.test(x.lbl)?dayL(x.lbl):x.lbl)+' '+fmtMin(x.v));
+      const used=new Set();
+      // Même durée classée dans une autre catégorie des deux côtés : pas d'effet sur le solde
+      diffs.filter(x=>x.d>0).forEach(x=>{const y=diffs.find(z=>z.d<0&&!used.has(z)&&Math.abs(z.d+x.d)<2);if(!y||used.has(x))return;used.add(x);used.add(y);
+        const dl=daysOf(x.k);
+        item('Catégorie différente en '+MF[ym%12],natL(x.k)+' dans l’app, '+natL(y.k)+' dans le tableau',fmtMin(x.d),(dl.length?'Dans l’app : '+dl.join(' · ')+'<br>':'')+'Même durée des deux côtés : pas d’effet sur ton solde.',true);});
+      diffs.filter(x=>!used.has(x)).forEach(x=>{acqBad++;const dl=daysOf(x.k);
+        item((x.k.startsWith('autre:')?natL(x.k)+' ':NAT_T[x.k]+' ')+moisDe(ym),x.d<0?'Le tableau en compte plus':'L’app en compte plus',fmtE(x.d),
+          cmp(x.s,x.a)+(dl.length?'Dans l’app : '+dl.join(' · ')+'<br>':'')+(x.d<0?'Un jour manque peut-être dans ton planning, ou le gestionnaire s’est trompé.':'Un jour est peut-être en trop dans ton planning, ou oublié par le gestionnaire.'));});
+    }
+    // Reports
     const rhRep=Math.max(0,...(rh.lines.filter(l=>l.ym===ym).map(l=>l.rep)),0),appRep=getEphExtensions(ym);
-    // Le solde de départ saisi dans l'app est rattaché au mois précédant le suivi : ses reports comptent aussi
-    const startSolde=(g.solde||0),hasStart=!tracked&&startSolde>0;
-    // Report différent, mais sans effet si le mois est entièrement consommé des deux côtés
-    const repBad=(tracked||hasStart)&&sheet[ym]&&rhRep!==appRep&&!(M.solde<2&&(app.perMonth[ym]||{reste:0}).reste<2);
-    // Validité : date du tableau antérieure à la fin de mois retenue par l'app
-    const appEnd=new Date(Math.floor(getExpYm(ym)/12),getExpYm(ym)%12+1,0);
-    const valNotes=[];rh.lines.filter(l=>l.ym===ym&&(l.validRep||l.valid)).forEach(l=>{const v=l.rep?(l.validRep||l.valid):l.valid;if(v&&!repBad){const vd=new Date(v.getUTCFullYear(),v.getUTCMonth(),v.getUTCDate());if(vd<appEnd&&vd.getMonth()===appEnd.getMonth()&&vd.getFullYear()===appEnd.getFullYear()){const t=fmtD(vd);if(!valNotes.includes(t))valNotes.push(t);}}});
-    if(repBad)monthBad=true;if(consBad||solBad)useBad++;
-    const startRow=hasStart?'<div class="rc-com"><i class="ti ti-flag" style="color:var(--blue)"></i> Part de ton solde de départ rattachée à ce mois dans l’app : '+fmtMin(startSolde)+'.'+(repBad&&rhRep>appRep?' Sans le report du tableau, il expire fin '+ymL(getExpYm(ym))+' : tes rendus suivants sont alors imputés sur des mois plus récents, ce qui crée des écarts de consommation plus loin.':'')+'</div>':'';if(monthBad)nbBad++;if(consLag)nbLag++;if(repBad)nbRep++;
-    // Rendus qui ont puisé dans les heures de ce mois (date du rendu, part prise ici) — hors rendus pas encore notés
-    const _alN=_al.filter(x=>!isLagged(x.key));
-    const consDays=tracked&&_alN.length?'<tr class="rc-dr"><td colspan="4"><div class="rc-days">Rendus qui ont pris sur ces heures : '+_alN.map(x=>{const d=new Date(x.key+'T12:00:00');const part=x.amt<getDur(d)-1;return d.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'})+' '+fmtMin(x.amt)+(part?' <span style="opacity:.7">(en partie)</span>':'');}).join(' · ')+'</div></td></tr>':'';
-    const repRow=repBad?'<tr class="rc-bad"><td>Report</td><td>'+(rhRep?rhRep*3+' mois':'aucun')+'</td><td>'+(appRep?appRep*3+' mois':'aucun')+'</td><td></td></tr><tr class="rc-dr"><td colspan="4"><button class="mb" style="width:100%;height:32px;font-size:11px;margin:2px 0 4px;background:var(--bg3);color:var(--text);border:0.5px solid var(--border);border-radius:8px" onclick="rhApplyReport('+ym+','+rhRep+')">Appliquer le report du tableau ('+(rhRep?rhRep*3+' mois':'aucun')+') dans l’app</button></td></tr>':'';
-    const valRow=valNotes.length?'<div class="rc-com"><i class="ti ti-calendar-exclamation" style="color:var(--amber)"></i> Le tableau indique une validité au '+valNotes.join(', ')+' au lieu du '+fmtD(appEnd)+' : probablement une erreur de formule du tableau (3 mois ajoutés à la date d’acquisition au lieu de la fin du mois). À signaler si un rendu posé jusqu’au '+fmtD(appEnd)+' était refusé.</div>':'';
-    const totAcqS=Object.values(M.nat).reduce((x,y)=>x+y,0),totAcqA=Object.values(appNat).reduce((x,y)=>x+y,0);
-    // Utilisation et solde de ce mois : affichés dans un bloc à part (pas avec les acquisitions)
-    if(tracked||cmpSol)useRows.push('<tr class="rc-ym"><td colspan="4">'+ymL(ym)+(valid?'':' <span style="opacity:.6;font-weight:400">(expiré)</span>')+'</td></tr>'
-      +'<tr'+(consBad?' class="rc-bad"':'')+'><td>Consommées</td><td>'+(M.cons?fmtMin(M.cons):'—')+'</td><td>'+(tracked?(consA?fmtMin(consA):'—'):'<span style="opacity:.6">non suivi</span>')+'</td><td>'+(tracked?fmtE(dC):'')+'</td></tr>'
-      +(tracked&&lagMin>0?'<tr class="rc-lag"><td>Pas encore notés <span style="opacity:.6;font-weight:400">(après S'+rh.lastWeek+')</span></td><td>—</td><td>'+fmtMin(lagMin)+'</td><td></td></tr>':'')+consDays
-      +(M.stock?'<tr><td>Pris sur le matelas</td><td>'+fmtMin(M.stock)+'</td><td></td><td></td></tr>':'')
-      +'<tr'+(solBad?' class="rc-bad"':'')+'><td>Restantes</td><td>'+(M.solde?fmtMin(M.solde):'—')+'</td><td>'+(cmpSol?(appSol?fmtMin(appSol):'—'):'')+'</td><td>'+(cmpSol?fmtE(dS):'')+'</td></tr>');
-    return '<div class="rc-m'+(monthBad||valNotes.length?' rc-open':'')+'"><div class="rc-mh" onclick="this.parentNode.classList.toggle(\'rc-open\')"><span'+(tracked?'':' style="color:var(--text3)"')+'>'+(!tracked&&!repBad?'<i class="ti ti-minus" style="color:var(--text3)"></i> ':!tracked?'<i class="ti ti-alert-triangle" style="color:var(--amber)"></i> ':monthBad?'<i class="ti ti-alert-triangle" style="color:var(--amber)"></i> ':'<i class="ti ti-check" style="color:var(--green)"></i> ')+ymL(ym)+'</span><span class="rc-sm">'+(tracked?'acquis '+fmtMin(totAcqS)+' / '+fmtMin(totAcqA):hasStart?(repBad?'solde de départ · report à vérifier':'solde de départ'):'non suivi par l’app')+' <i class="ti ti-chevron-down"></i></span></div>'
-      +'<div class="rc-mb"><table class="rc-t"><tr><th></th><th>Tableau RH</th><th>App</th><th>Écart</th></tr>'+natRows
-      +repRow
-      +'</table>'+startRow+valRow+(M.com.length?'<div class="rc-com"><i class="ti ti-message"></i> '+M.com.join(' · ')+'</div>':'')+'</div></div>';
-  }).join('');
-  const matApp=calcSoldes().matelas;
-  // Décimales affichées telles qu'écrites dans le tableau RH (pas reconverties)
-  const sumRow=(lbl,s,a,raw)=>{if(s===null||s===undefined)return'';const d=a-s,b=bad(d);return '<tr'+(b?' class="rc-bad"':'')+'><td>'+lbl+'</td><td>'+fmtMin(s)+'<span class="rc-dec">'+(typeof raw==='number'?String(Math.round(raw*1000)/1000).replace('.',','):dec(s))+'</span></td><td>'+fmtMin(a)+'<span class="rc-dec">'+dec(a)+'</span></td><td>'+fmtE(d)+'</td></tr>';};
-  const firstTracked=yms.find(ym=>ym>=createdYM);
-  const _partial=yms.length&&yms[0]<createdYM;
-  const _rhT={acq:0,cons:0,stock:0};rh.lines.forEach(l=>{if(l.ym>=createdYM&&l.ym<asOfYM){_rhT.acq+=l.acq;_rhT.cons+=l.cons;_rhT.stock+=l.stock;}});
-  // Rendus semaine par semaine : commentaires du gestionnaire vs app
+    if((tracked||startSolde>0)&&sheet[ym]&&rhRep!==appRep&&!(M.solde<2&&pm.reste<2))repList.push({ym,rhRep,appRep});
+    // Détail mois par mois
+    if(cmpSol){
+      const tA=Object.values(M.nat).reduce((x,y)=>x+y,0),aA=Object.values(appNat).reduce((x,y)=>x+y,0);
+      const r=(l,s,a,cls)=>'<tr'+(cls?' class="'+cls+'"':bad(a-s)?' class="rc-bad"':'')+'><td>'+l+'</td><td>'+(s?fmtMin(s):'—')+'</td><td>'+(a?fmtMin(a):'—')+'</td><td>'+(cls?'':fmtE(a-s))+'</td></tr>';
+      detRows.push('<tr class="rc-ym"><td colspan="4">'+ymL(ym)+(valid?'':' <span style="opacity:.6;font-weight:400">(expiré)</span>')+'</td></tr>'
+        +(tracked?r('Acquises',tA,aA)+r('Consommées',M.cons,consA):'<tr><td colspan="4" style="opacity:.6">Solde de départ : '+fmtMin(startSolde)+'</td></tr>')
+        +(lagMin>0?'<tr class="rc-lag"><td>Pas encore notés</td><td>—</td><td>'+fmtMin(lagMin)+'</td><td></td></tr>':'')
+        +r('Restantes',M.solde,appSol));
+    }
+  });
+  // Reports différents : regroupés quand ils sont identiques
+  const repGroups={};repList.forEach(x=>{const k=x.rhRep+':'+x.appRep;(repGroups[k]=repGroups[k]||[]).push(x);});
+  const repTxt=n=>n?n*3+' mois':'aucun';
+  Object.values(repGroups).forEach(gr=>{const x=gr[0];const ml=gr.map(y=>MF[y.ym%12]);
+    item('Report '+moisDe(gr[0].ym).replace(MF[gr[0].ym%12],ml.length>1?ml.slice(0,-1).join(', ')+' et '+ml[ml.length-1]:ml[0]),repTxt(x.appRep)+' dans l’app, '+repTxt(x.rhRep)+' dans le tableau','',
+      (x.rhRep<x.appRep?'Dans le tableau, ces heures expirent plus tôt.':'Dans le tableau, ces heures expirent plus tard.')
+      +'<button class="rv-b2" onclick="rhApplyReports('+JSON.stringify(gr.map(y=>[y.ym,y.rhRep]))+')">Faire comme le tableau</button>');});
+  // Rendus semaine par semaine (commentaires du gestionnaire)
   const _isoMon=(y,w)=>{const j4=new Date(y,0,4),m=getMonday(j4);m.setDate(m.getDate()+(w-1)*7);return m;};
-  // Semaines citées dans les commentaires + semaines où l'app a des rendus non cités (suivies, avant la date du tableau)
   const _trkStart=new Date(Math.floor(createdYM/12),createdYM%12,1);
   const _appWk=new Set();Object.keys(S.conges||{}).forEach(k=>{if(S.conges[k]!=='rend')return;const d=new Date(k+'T12:00:00');if(d<_trkStart||d>asOf||d.getFullYear()!==edY)return;_appWk.add(getISOWeek(getMonday(d)));});
   const _wk=rh.lastWeek||Object.keys(rh.weeks||{}).length?[...new Set([...Object.keys(rh.weeks||{}).map(Number),..._appWk])].sort((a,b)=>a-b):[];
-  let _wkBad=0,_wkSh=0,_wkApp=0;
-  const _wkRows=_wk.map(w=>{const mon=_isoMon(edY,w),sun=new Date(mon);sun.setDate(mon.getDate()+6);
-    const days=[];for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);if((S.conges||{})[dk(d)]==='rend'&&d>=_trkStart&&d<=asOf)days.push({d,dur:getDur(d)});}
-    const cited=rh.weeks&&rh.weeks[w]!==undefined;
-    const a=days.reduce((t,x)=>t+x.dur,0),sh=cited?rh.weeks[w]:0,d=a-sh;
-    const wTracked=sun>=_trkStart,b=wTracked&&cited&&bad(d);if(b)_wkBad++;
-    const wLag=!cited&&rh.lastWeek&&w>rh.lastWeek; // pas encore noté par le gestionnaire : mis à part du total
-    if(wTracked&&!wLag){_wkSh+=sh;_wkApp+=a;}
-    return '<tr'+(b?' class="rc-bad"':'')+(wTracked&&cited?'':' style="opacity:.55"')+'><td>S'+w+' <span style="opacity:.6;font-weight:400">'+mon.getDate()+'/'+(mon.getMonth()+1)+'–'+sun.getDate()+'/'+(sun.getMonth()+1)+'</span></td><td>'+(cited?fmtMin(sh):'<span style="opacity:.6">'+(wLag?'pas encore noté':'pas cité')+'</span>')+'</td><td>'+(wTracked?(a?fmtMin(a):'—'):'non suivi')+'</td><td>'+(wTracked?fmtE(d):'')+'</td></tr>'
-      +(b?'<tr class="rc-dr"><td colspan="4"><div class="rc-days">'+(rh.weekSrc&&rh.weekSrc[w]?'Commentaire du gestionnaire : « '+rh.weekSrc[w].join(' » + « ')+' »<br>':'')+(days.length?'Rendus de l’app : '+days.map(x=>x.d.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'})+' '+fmtMin(x.dur)).join(' · '):'Aucun rendu dans l’app cette semaine.')+'</div></td></tr>':'');}).join('')
-    +'<tr style="border-top:1px solid var(--border2);font-weight:700"><td>Total</td><td>'+fmtMin(_wkSh)+'</td><td>'+fmtMin(_wkApp)+'</td><td>'+fmtE(_wkApp-_wkSh)+'</td></tr>';
-  // Raccord avec la ligne « Cumul consommations » : elle compte les heures retirées par mois d'acquisition, pas les rendus pris
-  const _consRh=_partial?_rhT.cons:rh.tot.cumCons,_eW=_wkApp-_wkSh,_eC=sumConsApp-_consRh;
-  const _wkRecon=bad(_eW-_eC)?'<div class="rc-com" style="margin-top:6px"><b>Pourquoi '+fmtE(_eW)+' ici et '+fmtE(_eC)+' en consommation ?</b> Ce tableau compte les rendus <b>pris</b> chaque semaine. La ligne « Cumul consommations » compte les heures retirées de chaque mois <b>acquis</b>'+(_partial?' depuis '+ymL(createdYM):'')+'. Un rendu qui puise dans des heures plus anciennes (avant le début du suivi, report…) n’y apparaît pas, et le gestionnaire peut déduire des heures sans les citer dans ses commentaires. L’écart à corriger est bien celui des semaines ci-dessus.</div>':'';
-  const weeksBlock=_wk.length?'<div class="rc-m'+(_wkBad?' rc-open':'')+'"><div class="rc-mh" onclick="this.parentNode.classList.toggle(\'rc-open\')"><span>'+(_wkBad?'<i class="ti ti-alert-triangle" style="color:var(--amber)"></i> ':'<i class="ti ti-check" style="color:var(--green)"></i> ')+'Rendus par semaine</span><span class="rc-sm">d’après les commentaires <i class="ti ti-chevron-down"></i></span></div>'
-    +'<div class="rc-mb"><table class="rc-t"><tr><th></th><th>Tableau RH</th><th>App</th><th>Écart</th></tr>'+_wkRows+'</table>'+_wkRecon+'<div class="rc-com">Semaines citées dans les commentaires du gestionnaire, plus celles où l’app a des rendus. Un écart sur une semaine désigne directement le ou les jours à vérifier (durée d’un rendu, jour oublié…).</div></div></div>':'';
-  // Solde de départ : d'où viennent ces heures d'après le tableau
+  let wkBad=0;
+  const wkRows=_wk.map(w=>{const mon=_isoMon(edY,w),sun=new Date(mon);sun.setDate(mon.getDate()+6);
+    const days=[];for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);if((S.conges||{})[dk(d)]==='rend'&&d>=_trkStart&&d<=asOf)days.push({k:dk(d),dur:getDur(d)});}
+    const cited=rh.weeks&&rh.weeks[w]!==undefined,a=days.reduce((t,x)=>t+x.dur,0),sh=cited?rh.weeks[w]:0,d=a-sh;
+    const wTracked=sun>=_trkStart,wLag=!cited&&rh.lastWeek&&w>rh.lastWeek,b=wTracked&&cited&&bad(d);
+    if(b){wkBad++;item('Rendus de la S'+w,mon.getDate()+'/'+(mon.getMonth()+1)+' au '+sun.getDate()+'/'+(sun.getMonth()+1),fmtE(d),
+      cmp(sh,a)+(rh.weekSrc&&rh.weekSrc[w]?'Commentaire du gestionnaire : « '+rh.weekSrc[w].join(' » + « ')+' »<br>':'')+(days.length?'Dans l’app : '+days.map(x=>dayL(x.k)+' '+fmtMin(x.dur)).join(' · '):'Aucun rendu dans l’app cette semaine.'));}
+    if(!wTracked||wLag)return'';
+    return '<tr'+(b?' class="rc-bad"':cited?'':' style="opacity:.55"')+'><td>S'+w+'</td><td>'+(cited?fmtMin(sh):'pas cité')+'</td><td>'+(a?fmtMin(a):'—')+'</td><td>'+(cited?fmtE(d):'')+'</td></tr>';}).join('');
+  // Matelas
+  const matApp=calcSoldes().matelas,hasMat=rh.tot.stockAct!==null&&rh.tot.stockAct!==undefined,matBad=hasMat&&bad(matApp-rh.tot.stockAct);
+  if(matBad)item('Matelas',matApp>rh.tot.stockAct?'L’app en compte plus':'Le tableau en compte plus',fmtE(matApp-rh.tot.stockAct),cmp(rh.tot.stockAct,matApp));
+  // Solde de départ saisi à la main : proposer la répartition du tableau
   const _sg=_rhStartSplit(rh),_hasSplit=!!(S.profile&&S.profile.ephSoldeSplit&&Object.keys(S.profile.ephSoldeSplit).length);
   const _sgTxt=Object.keys(_sg.split).map(Number).sort((a,b)=>a-b).map(ym=>ymL(ym)+' '+fmtMin(_sg.split[ym])).join(' · ');
-  const startBlock=_sg.S0>0&&_sgTxt?'<div class="rc-start"><div class="rc-st"><i class="ti ti-flag" style="color:var(--blue)"></i> Ton solde de départ : <b>'+fmtMin(_sg.S0)+'</b> <span style="opacity:.7">(saisi au début du suivi, '+ymL(_sg.createdYM)+')</span></div>'
-    +(_hasSplit
-      ?'<div class="rc-sd">Réparti sur ses mois d’origine : '+Object.keys(S.profile.ephSoldeSplit).map(Number).sort((a,b)=>a-b).map(ym=>ymL(ym)+' '+fmtMin(S.profile.ephSoldeSplit[ym])).join(' · ')+'. Chaque part a sa propre expiration et ses reports.</div><button class="rc-btn rc-btn2" onclick="rhApplySplit(false)">Annuler la répartition (tout rattacher à '+ymL(_sg.createdYM-1)+')</button>'
-      :'<div class="rc-sd">Dans l’app, il est rattaché en entier à '+ymL(_sg.createdYM-1)+'. D’après le tableau, il vient de : <b>'+_sgTxt+'</b> (les heures les plus anciennes ayant été consommées en premier).</div><button class="rc-btn" onclick="rhApplySplit(true)">Répartir mon solde de départ ainsi et appliquer les reports du tableau</button>')
-    +'</div>':'';
+  if(_sg.S0>0&&_sgTxt&&!_hasSplit&&!(S.profile&&S.profile.rhImportedAt))item('Ton solde de départ','Rattaché en entier à '+ymL(_sg.createdYM-1)+' dans l’app',fmtMin(_sg.S0),
+    'D’après le tableau, ces heures viennent de : '+_sgTxt+'. Chaque part expire à sa date.<button class="rv-b2" onclick="rhApplySplit(true)">Le répartir ainsi</button>',true);
+  // Synthèse
+  const solRh=rh.tot.cumSol,dSol=sumSolApp-solRh;
+  const okParts=[];if(hasMat&&!matBad)okParts.push('matelas');if(_wk.length&&!wkBad)okParts.push('rendus semaine par semaine');if(!acqBad)okParts.push('heures acquises');if(!repList.length)okParts.push('reports');
   const html='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet" style="max-height:88vh;overflow:auto">'
-    +'<div class="sh"></div><div class="st">Comparaison avec ton tableau RH</div>'
-    +'<div style="font-size:11px;color:var(--text3);margin:2px 0 10px">Tableau édité le '+asOf.toLocaleDateString('fr-FR')+' · l’app est recalculée à cette date · fichier lu sur ton appareil, rien n’est envoyé</div>'
-    +'<table class="rc-t rc-sum"><tr><th></th><th>Tableau RH</th><th>App</th><th>Écart</th></tr>'
-    +sumRow('Matelas (stock actualisé)',rh.tot.stockAct,matApp,rh.raw.stockAct)
-    +(_partial
-      // Suivi commencé en cours d'année : on compare le tableau sur les mêmes mois que l'app
-      ?sumRow('Pris sur le matelas depuis '+ymL(createdYM),_rhT.stock,app.surStock)
-       +sumRow('Cumul acquisitions depuis '+ymL(createdYM),_rhT.acq,sumAcqApp)
-       +sumRow('Cumul consommations depuis '+ymL(createdYM),_rhT.cons,sumConsApp)
-      :sumRow('Pris sur le matelas en '+asOf.getFullYear(),rh.tot.consoStock,app.surStock,rh.raw.consoStock)
-       +sumRow('Cumul acquisitions',rh.tot.cumAcq,sumAcqApp,rh.raw.cumAcq)
-       +sumRow('Cumul consommations',rh.tot.cumCons,sumConsApp,rh.raw.cumCons))
-    +sumRow('Cumul soldes',rh.tot.cumSol,sumSolApp,rh.raw.cumSol)
-    +(lagTot>0?'<tr class="rc-lag"><td>Rendus pas encore notés <span style="opacity:.6;font-weight:400">(après S'+rh.lastWeek+')</span></td><td>—</td><td>'+fmtMin(lagTot)+'</td><td></td></tr>':'')
-    +'</table>'
-    +(firstTracked!==undefined&&yms[0]<firstTracked?'<div class="rc-note">Les mois avant '+ymL(createdYM)+' ne sont pas suivis par l’app (début de ton suivi) : les acquisitions et consommations sont comparées à partir de '+ymL(createdYM)+'. Le cumul des soldes, lui, porte sur toute l’année.</div>':'')
-    +(rh.lastWeek?'<div class="rc-note"><i class="ti ti-clock" style="color:var(--blue)"></i> Dernière semaine notée par le gestionnaire dans ses commentaires : <b>S'+rh.lastWeek+'</b>.'+(lagTot>0?' Les rendus posés après ('+lagKeys.sort().map(k=>new Date(k+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'})).join(', ')+', soit '+fmtMin(lagTot)+') ne sont pas encore dans son tableau : l’app les met à part et compare le reste. Ils seront à retrouver dans le prochain tableau.':'')+'</div>':'')
-    +(nbRep?'<div class="rc-note"><i class="ti ti-calendar-time" style="color:var(--amber)"></i> '+nbRep+' mois avec un report différent entre le tableau et l’app : un bouton permet d’appliquer celui du tableau.</div>':'')
-    +'<div class="rc-note">'+(nbBad?'<b style="color:var(--amber)">'+nbBad+' mois avec un écart</b> (ouverts ci-dessous). Pour les acquisitions, l’app liste ses jours pour t’aider à retrouver l’erreur.':'<b style="color:var(--green)">Aucun écart par mois.</b>')+' Écarts de moins de 2 min ignorés (arrondis).</div>'
-    +startBlock
-    +weeksBlock
-    +(useRows.length?'<div class="rc-m'+(useBad?' rc-open':'')+'"><div class="rc-mh" onclick="this.parentNode.classList.toggle(\'rc-open\')"><span>'+(useBad?'<i class="ti ti-alert-triangle" style="color:var(--amber)"></i> ':'<i class="ti ti-check" style="color:var(--green)"></i> ')+'Heures consommées et restantes</span><span class="rc-sm">par mois d’acquisition <i class="ti ti-chevron-down"></i></span></div>'
-      +'<div class="rc-mb"><div class="rc-com" style="margin:0 0 6px">Pour chaque mois d’heures acquises : combien ont été consommées par des rendus (pris ce mois-là ou plus tard), et combien il en reste. Comme les colonnes Consommation et Solde du tableau : les heures les plus anciennes partent en premier.</div><table class="rc-t"><tr><th></th><th>Tableau RH</th><th>App</th><th>Écart</th></tr>'+useRows.join('')+'</table></div></div>':'')
-    +'<div class="rc-st" style="margin:14px 0 6px;font-size:13px;color:var(--text)">Acquisitions par mois</div>'
-    +sections
-    // Repartir directement de ce tableau, sans repasser par les réglages ni rechoisir le fichier
-    +'<div class="rc-start" style="margin-top:14px"><div class="rc-st"><i class="ti ti-file-import" style="color:var(--blue)"></i> Trop d’écarts ?</div><div class="rc-sd">Tu peux repartir des chiffres de ce tableau : l’app reprend son solde mois par mois, ses reports et son matelas, puis continue le suivi à partir du '+asOf.toLocaleDateString('fr-FR')+'. Annulable depuis les réglages.</div>'
-    +'<button class="rc-btn" onclick="rhImportPreview(window._rhLast)">Repartir de ce tableau</button></div>'
-    +'<button class="mb wide" style="margin-top:12px;width:100%" onclick="closeModal()">Fermer</button>'
+    +'<div class="sh"></div><div class="st">Ton tableau RH</div>'
+    +'<div style="font-size:11px;color:var(--text3);margin:2px 0 12px">Édité le '+asOf.toLocaleDateString('fr-FR')+' · lu sur ton appareil</div>'
+    +'<div class="rv-hero"><div class="rv-hl">Heures qui te restent</div><div class="rv-hr">'
+    +'<div><b>'+fmtMin(solRh)+'</b><span>Tableau RH</span></div><div><b>'+fmtMin(sumSolApp)+'</b><span>App</span></div><div class="'+(bad(dSol)?'e':'g')+'"><b>'+fmtE(dSol)+'</b><span>Écart</span></div></div>'
+    +(lagTot>0?'<div class="rv-hn"><i class="ti ti-clock"></i> <span><b>'+fmtMin(lagTot)+'</b> de rendus pas encore notés par le gestionnaire ('+lagKeys.sort().map(k=>new Date(k+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'})).join(', ')+') : mis de côté.</span></div>':'')
+    +'</div>'
+    +(items.length?'<div class="rv-sec">À vérifier <span>'+items.length+' point'+(items.length>1?'s':'')+'</span></div>'+items.slice(0,5).join('')
+      +(items.length>5?'<div class="rv-rest" style="display:none">'+items.slice(5).join('')+'</div><div class="rv-more" style="margin:4px 0 8px" onclick="this.previousElementSibling.style.display=\'block\';this.remove()">Voir les '+(items.length-5)+' autres points</div>':''):'<div class="rv-sec">Tout correspond</div>')
+    +(okParts.length&&items.length?'<div class="rv-ok"><i class="ti ti-check"></i> <span>'+okParts.join(', ').replace(/^./,c=>c.toUpperCase())+' : identiques.</span></div>':'')
+    +'<div class="rv-more" onclick="this.nextElementSibling.classList.toggle(\'on\');this.firstChild.textContent=this.nextElementSibling.classList.contains(\'on\')?\'Masquer le détail\':\'Voir le détail mois par mois\'">Voir le détail mois par mois</div>'
+    +'<div class="rv-det"><table class="rc-t"><tr><th></th><th>Tableau</th><th>App</th><th>Écart</th></tr>'+detRows.join('')+'</table>'
+    +(wkRows?'<div class="rv-dh">Rendus par semaine</div><table class="rc-t"><tr><th></th><th>Tableau</th><th>App</th><th>Écart</th></tr>'+wkRows+'</table>':'')
+    +(_hasSplit?'<button class="rv-b2" onclick="rhApplySplit(false)">Annuler la répartition du solde de départ</button>':'')
+    +'</div>'
+    +'<div class="rv-foot">'+(items.length?'Trop d’écarts ? Reprends les chiffres du tableau.':'Tu peux aussi repartir des chiffres du tableau.')+'</div>'
+    +'<button class="rc-btn" style="height:40px;font-size:13px" onclick="rhImportPreview(window._rhLast)">Repartir de ce tableau</button>'
+    +'<button class="mb wide" style="margin-top:8px;width:100%" onclick="closeModal()">Fermer</button>'
     +'</div></div>';
   document.getElementById('modal-root').innerHTML=html;
 }
