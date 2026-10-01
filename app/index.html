@@ -2520,7 +2520,7 @@ function openDay(key){
   if((vac&&vac!=='RH'&&!absent)&&!hasCg){
     ah=`<div class="mbtns" style="grid-template-columns:repeat(4,1fr)">
       <button class="mb grn" onclick="${cR<=0?`showBlockAlert('Solde insuffisant','Plus de congés disponibles pour ${date.getFullYear()}.')`:`openPoseModal('cg')`}"${cR<=0?' style="opacity:.5"':''}>Congé</button>
-      <button class="mb" style="background:var(--rend-l);color:var(--rend-text);border-color:transparent" onclick="openPoseModal('rend')"${totalDispo<dur?' disabled':''}>Rendu</button>
+      <button class="mb" style="background:var(--rend-l);color:var(--rend-text);border-color:transparent" onclick="openPoseModal('rend')"${totalDispo<dur&&_rendStatus(key)==='rend'?' disabled':''}>Rendu</button>
       <button class="mb" style="border:none;background:rgba(165,60,60,.26);color:#b87878" onclick="openExchange('${key}')">Échange</button>
       <button class="mb" style="background:var(--bg3);color:var(--text)" onclick="openPoseModal('absent')">Absent</button>
     </div>`;
@@ -2529,6 +2529,14 @@ function openDay(key){
       ah=`<div class="mbtns" style="grid-template-columns:1fr 1fr"><button class="mb del" style="border:none" onclick="removeCongé()">Retirer</button><button class="mb" style="background:rgba(220,160,30,.18);color:var(--amber);border-color:transparent" onclick="useMatelasForDay()">Matelas <span style="font-size:10px;opacity:.7">(${fmtMin(_matelasAvail)})</span></button></div>`;
     } else {
       ah=`<div class="mbtns"><button class="mb del wide" style="border:none" onclick="removeCongé()">Retirer</button></div>`;
+    }
+    // Rendu antérieur au début du suivi : l'utilisateur choisit s'il est déjà déduit par le gestionnaire ou non
+    if((hasCg==='rend'||hasCg==='rend-hist')&&_rendStatus(key)==='rend-hist'){
+      var _isH=hasCg==='rend-hist';
+      ah+='<div style="font-size:11px;color:var(--text3);margin-top:8px;line-height:1.45">'
+        +(_isH?'Déjà déduit dans ton tableau RH : l’app ne le décompte pas.':'Pas encore saisi par le gestionnaire : l’app le décompte elle-même.')
+        +' <button style="font-size:11px;padding:3px 8px;margin-top:4px;border:1px solid var(--border);border-radius:6px;background:none;color:var(--text2);cursor:pointer" onclick="rendToggleHist(\''+key+'\')">'
+        +(_isH?'Pas encore saisi ? Le décompter':'Il l’a saisi : ne plus le décompter')+'</button></div>';
     }
   }
 
@@ -2675,6 +2683,13 @@ function poseConge(t){
   if(t==='rend')stored=_rendStatus(dk(date));
   S.conges[pendingKey]=stored;logH(fmtDate(date)+' -> '+(t==='cg'?'congé':stored==='rend-hist'?'rendu hist. '+fmtMin(getDur(date)):'rendu '+fmtMin(getDur(date))),t==='cg'?'#6a9878':'#A8BF7A',pendingKey);
   saveState();closeModal();render();popCell(pendingKey);}
+function rendToggleHist(key){
+  const c=(S.conges||{})[key];if(c!=='rend'&&c!=='rend-hist')return;
+  pushUndo();const d=new Date(key+'T12:00:00');
+  S.conges[key]=c==='rend'?'rend-hist':'rend';
+  logH(fmtDate(d)+' -> '+(c==='rend'?'rendu déjà déduit par le gestionnaire':'rendu décompté par l’app')+' '+fmtMin(getDur(d)),'#A8BF7A',key);
+  saveState();openDay(key);render();
+}
 function recalcAllMatelas(){
   // Return all current matelas allocations to balance
   if(S.matelasKeys){Object.values(S.matelasKeys).forEach(function(v){if(S.profile)S.profile.matelas=(S.profile.matelas||0)+v;});S.matelasKeys={};}
@@ -3063,6 +3078,8 @@ function rhImportPreview(rh){
   const newSplit=Object.keys(P.split).map(Number).sort((a,b)=>a-b).map(ym=>ymL(ym)+' '+fmtMin(P.split[ym])+(P.reports[ym]?' <span style="opacity:.7">(report '+P.reports[ym]*3+' mois)</span>':'')).join('<br>')||'0h00';
   const curStart=pr.ephBaseDate?new Date(pr.ephBaseDate+'T12:00:00').toLocaleDateString('fr-FR'):(pr.ephSoldeCreatedYM!==undefined?'début '+ymL(pr.ephSoldeCreatedYM):'—');
   const histH=P.toHist.reduce((t,k)=>t+getDur(new Date(k+'T12:00:00')),0);
+  const others=P.toHist.filter(k=>!P.maybeLate.includes(k));
+  const lateCb=(k,on)=>{const d=new Date(k+'T12:00:00');return '<label style="display:flex;align-items:center;gap:8px;font-size:12px;padding:4px 0;color:var(--text2)"><input type="checkbox" class="rhi-late" value="'+k+'"'+(on?' checked':'')+' style="width:16px;height:16px;accent-color:var(--blue)"> '+d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})+' (S'+getISOWeek(getMonday(d))+') · '+fmtMin(getDur(d))+'</label>';};
   const html='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet" style="max-height:88vh;overflow:auto">'
     +'<div class="sh"></div><div class="st">Repartir de ton tableau RH</div>'
     +'<div style="font-size:11px;color:var(--text3);margin:2px 0 10px">Tableau édité le '+P.ed.toLocaleDateString('fr-FR')+' · fichier lu sur ton appareil, rien n’est envoyé</div>'
@@ -3076,8 +3093,12 @@ function rhImportPreview(rh){
     +(P.toHist.length?'<div class="rc-note"><i class="ti ti-history" style="color:var(--blue)"></i> <b>'+P.toHist.length+' rendu'+(P.toHist.length>1?'s':'')+(P.maybeLate.length?' (dont '+P.maybeLate.length+' à vérifier ci-dessous)':'')+' jusqu’au '+P.ed.toLocaleDateString('fr-FR')+' ('+fmtMin(histH)+')</b> sont déjà déduits du solde du tableau : ils restent affichés dans le calendrier mais ne seront plus décomptés, pour ne pas les retirer deux fois.</div>':'')
     +(P.maybeLate.length?'<div class="rc-start"><div class="rc-st" style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Rendus peut-être pas encore saisis par le gestionnaire</div>'
       +'<div class="rc-sd">Ces rendus sont postérieurs à la dernière semaine citée dans ses commentaires (S'+rh.lastWeek+'). Coche ceux qu’il n’a <b>pas encore</b> déduits : l’app les décomptera elle-même. Dans le doute, laisse coché : la prochaine comparaison te dira s’il les avait déjà.</div>'
-      +P.maybeLate.map(k=>{const d=new Date(k+'T12:00:00');return '<label style="display:flex;align-items:center;gap:8px;font-size:12px;padding:4px 0;color:var(--text2)"><input type="checkbox" class="rhi-late" value="'+k+'" checked style="width:16px;height:16px;accent-color:var(--blue)"> '+d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})+' (S'+getISOWeek(getMonday(d))+') · '+fmtMin(getDur(d))+'</label>';}).join('')
+      +P.maybeLate.map(k=>lateCb(k,true)).join('')
       +'</div>':'')
+    +(others.length?'<details class="rc-start" style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:var(--text2)">Un autre rendu manque dans le tableau ? ('+others.length+' rendu'+(others.length>1?'s':'')+' avant le '+P.ed.toLocaleDateString('fr-FR')+')</summary>'
+      +'<div class="rc-sd" style="margin-top:6px">Coche ceux que le gestionnaire n’a pas déduits : l’app les décomptera elle-même. Tu pourras aussi changer d’avis plus tard en touchant le jour dans le calendrier.</div>'
+      +others.map(k=>lateCb(k,false)).join('')
+      +'</details>':'')
     +'<button class="rc-btn" style="margin-top:10px;height:40px" onclick="rhImportApply()">Importer et repartir de ce tableau</button>'
     +'<button class="rc-btn rc-btn2" style="margin-top:8px;height:36px" onclick="closeModal()">Annuler</button>'
     +'</div></div>';
