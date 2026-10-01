@@ -4211,10 +4211,13 @@ function openMergedRenduCgModal(limit,tab){
     +'<div class="dx-note"><i class="ti ti-info-circle"></i> Le tableau RH est en heures décimales : 32,38 h = 32h23. Les heures restent valables 3 mois après leur mois d’acquisition (6 si reportées) et les plus anciennes sont utilisées en premier.</div>'
     +'</div>';
   let _expAmt=0,_repAmt=0;
-  Object.keys(realAvail).map(Number).forEach(function(ym){
-    if(realAvail[ym]>0){
-      if(getExpYm(ym)===_viewedYM){if(getEphExtensions(ym)>0)_repAmt+=realAvail[ym];else _expAmt+=realAvail[ym];}
-      else if(getBaseExpYm(ym)===_viewedYM&&getEphExtensions(ym)>0){_repAmt+=realAvail[ym];}
+  // Mois déjà expirés : realAvail est à 0, on prend ce qui restait juste avant l'expiration (preExpiry)
+  const _avAt=function(ym){return getExpYm(ym)<TODAY_YM?(preExpiry[ym]||0):(realAvail[ym]||0);};
+  [...new Set(Object.keys(realAvail).concat(Object.keys(preExpiry)))].map(Number).forEach(function(ym){
+    const av=_avAt(ym);
+    if(av>0){
+      if(getExpYm(ym)===_viewedYM){if(getEphExtensions(ym)>0)_repAmt+=av;else _expAmt+=av;}
+      else if(getBaseExpYm(ym)===_viewedYM&&getEphExtensions(ym)>0&&getExpYm(ym)>=TODAY_YM){_repAmt+=av;}
     }
   });
   const _expireCol=_expAmt>0
@@ -4222,7 +4225,7 @@ function openMergedRenduCgModal(limit,tab){
     :_repAmt>0
       ?'<div style="width:0.5px;background:var(--border2)"></div><div style="flex:1;text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Report '+MC[_viewedYM%12]+'</div><div style="font-size:15px;font-weight:600;color:var(--green)">'+fmtMin(_repAmt)+'</div></div>'
       :'<div style="width:0.5px;background:var(--border2)"></div><div style="flex:1;text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Expire '+MC[_viewedYM%12]+'</div><div style="font-size:15px;font-weight:600;color:var(--text3)">—</div></div>';
-  const _expTxt=_expAmt>0?'Expire en '+_vm+' <b style="color:var(--red)">'+fmtMin(_expAmt)+'</b>':_repAmt>0?'Reporté en '+_vm+' <b style="color:var(--green)">'+fmtMin(_repAmt)+'</b>':'Rien n’expire en '+_vm;
+  const _expTxt=_expAmt>0?(_viewedYM<TODAY_YM?'Perdu fin ':'Expire en ')+_vm+' <b style="color:var(--red)">'+fmtMin(_expAmt)+'</b>':_repAmt>0?'Reporté en '+_vm+' <b style="color:var(--green)">'+fmtMin(_repAmt)+'</b>':'Rien n’expire en '+_vm;
   const dispoBoxHtml=dispoExplainHtml.replace('__EXPIRE__',_expTxt);
   const rendSoldeHeader=''
     +'<div style="display:flex;gap:8px;padding:8px 10px;background:var(--bg3);border-radius:var(--r);border:0.5px solid var(--border)">'
