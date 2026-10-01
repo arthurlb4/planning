@@ -266,14 +266,11 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 
 /* Eph soldes row */
 .eph-soldes{display:flex;align-items:center;}
-#eph-rest-bloc{padding-top:16px;padding-bottom:16px;}
 .eph-sol{flex:1;text-align:center;padding:4px 6px;}
 .eph-sol-lbl{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px;}
 .eph-sol-val{font-size:17px;font-weight:600;color:var(--blue);line-height:1;}
 .eph-sol-sub{font-size:9px;color:var(--text3);margin-top:2px;}
 .eph-sol-sep{width:0.5px;background:var(--border);flex-shrink:0;align-self:stretch;margin:4px 0;}
-@media(max-width:720px){#eph-tile-bars{display:none;}}
-@media(min-width:721px){#eph-rest-bloc{padding:16px 18px;}.eph-sol{padding:8px 10px;}}
 /* Eph unified table */
  /* Mobile : nom du mois affiché, écrit à la verticale à gauche de la colonne */
 #side-month{display:none}
@@ -284,7 +281,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
   /* Ligne verticale au niveau de la coupe (bord gauche local = bord droit à l'écran, l'élément étant tourné de 180°) */
   #side-month::after{content:'';position:absolute;top:0;bottom:0;left:var(--sm-cut,0px);width:1px;background:linear-gradient(to bottom,transparent,var(--sm-c) 20%,var(--sm-c) 80%,transparent);opacity:.5}
   /* Les cases passent par-dessus le bas des lettres */
-  .side-col>.bloc,.side-col>#ctr-main,.side-col>#side-v2{position:relative;z-index:1}
+  .side-col>.bloc,.side-col>#side-v2{position:relative;z-index:1}
   /* Lettres collées au bord des cases (côté droit de la bande = pied des lettres) */
   #side-month{justify-content:center;align-items:flex-end}
   /* Taille, largeur et retrait calculés par _fitSideMonth() ; line-height ≈ hauteur des capitales */
@@ -612,31 +609,6 @@ body.modal-open{overflow:hidden;position:fixed;width:100%;left:0;right:0;overscr
 
 <div class="side-col">
   <div id="side-month" aria-hidden="true"></div>
-  <div class="bloc clk" id="eph-rest-bloc" style="display:none" onclick="openMergedRenduCgModal()">
-    <div class="eph-soldes">
-      <div class="eph-sol">
-        <div class="eph-sol-lbl">Matelas</div>
-        <div id="eph-total-mat" class="eph-sol-val"></div>
-      </div>
-      <div class="eph-sol-sep"></div>
-      <div class="eph-sol">
-        <div class="eph-sol-lbl" id="eph-dispo-lbl">Dispo mois</div>
-        <div id="eph-total-dispo" class="eph-sol-val"></div>
-      </div>
-      <div class="eph-sol-sep"></div>
-      <div class="eph-sol">
-        <div class="eph-sol-lbl" id="eph-exp-lbl">Expire</div>
-        <div id="eph-exp-val" class="eph-sol-val" style="color:var(--red)"></div>
-      </div>
-      <div class="eph-sol-sep"></div>
-      <div class="eph-sol" onclick="event.stopPropagation();openMergedRenduCgModal(6,1)" style="cursor:pointer">
-        <div class="eph-sol-lbl">Congés</div>
-        <div id="eph-total-cg" class="eph-sol-val" style="color:var(--green)"></div>
-      </div>
-    </div>
-    <div id="eph-tile-bars" style="border-top:0.5px solid var(--border);margin-top:8px;padding:6px 4px 2px"></div>
-  </div>
-  <div class="ctr-grid" id="ctr-main" style="display:none"></div>
   <div id="side-v2" style="display:none;flex-direction:column;gap:16px"></div>
 </div>
 </div>
@@ -1787,98 +1759,12 @@ function updateCounters(){
   }}
   const mym=curY*12+curM,gm=gen[mym]||{};const gt=((gm.dim||0)+(gm.rh||0)+(gm.fer||0)+(gm.hs||0)+(gm.ram||0)+(gm.extra||0));
   const panCount=calcPaniersMois(curY,curM);const primes=calcPrimesMois(curY,curM);const nuitTotal=calcNuitMois(curY,curM);const paye_tc=calcPayeMois(curY,curM);
-  const el=document.getElementById('ctr-main');if(!el)return;
   const primeParts=[];
   if(primes.antenne)primeParts.push(['Ant',primes.antenne]);
   if(primes.matin)primeParts.push(['Mat',primes.matin]);
   if(panCount)primeParts.push(['Pan',panCount]);
   if(primes.coord)primeParts.push(['Crd',primes.coord]);
   if(primes.reel)primeParts.push(['Réal',primes.reel]);
-  const _mob=window.innerWidth<500;
-  const _tvfs='17px';               // tile value font-size
-  const _tlfs='9px';                // tile label font-size
-  const _tsfs=_mob?'9px':'10px';    // tile subtitle font-size
-  const _tpad=_mob?'4px 3px':'4px 6px'; // tile column padding
-  const _tpmfs=_tvfs;               // prime type number font-size (matches tile values)
-  const _tpmsep=_mob?'3px':'5px';   // prime type separator margin
-  const _primeIco={'Pan':'ti-tools-kitchen','Mat':'ti-alarm','Ant':'ti-radio','Réal':'ti-device-tv','Crd':'ti-clipboard-list'};
-  const primesHTML=primeParts.length?'<div style="display:flex;flex-direction:column;gap:3px;width:100%">'+primeParts.map(function(p){return '<div style="display:flex;align-items:center"><span style="flex:1;text-align:right;font-size:'+_tvfs+';color:var(--text2)"><i class="ti '+(_primeIco[p[0]]||'ti-star')+'"></i></span><span style="width:6px;flex-shrink:0"></span><span style="flex:1;text-align:left;font-size:'+_tpmfs+';font-weight:600;color:var(--amber)">'+p[1]+'</span></div>';}).join('')+'</div>':'<div style="font-size:'+_tvfs+';font-weight:600;color:var(--text3)">—</div>';
-  // Detail dots for "Créés ce mois"
-  function detRow(color,val,lbl){return val>0?'<div style="display:flex;justify-content:center;align-items:center;width:100%;line-height:1.7"><span style="font-size:10px;color:var(--text3);padding-right:3px;width:26px;flex-shrink:0;text-align:right">'+lbl+'</span><span class="rdot" style="background:'+color+';flex-shrink:0;margin-right:3px"></span><span style="width:0.5px;height:9px;background:var(--border2);flex-shrink:0"></span><span style="padding-left:3px;font-size:10px;color:var(--text3);width:36px;flex-shrink:0;overflow:hidden">'+fmtMin(val)+'</span></div>':'';}
-  const det=detRow('#9c80e0',gm.dim||0,'Dim')+detRow('#7b9ce0',gm.rh||0,'RH')+detRow('var(--gold)',gm.fer||0,'Fér')+detRow('var(--gold-dark)',gm.ram||0,'Ram')+detRow('var(--blue)',gm.hs||0,'HS')+detRow('var(--rend-text)',gm.extra||0,'Extra')||'<div style="font-size:10px;color:var(--text3)">-</div>';
-  const matEl=document.getElementById('eph-total-mat');
-  if(matEl)matEl.textContent=fmtMin(Math.max(0,matelas));
-  var _doNumAnim=el._lastMym!==undefined&&el._lastMym!==mym;
-  el._lastMym=mym;
-  var _flipCols={};
-  Array.from(el.querySelectorAll('[data-col]')).forEach(function(c){_flipCols[c.dataset.col]=c.getBoundingClientRect().left;});
-  el.innerHTML=`<div class="bloc clk" onclick="openMergedMoisModal(${mym})" style="grid-column:1/-1;margin-top:0;padding-top:16px;padding-bottom:16px;min-height:190px;display:flex;flex-direction:column">
-    <div style="flex:1;display:flex;align-items:stretch;gap:0">
-      <div style="flex:1;display:flex;flex-direction:column;min-width:0">
-        <div data-col="rendus" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:${_tpad};gap:2px;min-width:0">
-          <div style="font-size:${_tlfs};color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">Rendus</div>
-          <div style="font-size:${_tvfs};font-weight:600;color:${gt?'var(--rend-text)':'var(--text3)'}">${gt?fmtMin(gt):'—'}</div>
-          <div style="font-size:${_tsfs};color:var(--text3)">${gt?(mym>TODAY_YM?'prévis.':'acquis'):''}</div>
-          <div class="det-mob" style="margin-top:8px;width:100%">${det}</div>
-        </div>
-        <div style="height:0.5px;background:var(--border);margin:5px 0"></div>
-        <div data-col="hs" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:${_tpad};gap:2px;min-width:0" onclick="event.stopPropagation();openMergedMoisModal(${mym},1)">
-          <div style="font-size:${_tlfs};color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">HS</div>
-          <div style="font-size:${_tvfs};font-weight:600;color:${hsTotal?'var(--blue)':'var(--text3)'}">${hsTotal?fmtMin(hsTotal):'—'}</div>
-          <div style="font-size:${_tsfs};color:var(--text3)">${hsTotal?(useHSRendu?'rendus':'brutes'):''}</div>
-          ${rawLowTotal>0?`<div class="det-mob" style="font-size:${_tsfs};color:var(--text3);margin-top:4px">≤8h ${fmtMin(rawLowTotal)}</div>`:''}
-          ${rawHighTotal>0?`<div class="det-mob" style="font-size:${_tsfs};color:var(--text3)">>8h ${fmtMin(rawHighTotal)}</div>`:''}
-        </div>
-      </div>
-      <div style="width:0.5px;background:var(--border);flex-shrink:0;margin:4px 0"></div>
-      <div data-col="primes" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:${_tpad};gap:2px" onclick="event.stopPropagation();openMergedMoisModal(${mym},2)">
-        <div style="font-size:${_tlfs};color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">Primes</div>
-        ${primesHTML}
-      </div>
-      <div style="width:0.5px;background:var(--border);flex-shrink:0;margin:4px 0"></div>
-      <div style="flex:1;display:flex;flex-direction:column;min-width:0">
-        <div data-col="nuit" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:${_tpad};gap:2px;min-width:0" onclick="event.stopPropagation();openMergedMoisModal(${mym},3)">
-          <div style="font-size:${_tlfs};color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">Nuit</div>
-          <div style="font-size:${_tvfs};font-weight:600;color:#9c7fe0">${nuitTotal?fmtMin(nuitTotal):'—'}</div>
-          <div style="font-size:${_tsfs};color:var(--text3)">heures</div>
-        </div>
-        <div style="height:0.5px;background:var(--border);margin:5px 0"></div>
-        <div data-col="brut" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:${_tpad};gap:2px;min-width:0" onclick="event.stopPropagation();openMergedMoisModal(${mym},4)">
-          <div style="font-size:${_tlfs};color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px">Brut</div>
-          ${(paye_tc.configured&&paye_tc.salQ&&paye_tc.heures)?'<div style="font-size:'+_tvfs+';font-weight:600;color:var(--gold-pay);text-align:center">'+fmtEuro(paye_tc.total).replace(/\s*€/,'')+'</div><div style="font-size:'+_tsfs+';color:var(--text3)">euros</div>':'<div style="font-size:'+_tvfs+';font-weight:600;color:var(--text3);text-align:center">—</div><div style="font-size:'+_tsfs+';color:var(--text3)"></div>'}
-        </div>
-      </div>
-    </div>
-  </div>`;
-  Array.from(el.querySelectorAll('[data-col]')).forEach(function(c){
-    var prev=_flipCols[c.dataset.col];if(prev===undefined)return;
-    var delta=prev-c.getBoundingClientRect().left;if(Math.abs(delta)<0.5)return;
-    c.style.transition='none';c.style.transform='translateX('+delta+'px)';
-    requestAnimationFrame(function(){requestAnimationFrame(function(){
-      c.style.transition='transform .25s ease';c.style.transform='';
-      c.addEventListener('transitionend',function(){c.style.transition='';},{once:true});
-    });});
-  });
-  if(_doNumAnim){
-    var _dx=_calNavDir>=0?'18px':'-18px';
-    Array.from(el.querySelectorAll('[data-col]')).forEach(function(col){
-      if(col.dataset.col==='primes')return;
-      var valEl=col.children[1];
-      if(!valEl||!/\d/.test(valEl.textContent))return;
-      valEl.style.transition='none';
-      valEl.style.transform='translateX('+_dx+')';
-      valEl.style.opacity='0';
-      requestAnimationFrame(function(){requestAnimationFrame(function(){
-        valEl.style.transition='transform .2s ease,opacity .2s ease';
-        valEl.style.transform='translateX(0)';
-        valEl.style.opacity='1';
-        valEl.addEventListener('transitionend',function(){
-          valEl.style.transition='';valEl.style.transform='';valEl.style.opacity='';
-        },{once:true});
-      });});
-    });
-  }
-
   // Expiry current viewed month — split between truly expiring and reported
   const _viewExpYM=curY*12+curM;
   let _expViewAmt=0,_repViewAmt=0;
@@ -1895,21 +1781,10 @@ function updateCounters(){
       }
     }
   });
-  const _expVal=document.getElementById('eph-exp-val'),_expLbl=document.getElementById('eph-exp-lbl');
-  if(_expViewAmt>0){
-    if(_expVal){_expVal.textContent=fmtMin(_expViewAmt);_expVal.style.color='var(--red)';}
-    if(_expLbl)_expLbl.textContent=(_viewPast?'Perdu ':'Expire ')+MC[curM].slice(0,3);
-  }else if(_repViewAmt>0){
-    if(_expVal){_expVal.textContent=fmtMin(_repViewAmt);_expVal.style.color='var(--green)';}
-    if(_expLbl)_expLbl.textContent='Report '+MC[curM].slice(0,3);
-  }else{
-    if(_expVal){_expVal.textContent='—';_expVal.style.color='var(--text3)';}
-    if(_expLbl)_expLbl.textContent='Expire '+MC[curM].slice(0,3);
-  }
   // Bars in recap tile (PC only)
-  const _barsEl=document.getElementById('eph-tile-bars');
-  const _bRows=[]; // mêmes lignes, réutilisées par la nouvelle colonne
-  if(_barsEl){
+  // Lignes « récupérations par mois d'acquisition » de la colonne de droite
+  const _bRows=[];
+  {
     const _ML2=['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
     const _bGenPast=Object.keys(gen).map(Number).filter(ym=>ym<=TODAY_YM).sort();
     const _bFut=Object.keys(gen).map(Number).filter(ym=>ym>TODAY_YM).sort();
@@ -1921,7 +1796,6 @@ function updateCounters(){
     const _bExpired=_bYmsAll.filter(ym=>getExpYm(ym)<TODAY_YM);
     const _bYms=[..._bActive,..._bExpired].slice(0,5);
     const _bMaxV=Math.max(..._bYms.map(function(ym){const o=gen[ym]?Object.values(gen[ym]).reduce(function(s,v){return s+v;},0):0;return Math.max(o,ym>TODAY_YM?(prevEph[ym]||0):(realAvail[ym]||0));}),1);
-    let _bHtml='';
     _bYms.forEach(function(ym){
       const isFut=ym>TODAY_YM,avail=isFut?(prevEph[ym]||0):(realAvail[ym]||0);
       const orig=gen[ym]?Object.values(gen[ym]).reduce(function(s,v){return s+v;},0):0;
@@ -1933,30 +1807,10 @@ function updateCounters(){
       const aColor=isExp?'var(--text3)':isFut?'var(--text3)':'var(--text2)';
       const lostMin=isExp?(preExpiry[ym]||0):0;
       _bRows.push({y,m,orig,avail,isExp,isFut,lostMin,expY,expM,ext});
-      const extSpan=(ext>0)?'<span style="background:rgba(99,153,34,.35);border-radius:3px;padding:0 2px;color:var(--text)">'+_ML2[expM]+' '+String(expY).slice(2)+'</span>':_ML2[expM]+' '+String(expY).slice(2);
-      const expLbl=isExp?(lostMin>0?'<span style="color:var(--red)">-'+fmtMin(lostMin)+'</span>':'<span>00h00</span>'):'→'+extSpan;
-      _bHtml+='<div class="eph-urow'+(isExp?' expired':'')+(isFut?' fut':'')+'">'
-        +'<div class="eph-u-mc">'+_ML2[m]+' '+String(y).slice(2)+'</div>'
-        +'<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">'
-        +'<div class="eph-u-flow"><span style="color:var(--blue);font-size:9px">'+fmtMin(orig)+'</span><span style="color:var(--text3);font-size:9px;margin:0 2px">→</span><span style="font-weight:500;color:'+aColor+'">'+fmtMin(avail)+'</span></div>'
-        +'<div class="eph-bw"><div class="eph-b2" style="width:'+origPct+'%;background:var(--blue);opacity:'+bOp+'"></div><div class="eph-b" style="width:'+barPct+'%;background:var(--rend-text);opacity:'+gOp+'"></div></div>'
-        +'</div>'
-        +'<div class="eph-u-exp">'+expLbl+'</div>'
-        +'</div>';
     });
-    _barsEl.innerHTML=_bHtml||'';
   }
   const viewedYM=curY*12+curM;
   const {total:dispAtView}=calcTrueDispo(viewedYM);
-  const dispoEl=document.getElementById('eph-total-dispo');
-  if(dispoEl){
-    dispoEl.textContent=dispAtView>0?fmtMin(dispAtView):'—';
-    dispoEl.style.color=dispAtView>0?(dispAtView<120?'var(--amber)':'var(--rend-text)'):'var(--text3)';
-  }
-  const dispoLbl=document.getElementById('eph-dispo-lbl');
-  if(dispoLbl)dispoLbl.textContent='Dispo '+MC[curM].slice(0,3);
-  const cgEl=document.getElementById('eph-total-cg');
-  if(cgEl)cgEl.textContent=cRest+' j';
   const _smEl=document.getElementById('side-month');
   if(_smEl){
     _smEl.classList.toggle('now',mym===TODAY_YM);
@@ -1999,14 +1853,10 @@ function _fitSideMonth(){
 }
 
 // ── Colonne latérale, nouvelle présentation (choix « Nouvelle / Ancienne » dans les réglages) ──
-try{localStorage.removeItem('pl_side');}catch(e){} // ancienne colonne de droite retirée
 function _renderSideV2(d){
-  var v2=document.getElementById('side-v2'),old1=document.getElementById('eph-rest-bloc'),old2=document.getElementById('ctr-main');
+  var v2=document.getElementById('side-v2');
   if(!v2)return;
-  // Les anciens blocs restent dans la page (masqués) : leurs éléments servent encore aux calculs du rendu
   v2.style.display='flex';
-  if(old1)old1.style.display='none';
-  if(old2)old2.style.display='none';
   var MS=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
   // Noms de mois accentués (ML n'a pas d'accents) et élision « d’octobre », « d’avril », « d’août »
   var MF=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
