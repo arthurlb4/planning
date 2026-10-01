@@ -3057,11 +3057,17 @@ function _rhParse(cells,fileName){
 // Nature du tableau RH → clé(s) de l'app
 function _rhNatKey(n){const s=n.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');if(/feri/.test(s))return'fer';if(/dimanche/.test(s))return'dim';if(/rcr|\bhs\b|heures? sup/.test(s))return'hs';if(/^rh\b|repos hebdo/.test(s))return'rh';if(/rament|ramen/.test(s))return'hs';if(/extra/.test(s))return'extra';return'autre:'+n;}
 const _RH_NAT_LBL={fer:'Férié',dim:'Dimanche',rh:'RH',hs:'RCR (HS)',extra:'Extra'};
+// Dernier tableau lu, gardé sur cet appareil (cellules brutes, relues à l'ouverture) pour ne pas le rechoisir à chaque fois
+function _rhStoreKey(){return 'pl_rh_cells_'+((window._authUser&&window._authUser.email)||'');}
+function _rhStore(cells,name){try{localStorage.setItem(_rhStoreKey(),JSON.stringify({cells,name,at:Date.now()}));}catch(e){}}
+function _rhStored(){try{const o=JSON.parse(localStorage.getItem(_rhStoreKey())||'null');return o&&o.cells?_rhParse(o.cells,o.name):null;}catch(e){return null;}}
+// Bouton du modal rendus : tableau gardé en mémoire s'il y en a un, sinon choix du fichier
+function rhCompareQuick(){window._rvFromRendus=true;const rh=_rhStored();if(rh)rhCompareShow(rh);else rhCompareOpen();}
 function rhCompareOpen(mode){
   let inp=document.getElementById('rh-file');
   if(!inp){inp=document.createElement('input');inp.type='file';inp.id='rh-file';inp.accept='.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';inp.style.display='none';document.body.appendChild(inp);
     inp.addEventListener('change',async function(){const f=inp.files&&inp.files[0];inp.value='';if(!f)return;
-      try{const cells=await _xlsxRead(f);const rh=_rhParse(cells,f.name);if(inp._mode==='import')rhImportPreview(rh);else rhCompareShow(rh);}
+      try{const cells=await _xlsxRead(f);const rh=_rhParse(cells,f.name);_rhStore(cells,f.name);if(inp._mode==='import')rhImportPreview(rh);else rhCompareShow(rh);}
       catch(e){console.warn(e);showBlockAlert('Lecture impossible',e.message||'Ce fichier n’a pas pu être lu.');}});}
   inp._mode=mode||'compare';inp.click();
 }
@@ -3306,7 +3312,8 @@ function rhCompareShow(rh){
     +(wkRows?'<div class="rv-dh">Rendus par semaine</div><table class="rc-t"><tr><th></th><th>Tableau</th><th>App</th><th>Écart</th></tr>'+wkRows+'</table>':'')
     +(_hasSplit?'<button class="rv-b2" onclick="rhApplySplit(false)">Annuler la répartition du solde de départ</button>':'')
     +'</div>'
-    +'<button class="mb wide rv-close" style="margin-top:16px;width:100%" onclick="closeModal()">Fermer</button>'
+    +'<div class="rv-more" style="margin-top:16px" onclick="rhCompareOpen()">Charger un autre tableau</div>'
+    +'<button class="mb wide rv-close" style="margin-top:8px;width:100%" onclick="closeModal()">Fermer</button>'
     +'</div></div>';
   document.getElementById('modal-root').innerHTML=html;
 }
@@ -4220,9 +4227,9 @@ function openMergedRenduCgModal(limit,tab){
     +'<div class="dx-minis">'
     +'<div class="dx-mini"><span>Matelas</span><b style="color:'+(matelasVal>0?'var(--blue)':'var(--text3)')+'">'+(matelasVal>0?fmtMin(matelasVal):'—')+'</b></div>'
     +'__EXPIRE__'
-    +(function(){const c=S.profile&&S.profile.rhCmp;if(!c)return '<button class="dx-mini dx-mbtn" onclick="event.stopPropagation();window._rvFromRendus=true;rhCompareOpen()"><span>Comparer<br>avec l’Excel</span></button>';
+    +(function(){const c=S.profile&&S.profile.rhCmp;if(!c)return '<button class="dx-mini dx-mbtn" onclick="event.stopPropagation();rhCompareQuick()"><span>Comparer<br>avec l’Excel</span></button>';
       const ok=c.d>-2,txt=Math.abs(c.d)<2?'=':(c.d>0?'+':'−')+fmtMin(Math.abs(c.d));
-      return '<button class="dx-mini dx-mbtn" onclick="event.stopPropagation();window._rvFromRendus=true;rhCompareOpen()"><span>Écart Gestion</span><b style="color:'+(ok?'var(--green)':'var(--red)')+'">'+txt+'</b></button>';})()
+      return '<button class="dx-mini dx-mbtn" onclick="event.stopPropagation();rhCompareQuick()"><span>Écart Gestion</span><b style="color:'+(ok?'var(--green)':'var(--red)')+'">'+txt+'</b></button>';})()
     +'</div>'
     +'</div>';
   let _expAmt=0,_repAmt=0;
