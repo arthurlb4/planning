@@ -304,7 +304,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .dx-sign{display:inline-block;width:14px;color:var(--text3);font-weight:600}
 .dx-clk{cursor:pointer}
 .dx-chev{font-size:11px;color:var(--text3);transition:transform .15s;vertical-align:middle}
-.dx-line.open .dx-chev{transform:rotate(180deg)}
+.dx-line.open .dx-chev{transform:rotate(90deg)}
 .dx-det{display:none;margin:3px 0 2px 14px;padding-left:8px;border-left:1.5px solid var(--border2)}
 .dx-line.open .dx-det{display:block}
 .dx-dr{display:flex;justify-content:space-between;gap:8px;font-size:10px;color:var(--text3);padding:1px 0}
@@ -314,6 +314,12 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .dx-sub{display:block;font-size:9.5px;color:var(--text3);margin-left:14px;font-weight:400}
 .dx-foot{display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px 12px;margin-top:8px;padding-top:6px;border-top:0.5px solid var(--border2);font-size:10.5px;color:var(--text3)}
 .dx-box{margin-top:0}
+.dx-tile{display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding:10px 12px;background:var(--bg2);border:0.5px solid var(--border);border-radius:10px;font-size:12px;font-weight:600;color:var(--text)}
+.dx-tile b{font-size:18px;white-space:nowrap}
+.dx-minis{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:6px}
+.dx-mini{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:8px 4px;background:var(--bg2);border:0.5px solid var(--border);border-radius:10px;font-size:9.5px;color:var(--text3);text-align:center;line-height:1.25;font-family:inherit}
+.dx-mini b{font-size:13px;white-space:nowrap}
+.dx-mbtn{cursor:pointer;color:var(--text2)}.dx-mbtn i{font-size:16px;color:var(--text)}
 .rc-t{width:100%;border-collapse:collapse;font-size:11px}
 .rc-t th{font-size:9px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:.03em;text-align:right;padding:4px 6px;border-bottom:0.5px solid var(--border2)}
 .rc-t td{padding:4px 6px;text-align:right;color:var(--text2);white-space:nowrap}
@@ -4176,7 +4182,10 @@ function openMergedRenduCgModal(limit,tab){
   const _dxLine=function(label,val,color,rows,sign){
     const has=rows.length>0;
     return '<div class="dx-line'+(has?' dx-clk':'')+'"'+(has?' onclick="this.classList.toggle(\'open\')"':'')+'>'
-      +'<div class="dx-l"><span>'+(sign?'<b class="dx-sign">'+sign+'</b>':'<b class="dx-sign"></b>')+label+(has?' <i class="ti ti-chevron-down dx-chev"></i>':'')+'</span><b style="color:'+color+'">'+val+'</b></div>'
+      // Sans signe : le chevron prend la place du signe, à gauche ; sinon il suit le libellé (avant le sous-titre)
+      +'<div class="dx-l"><span>'+(sign?'<b class="dx-sign">'+sign+'</b>':'<b class="dx-sign">'+(has?'<i class="ti ti-chevron-right dx-chev"></i>':'')+'</b>')
+      +(sign&&has?(label.indexOf('<span class="dx-sub">')>=0?label.replace('<span class="dx-sub">',' <i class="ti ti-chevron-right dx-chev"></i><span class="dx-sub">'):label+' <i class="ti ti-chevron-right dx-chev"></i>'):label)
+      +'</span><b style="color:'+color+'">'+val+'</b></div>'
       +_det(rows)+'</div>';
   };
   const _fmtDec=function(min){return (min/60).toFixed(2).replace('.',',')+' h';};
@@ -4203,15 +4212,14 @@ function openMergedRenduCgModal(limit,tab){
   }
   const dispoExplainHtml=''
     +'<div class="dx-box">'
-    +'<div class="dx-t">'+(_viewedYM===TODAY_YM?'Tes heures à récupérer':'Prévision pour '+_vm)+'</div>'
+    +'<div class="dx-t">'+(_viewedYM===TODAY_YM?'Heures à récupérer':'Prévision pour '+_vm)+'</div>'
     +_calcLines
-    +'<div class="dx-line dx-tot"><div class="dx-l"><span><b class="dx-sign">=</b>Libre à poser'+(_viewedYM===TODAY_YM?'':' '+_enVm)+'</span><b style="color:'+dispoColor+';font-size:15px">'+fmtMin(dispoMois)+'</b></div></div>'
-    +'<div class="dx-foot">'
-    +(matelasVal>0?'<span>Matelas <b style="color:var(--blue)">'+fmtMin(matelasVal)+'</b> <span style="opacity:.7">('+_fmtDec(matelasVal)+')</span></span>':'')
-    +'<span>__EXPIRE__</span>'
+    +'<div class="dx-tile"><span>Libre à poser'+(_viewedYM===TODAY_YM?'':' '+_enVm)+'</span><b style="color:'+dispoColor+'">'+fmtMin(dispoMois)+'</b></div>'
+    +'<div class="dx-minis">'
+    +'<div class="dx-mini"><span>Matelas</span><b style="color:'+(matelasVal>0?'var(--blue)':'var(--text3)')+'">'+(matelasVal>0?fmtMin(matelasVal):'—')+'</b></div>'
+    +'__EXPIRE__'
+    +'<button class="dx-mini dx-mbtn" onclick="event.stopPropagation();rhCompareOpen()"><i class="ti ti-file-spreadsheet"></i><span>Comparer<br>avec l’Excel</span></button>'
     +'</div>'
-    +'<button class="mb" style="width:100%;margin-top:10px;height:36px;font-size:12px;background:var(--bg2);color:var(--text);border:0.5px solid var(--border);border-radius:var(--r)" onclick="event.stopPropagation();rhCompareOpen()"><i class="ti ti-file-spreadsheet"></i> Comparer avec mon tableau RH (Excel)</button>'
-    +'<div class="dx-note"><i class="ti ti-info-circle"></i> Le tableau RH est en heures décimales : 32,38 h = 32h23. Les heures restent valables 3 mois après leur mois d’acquisition (6 si reportées) et les plus anciennes sont utilisées en premier.</div>'
     +'</div>';
   let _expAmt=0,_repAmt=0;
   // Mois déjà expirés : realAvail est à 0, on prend ce qui restait juste avant l'expiration (preExpiry)
@@ -4228,7 +4236,8 @@ function openMergedRenduCgModal(limit,tab){
     :_repAmt>0
       ?'<div style="width:0.5px;background:var(--border2)"></div><div style="flex:1;text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Report '+MC[_viewedYM%12]+'</div><div style="font-size:15px;font-weight:600;color:var(--green)">'+fmtMin(_repAmt)+'</div></div>'
       :'<div style="width:0.5px;background:var(--border2)"></div><div style="flex:1;text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Expire '+MC[_viewedYM%12]+'</div><div style="font-size:15px;font-weight:600;color:var(--text3)">—</div></div>';
-  const _expTxt=_expAmt>0?(_viewedYM<TODAY_YM?'Perdu fin ':'Expire en ')+_vm+' <b style="color:var(--red)">'+fmtMin(_expAmt)+'</b>':_repAmt>0?'Reporté en '+_vm+' <b style="color:var(--green)">'+fmtMin(_repAmt)+'</b>':'Rien n’expire en '+_vm;
+  const _mi=function(l,v,c){return '<div class="dx-mini"><span>'+l+'</span><b style="color:'+c+'">'+v+'</b></div>';};
+  const _expTxt=_expAmt>0?_mi((_viewedYM<TODAY_YM?'Perdu fin ':'Expire en ')+_vm,fmtMin(_expAmt),'var(--red)'):_repAmt>0?_mi('Reporté en '+_vm,fmtMin(_repAmt),'var(--green)'):_mi('Expire en '+_vm,'—','var(--text3)');
   const dispoBoxHtml=dispoExplainHtml.replace('__EXPIRE__',_expTxt);
   const rendSoldeHeader=''
     +'<div style="display:flex;gap:8px;padding:8px 10px;background:var(--bg3);border-radius:var(--r);border:0.5px solid var(--border)">'
