@@ -3232,17 +3232,26 @@ function rhCompareShow(rh){
   const _partial=yms.length&&yms[0]<createdYM;
   const _rhT={acq:0,cons:0,stock:0};rh.lines.forEach(l=>{if(l.ym>=createdYM&&l.ym<asOfYM){_rhT.acq+=l.acq;_rhT.cons+=l.cons;_rhT.stock+=l.stock;}});
   // Rendus semaine par semaine : commentaires du gestionnaire vs app
-  const _wk=Object.keys(rh.weeks||{}).map(Number).sort((a,b)=>a-b);
   const _isoMon=(y,w)=>{const j4=new Date(y,0,4),m=getMonday(j4);m.setDate(m.getDate()+(w-1)*7);return m;};
-  let _wkBad=0;
+  // Semaines citées dans les commentaires + semaines où l'app a des rendus non cités (suivies, avant la date du tableau)
+  const _trkStart=new Date(Math.floor(createdYM/12),createdYM%12,1);
+  const _appWk=new Set();Object.keys(S.conges||{}).forEach(k=>{if(S.conges[k]!=='rend')return;const d=new Date(k+'T12:00:00');if(d<_trkStart||d>asOf||d.getFullYear()!==edY)return;_appWk.add(getISOWeek(getMonday(d)));});
+  const _wk=rh.lastWeek||Object.keys(rh.weeks||{}).length?[...new Set([...Object.keys(rh.weeks||{}).map(Number),..._appWk])].sort((a,b)=>a-b):[];
+  let _wkBad=0,_wkSh=0,_wkApp=0;
   const _wkRows=_wk.map(w=>{const mon=_isoMon(edY,w),sun=new Date(mon);sun.setDate(mon.getDate()+6);
-    const days=[];for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);if((S.conges||{})[dk(d)]==='rend')days.push({d,dur:getDur(d)});}
-    const a=days.reduce((t,x)=>t+x.dur,0),sh=rh.weeks[w],d=a-sh;
-    const wTracked=sun>=new Date(Math.floor(createdYM/12),createdYM%12,1),b=wTracked&&bad(d);if(b)_wkBad++;
-    return '<tr'+(b?' class="rc-bad"':'')+(wTracked?'':' style="opacity:.55"')+'><td>S'+w+' <span style="opacity:.6;font-weight:400">'+mon.getDate()+'/'+(mon.getMonth()+1)+'–'+sun.getDate()+'/'+(sun.getMonth()+1)+'</span></td><td>'+fmtMin(sh)+'</td><td>'+(wTracked?(a?fmtMin(a):'—'):'non suivi')+'</td><td>'+(wTracked?fmtE(d):'')+'</td></tr>'
-      +(b&&days.length?'<tr class="rc-dr"><td colspan="4"><div class="rc-days">Rendus de l’app : '+days.map(x=>x.d.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'})+' '+fmtMin(x.dur)).join(' · ')+'</div></td></tr>':'');}).join('');
+    const days=[];for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);if((S.conges||{})[dk(d)]==='rend'&&d>=_trkStart&&d<=asOf)days.push({d,dur:getDur(d)});}
+    const cited=rh.weeks&&rh.weeks[w]!==undefined;
+    const a=days.reduce((t,x)=>t+x.dur,0),sh=cited?rh.weeks[w]:0,d=a-sh;
+    const wTracked=sun>=_trkStart,b=wTracked&&cited&&bad(d);if(b)_wkBad++;
+    if(wTracked){_wkSh+=sh;_wkApp+=a;}
+    return '<tr'+(b?' class="rc-bad"':'')+(wTracked&&cited?'':' style="opacity:.55"')+'><td>S'+w+' <span style="opacity:.6;font-weight:400">'+mon.getDate()+'/'+(mon.getMonth()+1)+'–'+sun.getDate()+'/'+(sun.getMonth()+1)+'</span></td><td>'+(cited?fmtMin(sh):'<span style="opacity:.6">pas cité</span>')+'</td><td>'+(wTracked?(a?fmtMin(a):'—'):'non suivi')+'</td><td>'+(wTracked?fmtE(d):'')+'</td></tr>'
+      +(b&&days.length?'<tr class="rc-dr"><td colspan="4"><div class="rc-days">Rendus de l’app : '+days.map(x=>x.d.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'})+' '+fmtMin(x.dur)).join(' · ')+'</div></td></tr>':'');}).join('')
+    +'<tr style="border-top:1px solid var(--border2);font-weight:700"><td>Total</td><td>'+fmtMin(_wkSh)+'</td><td>'+fmtMin(_wkApp)+'</td><td>'+fmtE(_wkApp-_wkSh)+'</td></tr>';
+  // Raccord avec la ligne « Cumul consommations » : elle compte les heures retirées par mois d'acquisition, pas les rendus pris
+  const _consRh=_partial?_rhT.cons:rh.tot.cumCons,_eW=_wkApp-_wkSh,_eC=sumConsApp-_consRh;
+  const _wkRecon=bad(_eW-_eC)?'<div class="rc-com" style="margin-top:6px"><b>Pourquoi '+fmtE(_eW)+' ici et '+fmtE(_eC)+' en consommation ?</b> Ce tableau compte les rendus <b>pris</b> chaque semaine. La ligne « Cumul consommations » compte les heures retirées de chaque mois <b>acquis</b>'+(_partial?' depuis '+ymL(createdYM):'')+'. Un rendu qui puise dans des heures plus anciennes (avant le début du suivi, report…) n’y apparaît pas, et le gestionnaire peut déduire des heures sans les citer dans ses commentaires. L’écart à corriger est bien celui des semaines ci-dessus.</div>':'';
   const weeksBlock=_wk.length?'<div class="rc-m'+(_wkBad?' rc-open':'')+'"><div class="rc-mh" onclick="this.parentNode.classList.toggle(\'rc-open\')"><span>'+(_wkBad?'<i class="ti ti-alert-triangle" style="color:var(--amber)"></i> ':'<i class="ti ti-check" style="color:var(--green)"></i> ')+'Rendus par semaine</span><span class="rc-sm">d’après les commentaires <i class="ti ti-chevron-down"></i></span></div>'
-    +'<div class="rc-mb"><table class="rc-t"><tr><th></th><th>Tableau RH</th><th>App</th><th>Écart</th></tr>'+_wkRows+'</table><div class="rc-com">Seules les semaines citées dans les commentaires sont comparées. Un écart sur une semaine désigne directement le ou les jours à vérifier (durée d’un rendu, jour oublié…).</div></div></div>':'';
+    +'<div class="rc-mb"><table class="rc-t"><tr><th></th><th>Tableau RH</th><th>App</th><th>Écart</th></tr>'+_wkRows+'</table>'+_wkRecon+'<div class="rc-com">Semaines citées dans les commentaires du gestionnaire, plus celles où l’app a des rendus. Un écart sur une semaine désigne directement le ou les jours à vérifier (durée d’un rendu, jour oublié…).</div></div></div>':'';
   // Solde de départ : d'où viennent ces heures d'après le tableau
   const _sg=_rhStartSplit(rh),_hasSplit=!!(S.profile&&S.profile.ephSoldeSplit&&Object.keys(S.profile.ephSoldeSplit).length);
   const _sgTxt=Object.keys(_sg.split).map(Number).sort((a,b)=>a-b).map(ym=>ymL(ym)+' '+fmtMin(_sg.split[ym])).join(' · ');
