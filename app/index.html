@@ -2993,7 +2993,9 @@ function _rhParse(cells,fileName){
   // Dernière semaine citée dans les commentaires (« 24h posées S23 ») = jusqu'où le gestionnaire a saisi les rendus
   let lastWeek=0;lines.forEach(l=>{(l.com.match(/\bS\s?(\d{1,2})\b/gi)||[]).forEach(w=>{const n=+w.replace(/\D/g,'');if(n>=1&&n<=53&&n>lastWeek)lastWeek=n;});});
   const m=v=>typeof v==='number'?Math.round(v*60):null;
-  return{edition,lines,lastWeek,raw:tot,tot:{stock2025:m(tot.stock2025),consoStock:m(tot.consoStock),stockAct:m(tot.stockAct),cumAcq:m(tot.cumAcq),cumCons:m(tot.cumCons),cumSol:m(tot.cumSol)}};
+  // Heures posées par semaine d'après les commentaires (« 20,5h en S32 », « 24h posées S23 », « 31h posés S2 »)
+  const weeks={};lines.forEach(l=>{const re=/(\d+(?:[.,]\d+)?)\s*h\b[^\d\/·]*?\bS\s?(\d{1,2})\b/gi;let mm;while((mm=re.exec(l.com))){const w=+mm[2],h=Math.round(parseFloat(mm[1].replace(',','.'))*60);if(w>=1&&w<=53&&h>0)weeks[w]=(weeks[w]||0)+h;}});
+  return{edition,lines,lastWeek,weeks,raw:tot,tot:{stock2025:m(tot.stock2025),consoStock:m(tot.consoStock),stockAct:m(tot.stockAct),cumAcq:m(tot.cumAcq),cumCons:m(tot.cumCons),cumSol:m(tot.cumSol)}};
 }
 // Nature du tableau RH → clé(s) de l'app
 function _rhNatKey(n){const s=n.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');if(/feri/.test(s))return'fer';if(/dimanche/.test(s))return'dim';if(/rcr|\bhs\b|heures? sup/.test(s))return'hs';if(/^rh\b|repos hebdo/.test(s))return'rh';if(/rament|ramen/.test(s))return'hs';if(/extra/.test(s))return'extra';return'autre:'+n;}
@@ -3102,6 +3104,18 @@ function rhCompareShow(rh){
   // Décimales affichées telles qu'écrites dans le tableau RH (pas reconverties)
   const sumRow=(lbl,s,a,raw)=>{if(s===null||s===undefined)return'';const d=a-s,b=bad(d);return '<tr'+(b?' class="rc-bad"':'')+'><td>'+lbl+'</td><td>'+fmtMin(s)+'<span class="rc-dec">'+(typeof raw==='number'?String(Math.round(raw*1000)/1000).replace('.',','):dec(s))+'</span></td><td>'+fmtMin(a)+'<span class="rc-dec">'+dec(a)+'</span></td><td>'+fmtE(d)+'</td></tr>';};
   const firstTracked=yms.find(ym=>ym>=createdYM);
+  // Rendus semaine par semaine : commentaires du gestionnaire vs app
+  const _wk=Object.keys(rh.weeks||{}).map(Number).sort((a,b)=>a-b);
+  const _isoMon=(y,w)=>{const j4=new Date(y,0,4),m=getMonday(j4);m.setDate(m.getDate()+(w-1)*7);return m;};
+  let _wkBad=0;
+  const _wkRows=_wk.map(w=>{const mon=_isoMon(edY,w),sun=new Date(mon);sun.setDate(mon.getDate()+6);
+    const days=[];for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);if((S.conges||{})[dk(d)]==='rend')days.push({d,dur:getDur(d)});}
+    const a=days.reduce((t,x)=>t+x.dur,0),sh=rh.weeks[w],d=a-sh;
+    const wTracked=sun>=new Date(Math.floor(createdYM/12),createdYM%12,1),b=wTracked&&bad(d);if(b)_wkBad++;
+    return '<tr'+(b?' class="rc-bad"':'')+(wTracked?'':' style="opacity:.55"')+'><td>S'+w+' <span style="opacity:.6;font-weight:400">'+mon.getDate()+'/'+(mon.getMonth()+1)+'–'+sun.getDate()+'/'+(sun.getMonth()+1)+'</span></td><td>'+fmtMin(sh)+'</td><td>'+(wTracked?(a?fmtMin(a):'—'):'non suivi')+'</td><td>'+(wTracked?fmtE(d):'')+'</td></tr>'
+      +(b&&days.length?'<tr class="rc-dr"><td colspan="4"><div class="rc-days">Rendus de l’app : '+days.map(x=>x.d.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'})+' '+fmtMin(x.dur)).join(' · ')+'</div></td></tr>':'');}).join('');
+  const weeksBlock=_wk.length?'<div class="rc-m'+(_wkBad?' rc-open':'')+'"><div class="rc-mh" onclick="this.parentNode.classList.toggle(\'rc-open\')"><span>'+(_wkBad?'<i class="ti ti-alert-triangle" style="color:var(--amber)"></i> ':'<i class="ti ti-check" style="color:var(--green)"></i> ')+'Rendus par semaine</span><span class="rc-sm">d’après les commentaires <i class="ti ti-chevron-down"></i></span></div>'
+    +'<div class="rc-mb"><table class="rc-t"><tr><th></th><th>Tableau RH</th><th>App</th><th>Écart</th></tr>'+_wkRows+'</table><div class="rc-com">Seules les semaines citées dans les commentaires sont comparées. Un écart sur une semaine désigne directement le ou les jours à vérifier (durée d’un rendu, jour oublié…).</div></div></div>':'';
   // Solde de départ : d'où viennent ces heures d'après le tableau
   const _sg=_rhStartSplit(rh),_hasSplit=!!(S.profile&&S.profile.ephSoldeSplit&&Object.keys(S.profile.ephSoldeSplit).length);
   const _sgTxt=Object.keys(_sg.split).map(Number).sort((a,b)=>a-b).map(ym=>ymL(ym)+' '+fmtMin(_sg.split[ym])).join(' · ');
@@ -3125,6 +3139,7 @@ function rhCompareShow(rh){
     +(nbRep?'<div class="rc-note"><i class="ti ti-calendar-time" style="color:var(--amber)"></i> '+nbRep+' mois avec un report différent entre le tableau et l’app : un bouton permet d’appliquer celui du tableau.</div>':'')
     +'<div class="rc-note">'+(nbBad?'<b style="color:var(--amber)">'+nbBad+' mois avec un écart</b> (ouverts ci-dessous). Pour les acquisitions, l’app liste ses jours pour t’aider à retrouver l’erreur.':'<b style="color:var(--green)">Aucun écart par mois.</b>')+' Écarts de moins de 2 min ignorés (arrondis).</div>'
     +startBlock
+    +weeksBlock
     +sections
     +'<button class="mb wide" style="margin-top:12px;width:100%" onclick="closeModal()">Fermer</button>'
     +'</div></div>';
