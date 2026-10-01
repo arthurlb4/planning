@@ -3177,7 +3177,7 @@ function rhCompareShow(rh){
     if(k)M.nat[k]=(M.nat[k]||0)+l.acq;M.cons+=l.cons;M.stock+=l.stock;M.solde+=l.solde;if(l.com)M.com.push(l.com);});
   Object.keys(gen).map(Number).forEach(ym=>{if(ym<asOfYM&&ym>=createdYM)months.add(ym);});
   const yms=[...months].filter(ym=>ym<asOfYM).sort((a,b)=>a-b);
-  let sumAcqApp=0,sumConsApp=0,sumSolApp=0,nbBad=0,nbLag=0,nbRep=0;
+  let sumAcqApp=0,sumConsApp=0,sumSolApp=0,nbBad=0,nbLag=0,nbRep=0,lagTot=0;const lagKeys=[];
   const edY=asOf.getFullYear();
   const isLagged=key=>{if(!rh.lastWeek)return false;const d=new Date(key+'T12:00:00');return d.getFullYear()===edY&&getISOWeek(getMonday(d))>rh.lastWeek;};
   const fmtD=d=>d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'});
@@ -3193,16 +3193,17 @@ function rhCompareShow(rh){
       return '<tr'+(b?' class="rc-bad"':'')+'><td>'+(k.startsWith('autre:')?k.slice(6):_RH_NAT_LBL[k])+'</td><td>'+(s?fmtMin(s):'—')+'</td><td>'+(tracked?(a?fmtMin(a):'—'):'<span style="opacity:.6">non suivi</span>')+'</td><td>'+(tracked?fmtE(d):'')+'</td></tr>'+(dayLst?'<tr class="rc-dr"><td colspan="4">'+dayLst+'</td></tr>':'');}).join('');
     const pm=app.perMonth[ym]||{acquis:0,conso:0,reste:0};
     const valid=getExpYm(ym)>=asOfYM;
-    const appSol=valid?pm.reste:0;
-    if(tracked){sumAcqApp+=pm.acquis-(g.solde||0);sumConsApp+=pm.conso;sumSolApp+=appSol;}
-    const dC=pm.conso-M.cons,dS=appSol-M.solde;
-    const cmpSol=tracked||(g.solde||0)>0; // le solde d'un mois portant une part du solde de départ est comparable
-    if(!tracked&&cmpSol)sumSolApp+=appSol;
-    // Rendus que l'app impute à ce mois ; ceux postérieurs à la dernière semaine citée par le gestionnaire = pas encore saisis
+    // Rendus que l'app impute à ce mois ; ceux postérieurs à la dernière semaine citée par le gestionnaire = pas encore notés :
+    // mis à part pour comparer l'app à ce que le tableau a pu enregistrer
     const _al=(app.alloc[ym]||[]);
     const lagMin=_al.filter(x=>isLagged(x.key)).reduce((t,x)=>t+x.amt,0);
-    const consLag=tracked&&bad(dC)&&lagMin>0&&Math.abs(dC-lagMin)<2;
-    const solLag=consLag&&Math.abs(dS+lagMin)<2;
+    _al.forEach(x=>{if(isLagged(x.key)&&!lagKeys.includes(x.key))lagKeys.push(x.key);});
+    const consA=pm.conso-lagMin,appSol=valid?pm.reste+lagMin:0;
+    if(tracked){sumAcqApp+=pm.acquis-(g.solde||0);sumConsApp+=consA;sumSolApp+=appSol;lagTot+=lagMin;}
+    const dC=consA-M.cons,dS=appSol-M.solde;
+    const cmpSol=tracked||(g.solde||0)>0; // le solde d'un mois portant une part du solde de départ est comparable
+    if(!tracked&&cmpSol)sumSolApp+=appSol;
+    const consLag=tracked&&lagMin>0&&!bad(dC),solLag=false;
     const consBad=tracked&&bad(dC)&&!consLag,solBad=cmpSol&&bad(dS)&&!solLag;
     // Reports : tableau RH vs app
     const rhRep=Math.max(0,...(rh.lines.filter(l=>l.ym===ym).map(l=>l.rep)),0),appRep=getEphExtensions(ym);
@@ -3215,13 +3216,14 @@ function rhCompareShow(rh){
     const valNotes=[];rh.lines.filter(l=>l.ym===ym&&(l.validRep||l.valid)).forEach(l=>{const v=l.rep?(l.validRep||l.valid):l.valid;if(v&&!repBad){const vd=new Date(v.getUTCFullYear(),v.getUTCMonth(),v.getUTCDate());if(vd<appEnd&&vd.getMonth()===appEnd.getMonth()&&vd.getFullYear()===appEnd.getFullYear()){const t=fmtD(vd);if(!valNotes.includes(t))valNotes.push(t);}}});
     if(consBad||solBad||repBad)monthBad=true;
     const startRow=hasStart?'<div class="rc-com"><i class="ti ti-flag" style="color:var(--blue)"></i> Part de ton solde de départ rattachée à ce mois dans l’app : '+fmtMin(startSolde)+'.'+(repBad&&rhRep>appRep?' Sans le report du tableau, il expire fin '+ymL(getExpYm(ym))+' : tes rendus suivants sont alors imputés sur des mois plus récents, ce qui crée des écarts de consommation plus loin.':'')+'</div>':'';if(monthBad)nbBad++;if(consLag)nbLag++;if(repBad)nbRep++;
-    const consDays=(consBad||consLag)&&_al.length?'<tr class="rc-dr"><td colspan="4"><div class="rc-days">'+(consLag?'<b style="color:var(--text2)">Écart probablement expliqué : il correspond exactement aux rendus posés après S'+rh.lastWeek+' (dernière semaine citée dans les commentaires), sans doute pas encore saisis par le gestionnaire.</b><br>':'')+'Rendus comptés par l’app sur ce mois : '+_al.map(x=>{const d=new Date(x.key+'T12:00:00');const lg=isLagged(x.key);return '<span'+(lg?' style="color:var(--text2);text-decoration:underline dotted"':'')+'>'+d.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'})+' (S'+getISOWeek(getMonday(d))+') '+fmtMin(x.amt)+(lg?' · après S'+rh.lastWeek:'')+'</span>';}).join(' · ')+'</div></td></tr>':'';
+    const consDays=consBad&&_al.length?'<tr class="rc-dr"><td colspan="4"><div class="rc-days">'+'Rendus comptés par l’app sur ce mois : '+_al.map(x=>{const d=new Date(x.key+'T12:00:00');const lg=isLagged(x.key);return '<span'+(lg?' style="color:var(--text2);text-decoration:underline dotted"':'')+'>'+d.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'})+' (S'+getISOWeek(getMonday(d))+') '+fmtMin(x.amt)+(lg?' · après S'+rh.lastWeek:'')+'</span>';}).join(' · ')+'</div></td></tr>':'';
     const repRow=repBad?'<tr class="rc-bad"><td>Report</td><td>'+(rhRep?rhRep*3+' mois':'aucun')+'</td><td>'+(appRep?appRep*3+' mois':'aucun')+'</td><td></td></tr><tr class="rc-dr"><td colspan="4"><button class="mb" style="width:100%;height:32px;font-size:11px;margin:2px 0 4px;background:var(--bg3);color:var(--text);border:0.5px solid var(--border);border-radius:8px" onclick="rhApplyReport('+ym+','+rhRep+')">Appliquer le report du tableau ('+(rhRep?rhRep*3+' mois':'aucun')+') dans l’app</button></td></tr>':'';
     const valRow=valNotes.length?'<div class="rc-com"><i class="ti ti-calendar-exclamation" style="color:var(--amber)"></i> Le tableau indique une validité au '+valNotes.join(', ')+' au lieu du '+fmtD(appEnd)+' : probablement une erreur de formule du tableau (3 mois ajoutés à la date d’acquisition au lieu de la fin du mois). À signaler si un rendu posé jusqu’au '+fmtD(appEnd)+' était refusé.</div>':'';
     const totAcqS=Object.values(M.nat).reduce((x,y)=>x+y,0),totAcqA=Object.values(appNat).reduce((x,y)=>x+y,0);
     return '<div class="rc-m'+(monthBad||consLag||valNotes.length?' rc-open':'')+'"><div class="rc-mh" onclick="this.parentNode.classList.toggle(\'rc-open\')"><span'+(tracked?'':' style="color:var(--text3)"')+'>'+(!tracked&&!repBad?'<i class="ti ti-minus" style="color:var(--text3)"></i> ':!tracked?'<i class="ti ti-alert-triangle" style="color:var(--amber)"></i> ':!monthBad&&consLag?'<i class="ti ti-clock" style="color:var(--blue)"></i> ':monthBad?'<i class="ti ti-alert-triangle" style="color:var(--amber)"></i> ':'<i class="ti ti-check" style="color:var(--green)"></i> ')+ymL(ym)+'</span><span class="rc-sm">'+(tracked?'acquis '+fmtMin(totAcqS)+' / '+fmtMin(totAcqA):hasStart?(repBad?'solde de départ · report à vérifier':'solde de départ'):'non suivi par l’app')+' <i class="ti ti-chevron-down"></i></span></div>'
       +'<div class="rc-mb"><table class="rc-t"><tr><th></th><th>Tableau RH</th><th>App</th><th>Écart</th></tr>'+natRows
-      +'<tr'+(consBad?' class="rc-bad"':consLag?' class="rc-lag"':'')+'><td>Consommées</td><td>'+(M.cons?fmtMin(M.cons):'—')+'</td><td>'+(tracked?(pm.conso?fmtMin(pm.conso):'—'):'')+'</td><td>'+(tracked?fmtE(dC):'')+'</td></tr>'+consDays
+      +'<tr'+(consBad?' class="rc-bad"':'')+'><td>Consommées</td><td>'+(M.cons?fmtMin(M.cons):'—')+'</td><td>'+(tracked?(consA?fmtMin(consA):'—'):'')+'</td><td>'+(tracked?fmtE(dC):'')+'</td></tr>'
+      +(tracked&&lagMin>0?'<tr class="rc-lag"><td>Pas encore notés <span style="opacity:.6;font-weight:400">(après S'+rh.lastWeek+')</span></td><td>—</td><td>'+fmtMin(lagMin)+'</td><td></td></tr>':'')+consDays
       +repRow+'<tr'+(solBad?' class="rc-bad"':solLag?' class="rc-lag"':'')+'><td>Solde'+(valid?'':' <span style="opacity:.6">(expiré)</span>')+'</td><td>'+(M.solde?fmtMin(M.solde):'—')+'</td><td>'+(cmpSol?(appSol?fmtMin(appSol):'—'):'')+'</td><td>'+(cmpSol?fmtE(dS):'')+'</td></tr>'
       +(M.stock?'<tr><td>Pris sur le matelas</td><td>'+fmtMin(M.stock)+'</td><td></td><td></td></tr>':'')
       +'</table>'+startRow+valRow+(M.com.length?'<div class="rc-com"><i class="ti ti-message"></i> '+M.com.join(' · ')+'</div>':'')+'</div></div>';
@@ -3244,8 +3246,9 @@ function rhCompareShow(rh){
     const cited=rh.weeks&&rh.weeks[w]!==undefined;
     const a=days.reduce((t,x)=>t+x.dur,0),sh=cited?rh.weeks[w]:0,d=a-sh;
     const wTracked=sun>=_trkStart,b=wTracked&&cited&&bad(d);if(b)_wkBad++;
-    if(wTracked){_wkSh+=sh;_wkApp+=a;}
-    return '<tr'+(b?' class="rc-bad"':'')+(wTracked&&cited?'':' style="opacity:.55"')+'><td>S'+w+' <span style="opacity:.6;font-weight:400">'+mon.getDate()+'/'+(mon.getMonth()+1)+'–'+sun.getDate()+'/'+(sun.getMonth()+1)+'</span></td><td>'+(cited?fmtMin(sh):'<span style="opacity:.6">pas cité</span>')+'</td><td>'+(wTracked?(a?fmtMin(a):'—'):'non suivi')+'</td><td>'+(wTracked?fmtE(d):'')+'</td></tr>'
+    const wLag=!cited&&rh.lastWeek&&w>rh.lastWeek; // pas encore noté par le gestionnaire : mis à part du total
+    if(wTracked&&!wLag){_wkSh+=sh;_wkApp+=a;}
+    return '<tr'+(b?' class="rc-bad"':'')+(wTracked&&cited?'':' style="opacity:.55"')+'><td>S'+w+' <span style="opacity:.6;font-weight:400">'+mon.getDate()+'/'+(mon.getMonth()+1)+'–'+sun.getDate()+'/'+(sun.getMonth()+1)+'</span></td><td>'+(cited?fmtMin(sh):'<span style="opacity:.6">'+(wLag?'pas encore noté':'pas cité')+'</span>')+'</td><td>'+(wTracked?(a?fmtMin(a):'—'):'non suivi')+'</td><td>'+(wTracked?fmtE(d):'')+'</td></tr>'
       +(b?'<tr class="rc-dr"><td colspan="4"><div class="rc-days">'+(rh.weekSrc&&rh.weekSrc[w]?'Commentaire du gestionnaire : « '+rh.weekSrc[w].join(' » + « ')+' »<br>':'')+(days.length?'Rendus de l’app : '+days.map(x=>x.d.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'})+' '+fmtMin(x.dur)).join(' · '):'Aucun rendu dans l’app cette semaine.')+'</div></td></tr>':'');}).join('')
     +'<tr style="border-top:1px solid var(--border2);font-weight:700"><td>Total</td><td>'+fmtMin(_wkSh)+'</td><td>'+fmtMin(_wkApp)+'</td><td>'+fmtE(_wkApp-_wkSh)+'</td></tr>';
   // Raccord avec la ligne « Cumul consommations » : elle compte les heures retirées par mois d'acquisition, pas les rendus pris
@@ -3275,9 +3278,10 @@ function rhCompareShow(rh){
        +sumRow('Cumul acquisitions',rh.tot.cumAcq,sumAcqApp,rh.raw.cumAcq)
        +sumRow('Cumul consommations',rh.tot.cumCons,sumConsApp,rh.raw.cumCons))
     +sumRow('Cumul soldes',rh.tot.cumSol,sumSolApp,rh.raw.cumSol)
+    +(lagTot>0?'<tr class="rc-lag"><td>Rendus pas encore notés <span style="opacity:.6;font-weight:400">(après S'+rh.lastWeek+')</span></td><td>—</td><td>'+fmtMin(lagTot)+'</td><td></td></tr>':'')
     +'</table>'
     +(firstTracked!==undefined&&yms[0]<firstTracked?'<div class="rc-note">Les mois avant '+ymL(createdYM)+' ne sont pas suivis par l’app (début de ton suivi) : les acquisitions et consommations sont comparées à partir de '+ymL(createdYM)+'. Le cumul des soldes, lui, porte sur toute l’année.</div>':'')
-    +(rh.lastWeek?'<div class="rc-note"><i class="ti ti-clock" style="color:var(--blue)"></i> Dernière semaine citée dans les commentaires du gestionnaire : <b>S'+rh.lastWeek+'</b>. Les rendus posés après n’y sont peut-être pas encore saisis'+(nbLag?' : '+nbLag+' écart'+(nbLag>1?'s':'')+' de consommation correspond'+(nbLag>1?'ent':'')+' exactement à ces rendus (en bleu)':'')+'.</div>':'')
+    +(rh.lastWeek?'<div class="rc-note"><i class="ti ti-clock" style="color:var(--blue)"></i> Dernière semaine notée par le gestionnaire dans ses commentaires : <b>S'+rh.lastWeek+'</b>.'+(lagTot>0?' Les rendus posés après ('+lagKeys.sort().map(k=>new Date(k+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'})).join(', ')+', soit '+fmtMin(lagTot)+') ne sont pas encore dans son tableau : l’app les met à part et compare le reste. Ils seront à retrouver dans le prochain tableau.':'')+'</div>':'')
     +(nbRep?'<div class="rc-note"><i class="ti ti-calendar-time" style="color:var(--amber)"></i> '+nbRep+' mois avec un report différent entre le tableau et l’app : un bouton permet d’appliquer celui du tableau.</div>':'')
     +'<div class="rc-note">'+(nbBad?'<b style="color:var(--amber)">'+nbBad+' mois avec un écart</b> (ouverts ci-dessous). Pour les acquisitions, l’app liste ses jours pour t’aider à retrouver l’erreur.':'<b style="color:var(--green)">Aucun écart par mois.</b>')+' Écarts de moins de 2 min ignorés (arrondis).</div>'
     +startBlock
