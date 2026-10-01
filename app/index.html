@@ -3019,6 +3019,18 @@ function rhCompareOpen(mode){
 }
 // ── Import du tableau RH : point de départ du suivi (matelas, solde par mois d'origine, reports, date) ──
 function rhImportOpen(){rhCompareOpen('import');}
+// Après une inscription sans matelas ni rendus saisis : proposer d'importer le tableau RH
+function _rhImportPromptIfNeeded(){
+  let f=null;try{f=localStorage.getItem('pl_rh_import_prompt');}catch(e){}
+  if(!f||document.getElementById('modal-root').innerHTML)return;
+  try{localStorage.removeItem('pl_rh_import_prompt');}catch(e){}
+  document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet">'
+    +'<div class="sh"></div><div class="st">Importer ton tableau RH ?</div>'
+    +'<div style="font-size:13px;color:var(--text2);line-height:1.5;margin:8px 0 14px">Choisis le fichier Excel envoyé par ton gestionnaire : l’app reprend ton matelas et ton solde d’heures mois par mois, avec leurs dates d’expiration et leurs reports. Le fichier est lu sur ton appareil, rien n’est envoyé.</div>'
+    +'<button class="rc-btn" style="height:42px" onclick="closeModal();rhImportOpen()">Choisir mon tableau RH</button>'
+    +'<button class="rc-btn rc-btn2" style="margin-top:8px;height:38px" onclick="closeModal()">Plus tard (Réglages → Tableau RH)</button>'
+    +'</div></div>';
+}
 function _rhImportPlan(rh){
   const ed=new Date(rh.edition.getFullYear(),rh.edition.getMonth(),rh.edition.getDate(),12);
   const baseKey=dk(ed),edYM=ed.getFullYear()*12+ed.getMonth();
@@ -6300,6 +6312,7 @@ function init(){
     if(hpn&&S&&S.profile)hpn.textContent=S.profile.name||'Profil';
     document.body.style.opacity='1';document.body.style.transition='opacity .25s';setTimeout(function(){document.body.style.transition='';},300);
     showPayPromptIfNeeded();
+    setTimeout(_rhImportPromptIfNeeded,700);
     // Pousse au chargement les modifs locales qui n'auraient pas encore été synchronisées
     if(S&&S.profile&&window._authToken)cloudSave(_aid);
   }).catch(function(){
