@@ -1,4 +1,4 @@
-const SW_VERSION = '10.0';
+const SW_VERSION = '10.1';
 const PAGES = 'pl-pages-v1';   // dernière version de l'app, pour l'ouvrir hors connexion
 const ASSETS = 'pl-assets-v1'; // icônes (CDN)
 
@@ -15,19 +15,23 @@ self.addEventListener('activate', function(e) {
 self.addEventListener('fetch', function(event) {
   const req = event.request;
   if (req.method !== 'GET') return;
-  // Pages : réseau d'abord (toujours la dernière version), copie gardée pour le hors connexion
+  // Pages : la copie gardée s'affiche tout de suite, la version du serveur est récupérée en arrière-plan
+  // (la page compare sa version et se recharge si besoin). Sans copie : réseau.
   if (req.mode === 'navigate') {
+    const key = req.url.split('?')[0].split('#')[0];
     const fresh = new Request(req.url, {
       method: 'GET',
       headers: { 'Cache-Control': 'no-cache, no-store', 'Pragma': 'no-cache' },
       cache: 'no-store'
     });
+    const net = fetch(fresh).then(function(res) {
+      if (res && res.ok) { const copy = res.clone(); caches.open(PAGES).then(function(c) { c.put(key, copy); }); }
+      return res;
+    });
     event.respondWith(
-      fetch(fresh).then(function(res) {
-        if (res && res.ok) { const copy = res.clone(); caches.open(PAGES).then(function(c) { c.put(req.url.split('?')[0], copy); }); }
-        return res;
-      }).catch(function() {
-        return caches.match(req.url.split('?')[0], { cacheName: PAGES }).then(function(r) { return r || caches.match(req); });
+      caches.match(key, { cacheName: PAGES }).then(function(hit) {
+        if (hit) { event.waitUntil(net.catch(function() {})); return hit; }
+        return net.catch(function() { return caches.match(req); });
       })
     );
     return;
