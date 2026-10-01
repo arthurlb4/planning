@@ -3031,7 +3031,7 @@ function _rhImportPromptIfNeeded(){
     +'<button class="rc-btn rc-btn2" style="margin-top:8px;height:38px" onclick="closeModal()">Plus tard (Réglages → Tableau RH)</button>'
     +'</div></div>';
 }
-function _rhImportPlan(rh){
+function _rhImportPlan(rh,keepCounted){
   const ed=new Date(rh.edition.getFullYear(),rh.edition.getMonth(),rh.edition.getDate(),12);
   const baseKey=dk(ed),edYM=ed.getFullYear()*12+ed.getMonth();
   // Solde restant de chaque mois encore valable à la date du tableau
@@ -3049,7 +3049,9 @@ function _rhImportPlan(rh){
   // Rendus postérieurs à la dernière semaine citée mais antérieurs au tableau : peut-être pas encore déduits par le gestionnaire
   const edY=ed.getFullYear();
   const maybeLate=rh.lastWeek?toHist.filter(k=>{const d=new Date(k+'T12:00:00');return d.getFullYear()===edY&&getISOWeek(getMonday(d))>rh.lastWeek;}):[];
-  return{ed,baseKey,edYM,split,reports,total,toHist,maybeLate,matelas:rh.tot.stockAct};
+  // Rendus douteux que l'utilisateur garde décomptés par l'app (pas encore saisis par le gestionnaire)
+  const keep=keepCounted||new Set();
+  return{ed,baseKey,edYM,split,reports,total,toHist:toHist.filter(k=>!keep.has(k)),maybeLate,matelas:rh.tot.stockAct};
 }
 function rhImportPreview(rh){
   window._rhLast=rh;
@@ -3071,8 +3073,11 @@ function rhImportPreview(rh){
     +row('Début du suivi',curStart,P.ed.toLocaleDateString('fr-FR'))
     +'</table>'
     +'<div class="rc-note">Ensuite, l’app calcule elle-même les heures acquises à partir de ton planning, à compter du '+P.ed.toLocaleDateString('fr-FR')+'.</div>'
-    +(P.toHist.length?'<div class="rc-note"><i class="ti ti-history" style="color:var(--blue)"></i> <b>'+P.toHist.length+' rendu'+(P.toHist.length>1?'s':'')+' jusqu’au '+P.ed.toLocaleDateString('fr-FR')+' ('+fmtMin(histH)+')</b> sont déjà déduits du solde du tableau : ils restent affichés dans le calendrier mais ne seront plus décomptés, pour ne pas les retirer deux fois.</div>':'')
-    +(P.maybeLate.length?'<div class="rc-note" style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Attention : '+P.maybeLate.length+' de ces rendus ('+P.maybeLate.map(k=>new Date(k+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'})).join(', ')+') sont postérieurs à la dernière semaine citée par le gestionnaire (S'+rh.lastWeek+'). S’il ne les a pas encore saisis, ils ne seront décomptés nulle part : vérifie-le à la réception du prochain tableau (bouton « Comparer »).</div>':'')
+    +(P.toHist.length?'<div class="rc-note"><i class="ti ti-history" style="color:var(--blue)"></i> <b>'+P.toHist.length+' rendu'+(P.toHist.length>1?'s':'')+(P.maybeLate.length?' (dont '+P.maybeLate.length+' à vérifier ci-dessous)':'')+' jusqu’au '+P.ed.toLocaleDateString('fr-FR')+' ('+fmtMin(histH)+')</b> sont déjà déduits du solde du tableau : ils restent affichés dans le calendrier mais ne seront plus décomptés, pour ne pas les retirer deux fois.</div>':'')
+    +(P.maybeLate.length?'<div class="rc-start"><div class="rc-st" style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Rendus peut-être pas encore saisis par le gestionnaire</div>'
+      +'<div class="rc-sd">Ces rendus sont postérieurs à la dernière semaine citée dans ses commentaires (S'+rh.lastWeek+'). Coche ceux qu’il n’a <b>pas encore</b> déduits : l’app les décomptera elle-même. Dans le doute, laisse coché : la prochaine comparaison te dira s’il les avait déjà.</div>'
+      +P.maybeLate.map(k=>{const d=new Date(k+'T12:00:00');return '<label style="display:flex;align-items:center;gap:8px;font-size:12px;padding:4px 0;color:var(--text2)"><input type="checkbox" class="rhi-late" value="'+k+'" checked style="width:16px;height:16px;accent-color:var(--blue)"> '+d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})+' (S'+getISOWeek(getMonday(d))+') · '+fmtMin(getDur(d))+'</label>';}).join('')
+      +'</div>':'')
     +'<button class="rc-btn" style="margin-top:10px;height:40px" onclick="rhImportApply()">Importer et repartir de ce tableau</button>'
     +'<button class="rc-btn rc-btn2" style="margin-top:8px;height:36px" onclick="closeModal()">Annuler</button>'
     +'</div></div>';
@@ -3080,7 +3085,8 @@ function rhImportPreview(rh){
 }
 function rhImportApply(){
   const rh=window._rhLast;if(!rh)return;
-  const P=_rhImportPlan(rh),pr=S.profile;
+  const keep=new Set([...document.querySelectorAll('.rhi-late:checked')].map(c=>c.value));
+  const P=_rhImportPlan(rh,keep),pr=S.profile;
   // Sauvegarde pour pouvoir annuler l'import
   pr._rhImportBackup={matelas:pr.matelas,ephSolde:pr.ephSolde,ephSoldeCreatedYM:pr.ephSoldeCreatedYM,ephSoldeSplit:pr.ephSoldeSplit?Object.assign({},pr.ephSoldeSplit):null,ephBaseDate:pr.ephBaseDate||null,ephExtend:Object.assign({},S.ephExtend||{}),toHist:P.toHist,at:Date.now()};
   if(P.matelas!==null&&P.matelas!==undefined)pr.matelas=P.matelas;
