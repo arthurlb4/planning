@@ -15,9 +15,9 @@
 <link rel="apple-touch-icon" href="/planning/app/apple-touch-icon-v8.png">
 <link rel="icon" type="image/png" href="/planning/app/favicon9.png">
 <link rel="manifest" href="./manifest.json">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css" media="print" onload="this.media='all'">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css">
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 :root{
   --bg:transparent;--bg0:#1a1a1a;--bg2:#252525;--bg2h:#2c2c2c;--bg3:#373737;
   --text:#f4f4f4;--text2:#d8d8d8;--text3:#9a9a9a;
@@ -6561,28 +6561,18 @@ async function cloudLoadAll(){
     if(document.visibilityState==='visible'){
       gcalStartPoll();
       cloudRefresh();
-      _checkNewVersion();
+      fetch(location.href,{cache:'no-store',headers:{'Cache-Control':'no-cache, no-store','Pragma':'no-cache'}})
+        .then(function(r){return r.text();})
+        .then(function(html){
+          var m=html.match(/name="app-version" content="([^"]+)"/);
+          if(m&&m[1]!==_appVer&&!_syncAbort)location.reload();
+        }).catch(function(){});
     }else{
       clearInterval(_pollTimer);
     }
   });
 }
 
-// L'app s'ouvre sur la copie gardée par le téléphone (instantané) ; on vérifie ensuite s'il existe une version
-// plus récente en ligne : si oui, on met la copie à jour puis on recharge (une seule fois par version).
-function _checkNewVersion(){
-  fetch(location.href,{cache:'no-store',headers:{'Cache-Control':'no-cache, no-store','Pragma':'no-cache'}})
-    .then(function(r){return r.ok?r.text():'';})
-    .then(function(html){
-      var m=html.match(/name="app-version" content="([^"]+)"/);
-      if(!m||m[1]===_appVer||_syncAbort)return;
-      try{if(sessionStorage.getItem('pl_reload_for')===m[1])return;sessionStorage.setItem('pl_reload_for',m[1]);}catch(e){}
-      var _k=location.href.split('?')[0].split('#')[0];
-      (window.caches?caches.open('pl-pages-v1').then(function(c){return c.put(_k,new Response(html,{headers:{'Content-Type':'text/html; charset=utf-8'}}));}):Promise.resolve())
-        .catch(function(){}).then(function(){location.reload();});
-    }).catch(function(){});
-}
-setTimeout(_checkNewVersion,1500);
 function deleteCurrentProfile(){
   const hasGcal=!!gcalTokens;
   const gcalRow=hasGcal
