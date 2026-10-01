@@ -3061,10 +3061,17 @@ function _rhParse(cells,fileName){
 // Nature du tableau RH → clé(s) de l'app
 function _rhNatKey(n){const s=n.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');if(/feri/.test(s))return'fer';if(/dimanche/.test(s))return'dim';if(/rcr|\bhs\b|heures? sup/.test(s))return'hs';if(/^rh\b|repos hebdo/.test(s))return'rh';if(/rament|ramen/.test(s))return'hs';if(/extra/.test(s))return'extra';return'autre:'+n;}
 const _RH_NAT_LBL={fer:'Férié',dim:'Dimanche',rh:'RH',hs:'RCR (HS)',extra:'Extra'};
-// Dernier tableau lu, gardé sur cet appareil (cellules brutes, relues à l'ouverture) pour ne pas le rechoisir à chaque fois
+// Dernier tableau lu, gardé avec le compte (synchronisé entre appareils) : cellules brutes, relues à l'ouverture.
+// Les lignes entièrement vides ou à zéro sont retirées (≈ 2 Ko), la relecture donne le même résultat.
 function _rhStoreKey(){return 'pl_rh_cells_'+((window._authUser&&window._authUser.email)||'');}
-function _rhStore(cells,name){try{localStorage.setItem(_rhStoreKey(),JSON.stringify({cells,name,at:Date.now()}));}catch(e){}}
-function _rhStored(){try{const o=JSON.parse(localStorage.getItem(_rhStoreKey())||'null');return o&&o.cells?_rhParse(o.cells,o.name):null;}catch(e){return null;}}
+function _rhCompact(cells){const byRow={};Object.keys(cells).forEach(r=>{const x=_xlsxSplit(r);(byRow[x.row]=byRow[x.row]||[]).push(r);});
+  const keep={};Object.values(byRow).forEach(rs=>{if(rs.some(r=>{const v=cells[r];return v!==''&&v!==0&&v!=='0'&&v!=null;}))rs.forEach(r=>{keep[r]=cells[r];});});return keep;}
+function _rhStore(cells,name){if(!S.profile)return;S.profile.rhTable={cells:_rhCompact(cells),name,at:Date.now()};saveState();try{localStorage.removeItem(_rhStoreKey());}catch(e){}}
+function _rhStored(){
+  let o=S.profile&&S.profile.rhTable;
+  // Ancien stockage sur l'appareil : repris une fois dans le compte
+  if(!o){try{const l=JSON.parse(localStorage.getItem(_rhStoreKey())||'null');if(l&&l.cells){_rhStore(l.cells,l.name);o=S.profile&&S.profile.rhTable;}}catch(e){}}
+  try{return o&&o.cells?_rhParse(o.cells,o.name):null;}catch(e){return null;}}
 // Bouton du modal rendus : tableau gardé en mémoire s'il y en a un, sinon choix du fichier
 function rhCompareQuick(){window._rvFromRendus=true;const rh=_rhStored();if(rh)rhCompareShow(rh);else rhCompareOpen();}
 function rhCompareOpen(mode){
@@ -5501,7 +5508,7 @@ function openSettingsModal(tab){
       var off=pr.profile.primesConvOff||{};
       return getPrimesConvAllForYM(TODAY_YM).map(function(p){
         return '<label style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:0.5px solid var(--border);cursor:pointer">'
-          +'<span style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2);min-width:0"><input type="checkbox" '+(off[p.id]?'':'checked ')+'onchange="togglePrimeConv(\''+p.id+'\',this.checked)" style="width:16px;height:16px;accent-color:var(--blue);flex-shrink:0">'+p.label+'</span>'
+          +'<span style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2);min-width:0"><input type="checkbox" '+(off[p.id]?'':'checked ')+'onchange="togglePrimeConv(\''+p.id+'\',this.checked);this.closest(\'label\').lastChild.style.color=this.checked?\'var(--amber)\':\'var(--text3)\'" style="width:16px;height:16px;accent-color:var(--blue);flex-shrink:0">'+p.label+'</span>'
           +'<span style="font-size:12px;color:'+(off[p.id]?'var(--text3)':'var(--amber)')+'">+'+fmtEuro(p.montant)+'</span></label>';
       }).join('');
     })()
