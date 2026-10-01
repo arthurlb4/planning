@@ -4866,7 +4866,7 @@ function openSettingsModal(tab){
     var _maxH=0;
     _panels.forEach(function(p){if(p)_maxH=Math.max(_maxH,p.scrollHeight);});
     _hidden.forEach(function(p){p.style.display='none';p.style.visibility='';});
-    var _cap=Math.round(window.innerHeight*0.7);
+    var _cap=Math.round(window.innerHeight/_zoomFix()*0.7);
     _panels.forEach(function(p){if(p)p.style.minHeight=Math.min(_maxH,_cap)+'px';});
     var _sh=document.querySelector('#modal-root .sheet');
     if(!_sh)return;
@@ -5577,6 +5577,7 @@ function openAutreVacModal(){
 }
 
 function init(){
+  _applyBigScreenZoom();
   // Detect touch device and disable hover effects
   if('ontouchstart' in window){
     document.documentElement.classList.add('touch');
@@ -6042,6 +6043,23 @@ function signOut(){
   window.location.href='/planning/';
 }
 
+// Très grands écrans (largeur logique > 1920 px, ex. 4K réglé à 100–150 %) : agrandir toute l'interface
+// pour qu'elle garde les proportions d'un écran 1920. Sans effet à 200 % ou plus (largeur ≤ 1920).
+// window._uiZoom : zoom appliqué (absent = 1). Pas d'initialisation ici : init() s'exécute avant cette ligne.
+// Facteur à appliquer à innerWidth/innerHeight pour obtenir des px de mise en page : selon le navigateur,
+// innerWidth tient compte ou non du zoom CSS (Chromium : non). On compare au clientWidth de <html>.
+function _zoomFix(){
+  var z=window._uiZoom||1;
+  if(z===1)return 1;
+  return window.innerWidth/document.documentElement.clientWidth>1.05?z:1;
+}
+function _applyBigScreenZoom(){
+  var w=window.innerWidth*(window._uiZoom||1)/_zoomFix(); // largeur réelle de la fenêtre
+  var z=w>1920?Math.min(2,Math.round(w/1920*100)/100):1;
+  if(z===(window._uiZoom||1))return;
+  window._uiZoom=z;
+  document.documentElement.style.zoom=z===1?'':String(z);
+}
 function _calNRows(y,m){
   const first=new Date(y,m,1),last=new Date(y,m+1,0);
   const startDay=(first.getDay()+6)%7;
@@ -6079,7 +6097,7 @@ function _fitAnnual(){
     document.documentElement.style.setProperty('--ann-d-h',cellH+'px');
     return;
   }
-  const availH=window.innerHeight-hdrH-mbarH-20;
+  const availH=window.innerHeight/_zoomFix()-hdrH-mbarH-20;
   const availW=col?col.clientWidth:window.innerWidth;
   const mnameH=20;
   const perMonthH=(availH-2*rowGap)/3;
@@ -6136,7 +6154,7 @@ function _checkSideBelow(){
     requestAnimationFrame(_fitCalendar);
   }
 }
-window.addEventListener('resize',function(){_fitCalendar();if(annualOpen)_fitAnnual();_syncSideTop();_checkSideBelow();});
+window.addEventListener('resize',function(){_applyBigScreenZoom();_fitCalendar();if(annualOpen)_fitAnnual();_syncSideTop();_checkSideBelow();});
 
 function syncWknHeight(){
   setTimeout(function(){
