@@ -6241,19 +6241,27 @@ function init(){
   window._authToken=authToken;
   window._authUser=authUser;
   // Show user name in header if needed
+  // Réglages de l'admin (vacations, cycles, convention) gardés sur le téléphone : le premier calcul est juste
+  // sans attendre le serveur (sinon chiffres faux une fraction de seconde, puis corrigés)
+  try{var _gc=JSON.parse(localStorage.getItem('pl_global_cache')||'null');if(_gc){
+    if(_gc.vacs)_globalVacs=_gc.vacs;if(_gc.cycles)_globalCycles=_gc.cycles;if(_gc.pay)window._globalPayConfig=_gc.pay;
+    if(_gc.override&&_gc.override.length)_gc.override.forEach(function(week,i){CYCLE[i]=week;});}}catch(e){}
+  window._saveGlobalCache=function(k,v){try{var c=JSON.parse(localStorage.getItem('pl_global_cache')||'{}');c[k]=v;localStorage.setItem('pl_global_cache',JSON.stringify(c));}catch(e){}};
   loadState();autoReportEph();applyTheme();
   // Load global pay config (convention collective)
   fetch(CLOUD_API+'/get-pay-config',{method:'POST',headers:cloudHeaders(),body:'{}'})
     .then(function(r){return r.json();})
-    .then(function(d){if(d&&d.config)window._globalPayConfig=d.config;})
+    .then(function(d){if(d&&d.config){window._globalPayConfig=d.config;_saveGlobalCache('pay',d.config);}})
     .catch(function(){});
   // Load cycle override from server if available
   fetch(CLOUD_API+'/get-cycle',{method:'POST',headers:cloudHeaders(),body:'{}'})
     .then(function(r){return r.json();})
     .then(function(d){
+      if(d&&!(d.currentOverride&&d.currentOverride.weeks&&d.currentOverride.weeks.length))_saveGlobalCache('override',null);
       if(d&&d.currentOverride&&d.currentOverride.weeks&&d.currentOverride.weeks.length>0){
         // Override the hardcoded CYCLE with the admin version
         d.currentOverride.weeks.forEach(function(week,i){CYCLE[i]=week;});
+        _saveGlobalCache('override',d.currentOverride.weeks);
         render();
       }
     }).catch(function(){});// Fail silently
@@ -6265,6 +6273,7 @@ function init(){
     const vd=results[0],cd=results[1];
     if(vd&&vd.vacations){_globalVacs=vd.vacations;Object.keys(_globalVacs).forEach(function(k){if(VAC_STD[k]&&_globalVacs[k].deb&&_globalVacs[k].deb!==VAC_STD[k].deb)console.warn('Cloud vac override:',k,'deb',_globalVacs[k].deb,'(std:',VAC_STD[k].deb+')');});}
     if(cd&&cd.cycles)_globalCycles=cd.cycles;
+    if(vd&&vd.vacations)_saveGlobalCache('vacs',vd.vacations);if(cd&&cd.cycles)_saveGlobalCache('cycles',cd.cycles);
     render();
     if(gcalTokens)gcalSync();
   }).catch(function(){});
