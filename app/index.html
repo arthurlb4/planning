@@ -314,6 +314,22 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .dx-sub{display:block;font-size:9.5px;color:var(--text3);margin-left:14px;font-weight:400}
 .dx-foot{display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px 12px;margin-top:8px;padding-top:6px;border-top:0.5px solid var(--border2);font-size:10.5px;color:var(--text3)}
 .dx-box{margin-top:0}
+.rc-t{width:100%;border-collapse:collapse;font-size:11px}
+.rc-t th{font-size:9px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:.03em;text-align:right;padding:4px 6px;border-bottom:0.5px solid var(--border2)}
+.rc-t td{padding:4px 6px;text-align:right;color:var(--text2);white-space:nowrap}
+.rc-t td:first-child,.rc-t th:first-child{text-align:left;white-space:normal}
+.rc-t tr.rc-bad td{color:var(--amber);font-weight:600}
+.rc-dec{display:block;font-size:9px;opacity:.6;font-weight:400}
+.rc-sum{background:var(--bg3);border-radius:var(--r);overflow:hidden}
+.rc-note{font-size:10.5px;color:var(--text3);margin:8px 0;line-height:1.5}
+.rc-m{border:0.5px solid var(--border);border-radius:10px;margin:6px 0;overflow:hidden}
+.rc-mh{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;font-size:12px;font-weight:600;color:var(--text);cursor:pointer}
+.rc-sm{font-size:10px;font-weight:400;color:var(--text3)}
+.rc-mb{display:none;padding:0 6px 8px}.rc-m.rc-open .rc-mb{display:block}
+.rc-m.rc-open .ti-chevron-down{transform:rotate(180deg)}
+.rc-dr td{text-align:left!important;white-space:normal!important}
+.rc-days{font-size:10px;color:var(--text3);font-weight:400;line-height:1.5}
+.rc-com{font-size:10px;color:var(--text3);margin:6px 6px 0;line-height:1.4}
 .sv2-t{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
 .sv2-t b{color:var(--text2);font-weight:600}
 .sv2-cols{display:flex;align-items:stretch;gap:6px}
@@ -1008,8 +1024,10 @@ function getExpYm(ym){return ym+3+getEphExtensions(ym)*3;}
 
 // BUILD GEN
 // ================================================================
-function buildGen(){
-  const gen={};function add(ym,k,v){if(!gen[ym])gen[ym]={dim:0,rh:0,fer:0,hs:0,ram:0,extra:0,solde:0};gen[ym][k]+=v;}
+// withDetail : renvoie aussi le détail jour par jour / semaine par semaine (comparaison avec le tableau RH)
+function buildGen(withDetail){
+  const det=withDetail?{}:null;
+  const gen={};function add(ym,k,v,lbl){if(!gen[ym])gen[ym]={dim:0,rh:0,fer:0,hs:0,ram:0,extra:0,solde:0};gen[ym][k]+=v;if(det&&lbl){const dkk=ym+':'+k;(det[dkk]=det[dkk]||[]).push({lbl:lbl,v:v});}}
   const START=2026*12,maxYM=CUR_YEAR*12+11,maxYMDisplay=(CUR_YEAR+2)*12+11,VAC=getVAC();
   const createdYM=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:START;
   const solde=(S.profile&&S.profile.ephSolde)||0;
@@ -1028,9 +1046,9 @@ const dur=VAC[vac]?VAC[vac].dur:0;
       const rhF=(!echange&&!isDim2&&isRH2&&sett2b.rhRendu)?0.5:0;
       const totF=ferF+dimF+rhF;
       if(totF===0)continue;
-      if(ferF>0)add(_dSunYm,'fer',Math.round(dur*ferF/60*100)/100*60);
-      if(dimF>0)add(_dSunYm,'dim',Math.round(dur*dimF/60*100)/100*60);
-      if(rhF>0)add(_dSunYm,'rh',Math.round(dur*rhF/60*100)/100*60);}
+      if(ferF>0)add(_dSunYm,'fer',Math.round(dur*ferF/60*100)/100*60,key);
+      if(dimF>0)add(_dSunYm,'dim',Math.round(dur*dimF/60*100)/100*60,key);
+      if(rhF>0)add(_dSunYm,'rh',Math.round(dur*rhF/60*100)/100*60,key);}
   }
   const seenHS=new Set();
   for(let y=2025;y<=2030;y++)for(let m=0;m<12;m++){
@@ -1043,16 +1061,16 @@ const dur=VAC[vac]?VAC[vac].dur:0;
       if(!sunInScope)continue;
       const sett=settingsForYM(sunYm);if(!sett.hsRendu)continue;
       const hsW=calcHSWeek(mon);if(hsW.rendusMin>0){
-        if(hsW.rendusMinHS>0)add(sunYm,'hs',hsW.rendusMinHS);
-        if(hsW.rendusMinRam>0)add(sunYm,'ram',hsW.rendusMinRam);
+        if(hsW.rendusMinHS>0)add(sunYm,'hs',hsW.rendusMinHS,'S'+getISOWeek(mon));
+        if(hsW.rendusMinRam>0)add(sunYm,'ram',hsW.rendusMinRam,'S'+getISOWeek(mon)+' (ramenée)');
       }}
   }
   Object.keys(S.extraRendus||{}).forEach(function(key){
     var d=new Date(key+'T12:00:00'),mon=getMonday(d),sun=new Date(mon);sun.setDate(mon.getDate()+6);
     var sunYm=sun.getFullYear()*12+sun.getMonth();
-    if(sunYm>=createdYM)add(sunYm,'extra',(S.extraRendus[key].dur||0));
+    if(sunYm>=createdYM)add(sunYm,'extra',(S.extraRendus[key].dur||0),key);
   });
-  return gen;
+  return withDetail?{gen:gen,det:det}:gen;
 }
 // Compute potential gen for a single month with given settings (used for preview)
 function buildPotentialForYM(ym,sett){
@@ -2872,24 +2890,167 @@ function calcTrueDispo(viewedYM){
 // Solde « façon tableau RH » à aujourd'hui : heures des mois terminés encore valables,
 // moins les rendus déjà pris (jusqu'à aujourd'hui inclus), imputés sur les mois les plus anciens.
 // stockAll ajoute les heures du mois en cours (créditées par les RH seulement en fin de mois).
-function calcSoldeRH(){
-  const gen=buildGen(),todayKey=dk(NOW);
+function calcSoldeRH(asOf){
+  const _asOf=asOf||NOW,TODAY_YM=_asOf.getFullYear()*12+_asOf.getMonth(); // masque la constante globale : calcul « à la date »
+  const gen=buildGen(),todayKey=dk(_asOf);
   const _sim={};
   Object.keys(gen).forEach(function(k){const ym=Number(k);_sim[ym]=Object.values(gen[ym]).reduce(function(s,v){return s+v;},0);});
   const _yms=Object.keys(_sim).map(Number).sort(function(a,b){return a-b;});
   const acquisRows=[];
   _yms.forEach(function(ym){if(ym<TODAY_YM&&getExpYm(ym)>=TODAY_YM&&_sim[ym]>0)acquisRows.push({ym:ym,acquis:_sim[ym]});});
+  const _acq={};_yms.forEach(function(ym){_acq[ym]=_sim[ym];});
+  let surStock=0,rendusPris=0;const rendusList=[];
   Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='rend'&&k<=todayKey;}).sort().forEach(function(k){
     const _d=new Date(k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth();let _lft=getDur(_d);
+    rendusPris+=_lft;rendusList.push({key:k,dur:_lft});
     _yms.forEach(function(_ym){
       if(_lft<=0||_sim[_ym]<=0||getBaseExpYm(_ym)<_pym||_ym>_pym)return;
       const _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;
     });
+    surStock+=_lft; // non couvert par les heures du mois → pris sur le matelas
   });
+  const perMonth={};_yms.forEach(function(ym){perMonth[ym]={acquis:_acq[ym],conso:_acq[ym]-(_sim[ym]||0),reste:_sim[ym]||0};});
   let solde=0,courant=0;const rows=[];
   acquisRows.forEach(function(r){const reste=_sim[r.ym]||0;solde+=reste;rows.push({ym:r.ym,acquis:r.acquis,conso:r.acquis-reste,reste:reste,expYm:getExpYm(r.ym)});});
   if(getExpYm(TODAY_YM)>=TODAY_YM)courant=Math.max(0,_sim[TODAY_YM]||0);
-  return{solde:solde,courant:courant,stockAll:solde+courant,rows:rows};
+  return{solde:solde,courant:courant,stockAll:solde+courant,rows:rows,perMonth:perMonth,surStock:surStock,rendusPris:rendusPris,rendusList:rendusList};
+}
+
+// ============================================================
+// COMPARAISON AVEC LE TABLEAU RH (fichier Excel lu sur l'appareil, rien n'est envoyé)
+// ============================================================
+// Lecteur .xlsx minimal : zip (méthode « deflate » via DecompressionStream) + XML de la 1re feuille
+async function _xlsxRead(file){
+  const buf=new Uint8Array(await file.arrayBuffer()),dv=new DataView(buf.buffer);
+  let eocd=-1;for(let i=buf.length-22;i>=Math.max(0,buf.length-65558);i--){if(dv.getUint32(i,true)===0x06054b50){eocd=i;break;}}
+  if(eocd<0)throw new Error('Fichier Excel illisible');
+  const n=dv.getUint16(eocd+10,true);let p=dv.getUint32(eocd+16,true);const entries={};
+  for(let i=0;i<n;i++){
+    const method=dv.getUint16(p+10,true),csize=dv.getUint32(p+20,true),nlen=dv.getUint16(p+28,true),xlen=dv.getUint16(p+30,true),clen=dv.getUint16(p+32,true),off=dv.getUint32(p+42,true);
+    entries[new TextDecoder().decode(buf.subarray(p+46,p+46+nlen))]={method,csize,off};p+=46+nlen+xlen+clen;
+  }
+  async function read(name){
+    const e=entries[name];if(!e)return null;
+    const lh=e.off,start=lh+30+dv.getUint16(lh+26,true)+dv.getUint16(lh+28,true),data=buf.subarray(start,start+e.csize);
+    if(e.method===0)return new TextDecoder().decode(data);
+    if(typeof DecompressionStream==='undefined')throw new Error('Navigateur trop ancien pour lire ce fichier');
+    const ds=new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return await new Response(ds).text();
+  }
+  const xml=t=>new DOMParser().parseFromString(t,'application/xml');
+  const ss=[];const ssx=await read('xl/sharedStrings.xml');
+  if(ssx)xml(ssx).querySelectorAll('si').forEach(si=>ss.push(Array.from(si.getElementsByTagName('t')).map(t=>t.textContent).join('')));
+  const sheetName=Object.keys(entries).filter(k=>/^xl\/worksheets\/sheet\d+\.xml$/.test(k)).sort()[0];
+  const doc=xml(await read(sheetName));const cells={};
+  doc.querySelectorAll('c').forEach(c=>{
+    const r=c.getAttribute('r'),t=c.getAttribute('t'),v=c.getElementsByTagName('v')[0];let val=v?v.textContent:null;
+    if(t==='s'&&val!==null)val=ss[+val];else if(t==='inlineStr')val=Array.from(c.getElementsByTagName('t')).map(x=>x.textContent).join('');
+    else if(t!=='str'&&val!==null&&val!==''&&!isNaN(+val))val=+val;
+    if(val!==null&&val!=='')cells[r]=val;
+  });
+  return cells;
+}
+function _xlsxSplit(ref){const m=/^([A-Z]+)(\d+)$/.exec(ref);return{col:m[1],row:+m[2]};}
+function _xlsxDate(serial){return new Date(Date.UTC(1899,11,30)+Math.round(serial)*864e5);}
+// Lecture du tableau RH : colonnes repérées par leur titre, totaux par leur libellé (positions variables)
+function _rhParse(cells,fileName){
+  const norm=s=>String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').trim();
+  const byRow={};Object.keys(cells).forEach(r=>{const x=_xlsxSplit(r);(byRow[x.row]=byRow[x.row]||{})[x.col]=cells[r];});
+  const rowsN=Object.keys(byRow).map(Number).sort((a,b)=>a-b);
+  // En-tête du tableau
+  let hdrRow=null,col={};
+  for(const r of rowsN){const cs=byRow[r];const k=Object.keys(cs).find(c=>typeof cs[c]==='string'&&/date acquisition/.test(norm(cs[c])));if(k){hdrRow=r;Object.keys(cs).forEach(c=>{if(typeof cs[c]==='string')col[norm(cs[c])]=c;});break;}}
+  if(!hdrRow)throw new Error('Colonne « Date acquisition » introuvable : est-ce bien le tableau RH ?');
+  const C=name=>{const k=Object.keys(col).find(h=>h.startsWith(name));return k?col[k]:null;};
+  const cDate=C('date acquisition'),cNat=C('nature'),cAcq=C('acquisition'),cCons=C('consommation'),cSol=C('solde'),cVal=C('validite'),cStock=C('conso sur stock'),cCom=C('commentaire');
+  // Totaux : valeur sous le libellé
+  const tot={};const labels={stock2025:/^stock au/,consoStock:/^conso sur stock/,stockAct:/^stock actualise/,cumAcq:/^cumul acquisitions/,cumCons:/^cumul consommations/,cumSol:/^cumul soldes/};
+  for(const r of rowsN){if(r>=hdrRow)break;const cs=byRow[r];Object.keys(cs).forEach(c=>{if(typeof cs[c]!=='string')return;const n=norm(cs[c]);Object.keys(labels).forEach(k=>{if(tot[k]===undefined&&labels[k].test(n)){const below=(byRow[r+1]||{})[c];if(typeof below==='number')tot[k]=below;}});});}
+  // Date d'édition : la plus récente des dates en haut du fichier, sinon le nom du fichier
+  let edition=null;
+  for(const r of rowsN){if(r>=hdrRow)break;Object.values(byRow[r]).forEach(v=>{if(typeof v==='number'&&v>40000&&v<70000){const d=_xlsxDate(v);if(!edition||d>edition)edition=d;}});}
+  const fm=/(\d{2})-(\d{2})-(\d{4})/.exec(fileName||'');if(fm){const d=new Date(+fm[3],+fm[2]-1,+fm[1]);if(!edition||Math.abs(d-edition)>864e5*40)edition=d;}
+  if(!edition)edition=new Date();
+  // Lignes
+  const lines=[];
+  for(const r of rowsN){if(r<=hdrRow)continue;const cs=byRow[r];const dv=cs[cDate];if(typeof dv!=='number')continue;
+    const d=_xlsxDate(dv),ym=d.getUTCFullYear()*12+d.getUTCMonth();const h=v=>typeof v==='number'?Math.round(v*60):0;
+    lines.push({ym,nature:cNat&&cs[cNat]?String(cs[cNat]).trim():'',acq:h(cs[cAcq]),cons:h(cs[cCons]),solde:h(cs[cSol]),stock:cStock?h(cs[cStock]):0,valid:cVal&&typeof cs[cVal]==='number'?_xlsxDate(cs[cVal]):null,com:cCom&&cs[cCom]?String(cs[cCom]):''});}
+  const m=v=>typeof v==='number'?Math.round(v*60):null;
+  return{edition,lines,raw:tot,tot:{stock2025:m(tot.stock2025),consoStock:m(tot.consoStock),stockAct:m(tot.stockAct),cumAcq:m(tot.cumAcq),cumCons:m(tot.cumCons),cumSol:m(tot.cumSol)}};
+}
+// Nature du tableau RH → clé(s) de l'app
+function _rhNatKey(n){const s=n.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');if(/feri/.test(s))return'fer';if(/dimanche/.test(s))return'dim';if(/rcr|\bhs\b|heures? sup/.test(s))return'hs';if(/^rh\b|repos hebdo/.test(s))return'rh';if(/rament|ramen/.test(s))return'hs';if(/extra/.test(s))return'extra';return'autre:'+n;}
+const _RH_NAT_LBL={fer:'Férié',dim:'Dimanche',rh:'RH',hs:'RCR (HS)',extra:'Extra'};
+function rhCompareOpen(){
+  let inp=document.getElementById('rh-file');
+  if(!inp){inp=document.createElement('input');inp.type='file';inp.id='rh-file';inp.accept='.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';inp.style.display='none';document.body.appendChild(inp);
+    inp.addEventListener('change',async function(){const f=inp.files&&inp.files[0];inp.value='';if(!f)return;
+      try{const cells=await _xlsxRead(f);rhCompareShow(_rhParse(cells,f.name));}
+      catch(e){console.warn(e);showBlockAlert('Lecture impossible',e.message||'Ce fichier n’a pas pu être lu.');}});}
+  inp.click();
+}
+function rhCompareShow(rh){
+  const asOf=new Date(rh.edition.getFullYear(),rh.edition.getMonth(),rh.edition.getDate(),12);
+  const asOfYM=asOf.getFullYear()*12+asOf.getMonth();
+  const app=calcSoldeRH(asOf),G=buildGen(true),det=G.det,gen=G.gen;
+  const MS=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
+  const ymL=ym=>MS[ym%12]+' '+String(Math.floor(ym/12)).slice(2);
+  const dec=min=>(min/60).toFixed(2).replace('.',',');
+  const fmtE=d=>Math.abs(d)<2?'=':d>0?'+'+fmtMin(d):'−'+fmtMin(-d);
+  const bad=d=>Math.abs(d)>=2; // tolérance d'arrondi : 2 min
+  const createdYM=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:2026*12;
+  // Regroupement par mois et par nature
+  const months=new Set();const sheet={};
+  rh.lines.forEach(l=>{months.add(l.ym);const k=l.nature?_rhNatKey(l.nature):null;const M=(sheet[l.ym]=sheet[l.ym]||{nat:{},cons:0,stock:0,solde:0,com:[]});
+    if(k)M.nat[k]=(M.nat[k]||0)+l.acq;M.cons+=l.cons;M.stock+=l.stock;M.solde+=l.solde;if(l.com)M.com.push(l.com);});
+  Object.keys(gen).map(Number).forEach(ym=>{if(ym<asOfYM&&ym>=createdYM)months.add(ym);});
+  const yms=[...months].filter(ym=>ym<asOfYM).sort((a,b)=>a-b);
+  let sumAcqApp=0,sumConsApp=0,sumSolApp=0,nbBad=0;
+  const sections=yms.map(ym=>{
+    const M=sheet[ym]||{nat:{},cons:0,stock:0,solde:0,com:[]};const g=gen[ym]||{};
+    const appNat={fer:g.fer||0,dim:g.dim||0,rh:g.rh||0,hs:(g.hs||0)+(g.ram||0),extra:g.extra||0};
+    const keys=[...new Set(Object.keys(appNat).filter(k=>appNat[k]>0).concat(Object.keys(M.nat)))];
+    const tracked=ym>=createdYM;
+    let monthBad=false;
+    const natRows=keys.map(k=>{const s=M.nat[k]||0,a=k.startsWith('autre:')?0:(appNat[k]||0),d=a-s;const b=tracked&&bad(d);if(b)monthBad=true;
+      const days=(k==='hs'?(det[ym+':hs']||[]).concat(det[ym+':ram']||[]):(det[ym+':'+k]||[]));
+      const dayLst=b&&days.length?'<div class="rc-days">'+days.map(x=>(/^\d{4}-/.test(x.lbl)?new Date(x.lbl+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'}):x.lbl)+' '+fmtMin(x.v)).join(' · ')+'</div>':'';
+      return '<tr'+(b?' class="rc-bad"':'')+'><td>'+(k.startsWith('autre:')?k.slice(6):_RH_NAT_LBL[k])+'</td><td>'+(s?fmtMin(s):'—')+'</td><td>'+(tracked?(a?fmtMin(a):'—'):'<span style="opacity:.6">non suivi</span>')+'</td><td>'+(tracked?fmtE(d):'')+'</td></tr>'+(dayLst?'<tr class="rc-dr"><td colspan="4">'+dayLst+'</td></tr>':'');}).join('');
+    const pm=app.perMonth[ym]||{acquis:0,conso:0,reste:0};
+    const valid=getExpYm(ym)>=asOfYM;
+    const appSol=valid?pm.reste:0;
+    if(tracked){sumAcqApp+=pm.acquis-(g.solde||0);sumConsApp+=pm.conso;sumSolApp+=appSol;}
+    const dC=pm.conso-M.cons,dS=appSol-M.solde;
+    const consBad=tracked&&bad(dC),solBad=tracked&&bad(dS);if(consBad||solBad)monthBad=true;if(monthBad)nbBad++;
+    const totAcqS=Object.values(M.nat).reduce((x,y)=>x+y,0),totAcqA=Object.values(appNat).reduce((x,y)=>x+y,0);
+    return '<div class="rc-m'+(monthBad?' rc-open':'')+'"><div class="rc-mh" onclick="this.parentNode.classList.toggle(\'rc-open\')"><span>'+(monthBad?'<i class="ti ti-alert-triangle" style="color:var(--amber)"></i> ':'<i class="ti ti-check" style="color:var(--green)"></i> ')+ymL(ym)+'</span><span class="rc-sm">acquis '+fmtMin(totAcqS)+' / '+(tracked?fmtMin(totAcqA):'—')+' <i class="ti ti-chevron-down"></i></span></div>'
+      +'<div class="rc-mb"><table class="rc-t"><tr><th></th><th>Tableau RH</th><th>App</th><th>Écart</th></tr>'+natRows
+      +'<tr'+(consBad?' class="rc-bad"':'')+'><td>Consommées</td><td>'+(M.cons?fmtMin(M.cons):'—')+'</td><td>'+(tracked?(pm.conso?fmtMin(pm.conso):'—'):'')+'</td><td>'+(tracked?fmtE(dC):'')+'</td></tr>'
+      +'<tr'+(solBad?' class="rc-bad"':'')+'><td>Solde'+(valid?'':' <span style="opacity:.6">(expiré)</span>')+'</td><td>'+(M.solde?fmtMin(M.solde):'—')+'</td><td>'+(tracked?(appSol?fmtMin(appSol):'—'):'')+'</td><td>'+(tracked?fmtE(dS):'')+'</td></tr>'
+      +(M.stock?'<tr><td>Pris sur le matelas</td><td>'+fmtMin(M.stock)+'</td><td></td><td></td></tr>':'')
+      +'</table>'+(M.com.length?'<div class="rc-com"><i class="ti ti-message"></i> '+M.com.join(' · ')+'</div>':'')+'</div></div>';
+  }).join('');
+  const matApp=calcSoldes().matelas;
+  // Décimales affichées telles qu'écrites dans le tableau RH (pas reconverties)
+  const sumRow=(lbl,s,a,raw)=>{if(s===null||s===undefined)return'';const d=a-s,b=bad(d);return '<tr'+(b?' class="rc-bad"':'')+'><td>'+lbl+'</td><td>'+fmtMin(s)+'<span class="rc-dec">'+(typeof raw==='number'?String(Math.round(raw*1000)/1000).replace('.',','):dec(s))+'</span></td><td>'+fmtMin(a)+'<span class="rc-dec">'+dec(a)+'</span></td><td>'+fmtE(d)+'</td></tr>';};
+  const firstTracked=yms.find(ym=>ym>=createdYM);
+  const html='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet" style="max-height:88vh;overflow:auto">'
+    +'<div class="sh"></div><div class="st">Comparaison avec ton tableau RH</div>'
+    +'<div style="font-size:11px;color:var(--text3);margin:2px 0 10px">Tableau édité le '+asOf.toLocaleDateString('fr-FR')+' · l’app est recalculée à cette date · fichier lu sur ton appareil, rien n’est envoyé</div>'
+    +'<table class="rc-t rc-sum"><tr><th></th><th>Tableau RH</th><th>App</th><th>Écart</th></tr>'
+    +sumRow('Matelas (stock actualisé)',rh.tot.stockAct,matApp,rh.raw.stockAct)
+    +sumRow('Pris sur le matelas en '+asOf.getFullYear(),rh.tot.consoStock,app.surStock,rh.raw.consoStock)
+    +sumRow('Cumul acquisitions',rh.tot.cumAcq,sumAcqApp,rh.raw.cumAcq)
+    +sumRow('Cumul consommations',rh.tot.cumCons,sumConsApp,rh.raw.cumCons)
+    +sumRow('Cumul soldes',rh.tot.cumSol,sumSolApp,rh.raw.cumSol)
+    +'</table>'
+    +(firstTracked!==undefined&&yms[0]<firstTracked?'<div class="rc-note">Les mois avant '+ymL(createdYM)+' ne sont pas suivis par l’app (date de création de ton solde) : les cumuls de l’app ne les incluent pas.</div>':'')
+    +'<div class="rc-note">'+(nbBad?'<b style="color:var(--amber)">'+nbBad+' mois avec un écart</b> (ouverts ci-dessous). Pour les acquisitions, l’app liste ses jours pour t’aider à retrouver l’erreur.':'<b style="color:var(--green)">Aucun écart par mois.</b>')+' Écarts de moins de 2 min ignorés (arrondis).</div>'
+    +sections
+    +'<button class="mb wide" style="margin-top:12px;width:100%" onclick="closeModal()">Fermer</button>'
+    +'</div></div>';
+  document.getElementById('modal-root').innerHTML=html;
 }
 
 function canPlaceRendu(newKeys){
@@ -3799,6 +3960,7 @@ function openMergedRenduCgModal(limit,tab){
     +(matelasVal>0?'<span>Matelas <b style="color:var(--blue)">'+fmtMin(matelasVal)+'</b> <span style="opacity:.7">('+_fmtDec(matelasVal)+')</span></span>':'')
     +'<span>__EXPIRE__</span>'
     +'</div>'
+    +'<button class="mb" style="width:100%;margin-top:10px;height:36px;font-size:12px;background:var(--bg2);color:var(--text);border:0.5px solid var(--border);border-radius:var(--r)" onclick="event.stopPropagation();rhCompareOpen()"><i class="ti ti-file-spreadsheet"></i> Comparer avec mon tableau RH (Excel)</button>'
     +'<div class="dx-note"><i class="ti ti-info-circle"></i> Le tableau RH est en heures décimales : 32,38 h = 32h23. Les heures restent valables 3 mois après leur mois d’acquisition (6 si reportées) et les plus anciennes sont utilisées en premier.</div>'
     +'</div>';
   let _expAmt=0,_repAmt=0;
