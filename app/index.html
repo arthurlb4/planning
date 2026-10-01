@@ -2129,7 +2129,10 @@ function calcPalierSalaire(n){const base=2091.75;if(n<1)return base;if(n<=44)ret
 var _DPC={primes:[{id:'nao2022',label:'NAO 2022',montant:130,debutYM:0,finYM:null},{id:'nao2023',label:'NAO 2023',montant:55,debutYM:0,finYM:null}],gpe:[{debutYM:0,t:[20,52,62,128,154,159,172,187,231]}],pfa:[{debutYM:0,t:[{max:1,v:240},{max:3,v:230},{max:5,v:220},{max:8,v:210},{max:17,v:200},{max:22,v:190},{max:30,v:170},{max:9999,v:160}]}],anc:[{debutYM:0,base:2091.75,rate1:0.01,rate2:0.005,threshold:20}]};
 function getPayConfig(){return window._globalPayConfig||{};}
 function _pcLatest(arr,ym,def){var a=(arr||[]).filter(function(e){return e.debutYM<=ym;});if(a.length)return a.sort(function(a,b){return b.debutYM-a.debutYM;})[0];return(arr&&arr.length)?arr.sort(function(a,b){return b.debutYM-a.debutYM;})[0]:def;}
-function getPrimesConvForYM(ym){var pc=getPayConfig();var src=pc.primes&&pc.primes.length?pc.primes:_DPC.primes;return src.filter(function(p){return p.debutYM<=ym&&(p.finYM==null||ym<=p.finYM);});}
+function getPrimesConvAllForYM(ym){var pc=getPayConfig();var src=pc.primes&&pc.primes.length?pc.primes:_DPC.primes;return src.filter(function(p){return p.debutYM<=ym&&(p.finYM==null||ym<=p.finYM);});}
+// Primes de la convention (NAO…) : chaque profil peut décocher celles qu'il ne touche pas
+function getPrimesConvForYM(ym,prof){var off=((prof||S.profile||{}).primesConvOff)||{};return getPrimesConvAllForYM(ym).filter(function(p){return !off[p.id];});}
+function togglePrimeConv(id,on){var p=S.profile;if(!p)return;if(!p.primesConvOff)p.primesConvOff={};if(on)delete p.primesConvOff[id];else p.primesConvOff[id]=true;saveState();render();}
 function calcPFA(n,ym){var pc=getPayConfig();var e=_pcLatest(pc.pfa,ym!=null?ym:TODAY_YM,_DPC.pfa[0]);if(!e)e=_DPC.pfa[0];for(var i=0;i<e.t.length;i++){if(n<=e.t[i].max)return e.t[i].v;}return e.t[e.t.length-1].v;}
 function calcGPE(g,ym){if(!(g>=1&&g<=9))return 0;var pc=getPayConfig();var e=_pcLatest(pc.gpe,ym!=null?ym:TODAY_YM,_DPC.gpe[0]);if(!e)e=_DPC.gpe[0];return e.t[g-1]||0;}
 function calcAncPrime(years,ym){var pc=getPayConfig();var e=_pcLatest(pc.anc,ym!=null?ym:TODAY_YM,_DPC.anc[0]);if(!e)e=_DPC.anc[0];var b=e.base,r1=e.rate1,r2=e.rate2,th=e.threshold;var y=parseFloat(years)||0;if(y<=0)return 0;if(y<=th)return Math.round(y*r1*b*100)/100;return Math.round((th*r1+(y-th)*r2)*b*100)/100;}
@@ -5493,6 +5496,15 @@ function openSettingsModal(tab){
     })()
     +'<div class="srow" '+_sr+'><div class="slbl">Suppl. familial'+_inf('SFT mensuel brut')+'</div><div '+_rCol+'><div id="ps-sft-lbl" '+_subV+'>'+(_curSft>0?fmtEuro(_curSft):'—')+'</div><button onclick="window._sMP=true;openSupFamilialModal()" style="'+_selR+';cursor:pointer;text-align:center">Modifier</button></div></div>'
     +_sh+'Primes fixes</div>'
+    +(function(){
+      // Primes de la convention (NAO…) : à cocher selon ce que tu touches
+      var off=pr.profile.primesConvOff||{};
+      return getPrimesConvAllForYM(TODAY_YM).map(function(p){
+        return '<label style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:0.5px solid var(--border);cursor:pointer">'
+          +'<span style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2);min-width:0"><input type="checkbox" '+(off[p.id]?'':'checked ')+'onchange="togglePrimeConv(\''+p.id+'\',this.checked)" style="width:16px;height:16px;accent-color:var(--blue);flex-shrink:0">'+p.label+'</span>'
+          +'<span style="font-size:12px;color:'+(off[p.id]?'var(--text3)':'var(--amber)')+'">+'+fmtEuro(p.montant)+'</span></label>';
+      }).join('');
+    })()
     +(function(){
       var pfc=pr.profile.primesFixesCustom||[];
       var rows=pfc.filter(function(p){return p.finYM==null||p.finYM>=TODAY_YM;}).map(function(p){
