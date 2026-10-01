@@ -1871,13 +1871,16 @@ function _renderSideV2(d){
   if(old2)old2.style.display=on?'none':'';
   if(!on)return;
   var MS=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
-  var mois=ML[curM]+' '+curY,moisC=ML[curM].toLowerCase();
+  // Noms de mois accentués (ML n'a pas d'accents) et élision « d’octobre », « d’avril », « d’août »
+  var MF=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+  var deMois=function(i){return /^[aeiouéâ]/.test(MF[i])?'d’'+MF[i]:'de '+MF[i];};
+  var mois=MF[curM].charAt(0).toUpperCase()+MF[curM].slice(1)+' '+curY,moisC=MF[curM];
   var col=function(lbl,val,color,sub,click){return '<div class="sv2-col'+(click?' clk':'')+'"'+(click?' onclick="event.stopPropagation();'+click+'"':'')+'><div class="sv2-lbl">'+lbl+'</div><div class="sv2-val" style="color:'+(val==='—'?'var(--text3)':color)+'">'+val+'</div><div class="sv2-sub">'+(sub||'')+'</div></div>';};
   // Soldes (cumulés)
   var monthLine;
   if(d.expViewAmt>0)monthLine='<span style="color:var(--red)">'+fmtMin(d.expViewAmt)+' expirent</span>';
   else if(d.repViewAmt>0)monthLine='<span style="color:var(--green)">'+fmtMin(d.repViewAmt)+' reportées</span>';
-  else monthLine='rien n\'expire';
+  else monthLine='rien n’expire';
   // Mobile : la page ne défile pas, la liste est retirée (comme dans l'ancienne colonne)
   var rows=(window.innerWidth<=720?[]:d.rows).map(function(r){
     var exp=r.isExp?(r.lostMin>0?'<span style="color:var(--red)">−'+fmtMin(r.lostMin)+' perdues</span>':'expirées')
@@ -1895,12 +1898,12 @@ function _renderSideV2(d){
     +col('Dispo en '+moisC,d.dispAtView>0?fmtMin(d.dispAtView):'—',d.dispAtView<120?'var(--amber)':'var(--rend-text)',monthLine)
     +col('Congés restants',d.cRest+' j','var(--green)','en '+curY,'openMergedRenduCgModal(6,1)')
     +'</div>'
-    +(rows?'<div class="sv2-sep"></div><div class="sv2-t" style="margin-bottom:4px"><span>Récupérations par mois d\'acquisition</span></div>'+rows:'')
+    +(rows?'<div class="sv2-sep"></div><div class="sv2-t" style="margin-bottom:4px"><span>Récupérations par mois d’acquisition</span></div>'+rows:'')
     +'</div>';
   // Activité du mois (heures + primes gagnées ce mois-ci, payées le mois suivant)
   var PN={Pan:'Panier',Mat:'Matin',Ant:'Antenne','Réal':'Réal',Crd:'Coord'};
   var chips=d.primeParts.length?'<div class="sv2-chips">'+d.primeParts.map(function(p){return '<span class="sv2-chip">'+(PN[p[0]]||p[0])+' <b>×'+p[1]+'</b></span>';}).join('')+'</div>':'<div class="sv2-sub" style="text-align:center">Aucune prime</div>';
-  var nextM=ML[(curM+1)%12].toLowerCase();
+  var nextM=MF[(curM+1)%12];
   var heures='<div class="bloc clk" onclick="openMergedMoisModal('+d.mym+')">'
     +'<div class="sv2-t"><span>Activité</span><span><b>'+mois+'</b> · payée en '+nextM+'</span></div>'
     +'<div class="sv2-cols">'
@@ -1914,12 +1917,12 @@ function _renderSideV2(d){
     +'</div>';
   // Paie versée ce mois-ci (inclut les variables du mois précédent)
   var pt=d.paye_tc,brutOk=pt&&pt.configured&&pt.salQ&&pt.heures;
-  var prevMn=ML[(curM+11)%12].toLowerCase();
+  var prevMn=(curM+11)%12;
   var paie='<div class="bloc clk" onclick="openMergedMoisModal('+d.mym+',4)">'
     +'<div class="sv2-t"><span>Paie</span><b>'+mois+'</b></div>'
     +'<div class="sv2-pay" style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:10px"><span class="sv2-lbl" style="font-size:11px">Brut estimé</span>'
     +'<span class="sv2-val" style="font-size:22px;color:'+(brutOk?'var(--gold-pay)':'var(--text3)')+'">'+(brutOk?fmtEuro(pt.total):'—')+'</span></div>'
-    +'<div class="sv2-sub">Inclut l\'activité de '+prevMn+' (primes, heures sup, nuit…)</div>'
+    +'<div class="sv2-sub">Inclut l’activité '+deMois(prevMn)+'</div>'
     +'</div>';
   v2.innerHTML=soldes+heures+paie;
 }
