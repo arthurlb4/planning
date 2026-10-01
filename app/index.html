@@ -3291,7 +3291,7 @@ function rhCompareShow(rh){
   // Dernier bilan, affiché sur le bouton « Comparer » du modal rendus
   if(S.profile){const _c={ed:dk(asOf),d:Math.round(dSol)};const _o=S.profile.rhCmp;if(!_o||_o.ed!==_c.ed||_o.d!==_c.d){S.profile.rhCmp=_c;saveState();}}
   const okParts=[];if(hasMat&&!matBad)okParts.push('matelas');if(_wk.length&&!wkBad)okParts.push('rendus semaine par semaine');if(!acqBad)okParts.push('heures acquises');if(!repList.length)okParts.push('reports');
-  const html='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet" style="max-height:88vh;overflow:auto">'
+  const html='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet rv-sheet" style="max-height:88vh;overflow:auto">'
     +'<div class="sh"></div><div class="st">Tableau Gestion</div>'
     +'<div style="font-size:11px;color:var(--text3);margin:2px 0 12px">Édité le '+asOf.toLocaleDateString('fr-FR')+'</div>'
     +'<div class="rv-hero"><div class="rv-hl">Heures restantes</div><div class="rv-hr">'
@@ -4220,9 +4220,9 @@ function openMergedRenduCgModal(limit,tab){
     +'<div class="dx-minis">'
     +'<div class="dx-mini"><span>Matelas</span><b style="color:'+(matelasVal>0?'var(--blue)':'var(--text3)')+'">'+(matelasVal>0?fmtMin(matelasVal):'—')+'</b></div>'
     +'__EXPIRE__'
-    +(function(){const c=S.profile&&S.profile.rhCmp;if(!c)return '<button class="dx-mini dx-mbtn" onclick="event.stopPropagation();rhCompareOpen()"><span>Comparer<br>avec l’Excel</span></button>';
+    +(function(){const c=S.profile&&S.profile.rhCmp;if(!c)return '<button class="dx-mini dx-mbtn" onclick="event.stopPropagation();window._rvFromRendus=true;rhCompareOpen()"><span>Comparer<br>avec l’Excel</span></button>';
       const ok=c.d>-2,txt=Math.abs(c.d)<2?'=':(c.d>0?'+':'−')+fmtMin(Math.abs(c.d));
-      return '<button class="dx-mini dx-mbtn" onclick="event.stopPropagation();rhCompareOpen()"><span>Écart Gestion</span><b style="color:'+(ok?'var(--green)':'var(--red)')+'">'+txt+'</b></button>';})()
+      return '<button class="dx-mini dx-mbtn" onclick="event.stopPropagation();window._rvFromRendus=true;rhCompareOpen()"><span>Écart Gestion</span><b style="color:'+(ok?'var(--green)':'var(--red)')+'">'+txt+'</b></button>';})()
     +'</div>'
     +'</div>';
   let _expAmt=0,_repAmt=0;
@@ -4789,6 +4789,9 @@ function rcgTab(idx){
 function _lockBodyScroll(){var sy=window.scrollY;document.body.style.top='-'+sy+'px';document.body.classList.add('modal-open');}
 function _unlockBodyScroll(){var top=parseInt(document.body.style.top||'0');document.body.classList.remove('modal-open');document.body.style.top='';window.scrollTo(0,-top);}
 function closeModal(){
+  // Tableau Gestion ouvert depuis le modal rendus : on y revient à la fermeture
+  const _rvBack=!!document.querySelector('#modal-root .rv-sheet')&&window._rvFromRendus;
+  if(document.querySelector('#modal-root .rv-sheet'))window._rvFromRendus=false;
   if(window._settingsPid){try{saveProfileFromDD(window._settingsPid);}catch(e){}window._settingsPid=null;}
   document.getElementById('modal-root').innerHTML='';pendingKey=null;document.querySelectorAll('.bloc.active,.ctr.active').forEach(el=>el.classList.remove('active'));_unlockBodyScroll();
   // Kill sticky hover on touch devices
@@ -4797,6 +4800,7 @@ function closeModal(){
     tmp.style.cssText='position:fixed;opacity:0;pointer-events:none;top:0;left:0';
     document.body.appendChild(tmp);tmp.focus();document.body.removeChild(tmp);
   }
+  if(_rvBack)openMergedRenduCgModal();
 }
 
 // ================================================================
