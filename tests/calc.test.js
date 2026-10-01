@@ -1,0 +1,87 @@
+// Contrôle automatique des calculs d'heures. Lancé avant chaque mise en ligne (node tests/calc.test.js).
+// Chaque cas part d'une situation connue et vérifie les chiffres attendus, calculés à la main.
+const { load } = require('./harness');
+
+let fails = 0, count = 0;
+function eq(label, got, want) {
+  count++;
+  const ok = JSON.stringify(got) === JSON.stringify(want);
+  if (!ok) { fails++; console.error('ÉCHEC  ' + label + '\n        attendu : ' + JSON.stringify(want) + '\n        obtenu  : ' + JSON.stringify(got)); }
+  else console.log('ok     ' + label);
+}
+const YM = (y, m) => y * 12 + (m - 1); // m de 1 à 12
+
+// Situation d'Arthur au 1er octobre 2026 (sans planning : seules comptent les heures de départ et les rendus)
+//  avril 49h30 et mai 89h08 reportés de 3 mois, juin 12h15, juillet 18h00, août 3h23 ;
+//  rendus posés en septembre : 18 × 7h30 + 4h52 = 139h52, pris sur les heures les plus anciennes.
+function situation(opts) {
+  const a = load('2026-10-01');
+  const split = { [YM(2026, 4)]: 2970, [YM(2026, 5)]: 5348, [YM(2026, 6)]: 735, [YM(2026, 7)]: 1080, [YM(2026, 8)]: 203 };
+  const ext = { [YM(2026, 4)]: 1, [YM(2026, 5)]: 1 };
+  if (opts.reportJuin) ext[YM(2026, 6)] = 1;
+  const dur = {};
+  for (let d = 1; d <= 18; d++) dur['2026-09-' + String(d).padStart(2, '0')] = 450;
+  dur['2026-09-21'] = 292;
+  Object.assign(dur, opts.extraRendus || {});
+  a.run('S.profile=' + JSON.stringify({ ephSoldeCreatedYM: YM(2026, 9), matelas: 0, ephSoldeSplit: split }) + ';'
+    + 'S.ephExtend=' + JSON.stringify(ext) + ';S.autoExtend={};S.conges={};'
+    + 'var _dur=' + JSON.stringify(dur) + ';Object.keys(_dur).forEach(function(k){S.conges[k]="rend";});'
+    + 'getDur=function(dt){return _dur[dk(dt)]||0;};getVac=function(){return {vac:"",absent:false};};');
+  return a;
+}
+
+// 1. Heures de juin perdues fin septembre (cas réel d'octobre 2026)
+{
+  const a = situation({});
+  eq('Solde au 1/10 = 21h23 (juillet 18h00 + août 3h23)', a.run('calcSoldeRH(new Date(2026,9,1,12)).solde'), 1283);
+  eq('Juin : 11h01 perdues fin septembre', a.run('calcSoldes().preExpiry'), { [YM(2026, 6)]: 661 });
+  eq('Libre à poser en septembre = 32h24', a.run('calcTrueDispo(' + YM(2026, 9) + ').total'), 1944);
+  eq('Libre à poser en octobre = 21h23', a.run('calcTrueDispo(' + YM(2026, 10) + ').total'), 1283);
+}
+// 2. Même situation avec juin reporté : rien n'est perdu
+{
+  const a = situation({ reportJuin: true });
+  eq('Juin reporté : solde au 1/10 = 32h24', a.run('calcSoldeRH(new Date(2026,9,1,12)).solde'), 1944);
+  eq('Juin reporté : aucune heure perdue', a.run('calcSoldes().preExpiry'), {});
+}
+// 3. Un rendu posé plus tard en octobre réduit le libre à poser, pas le solde au 1/10
+{
+  const a = situation({ extraRendus: { '2026-10-20': 450 } });
+  eq('Rendu du 20/10 : solde au 1/10 inchangé', a.run('calcSoldeRH(new Date(2026,9,1,12)).solde'), 1283);
+  eq('Rendu du 20/10 : libre à poser en octobre = 13h53', a.run('calcTrueDispo(' + YM(2026, 10) + ').total'), 833);
+}
+// 4. Expiration : 3 mois après le mois d'acquisition, +3 par report
+{
+  const a = situation({});
+  eq('Juin sans report expire fin septembre', a.run('getExpYm(' + YM(2026, 6) + ')'), YM(2026, 9));
+  eq('Mai reporté expire fin novembre', a.run('getExpYm(' + YM(2026, 5) + ')'), YM(2026, 11));
+}
+// 5. Lecture du tableau RH (faux tableau, même structure que celui du gestionnaire)
+{
+  const a = load('2026-10-01');
+  const cells = {
+    A1: 'Stock au 31/12/2025', D1: 'Conso sur Stock', F1: 'Stock actualisé', Q1: 'Cumul acquisitions', R1: 'Cumul consommations', S1: 'Cumul soldes',
+    A2: 100, D2: 2, F2: 98, Q2: 50, R2: 28.5, S2: 21.5,
+    B3: 46283, // 18/09/2026
+    C5: 'Date acquisition', D5: 'Nature', E5: 'Acquisition', F5: 'Consommation', G5: 'Solde', H5: 'Validité', L5: 'Report 1', M5: 'Validité', Q5: 'Commentaires',
+    C6: 46142, D6: 'Férié', E6: 16, F6: 16, G6: 0,
+    C7: 46173, D7: 'RCR (HS)', E7: 20, F7: 12.5, G7: 7.5, H7: 46265, Q7: '7,5h posées S23 / 22?5h sur S31',
+    C8: 46203, D8: 'Dimanche', E8: 14, F8: 0, G8: 14, H8: 46295, L8: '3 mois', M8: 46387, Q8: '12h sur S35',
+  };
+  a.cells = cells;
+  a.run('var _rh=_rhParse(' + JSON.stringify(cells) + ',"18-09-2026_test.xlsx");');
+  eq('Tableau : date d’édition 18/09/2026', a.run('dk(_rh.edition)'), '2026-09-18');
+  eq('Tableau : matelas (stock actualisé) 98h', a.run('_rh.tot.stockAct'), 5880);
+  eq('Tableau : 3 lignes lues', a.run('_rh.lines.length'), 3);
+  eq('Tableau : rendus par semaine, « 22?5h » lu 22h30', a.run('JSON.stringify(_rh.weeks)'), JSON.stringify({ 23: 450, 31: 1350, 35: 720 }));
+  eq('Tableau : dernière semaine notée S35', a.run('_rh.lastWeek'), 35);
+  eq('Tableau : report de 3 mois sur juin', a.run('_rh.lines[2].rep'), 1);
+  eq('Tableau compacté : même lecture', a.run('JSON.stringify(_rhParse(_rhCompact(' + JSON.stringify(cells) + '),"18-09-2026_test.xlsx").lines)'), a.run('JSON.stringify(_rh.lines)'));
+  // Import : seules les heures encore valables au 18/09 servent de point de départ (mai a expiré le 31/08)
+  a.run('S.profile={};S.conges={};S.ephExtend={};');
+  eq('Import : point de départ = juin 14h, reporté', a.run('(function(){var P=_rhImportPlan(_rh);return JSON.stringify({split:P.split,reports:P.reports});})()'),
+    JSON.stringify({ split: { [YM(2026, 6)]: 840 }, reports: { [YM(2026, 6)]: 1 } }));
+}
+
+console.log('\n' + (count - fails) + '/' + count + ' contrôles réussis');
+if (fails) process.exit(1);
