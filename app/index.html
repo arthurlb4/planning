@@ -3018,8 +3018,9 @@ function _rhParse(cells,fileName){
   let lastWeek=0;lines.forEach(l=>{(l.com.match(/\bS\s?(\d{1,2})\b/gi)||[]).forEach(w=>{const n=+w.replace(/\D/g,'');if(n>=1&&n<=53&&n>lastWeek)lastWeek=n;});});
   const m=v=>typeof v==='number'?Math.round(v*60):null;
   // Heures posées par semaine d'après les commentaires (« 20,5h en S32 », « 24h posées S23 », « 31h posés S2 »)
-  const weeks={};lines.forEach(l=>{const re=/(\d+(?:[.,]\d+)?)\s*h\b[^\d\/·]*?\bS\s?(\d{1,2})\b/gi;let mm;while((mm=re.exec(l.com))){const w=+mm[2],h=Math.round(parseFloat(mm[1].replace(',','.'))*60);if(w>=1&&w<=53&&h>0)weeks[w]=(weeks[w]||0)+h;}});
-  return{edition,lines,lastWeek,weeks,raw:tot,tot:{stock2025:m(tot.stock2025),consoStock:m(tot.consoStock),stockAct:m(tot.stockAct),cumAcq:m(tot.cumAcq),cumCons:m(tot.cumCons),cumSol:m(tot.cumSol)}};
+  // Séparateur décimal toléré même mal tapé (« 22?5h », « 7;5h »), et texte d'origine gardé pour l'afficher
+  const weeks={},weekSrc={};lines.forEach(l=>{const re=/(\d+(?:[.,?;:']\d+)?)\s*h\b[^\d\/·]*?\bS\s?(\d{1,2})\b/gi;let mm;while((mm=re.exec(l.com))){const w=+mm[2],h=Math.round(parseFloat(mm[1].replace(/[,?;:']/,'.'))*60);if(w>=1&&w<=53&&h>0){weeks[w]=(weeks[w]||0)+h;(weekSrc[w]=weekSrc[w]||[]).push(mm[0].trim());}}});
+  return{edition,lines,lastWeek,weeks,weekSrc,raw:tot,tot:{stock2025:m(tot.stock2025),consoStock:m(tot.consoStock),stockAct:m(tot.stockAct),cumAcq:m(tot.cumAcq),cumCons:m(tot.cumCons),cumSol:m(tot.cumSol)}};
 }
 // Nature du tableau RH → clé(s) de l'app
 function _rhNatKey(n){const s=n.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');if(/feri/.test(s))return'fer';if(/dimanche/.test(s))return'dim';if(/rcr|\bhs\b|heures? sup/.test(s))return'hs';if(/^rh\b|repos hebdo/.test(s))return'rh';if(/rament|ramen/.test(s))return'hs';if(/extra/.test(s))return'extra';return'autre:'+n;}
@@ -3245,7 +3246,7 @@ function rhCompareShow(rh){
     const wTracked=sun>=_trkStart,b=wTracked&&cited&&bad(d);if(b)_wkBad++;
     if(wTracked){_wkSh+=sh;_wkApp+=a;}
     return '<tr'+(b?' class="rc-bad"':'')+(wTracked&&cited?'':' style="opacity:.55"')+'><td>S'+w+' <span style="opacity:.6;font-weight:400">'+mon.getDate()+'/'+(mon.getMonth()+1)+'–'+sun.getDate()+'/'+(sun.getMonth()+1)+'</span></td><td>'+(cited?fmtMin(sh):'<span style="opacity:.6">pas cité</span>')+'</td><td>'+(wTracked?(a?fmtMin(a):'—'):'non suivi')+'</td><td>'+(wTracked?fmtE(d):'')+'</td></tr>'
-      +(b&&days.length?'<tr class="rc-dr"><td colspan="4"><div class="rc-days">Rendus de l’app : '+days.map(x=>x.d.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'})+' '+fmtMin(x.dur)).join(' · ')+'</div></td></tr>':'');}).join('')
+      +(b?'<tr class="rc-dr"><td colspan="4"><div class="rc-days">'+(rh.weekSrc&&rh.weekSrc[w]?'Commentaire du gestionnaire : « '+rh.weekSrc[w].join(' » + « ')+' »<br>':'')+(days.length?'Rendus de l’app : '+days.map(x=>x.d.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'})+' '+fmtMin(x.dur)).join(' · '):'Aucun rendu dans l’app cette semaine.')+'</div></td></tr>':'');}).join('')
     +'<tr style="border-top:1px solid var(--border2);font-weight:700"><td>Total</td><td>'+fmtMin(_wkSh)+'</td><td>'+fmtMin(_wkApp)+'</td><td>'+fmtE(_wkApp-_wkSh)+'</td></tr>';
   // Raccord avec la ligne « Cumul consommations » : elle compte les heures retirées par mois d'acquisition, pas les rendus pris
   const _consRh=_partial?_rhT.cons:rh.tot.cumCons,_eW=_wkApp-_wkSh,_eC=sumConsApp-_consRh;
