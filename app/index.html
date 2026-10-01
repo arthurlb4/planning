@@ -1439,8 +1439,12 @@ function updateWarnIcon(warnKeys,expNext){
   }
   if(hasExpiry){
     if(hasWarn)html+='<div style="height:8px"></div>';
-    html+='<div style="font-weight:600;margin-bottom:6px;color:var(--red)">Expire fin du mois prochain</div>';
-    html+=expNext.map(function(e){const y=Math.floor(e.ym/12),m=e.ym%12;return'<div style="padding:2px 0;border-bottom:0.5px solid var(--border2)">'+ML[m]+' '+y+' \u00b7 '+fmtMin(e.avail)+'</div>';}).join('');
+    const MLf=['janvier','f\u00e9vrier','mars','avril','mai','juin','juillet','ao\u00fbt','septembre','octobre','novembre','d\u00e9cembre'];
+    [...new Set(expNext.map(function(e){return e.expYm;}))].forEach(function(ey,i){
+      if(i)html+='<div style="height:6px"></div>';
+      html+='<div style="font-weight:600;margin-bottom:6px;color:var(--red)">Expire fin '+MLf[ey%12]+'</div>';
+      html+=expNext.filter(function(e){return e.expYm===ey;}).map(function(e){const y=Math.floor(e.ym/12),m=e.ym%12;return'<div style="padding:2px 0;border-bottom:0.5px solid var(--border2)">acquises en '+ML[m]+' '+y+' \u00b7 '+fmtMin(e.avail)+'</div>';}).join('');
+    });
   }
   dd.innerHTML=html;
 }
@@ -1582,8 +1586,11 @@ function renderMonth(el_heads,el_cal){
   // Warn keys come directly from the FIFO inside calcSoldes (no double-pass)
   const _cs0=calcSoldes();
   const _warnKeys=_cs0.warnKeys;
-  const _expYmNext=TODAY_YM+1;const _expAlertDate=new Date(Math.floor(_expYmNext/12),_expYmNext%12+1,0).getTime()-14*864e5;
-  const _expNext=Object.keys(_cs0.realAvail).map(Number).filter(function(ym){const av=_cs0.realAvail[ym];return av>0&&getExpYm(ym)===_expYmNext&&NOW.getTime()>=_expAlertDate&&!(S.autoExtend&&S.autoExtend[ym]>0);}).map(function(ym){return{ym,avail:_cs0.realAvail[ym]};});
+  // Alerte d'expiration : heures qui expirent à la fin de ce mois ; à partir de 14 jours avant la fin du mois,
+  // aussi celles qui expirent à la fin du mois suivant
+  const _endCur=new Date(NOW.getFullYear(),NOW.getMonth()+1,0).getTime(),_soon=NOW.getTime()>=_endCur-14*864e5;
+  const _expNext=Object.keys(_cs0.realAvail).map(Number).filter(function(ym){const av=_cs0.realAvail[ym],e=getExpYm(ym);return av>0&&(e===TODAY_YM||(_soon&&e===TODAY_YM+1));})
+    .map(function(ym){return{ym,avail:_cs0.realAvail[ym],expYm:getExpYm(ym)};}).sort(function(a,b){return a.expYm-b.expYm||a.ym-b.ym;});
   const cells=[];
   const _VAC=getVAC();
   // Previous month overflow days (greyed)
