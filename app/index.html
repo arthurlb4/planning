@@ -1873,20 +1873,23 @@ function updateCounters(){
   // Expiry current viewed month — split between truly expiring and reported
   const _viewExpYM=curY*12+curM;
   let _expViewAmt=0,_repViewAmt=0;
-  Object.keys(realAvail).map(Number).forEach(function(ym){
-    if(realAvail[ym]>0){
+  // Mois déjà expirés : realAvail est à 0, on prend ce qui restait juste avant l'expiration (preExpiry)
+  const _viewPast=_viewExpYM<TODAY_YM;
+  [...new Set(Object.keys(realAvail).concat(Object.keys(preExpiry)))].map(Number).forEach(function(ym){
+    const av=getExpYm(ym)<TODAY_YM?(preExpiry[ym]||0):(realAvail[ym]||0);
+    if(av>0){
       if(getExpYm(ym)===_viewExpYM){
-        if(getEphExtensions(ym)>0)_repViewAmt+=realAvail[ym];
-        else _expViewAmt+=realAvail[ym];
-      } else if(getBaseExpYm(ym)===_viewExpYM&&getEphExtensions(ym)>0){
-        _repViewAmt+=realAvail[ym];
+        if(getEphExtensions(ym)>0)_repViewAmt+=av;
+        else _expViewAmt+=av;
+      } else if(getBaseExpYm(ym)===_viewExpYM&&getEphExtensions(ym)>0&&getExpYm(ym)>=TODAY_YM){
+        _repViewAmt+=av;
       }
     }
   });
   const _expVal=document.getElementById('eph-exp-val'),_expLbl=document.getElementById('eph-exp-lbl');
   if(_expViewAmt>0){
     if(_expVal){_expVal.textContent=fmtMin(_expViewAmt);_expVal.style.color='var(--red)';}
-    if(_expLbl)_expLbl.textContent='Expire '+MC[curM].slice(0,3);
+    if(_expLbl)_expLbl.textContent=(_viewPast?'Perdu ':'Expire ')+MC[curM].slice(0,3);
   }else if(_repViewAmt>0){
     if(_expVal){_expVal.textContent=fmtMin(_repViewAmt);_expVal.style.color='var(--green)';}
     if(_expLbl)_expLbl.textContent='Report '+MC[curM].slice(0,3);
@@ -1955,7 +1958,7 @@ function updateCounters(){
     }
     _fitSideMonth();
   }
-  _renderSideV2({mym,matelas,cRest,dispAtView,expViewAmt:_expViewAmt,repViewAmt:_repViewAmt,rows:_bRows,gt,hsTotal,useHSRendu,nuitTotal,paye_tc,primeParts});
+  _renderSideV2({mym,matelas,cRest,dispAtView,viewPast:_viewPast,expViewAmt:_expViewAmt,repViewAmt:_repViewAmt,rows:_bRows,gt,hsTotal,useHSRendu,nuitTotal,paye_tc,primeParts});
   updateRecap();
 }
 
@@ -2005,7 +2008,7 @@ function _renderSideV2(d){
   var col=function(lbl,val,color,sub,click){return '<div class="sv2-col'+(click?' clk':'')+'"'+(click?' onclick="event.stopPropagation();'+click+'"':'')+'><div class="sv2-lbl">'+lbl+'</div><div class="sv2-val" style="color:'+(val==='—'?'var(--text3)':color)+'">'+val+'</div><div class="sv2-sub">'+(sub||'')+'</div></div>';};
   // Soldes (cumulés)
   var monthLine;
-  if(d.expViewAmt>0)monthLine='<span style="color:var(--red)">'+fmtMin(d.expViewAmt)+' expirent</span>';
+  if(d.expViewAmt>0)monthLine='<span style="color:var(--red)">'+fmtMin(d.expViewAmt)+(d.viewPast?' perdues':' expirent')+'</span>';
   else if(d.repViewAmt>0)monthLine='<span style="color:var(--green)">'+fmtMin(d.repViewAmt)+' reportées</span>';
   else monthLine='rien n’expire';
   // Mobile : la page ne défile pas, la liste est retirée (comme dans l'ancienne colonne)
