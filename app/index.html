@@ -2899,13 +2899,14 @@ function calcSoldeRH(asOf){
   const acquisRows=[];
   _yms.forEach(function(ym){if(ym<TODAY_YM&&getExpYm(ym)>=TODAY_YM&&_sim[ym]>0)acquisRows.push({ym:ym,acquis:_sim[ym]});});
   const _acq={};_yms.forEach(function(ym){_acq[ym]=_sim[ym];});
-  let surStock=0,rendusPris=0;const rendusList=[];
+  let surStock=0,rendusPris=0;const rendusList=[],alloc={};
   Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='rend'&&k<=todayKey;}).sort().forEach(function(k){
     const _d=new Date(k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth();let _lft=getDur(_d);
     rendusPris+=_lft;rendusList.push({key:k,dur:_lft});
     _yms.forEach(function(_ym){
       if(_lft<=0||_sim[_ym]<=0||getBaseExpYm(_ym)<_pym||_ym>_pym)return;
       const _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;
+      (alloc[_ym]=alloc[_ym]||[]).push({key:k,amt:_tk});
     });
     surStock+=_lft; // non couvert par les heures du mois → pris sur le matelas
   });
@@ -2913,7 +2914,7 @@ function calcSoldeRH(asOf){
   let solde=0,courant=0;const rows=[];
   acquisRows.forEach(function(r){const reste=_sim[r.ym]||0;solde+=reste;rows.push({ym:r.ym,acquis:r.acquis,conso:r.acquis-reste,reste:reste,expYm:getExpYm(r.ym)});});
   if(getExpYm(TODAY_YM)>=TODAY_YM)courant=Math.max(0,_sim[TODAY_YM]||0);
-  return{solde:solde,courant:courant,stockAll:solde+courant,rows:rows,perMonth:perMonth,surStock:surStock,rendusPris:rendusPris,rendusList:rendusList};
+  return{solde:solde,courant:courant,stockAll:solde+courant,rows:rows,perMonth:perMonth,surStock:surStock,rendusPris:rendusPris,rendusList:rendusList,alloc:alloc};
 }
 
 // ============================================================
@@ -3023,10 +3024,13 @@ function rhCompareShow(rh){
     if(tracked){sumAcqApp+=pm.acquis-(g.solde||0);sumConsApp+=pm.conso;sumSolApp+=appSol;}
     const dC=pm.conso-M.cons,dS=appSol-M.solde;
     const consBad=tracked&&bad(dC),solBad=tracked&&bad(dS);if(consBad||solBad)monthBad=true;if(monthBad)nbBad++;
+    // Rendus que l'app impute à ce mois (à rapprocher des commentaires du tableau RH)
+    const _al=(app.alloc[ym]||[]);
+    const consDays=consBad&&_al.length?'<tr class="rc-dr"><td colspan="4"><div class="rc-days">Rendus comptés par l’app sur ce mois : '+_al.map(x=>{const d=new Date(x.key+'T12:00:00');return d.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'})+' (S'+getISOWeek(getMonday(d))+') '+fmtMin(x.amt);}).join(' · ')+'</div></td></tr>':'';
     const totAcqS=Object.values(M.nat).reduce((x,y)=>x+y,0),totAcqA=Object.values(appNat).reduce((x,y)=>x+y,0);
-    return '<div class="rc-m'+(monthBad?' rc-open':'')+'"><div class="rc-mh" onclick="this.parentNode.classList.toggle(\'rc-open\')"><span>'+(monthBad?'<i class="ti ti-alert-triangle" style="color:var(--amber)"></i> ':'<i class="ti ti-check" style="color:var(--green)"></i> ')+ymL(ym)+'</span><span class="rc-sm">acquis '+fmtMin(totAcqS)+' / '+(tracked?fmtMin(totAcqA):'—')+' <i class="ti ti-chevron-down"></i></span></div>'
+    return '<div class="rc-m'+(monthBad?' rc-open':'')+'"><div class="rc-mh" onclick="this.parentNode.classList.toggle(\'rc-open\')"><span'+(tracked?'':' style="color:var(--text3)"')+'>'+(!tracked?'<i class="ti ti-minus" style="color:var(--text3)"></i> ':monthBad?'<i class="ti ti-alert-triangle" style="color:var(--amber)"></i> ':'<i class="ti ti-check" style="color:var(--green)"></i> ')+ymL(ym)+'</span><span class="rc-sm">'+(tracked?'acquis '+fmtMin(totAcqS)+' / '+fmtMin(totAcqA):'non suivi par l’app')+' <i class="ti ti-chevron-down"></i></span></div>'
       +'<div class="rc-mb"><table class="rc-t"><tr><th></th><th>Tableau RH</th><th>App</th><th>Écart</th></tr>'+natRows
-      +'<tr'+(consBad?' class="rc-bad"':'')+'><td>Consommées</td><td>'+(M.cons?fmtMin(M.cons):'—')+'</td><td>'+(tracked?(pm.conso?fmtMin(pm.conso):'—'):'')+'</td><td>'+(tracked?fmtE(dC):'')+'</td></tr>'
+      +'<tr'+(consBad?' class="rc-bad"':'')+'><td>Consommées</td><td>'+(M.cons?fmtMin(M.cons):'—')+'</td><td>'+(tracked?(pm.conso?fmtMin(pm.conso):'—'):'')+'</td><td>'+(tracked?fmtE(dC):'')+'</td></tr>'+consDays
       +'<tr'+(solBad?' class="rc-bad"':'')+'><td>Solde'+(valid?'':' <span style="opacity:.6">(expiré)</span>')+'</td><td>'+(M.solde?fmtMin(M.solde):'—')+'</td><td>'+(tracked?(appSol?fmtMin(appSol):'—'):'')+'</td><td>'+(tracked?fmtE(dS):'')+'</td></tr>'
       +(M.stock?'<tr><td>Pris sur le matelas</td><td>'+fmtMin(M.stock)+'</td><td></td><td></td></tr>':'')
       +'</table>'+(M.com.length?'<div class="rc-com"><i class="ti ti-message"></i> '+M.com.join(' · ')+'</div>':'')+'</div></div>';
