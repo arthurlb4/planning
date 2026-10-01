@@ -279,15 +279,15 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 #side-month{display:none}
 @media(max-width:720px){
   .side-col{position:relative;padding-left:24px!important}
-  #side-month{display:flex;align-items:center;justify-content:center;position:absolute;left:5px;z-index:0;opacity:.45;top:var(--rl);bottom:calc(20px + var(--rl));width:23px;writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;overflow:hidden;--sm-c:var(--text3)}
+  #side-month{display:flex;align-items:center;justify-content:center;position:absolute;left:0;z-index:0;opacity:.45;top:var(--rl);bottom:calc(20px + var(--rl));width:23px;writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;overflow:hidden;--sm-c:var(--text3)}
   #side-month.now{--sm-c:var(--gold)}
-  /* Filets de part et d'autre du mot (axe vertical grâce à writing-mode) */
   /* Les cases passent par-dessus le bas des lettres */
   .side-col>.bloc,.side-col>#ctr-main,.side-col>#side-v2{position:relative;z-index:1}
   /* Lettres collées au bord des cases (côté droit de la bande = pied des lettres) */
   #side-month{justify-content:center;align-items:flex-end}
-  #side-month .sm-txt{display:inline-block;font-size:24px;line-height:.82;font-weight:800;font-style:italic;letter-spacing:.12em;text-transform:uppercase;color:var(--sm-c);transition:color .3s}
-  #side-month .sm-y{font-size:12px;font-weight:700;letter-spacing:.05em;color:var(--sm-c);margin-inline-start:6px;opacity:.7}
+  /* Taille, largeur et retrait calculés par _fitSideMonth() ; line-height ≈ hauteur des capitales */
+  #side-month .sm-txt{display:inline-block;font-size:24px;line-height:.72;font-weight:800;font-style:italic;letter-spacing:.04em;text-transform:uppercase;color:var(--sm-c);transition:color .3s}
+  #side-month .sm-y{font-size:.42em;font-weight:700;letter-spacing:.05em;color:var(--sm-c);margin-inline-start:.3em;vertical-align:.55em;opacity:.75}
   #side-month .sm-txt.sm-in{animation:smIn .28s ease}
   #side-month .sm-txt.sm-in-rev{animation:smInRev .28s ease}
 }
@@ -1883,15 +1883,30 @@ function updateCounters(){
       _smEl.innerHTML='<span class="sm-txt'+(_animate?(_calNavDir<0?' sm-in-rev':' sm-in'):'')+'">'+ML[curM]+'<span class="sm-y">'+String(curY).slice(2)+'</span></span>';
       _smEl._mym=mym;
     }
-    // Mois longs (septembre…) : réduire la taille pour garder les lettres dans la hauteur des cases
-    const _smTxt=_smEl.querySelector('.sm-txt');
-    if(_smTxt&&_smEl.offsetHeight){
-      let _fs=24;_smTxt.style.fontSize=_fs+'px';
-      while(_fs>14&&_smTxt.getBoundingClientRect().height>_smEl.offsetHeight-24){_fs--;_smTxt.style.fontSize=_fs+'px';}
-    }
+    _fitSideMonth();
   }
   _renderSideV2({mym,matelas,cRest,dispAtView,expViewAmt:_expViewAmt,repViewAmt:_repViewAmt,rows:_bRows,gt,hsTotal,useHSRendu,nuitTotal,paye_tc,primeParts});
   updateRecap();
+}
+
+// Mobile : taille du mois vertical telle que « SEPTEMBRE 26 » occupe toute la hauteur des cases ;
+// les lettres sont coupées aux 4/5 de leur hauteur, le pied passe sous les cases.
+function _fitSideMonth(){
+  var el=document.getElementById('side-month'),sc=document.querySelector('.side-col');
+  if(!el||!sc)return;
+  if(window.innerWidth>720||!el.offsetHeight){sc.style.removeProperty('padding-left');return;}
+  var txt=el.querySelector('.sm-txt');if(!txt)return;
+  // Longueur de référence de « SEPTEMBRE 26 » à 100 px, mesurée une fois
+  if(!_fitSideMonth._ref){
+    var probe=document.createElement('span');probe.className='sm-txt';probe.style.fontSize='100px';probe.style.visibility='hidden';probe.style.position='absolute';
+    probe.innerHTML='Septembre<span class="sm-y">26</span>';el.appendChild(probe);
+    _fitSideMonth._ref=probe.getBoundingClientRect().height;el.removeChild(probe);
+  }
+  var fs=Math.max(16,Math.floor(el.offsetHeight/_fitSideMonth._ref*100));
+  var cap=0.72*fs,visible=Math.round(cap*0.8),hidden=Math.round(cap*0.2);
+  txt.style.fontSize=fs+'px';
+  sc.style.setProperty('padding-left',(visible+2)+'px','important');
+  el.style.width=(visible+2+hidden)+'px';
 }
 
 // ── Colonne latérale, nouvelle présentation (choix « Nouvelle / Ancienne » dans les réglages) ──
@@ -6285,7 +6300,7 @@ function _checkSideBelow(){
     requestAnimationFrame(_fitCalendar);
   }
 }
-window.addEventListener('resize',function(){_applyBigScreenZoom();_fitCalendar();if(annualOpen)_fitAnnual();_syncSideTop();_checkSideBelow();});
+window.addEventListener('resize',function(){_applyBigScreenZoom();_fitCalendar();_fitSideMonth();if(annualOpen)_fitAnnual();_syncSideTop();_checkSideBelow();});
 
 function syncWknHeight(){
   setTimeout(function(){
