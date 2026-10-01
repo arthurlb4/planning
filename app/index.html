@@ -3079,9 +3079,8 @@ function rhImportPreview(rh){
   const curSplit=pr.ephSoldeSplit&&Object.keys(pr.ephSoldeSplit).length?Object.keys(pr.ephSoldeSplit).map(Number).sort((a,b)=>a-b).map(ym=>ymL(ym)+' '+fmtMin(pr.ephSoldeSplit[ym])).join('<br>'):fmtMin(Math.round((pr.ephSolde||0)*60));
   const newSplit=Object.keys(P.split).map(Number).sort((a,b)=>a-b).map(ym=>ymL(ym)+' '+fmtMin(P.split[ym])+(P.reports[ym]?' <span style="opacity:.7">(report '+P.reports[ym]*3+' mois)</span>':'')).join('<br>')||'0h00';
   const curStart=pr.ephBaseDate?new Date(pr.ephBaseDate+'T12:00:00').toLocaleDateString('fr-FR'):(pr.ephSoldeCreatedYM!==undefined?'début '+ymL(pr.ephSoldeCreatedYM):'—');
-  const histH=P.toHist.reduce((t,k)=>t+getDur(new Date(k+'T12:00:00')),0);
-  const others=P.toHist.filter(k=>!P.maybeLate.includes(k));
-  const lateCb=(k,on)=>{const d=new Date(k+'T12:00:00');return '<label style="display:flex;align-items:center;gap:8px;font-size:12px;padding:4px 0;color:var(--text2)"><input type="checkbox" class="rhi-late" value="'+k+'"'+(on?' checked':'')+' style="width:16px;height:16px;accent-color:var(--blue)"> '+d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})+' (S'+getISOWeek(getMonday(d))+') · '+fmtMin(getDur(d))+'</label>';};
+  const histH=P.toHist.filter(k=>!P.maybeLate.includes(k)).reduce((t,k)=>t+getDur(new Date(k+'T12:00:00')),0);
+  const hist=P.toHist.filter(k=>!P.maybeLate.includes(k));
   const html='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet" style="max-height:88vh;overflow:auto">'
     +'<div class="sh"></div><div class="st">Repartir de ton tableau RH</div>'
     +'<div style="font-size:11px;color:var(--text3);margin:2px 0 10px">Tableau édité le '+P.ed.toLocaleDateString('fr-FR')+' · fichier lu sur ton appareil, rien n’est envoyé</div>'
@@ -3092,15 +3091,9 @@ function rhImportPreview(rh){
     +row('Début du suivi',curStart,P.ed.toLocaleDateString('fr-FR'))
     +'</table>'
     +'<div class="rc-note">Ensuite, l’app calcule elle-même les heures acquises à partir de ton planning, à compter du '+P.ed.toLocaleDateString('fr-FR')+'.</div>'
-    +(P.toHist.length?'<div class="rc-note"><i class="ti ti-history" style="color:var(--blue)"></i> <b>'+P.toHist.length+' rendu'+(P.toHist.length>1?'s':'')+(P.maybeLate.length?' (dont '+P.maybeLate.length+' à vérifier ci-dessous)':'')+' jusqu’au '+P.ed.toLocaleDateString('fr-FR')+' ('+fmtMin(histH)+')</b> sont déjà déduits du solde du tableau : ils restent affichés dans le calendrier mais ne seront plus décomptés, pour ne pas les retirer deux fois.</div>':'')
-    +(P.maybeLate.length?'<div class="rc-start"><div class="rc-st" style="color:var(--amber)"><i class="ti ti-alert-triangle"></i> Rendus peut-être pas encore saisis par le gestionnaire</div>'
-      +'<div class="rc-sd">Ces rendus sont postérieurs à la dernière semaine citée dans ses commentaires (S'+rh.lastWeek+'). Coche ceux qu’il n’a <b>pas encore</b> déduits : l’app les décomptera elle-même. Dans le doute, laisse coché : la prochaine comparaison te dira s’il les avait déjà.</div>'
-      +P.maybeLate.map(k=>lateCb(k,true)).join('')
-      +'</div>':'')
-    +(others.length?'<details class="rc-start" style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:var(--text2)">Un autre rendu manque dans le tableau ? ('+others.length+' rendu'+(others.length>1?'s':'')+' avant le '+P.ed.toLocaleDateString('fr-FR')+')</summary>'
-      +'<div class="rc-sd" style="margin-top:6px">Coche ceux que le gestionnaire n’a pas déduits : l’app les décomptera elle-même. Tu pourras aussi changer d’avis plus tard en touchant le jour dans le calendrier.</div>'
-      +others.map(k=>lateCb(k,false)).join('')
-      +'</details>':'')
+    +(hist.length?'<div class="rc-note"><i class="ti ti-history" style="color:var(--blue)"></i> <b>'+hist.length+' rendu'+(hist.length>1?'s':'')+' jusqu’au '+(rh.lastWeek?'dimanche de la S'+rh.lastWeek:P.ed.toLocaleDateString('fr-FR'))+' ('+fmtMin(histH)+')</b> : déjà déduit'+(hist.length>1?'s':'')+' dans le tableau. Ils restent affichés dans le calendrier, mais l’app ne les retire pas une deuxième fois.</div>':'')
+    +(P.maybeLate.length?'<div class="rc-note"><i class="ti ti-clock" style="color:var(--blue)"></i> <b>'+P.maybeLate.length+' rendu'+(P.maybeLate.length>1?'s':'')+' après la S'+rh.lastWeek+'</b>, dernière semaine notée par le gestionnaire ('+P.maybeLate.map(k=>new Date(k+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'})).join(', ')+') : pas encore dans son tableau, l’app les décompte elle-même.</div>':'')
+    +(P.toHist.length?'<div class="rc-com" style="margin:2px 0 4px">Si l’app s’est trompée sur un rendu, touche le jour dans le calendrier pour corriger.</div>':'')
     +'<button class="rc-btn" style="margin-top:10px;height:40px" onclick="rhImportApply()">Importer et repartir de ce tableau</button>'
     +'<button class="rc-btn rc-btn2" style="margin-top:8px;height:36px" onclick="closeModal()">Annuler</button>'
     +'</div></div>';
@@ -3108,7 +3101,7 @@ function rhImportPreview(rh){
 }
 function rhImportApply(){
   const rh=window._rhLast;if(!rh)return;
-  const keep=new Set([...document.querySelectorAll('.rhi-late:checked')].map(c=>c.value));
+  const keep=new Set(_rhImportPlan(rh).maybeLate); // rendus après la dernière semaine notée : décomptés par l'app
   const P=_rhImportPlan(rh,keep),pr=S.profile;
   // Sauvegarde pour pouvoir annuler l'import
   pr._rhImportBackup={matelas:pr.matelas,ephSolde:pr.ephSolde,ephSoldeCreatedYM:pr.ephSoldeCreatedYM,ephSoldeSplit:pr.ephSoldeSplit?Object.assign({},pr.ephSoldeSplit):null,ephBaseDate:pr.ephBaseDate||null,ephExtend:Object.assign({},S.ephExtend||{}),toHist:P.toHist,at:Date.now()};
@@ -3225,7 +3218,7 @@ function rhCompareShow(rh){
     const totAcqS=Object.values(M.nat).reduce((x,y)=>x+y,0),totAcqA=Object.values(appNat).reduce((x,y)=>x+y,0);
     // Utilisation et solde de ce mois : affichés dans un bloc à part (pas avec les acquisitions)
     if(tracked||cmpSol)useRows.push('<tr class="rc-ym"><td colspan="4">'+ymL(ym)+(valid?'':' <span style="opacity:.6;font-weight:400">(expiré)</span>')+'</td></tr>'
-      +'<tr'+(consBad?' class="rc-bad"':'')+'><td>Utilisées</td><td>'+(M.cons?fmtMin(M.cons):'—')+'</td><td>'+(tracked?(consA?fmtMin(consA):'—'):'<span style="opacity:.6">non suivi</span>')+'</td><td>'+(tracked?fmtE(dC):'')+'</td></tr>'
+      +'<tr'+(consBad?' class="rc-bad"':'')+'><td>Consommées</td><td>'+(M.cons?fmtMin(M.cons):'—')+'</td><td>'+(tracked?(consA?fmtMin(consA):'—'):'<span style="opacity:.6">non suivi</span>')+'</td><td>'+(tracked?fmtE(dC):'')+'</td></tr>'
       +(tracked&&lagMin>0?'<tr class="rc-lag"><td>Pas encore notés <span style="opacity:.6;font-weight:400">(après S'+rh.lastWeek+')</span></td><td>—</td><td>'+fmtMin(lagMin)+'</td><td></td></tr>':'')+consDays
       +(M.stock?'<tr><td>Pris sur le matelas</td><td>'+fmtMin(M.stock)+'</td><td></td><td></td></tr>':'')
       +'<tr'+(solBad?' class="rc-bad"':'')+'><td>Restantes</td><td>'+(M.solde?fmtMin(M.solde):'—')+'</td><td>'+(cmpSol?(appSol?fmtMin(appSol):'—'):'')+'</td><td>'+(cmpSol?fmtE(dS):'')+'</td></tr>');
@@ -3292,8 +3285,8 @@ function rhCompareShow(rh){
     +'<div class="rc-note">'+(nbBad?'<b style="color:var(--amber)">'+nbBad+' mois avec un écart</b> (ouverts ci-dessous). Pour les acquisitions, l’app liste ses jours pour t’aider à retrouver l’erreur.':'<b style="color:var(--green)">Aucun écart par mois.</b>')+' Écarts de moins de 2 min ignorés (arrondis).</div>'
     +startBlock
     +weeksBlock
-    +(useRows.length?'<div class="rc-m'+(useBad?' rc-open':'')+'"><div class="rc-mh" onclick="this.parentNode.classList.toggle(\'rc-open\')"><span>'+(useBad?'<i class="ti ti-alert-triangle" style="color:var(--amber)"></i> ':'<i class="ti ti-check" style="color:var(--green)"></i> ')+'Heures utilisées et restantes</span><span class="rc-sm">par mois d’acquisition <i class="ti ti-chevron-down"></i></span></div>'
-      +'<div class="rc-mb"><div class="rc-com" style="margin:0 0 6px">Pour chaque mois d’heures acquises : combien ont servi à des rendus (pris ce mois-là ou plus tard), et combien il en reste. C’est ce que comptent les colonnes Consommation et Solde du tableau.</div><table class="rc-t"><tr><th></th><th>Tableau RH</th><th>App</th><th>Écart</th></tr>'+useRows.join('')+'</table></div></div>':'')
+    +(useRows.length?'<div class="rc-m'+(useBad?' rc-open':'')+'"><div class="rc-mh" onclick="this.parentNode.classList.toggle(\'rc-open\')"><span>'+(useBad?'<i class="ti ti-alert-triangle" style="color:var(--amber)"></i> ':'<i class="ti ti-check" style="color:var(--green)"></i> ')+'Heures consommées et restantes</span><span class="rc-sm">par mois d’acquisition <i class="ti ti-chevron-down"></i></span></div>'
+      +'<div class="rc-mb"><div class="rc-com" style="margin:0 0 6px">Pour chaque mois d’heures acquises : combien ont été consommées par des rendus (pris ce mois-là ou plus tard), et combien il en reste. Comme les colonnes Consommation et Solde du tableau : les heures les plus anciennes partent en premier.</div><table class="rc-t"><tr><th></th><th>Tableau RH</th><th>App</th><th>Écart</th></tr>'+useRows.join('')+'</table></div></div>':'')
     +'<div class="rc-st" style="margin:14px 0 6px;font-size:13px;color:var(--text)">Acquisitions par mois</div>'
     +sections
     +'<button class="mb wide" style="margin-top:12px;width:100%" onclick="closeModal()">Fermer</button>'
