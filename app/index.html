@@ -635,6 +635,8 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 
 /* Recap */
 .sv-sw{display:flex;gap:2px;background:var(--bg3);border-radius:9px;padding:2px;margin:0 auto 12px;width:max-content}.sv-sw button{border:none;background:none;color:var(--text3);font-size:11.5px;padding:5px 14px;border-radius:7px;font-family:var(--font);cursor:pointer}.sv-sw button.on{background:var(--bg2);color:var(--text);font-weight:600}
+.sv-yr{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}.sv-yr span{font-size:13px;font-weight:600;color:var(--text)}.sv-yr button{border:none;background:none;color:var(--blue);font-size:11.5px;font-family:var(--font);cursor:pointer;padding:4px 2px}
+.sv-pr{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:11.5px;cursor:pointer}.sv-pr .l{flex:1;color:var(--text3)}.sv-pr b{color:var(--gold-pay);width:78px;text-align:right}.sv-pr .s{width:74px;text-align:right;font-size:10.5px;white-space:nowrap}.sv-pr i{font-style:normal;color:var(--text3);width:8px}
 .sv-btns{display:flex;gap:8px;margin-bottom:10px}.sv-btns button{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:14px 8px;border:0.5px solid var(--border);border-radius:14px;background:var(--bg3);color:var(--blue);font-size:12.5px;font-weight:600;font-family:var(--font);cursor:pointer}.sv-btns i{font-size:22px}
 .sv-card{background:var(--bg3);border:0.5px solid var(--border);border-radius:14px;padding:12px;margin-bottom:8px}.sv-h{font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px}.sv-h small{font-weight:400;font-size:10.5px;color:var(--text3);margin-left:4px}
 .sv-line{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;font-size:12.5px;color:var(--text2);border-top:0.5px solid var(--border2)}.sv-line:first-of-type{border-top:none}.sv-tap{cursor:pointer}.sv-r{display:flex;align-items:baseline;gap:6px}.sv-r b{font-size:13.5px}.sv-r small{font-size:10.5px;color:var(--text3)}.sv-r i{font-style:normal;color:var(--text3);margin-left:2px}
@@ -2115,7 +2117,7 @@ function _renderSideV2(d){
   var prevMn=(curM+11)%12;
   // Bulletin importé pour ce mois : son brut et l'état de la comparaison
   var _bu=(S.bulletins||{})[d.mym],_bc=null,_bst=null;if(_bu){try{_bc=_bulCompare(_bu);_bst=_BUL_ST[_bc.status];}catch(e){}}
-  var paie='<div class="bloc clk" onclick="openMergedMoisModal('+d.mym+',4)">'
+  var paie='<div class="bloc clk" onclick="openSuiviSalaire('+curY+')">'
     +'<div class="sv2-t"><span>Paie</span></div>'
     +'<div class="sv2-pay" style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:10px"><span class="sv2-lbl" style="font-size:11px">'+(_bu?'Brut du bulletin':'Brut estimé')+'</span>'
     +'<span class="sv2-val" style="font-size:22px;color:'+(brutOk||_bu?'var(--gold-pay)':'var(--text3)')+'">'+(_bu?fmtEuro(_bu.brut):brutOk?fmtEuro(pt.total):'—')+'</span></div>'
@@ -2628,24 +2630,41 @@ function suiviSetMode(m){try{localStorage.setItem('pl_suivi_mode',m);}catch(e){}
   document.querySelectorAll('.sv-sw button').forEach(function(x){x.classList.toggle('on',x.dataset.m===m);});}
 function _suiviSwitch(){var m=_suiviMode();return '<div class="sv-sw"><button data-m="simple" class="'+(m==='simple'?'on':'')+'" onclick="suiviSetMode(\'simple\')">Simple</button><button data-m="full" class="'+(m==='simple'?'':'on')+'" onclick="suiviSetMode(\'full\')">Complet</button></div>';}
 function _suiviSimple(y){
-  var fe=function(x){return (x>0?'+':'')+fmtEuro(x).replace(/\s*€/,' €');};
   // Rendus : écart du dernier tableau Gestion (+ = le tableau laisse plus d'heures que l'app)
   var c=S.profile&&S.profile.rhCmp,o=S.profile&&S.profile.rhTable,rd;
   if(!c||!o)rd='<div class="sv-line"><span>Aucun tableau importé</span></div>';
   else{var e=-c.d,ok=Math.abs(e)<2;
     rd='<div class="sv-line sv-tap" onclick="rhOpenFromRecap()"><span>Tableau du '+new Date(c.ed+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long'})+'</span><span class="sv-r">'
       +(ok?'<b style="color:var(--green)">✓ identique</b>':'<b style="color:'+(e>0?'var(--green)':'var(--red)')+'">'+(e>0?'+':'−')+fmtMin(Math.abs(e))+'</b><small>'+(e>0?'favorable':'à faire corriger')+'</small>')+'<i>›</i></span></div>';}
-  // Salaire : un mot par bulletin importé
-  var yms=Object.keys(S.bulletins||{}).map(Number).filter(function(k){return Math.floor(k/12)===y;}).sort(function(a,b){return a-b;}),sal='';
-  yms.forEach(function(ym){var cc;try{cc=_bulCompare(S.bulletins[ym]);}catch(er){return;}
-    var ok=cc.status!=='ecart',d=cc.diff;
-    sal+='<div class="sv-line sv-tap" onclick="openBulletinModal('+ym+',\'recap\')"><span>'+ML[ym%12]+'</span><span class="sv-r">'
-      +(ok?'<b style="color:var(--green)">✓ conforme</b>'+(cc.status==='late'?'<small>rattrapages</small>':''):Math.abs(d)<0.05?'<b style="color:var(--amber)">⚠ même total</b><small>lignes à vérifier</small>':'<b style="color:'+(d>0?'var(--green)':'var(--red)')+'">'+fe(d)+'</b><small>'+(d>0?'favorable':'à vérifier')+'</small>')+'<i>›</i></span></div>';});
-  if(!sal)sal='<div class="sv-line"><span>Aucun bulletin importé</span></div>';
   return '<div class="sv-btns"><button onclick="rhOpenFromRecap(true)"><i class="ti ti-table-import"></i>Tableau Gestion</button><button onclick="window._bulFrom=\'recap\';importBulletins()"><i class="ti ti-file-import"></i>Bulletins (PDF)</button></div>'
     +'<div class="sv-card"><div class="sv-h">Rendus <small>écart avec le tableau Gestion</small></div>'+rd+'</div>'
-    +'<div class="sv-card"><div class="sv-h">Salaire '+y+' <small>écart avec les bulletins</small></div>'+sal+'</div>';
+    +'<div class="sv-card" id="sv-sal">'+_svSalHtml(window._svYear||y)+'</div>';
 }
+// Salaire de l'année, style de l'onglet Paie : tous les mois, brut du bulletin s'il est importé, sinon estimé
+function _svSalHtml(y){
+  var nowYM=NOW.getFullYear()*12+NOW.getMonth(),rows='',tot=0,nB=0,nE=0,nBad=0;
+  var fe=function(x){return fmtEuro(x).replace(/\s*€/,'');};
+  for(var m=0;m<12;m++){
+    var ym=y*12+m,pt;try{pt=calcPayeMois(y,m);}catch(e){continue;}
+    if(!(pt&&pt.configured&&pt.salQ&&pt.heures))continue;
+    var bu=(S.bulletins||{})[ym],fut=ym>nowYM,val=bu?bu.brut:pt.total,st='';
+    tot+=val;
+    if(bu){nB++;var cc=null;try{cc=_bulCompare(bu);}catch(e){}
+      if(cc&&cc.status!=='ecart')st='<span style="color:var(--green)">✓ bulletin</span>';
+      else{nBad++;var d=cc?cc.diff:0;st=Math.abs(d)<0.05?'<span style="color:var(--amber)">⚠ lignes</span>':'<span style="color:'+(d>0?'var(--green)':'var(--red)')+'">'+(d>0?'+':'−')+fe(Math.abs(d))+'</span>';}}
+    else{nE++;st='<span style="color:var(--text3)">'+(fut?'prévu':'estimé')+'</span>';}
+    rows+='<div class="sv-pr" onclick="'+(bu?'openBulletinModal('+ym+',\'recap\')':'openMergedMoisModal('+ym+',4)')+'"><span class="l">'+ML[m]+'</span><b style="opacity:'+(bu?'1':'.6')+'">'+fe(val)+'</b><span class="s">'+st+'</span><i>›</i></div>';
+  }
+  return '<div class="sv-yr"><button onclick="_svYearGo('+(y-1)+')">‹ '+(y-1)+'</button><span>Salaire '+y+'</span><button onclick="_svYearGo('+(y+1)+')">'+(y+1)+' ›</button></div>'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0 2px"><span style="font-size:11px;color:var(--text3)">total brut'+(nE?' · dont '+nE+' mois estimé'+(nE>1?'s':''):'')+'</span><span style="font-size:17px;font-weight:700;color:var(--gold-pay)">'+(rows?fe(tot):'—')+'</span></div>'
+    +'<div style="font-size:10.5px;color:var(--text3);margin-bottom:6px">'+(nB?nB+' bulletin'+(nB>1?'s':'')+' importé'+(nB>1?'s':'')+(nBad?' · '+nBad+' à vérifier':' · tous conformes'):'aucun bulletin importé')+'</div>'
+    +'<div class="sep" style="margin:4px 0 4px"></div>'
+    +(rows||'<div style="font-size:11px;color:var(--text3);padding:6px 0">Renseigner la paie dans Réglages → Paie pour voir l’estimation.</div>');
+}
+function _svYearGo(y){window._svYear=y;var el=document.getElementById('sv-sal');if(el)el.innerHTML=_svSalHtml(y);}
+// Accueil → bloc Paie : ouvre le salaire du Suivi (vue simple), sur l'année affichée
+function openSuiviSalaire(y){window._svYear=y;suiviSetMode('simple');openMergedRenduCgModal(6,2);suiviSetMode('simple');
+  setTimeout(function(){var el=document.getElementById('sv-sal');if(el)el.scrollIntoView({block:'start',behavior:'smooth'});},250);}
 // Bloc « Rendus » du récap : heures acquises et rendus posés mois par mois, acquises vérifiées avec le tableau Gestion
 function _acqHtml(y,dispoTxt){
   var gen=buildGen(false),nowYM=NOW.getFullYear()*12+NOW.getMonth(),chk=_rhAcqCheck(),createdYM=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:2026*12;
@@ -5322,6 +5341,7 @@ function rcgTab(idx){
 function _lockBodyScroll(){var sy=window.scrollY;document.body.style.top='-'+sy+'px';document.body.classList.add('modal-open');}
 function _unlockBodyScroll(){var top=parseInt(document.body.style.top||'0');document.body.classList.remove('modal-open');document.body.style.top='';window.scrollTo(0,-top);}
 function closeModal(){
+  window._svYear=null; // le salaire du Suivi revient à l'année en cours
   // Tableau Gestion ouvert depuis le modal rendus : on y revient à la fermeture
   window._rvFrom=null;
   if(window._settingsPid){try{saveProfileFromDD(window._settingsPid);}catch(e){}window._settingsPid=null;}
