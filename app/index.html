@@ -93,22 +93,29 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .mnav.today.hide-l{max-width:0;opacity:0;padding-left:0;padding-right:0;border-color:transparent;pointer-events:none;transform:translateX(-10px);}
 .mnav.today.hide-r{max-width:0;opacity:0;padding-left:0;padding-right:0;border-color:transparent;pointer-events:none;transform:translateX(10px);}
 .mtit{font-size:15px;font-weight:500;cursor:pointer;padding:4px 8px;border-radius:var(--r);transition:background .1s;position:absolute;left:50%;transform:translateX(-50%);white-space:nowrap;}
-#month-view{transition:opacity .18s ease,transform .18s ease;}
+/* Fondus et glissements : appliqués aux éléments en verre eux-mêmes via --fo/--fx/--fs.
+   Un parent en opacité < 1 couperait leur flou d'arrière-plan pendant l'animation (liseré et fond qui changent). */
+@property --fo{syntax:'<number>';inherits:true;initial-value:1}
+@property --fx{syntax:'<length>';inherits:true;initial-value:0px}
+@property --fs{syntax:'<number>';inherits:true;initial-value:1}
+#month-view>.cal-wrap{opacity:var(--fo);transform:translateX(var(--fx)) scale(var(--fs))}
+.ann-month{opacity:var(--fo)}
+#month-view{transition:--fo .18s ease,--fx .18s ease,--fs .18s ease;}
 .slide-left{animation:slideLeft .2s ease forwards;}
 .slide-right{animation:slideRight .2s ease forwards;}
-@keyframes slideLeft{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(-28px)}}
-@keyframes slideRight{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(28px)}}
+@keyframes slideLeft{from{--fo:1;--fx:0px}to{--fo:0;--fx:-28px}}
+@keyframes slideRight{from{--fo:1;--fx:0px}to{--fo:0;--fx:28px}}
 .slide-in-left{animation:slideInLeft .2s ease forwards;}
 .slide-in-right{animation:slideInRight .2s ease forwards;}
-@keyframes slideInLeft{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:translateX(0)}}
-@keyframes slideInRight{from{opacity:0;transform:translateX(-28px)}to{opacity:1;transform:translateX(0)}}
+@keyframes slideInLeft{from{--fo:0;--fx:28px}to{--fo:1;--fx:0px}}
+@keyframes slideInRight{from{--fo:0;--fx:-28px}to{--fo:1;--fx:0px}}
 
 /* Month view */
-#month-view{transition:opacity .2s ease,transform .2s ease;}
+#month-view{transition:--fo .2s ease,--fx .2s ease,--fs .2s ease;}
 
 /* Annual view */
-.ann-wrap{overflow:hidden;pointer-events:none;opacity:0;visibility:hidden;position:absolute;top:0;left:0;right:0;transition:opacity .2s ease;width:100%;}
-.ann-wrap.open{pointer-events:all;opacity:1;display:block;visibility:visible;overflow:visible;position:relative;}
+.ann-wrap{overflow:hidden;pointer-events:none;--fo:0;visibility:hidden;position:absolute;top:0;left:0;right:0;transition:--fo .2s ease;width:100%;}
+.ann-wrap.open{pointer-events:all;--fo:1;display:block;visibility:visible;overflow:visible;position:relative;}
 .annual-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px;width:100%;box-sizing:border-box;}
 @media(max-width:600px){.annual-grid{grid-template-columns:repeat(3,1fr);}}
 .ann-month{background:var(--bg0);border:1px solid var(--border2);border-radius:var(--r);padding:6px;cursor:pointer;transition:background .1s;}
@@ -584,6 +591,8 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 
 /* Dropdown */
 .dropdown{position:absolute;right:0;top:calc(100% + 4px);background:var(--bg3);border:none;border-radius:var(--rl);box-shadow:0 8px 32px rgba(0,0,0,.25);width:300px;max-width:calc(100vw - 16px);max-height:calc(100vh - 80px);overflow-y:auto;overflow-x:hidden;padding:12px 14px 16px;z-index:300;}
+/* Menus déroulants de la barre du haut : fond presque opaque (le flou d'arrière-plan ne traverse pas la barre fixe, on verrait sa bordure au travers) */
+.dropdown{background:rgba(40,40,38,.97)}
 .dd-title{font-size:13px;font-weight:600;margin-bottom:10px;color:var(--text);}
 
 /* PWA */
@@ -1519,7 +1528,7 @@ function updateWarnIcon(warnKeys,expNext){
   let html='';
   if(hasWarn){
     html+='<div style="font-weight:600;margin-bottom:6px;color:var(--amber)">Rendus en d\u00e9passement</div>';
-    html+=[...warnKeys].sort().map(function(k){const d=new Date(k+'T12:00:00');return'<div style="padding:2px 0;border-bottom:0.5px solid var(--border2)">'+d.getDate()+' '+ML[d.getMonth()]+' '+d.getFullYear()+'</div>';}).join('');
+    html+=[...warnKeys].sort().map(function(k){const d=new Date(k+'T12:00:00');return'<div style="padding:2px 0">'+d.getDate()+' '+ML[d.getMonth()]+' '+d.getFullYear()+'</div>';}).join('');
   }
   if(hasExpiry){
     if(hasWarn)html+='<div style="height:8px"></div>';
@@ -1527,7 +1536,7 @@ function updateWarnIcon(warnKeys,expNext){
     [...new Set(expNext.map(function(e){return e.expYm;}))].forEach(function(ey,i){
       if(i)html+='<div style="height:6px"></div>';
       html+='<div style="font-weight:600;margin-bottom:6px;color:var(--red)">Expire fin '+MLf[ey%12]+'</div>';
-      html+=expNext.filter(function(e){return e.expYm===ey;}).map(function(e){const y=Math.floor(e.ym/12),m=e.ym%12;return'<div style="padding:2px 0;border-bottom:0.5px solid var(--border2)">acquises en '+MLf[m]+' \u00b7 '+fmtMin(e.avail)+'</div>';}).join('');
+      html+=expNext.filter(function(e){return e.expYm===ey;}).map(function(e){const y=Math.floor(e.ym/12),m=e.ym%12;return'<div style="padding:2px 0">acquises en '+MLf[m]+' \u00b7 '+fmtMin(e.avail)+'</div>';}).join('');
     });
   }
   dd.innerHTML=html;
@@ -1562,18 +1571,18 @@ function goToday(){
     mv.classList.add(outCls);
     setTimeout(function(){
       mv.classList.remove('slide-left','slide-right');
-      mv.style.opacity='0';
+      mv.style.setProperty('--fo','0');
       curM=NOW.getMonth();curY=NOW.getFullYear();
       render();
       mv.classList.add(inCls);
-      setTimeout(function(){mv.classList.remove('slide-in-left','slide-in-right');mv.style.opacity='';},220);
+      setTimeout(function(){mv.classList.remove('slide-in-left','slide-in-right');mv.style.setProperty('--fo','');},220);
     },180);
   } else {
     curM=NOW.getMonth();curY=NOW.getFullYear();
     annualOpen=false;
     const aw=document.getElementById('ann-wrap');
-    if(aw){aw.classList.remove('open');aw.style.display='none';aw.style.opacity='0';}
-    if(mv){mv.style.display='block';mv.style.visibility='visible';mv.style.height='';mv.style.overflow='';mv.style.opacity='1';mv.style.transform='scale(1)';mv.style.transition='';}
+    if(aw){aw.classList.remove('open');aw.style.display='none';aw.style.setProperty('--fo','0');}
+    if(mv){mv.style.display='block';mv.style.visibility='visible';mv.style.height='';mv.style.overflow='';mv.style.setProperty('--fo','1');mv.style.setProperty('--fs','1');mv.style.transition='';}
     render();
   }
 }
@@ -1617,12 +1626,12 @@ function navDir(d){
       mv.classList.add(outCls);
       setTimeout(function(){
         mv.classList.remove('slide-left','slide-right');
-        mv.style.opacity='0';
+        mv.style.setProperty('--fo','0');
         curM+=d;if(curM<0){curM=11;curY--;}if(curM>11){curM=0;curY++;}
         render();
         mv.classList.add(inCls);
         setTimeout(function(){
-          mv.classList.remove('slide-in-left','slide-in-right');mv.style.opacity='';
+          mv.classList.remove('slide-in-left','slide-in-right');mv.style.setProperty('--fo','');
         },220);
       },180);
     }
@@ -1812,17 +1821,17 @@ function toggleAnnual(){
     aw.style.overflow='visible';
     mv.style.visibility='hidden';mv.style.height='0';mv.style.overflow='hidden';
     _fitAnnual();
-    aw.style.opacity='0';aw.style.transition='opacity .2s ease';
-    requestAnimationFrame(()=>{aw.style.opacity='1';});
+    aw.style.setProperty('--fo','0');aw.style.transition='--fo .2s ease';
+    requestAnimationFrame(()=>{aw.style.setProperty('--fo','1');});
   }else{
     // Restore month-view layout immediately to prevent sidebar from jumping
-    mv.style.visibility='visible';mv.style.height='';mv.style.overflow='';mv.style.opacity='0';mv.style.transition='none';
-    aw.style.transition='opacity .12s ease';aw.style.opacity='0';
+    mv.style.visibility='visible';mv.style.height='';mv.style.overflow='';mv.style.setProperty('--fo','0');mv.style.transition='none';
+    aw.style.transition='--fo .12s ease';aw.style.setProperty('--fo','0');
     setTimeout(()=>{
       aw.classList.remove('open');
       _checkSideBelow();
-      mv.style.transition='opacity .2s ease';
-      requestAnimationFrame(()=>{mv.style.opacity='1';});
+      mv.style.transition='--fo .2s ease';
+      requestAnimationFrame(()=>{mv.style.setProperty('--fo','1');});
     },130);
   }
   render();
@@ -1845,13 +1854,13 @@ function renderAnnual(){
 function goToMonth(m){
   curM=m;annualOpen=false;const aw=document.getElementById('ann-wrap'),mv=document.getElementById('month-view');
   // Restore month-view layout immediately to prevent sidebar from jumping up
-  mv.style.visibility='visible';mv.style.height='';mv.style.overflow='';mv.style.opacity='0';mv.style.transition='none';
-  aw.style.transition='opacity .12s ease';aw.style.opacity='0';
+  mv.style.visibility='visible';mv.style.height='';mv.style.overflow='';mv.style.setProperty('--fo','0');mv.style.transition='none';
+  aw.style.transition='--fo .12s ease';aw.style.setProperty('--fo','0');
   setTimeout(()=>{
     aw.classList.remove('open');
-    mv.style.transform='scale(.98)';mv.style.transition='opacity .2s ease,transform .2s ease';
+    mv.style.setProperty('--fs','.98');mv.style.transition='--fo .2s ease,--fs .2s ease';
     render();
-    requestAnimationFrame(()=>{mv.style.opacity='1';mv.style.transform='scale(1)';});
+    requestAnimationFrame(()=>{mv.style.setProperty('--fo','1');mv.style.setProperty('--fs','1');});
   },130);
 }
 
@@ -6436,13 +6445,13 @@ function init(){
     setTimeout(pushSyncAlerts,3000);
     const hpn=document.getElementById('hdr-profile-name');
     if(hpn&&S&&S.profile)hpn.textContent=S.profile.name||'Profil';
-    document.body.style.opacity='1';document.body.style.transition='opacity .25s';setTimeout(function(){document.body.style.transition='';},300);
+    _revealBody();
     showPayPromptIfNeeded();
     setTimeout(_rhImportPromptIfNeeded,700);
     // Pousse au chargement les modifs locales qui n'auraient pas encore été synchronisées
     if(S&&S.profile&&window._authToken)cloudSave(_aid);
   }).catch(function(){
-    document.body.style.opacity='1';document.body.style.transition='opacity .25s';setTimeout(function(){document.body.style.transition='';},300);
+    _revealBody();
   });
   // Scroll to navigate months/years
 
@@ -6521,7 +6530,7 @@ function init(){
     e.preventDefault();
     if(annualOpen||document.querySelector('#modal-root .overlay')||document.getElementById('lp-menu'))return;
     const mv=_swMv();if(!mv)return;
-    if(!_swipeDrag){_swipeDrag=true;window._lpCancel&&window._lpCancel();mv.classList.remove('slide-left','slide-right','slide-in-left','slide-in-right');mv.style.opacity='';mv.style.transform='';_swClearPeek();}
+    if(!_swipeDrag){_swipeDrag=true;window._lpCancel&&window._lpCancel();mv.classList.remove('slide-left','slide-right','slide-in-left','slide-in-right');['--fo','--fx','--fs'].forEach(function(k){mv.style.removeProperty(k);});_swClearPeek();}
     _swPlace(dx,false);
   },{passive:false});
   function _swEnd(e,cancel){
@@ -7054,6 +7063,16 @@ function _checkSideBelow(){
 }
 window.addEventListener('resize',function(){_applyBigScreenZoom();_fitCalendar();_fitSideMonth();if(annualOpen)_fitAnnual();_syncSideTop();_checkSideBelow();});
 
+// Affichage de l'app une fois les données chargées : un voile de la couleur du fond s'efface par-dessus
+// (même rendu qu'un fondu de la page, mais sans rendre le body transparent, ce qui couperait l'effet verre)
+function _revealBody(){
+  if(document.body.style.opacity==='1')return;
+  var v=document.createElement('div');
+  v.style.cssText='position:fixed;inset:0;background:#161615;z-index:100000;pointer-events:none;transition:opacity .25s';
+  document.body.appendChild(v);document.body.style.opacity='1';
+  requestAnimationFrame(function(){requestAnimationFrame(function(){v.style.opacity='0';});});
+  setTimeout(function(){v.remove();},320);
+}
 function syncWknHeight(){setTimeout(_syncWknNow,0);}
 // Met en forme les numéros de semaine (tuiles ramenées / congés) sans attendre
 function _syncWknNow(){
