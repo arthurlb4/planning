@@ -6633,7 +6633,7 @@ function init(){
   document.addEventListener('contextmenu',function(e){if(e.target.closest('#cal .dci'))e.preventDefault();});
 
   // Swipe gauche/droite : le mois suit le doigt et le mois voisin arrive à côté
-  let _swipeStartX=0,_swipeStartY=0,_swipeT=0,_swipeActive=false,_swipeDrag=false,_swipeLock=null,_swPeek={};
+  let _swipeStartX=0,_swipeStartY=0,_swipeT=0,_swipeActive=false,_swipeDrag=false,_swipeLock=null,_swPeek={},_swSamples=[];
   // Écart entre deux mois = 2 × la marge entre le bord de l'écran et le calendrier
   function _swW(mv){const l=mv.getBoundingClientRect().left;return mv.offsetWidth+Math.max(16,2*Math.round(l));}
   // On déplace les .cal-wrap eux-mêmes (pas leur parent) : un parent transformé couperait l'effet verre
@@ -6736,11 +6736,13 @@ function init(){
     if(e.touches.length>1){_swipeActive=false;return;}
     _swipeStartX=e.touches[0].clientX;
     _swipeStartY=e.touches[0].clientY;
-    _swipeT=Date.now();_swipeActive=true;_swipeDrag=false;_swipeLock=null;
+    _swipeT=Date.now();_swipeActive=true;_swipeDrag=false;_swipeLock=null;_swSamples=[[_swipeT,_swipeStartX]];
   },{passive:true});
   document.addEventListener('touchmove',function(e){
     if(!_swipeActive)return;
     const dx=e.touches[0].clientX-_swipeStartX,dy=e.touches[0].clientY-_swipeStartY;
+    // Derniers points du geste, pour connaître la vitesse au moment où le doigt se lève
+    const _now=Date.now();_swSamples.push([_now,e.touches[0].clientX]);while(_swSamples.length>2&&_now-_swSamples[1][0]>100)_swSamples.shift(); // garde un point d'appui juste avant les 100 dernières ms
     if(!_swipeLock&&(Math.abs(dx)>10||Math.abs(dy)>10))_swipeLock=Math.abs(dx)>Math.abs(dy)*1.5?'h':'v';
     if(_swipeLock!=='h')return;
     e.preventDefault();
@@ -6759,11 +6761,17 @@ function init(){
     _swipeActive=false;
     const dx=e.changedTouches[0].clientX-_swipeStartX;
     const dy=e.changedTouches[0].clientY-_swipeStartY;
-    const v=Math.abs(dx)/Math.max(1,Date.now()-_swipeT);
-    const go=!cancel&&_swipeLock==='h'&&(Math.abs(dx)>70||(Math.abs(dx)>25&&v>0.45));
+    // Décision comme sur iOS : on change si le doigt est lâché au-delà de la moitié de la largeur,
+    // ou si un coup rapide (vitesse au lâcher, pas la moyenne du geste) va dans le même sens que le glissement.
+    // Un geste lent qui revient en arrière ou s'arrête avant la moitié ramène le mois en place.
+    const _ref=annualOpen?document.getElementById('ann-grid'):_swMv(),_half=((_ref&&_ref.offsetWidth)||window.innerWidth)/2;
+    const _last=_swSamples[_swSamples.length-1],_first=_swSamples[0],_dt=Math.max(1,Date.now()-_first[0]);
+    const vRel=(Date.now()-_last[0]>80)?0:(e.changedTouches[0].clientX-_first[1])/_dt; // px/ms, 0 si le doigt s'est arrêté avant de lever
+    const flick=Math.abs(vRel)>0.3&&Math.sign(vRel)===Math.sign(dx)&&Math.abs(dx)>12;
+    const go=!cancel&&_swipeLock==='h'&&(flick||(Math.abs(dx)>_half&&!(Math.sign(vRel)===-Math.sign(dx)&&Math.abs(vRel)>0.2)));
     if(!_swipeDrag){
       if(document.querySelector('#modal-root .overlay')||document.getElementById('lp-menu'))return;
-      if(go||(!cancel&&Math.abs(dx)>50&&Math.abs(dx)>Math.abs(dy)*1.5))navDir(dx<0?1:-1); // vue annuelle
+      if(go)navDir(dx<0?1:-1);
       return;
     }
     _swipeDrag=false;
