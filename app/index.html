@@ -636,6 +636,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 /* Recap */
 .sv-sw{display:flex;gap:2px;background:var(--bg3);border-radius:9px;padding:2px;margin:0 auto 12px;width:max-content}.sv-sw button{border:none;background:none;color:var(--text3);font-size:11.5px;padding:5px 14px;border-radius:7px;font-family:var(--font);cursor:pointer}.sv-sw button.on{background:var(--bg2);color:var(--text);font-weight:600}
 .sv-yr{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}.sv-yr span{font-size:13px;font-weight:600;color:var(--text)}.sv-yr button{border:none;background:none;color:var(--blue);font-size:11.5px;font-family:var(--font);cursor:pointer;padding:4px 2px}
+.pp-r{display:flex;align-items:center;gap:8px;padding:3px 0}.pp-r .pp-l{flex:1;min-width:0;color:var(--text3)}.pp-r>b{text-align:right;white-space:nowrap}.pp-n{width:62px;text-align:right;font-size:10px;white-space:nowrap;flex-shrink:0}.pp-s{border-top:0.5px solid var(--border2);margin-top:2px;padding:4px 0}.pp-s>span:first-child{flex:1}.pp-top{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;margin:2px 0 10px}
 .sv-pr{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:11.5px;cursor:pointer}.sv-pr .l{flex:1;color:var(--text3)}.sv-pr b{color:var(--gold-pay);width:78px;text-align:right}.sv-pr .s{width:74px;text-align:right;font-size:10.5px;white-space:nowrap}.sv-pr i{font-style:normal;color:var(--text3);width:8px}
 .sv-btns{display:flex;gap:8px;margin-bottom:10px}.sv-btns button{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:14px 8px;border:0.5px solid var(--border);border-radius:14px;background:var(--bg3);color:var(--blue);font-size:12.5px;font-weight:600;font-family:var(--font);cursor:pointer}.sv-btns i{font-size:22px}
 .sv-card{background:var(--bg3);border:0.5px solid var(--border);border-radius:14px;padding:12px;margin-bottom:8px}.sv-h{font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px}.sv-h small{font-weight:400;font-size:10.5px;color:var(--text3);margin-left:4px}
@@ -2266,7 +2267,7 @@ function editCompCP(y,mym){
   v=v.trim().replace(/\s/g,'').replace(',','.');
   if(!pr.compCPManual)pr.compCPManual={};
   if(v===''||isNaN(parseFloat(v)))delete pr.compCPManual[y];else pr.compCPManual[y]=Math.round(parseFloat(v)*100)/100;
-  saveState();render();openMergedMoisModal(mym,4);
+  saveState();render();openBulletinModal(mym);
 }
 function calcPayeMois(y,m){
   const mym_cp=y*12+m;const pr=S.profile||{};const _pn=getPalierForYM(mym_cp);const salQ=_pn>0?calcPalierSalaire(_pn):(pr.salaireQualif||0);const salAnc=getAncForYM(mym_cp);const heures=getHeuresForYM(mym_cp);const base=salQ+salAnc;
@@ -2420,52 +2421,76 @@ function _bulCompare(b){
   return{P:P,rows:rows,fixed:fixed,late:late,lateSum:lateSum,alerts:alerts,diff:diff,status:status,nBad:nBad,paniers:b.paniers?{bq:b.paniers.q,aq:v.paniers}:null};
 }
 var _BUL_ST={ok:['✓','var(--green)','Conforme'],late:['✓','var(--green)','Conforme, avec des rattrapages'],ecart:['⚠','var(--amber)','Écarts à vérifier']};
-// Ligne en haut de l'onglet Paie : ouvre le modal du bulletin
-function _bulSummary(ym){
-  var b=(S.bulletins||{})[ym],inner;
-  if(b){var c=_bulCompare(b),st=_BUL_ST[c.status],d=c.diff,z=Math.abs(d)<=0.05;
-    inner='<span>Bulletin '+_deMois(ym)+' · <b style="color:'+st[1]+'">'+st[0]+' '+st[2]+'</b></span><span style="display:flex;align-items:center;gap:6px">'+(z?'':'<b style="color:var(--amber)">'+(d>0?'+':'')+fmtEuro(d).replace(/\s*€/,'')+'</b>')+'<i class="ti ti-chevron-right" style="color:var(--text3)"></i></span>';}
-  else inner='<span><i class="ti ti-file-import" style="margin-right:5px"></i>Importer le bulletin '+_deMois(ym)+'</span><i class="ti ti-chevron-right" style="color:var(--text3)"></i>';
-  return '<button onclick="openBulletinModal('+ym+',\'paie\')" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;margin:2px 0 10px;padding:9px 10px;border:0.5px solid var(--border);border-radius:10px;background:var(--bg3);color:var(--text2);font-size:11px;cursor:pointer;font-family:var(--font)">'+inner+'</button>';
-}
 function openBulletinModal(ym,from){
   if(!document.body.classList.contains('modal-open'))_lockBodyScroll();
-  if(from){window._bulFrom=from;if(from==='paie')window._bulFromYM=ym;}
-  var rc=window._bulFrom==='recap',fy=window._bulFromYM!=null?window._bulFromYM:ym;
-  var back=rc?'openMergedRenduCgModal(6,2)':'openMergedMoisModal('+fy+',4)',lbl=rc?'‹ Suivi':'‹ Paie '+_deMois(fy);
+  var y=Math.floor(ym/12),cy=TODAY_YM!=null?Math.floor(TODAY_YM/12):y,arr='font-size:18px;padding:0 10px;color:var(--text2);cursor:pointer;user-select:none';
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="sh"></div>'
-    +'<div style="'+_navBackCss+'" onclick="'+back+'">'+lbl+'</div>'
-    +'<div class="st">Bulletin '+_deMois(ym)+' '+Math.floor(ym/12)+'</div>'+_bulHtml(ym)
+    +'<div style="'+_navBackCss+'" onclick="openMergedRenduCgModal(6,2)">‹ Suivi</div>'
+    +'<div class="st" style="display:flex;align-items:center;justify-content:space-between"><span style="'+arr+'" onclick="openBulletinModal('+(ym-1)+')">‹</span><span>Paie '+_deMois(ym)+(y!==cy?' '+y:'')+'</span><span style="'+arr+'" onclick="openBulletinModal('+(ym+1)+')">›</span></div>'
+    +_payPageHtml(ym)
     +'<button class="mcancel mclose" onclick="closeModal()">Fermer</button></div></div>';
 }
-function _bulHtml(ym){
-  var b=(S.bulletins||{})[ym],btn='font-size:11px;padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:none;cursor:pointer;font-family:var(--font)';
-  var imp='<button onclick="importBulletins()" style="'+btn+';color:var(--text2)"><i class="ti ti-file-import" style="margin-right:4px"></i>'+(b?'Remplacer':'Importer le PDF')+'</button>';
-  var hist=Object.keys(S.bulletins||{}).map(Number).sort(function(a,c){return a-c;});
-  var histHtml=hist.length?'<div style="display:flex;flex-wrap:wrap;gap:5px;margin:0 0 12px">'+hist.map(function(h){var st=_BUL_ST[_bulCompare(S.bulletins[h]).status];return '<button onclick="openBulletinModal('+h+')" style="font-size:10px;padding:3px 8px;border-radius:6px;border:0.5px solid '+(h===ym?'var(--text2)':'var(--border)')+';background:'+(h===ym?'var(--bg3)':'none')+';color:var(--text2);cursor:pointer;font-family:var(--font)">'+MCs[h%12]+(Math.floor(h/12)!==Math.floor(ym/12)?' '+String(Math.floor(h/12)).slice(2):'')+' <span style="color:'+st[1]+'">'+st[0]+'</span></button>';}).join('')+'</div>':'';
-  if(!b)return histHtml+'<div style="font-size:12px;color:var(--text3);line-height:1.5;margin:4px 0 14px">Importer le PDF du bulletin : l’app compare chaque ligne avec son calcul. Le fichier est lu sur le téléphone et n’est envoyé nulle part ; seuls les montants sont gardés.</div>'+imp+'<div style="height:14px"></div>';
-  var c=_bulCompare(b),st=_BUL_ST[c.status],fe=function(x){return fmtEuro(x).replace(/\s*€/,'');};
-  var q=function(r,x){return r.eur?fe(x):r.h?fmtMin(x):String(x);};
-  var cell='style="text-align:right;white-space:nowrap;padding:3px 0 3px 8px"',lbl='style="color:var(--text3);padding:3px 0"';
-  var head='<tr style="color:var(--text3);font-size:10px"><td></td><td '+cell+'>bulletin</td><td '+cell+'>app</td><td style="width:16px"></td></tr>';
-  var sec=function(t,top){return '<tr><td colspan="4" class="btit" style="padding:'+(top?'12px':'2px')+' 0 2px;font-size:11px">'+t+'</td></tr>';};
-  var mark=function(ok){return '<td style="text-align:right;padding-left:6px;color:'+(ok?'var(--green)':'var(--amber)')+'">'+(ok?'✓':'⚠')+'</td>';};
-  var trs=c.rows.map(function(r){return '<tr><td '+lbl+'>'+r.lbl+'</td><td '+cell+'><b>'+q(r,r.bq)+'</b></td><td '+cell+'>'+q(r,r.aq)+'</td>'+mark(r.ok)+'</tr>';}).join('');
-  if(c.paniers)trs+='<tr><td '+lbl+'>Paniers <span style="font-size:9px">(hors brut)</span></td><td '+cell+'><b>'+c.paniers.bq+'</b></td><td '+cell+'>'+c.paniers.aq+'</td>'+mark(c.paniers.bq===c.paniers.aq)+'</tr>';
-  var ftrs=c.fixed.map(function(f){return '<tr><td '+lbl+'>'+f.lbl+(f.key==='epv'&&!f.ok?' <a onclick="useBulletinCompCP('+ym+')" style="color:var(--blue);cursor:pointer;font-size:10px">reprendre</a>':'')+'</td><td '+cell+'><b>'+fe(f.bm)+'</b></td><td '+cell+'>'+fe(f.am)+'</td>'+mark(f.ok)+'</tr>';}).join('');
-  var ltrs=c.late.map(function(l){return '<tr><td '+lbl+'>'+l.lbl+(l.q!=null?' ('+(_BUL_H[l.k]?fmtMin(Math.round(l.q*60)):l.q)+')':'')+'<div style="font-size:10px;font-style:italic">'+(l.info?'sans effet sur la comparaison':'rattrapage de '+MC[l.ym%12]+' '+Math.floor(l.ym/12))+'</div></td><td '+cell+' valign="top"><b>'+fe(l.mt)+'</b></td><td '+cell+' valign="top">—</td><td></td></tr>';}).join('');
-  var d=c.diff,z=Math.abs(d)<=0.05,why=z?'Le total du bulletin correspond au calcul.':c.lateSum&&Math.abs(d-c.lateSum)<=0.1?'Entièrement dû aux rattrapages d’anciens mois.':c.lateSum?'Dont '+fe(c.lateSum)+' de rattrapages d’anciens mois.':'Écart entre le total du bulletin et le calcul de l’app.';
-  var top='<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;margin:0 0 12px;border-radius:12px;background:'+(z?'var(--green-l)':'rgba(224,160,60,.12)')+'">'
-    +'<div><div style="font-size:12px;font-weight:600;color:'+st[1]+'">'+st[0]+' '+st[2]+'</div><div style="font-size:10px;color:var(--text3);margin-top:2px;line-height:1.4">'+why+'</div></div>'
-    +'<div style="text-align:right;flex-shrink:0"><div style="font-size:10px;color:var(--text3)">écart</div><div style="font-size:20px;font-weight:700;color:'+(z?'var(--green)':'var(--amber)')+'">'+(d>0?'+':'')+fe(d)+'</div></div></div>';
-  var tot='<tr style="border-top:0.5px solid var(--border2)"><td style="padding:8px 0 3px;font-size:12px">Total brut</td><td style="text-align:right;white-space:nowrap;padding:8px 0 3px 8px;font-size:12px"><b>'+fe(b.brut)+'</b></td><td style="text-align:right;white-space:nowrap;padding:8px 0 3px 8px;font-size:12px">'+fe(c.P.total)+'</td>'+mark(z)+'</tr>';
-  var al=c.alerts.map(function(a){return '<div style="font-size:11px;color:var(--amber);display:flex;gap:5px;padding:10px 0 0;line-height:1.45"><span>⚠</span><span>'+a+'</span></div>';}).join('');
-  return histHtml+top
-    +'<table style="width:100%;border-collapse:collapse;font-size:11px">'
-    +sec('Variables <span style="font-weight:400;color:var(--text3);font-size:10px">('+MC[(ym+11)%12]+')</span>')+head+(trs||'<tr><td colspan="4" '+lbl+'>Aucune.</td></tr>')
-    +sec('Fixe',1)+ftrs+(ltrs?sec('Autres lignes',1)+ltrs:'')+tot+'</table>'
-    +al
-    +'<div style="display:flex;gap:8px;margin:16px 0 14px">'+imp+'<button onclick="deleteBulletin('+ym+')" style="'+btn+';color:var(--text3)">Retirer</button></div>';
+// Page Paie d'un mois : calcul de l'app, annoté avec le bulletin s'il est importé
+function _payPageHtml(ym){
+  var y=Math.floor(ym/12),m=ym%12,P=calcPayeMois(y,m),b=(S.bulletins||{})[ym];
+  if(!P.configured||!P.salQ||!P.heures)return '<div style="display:flex;flex-direction:column;align-items:center;gap:12px;padding:32px 16px;text-align:center">'
+    +'<div style="font-size:13px;font-weight:600;color:var(--text2)">Données de paie incomplètes</div>'
+    +'<div style="font-size:12px;color:var(--text3);line-height:1.5">Renseigner le palier, l’ancienneté et le taux de travail dans les paramètres pour voir l’estimation du salaire.</div>'
+    +'<button class="mb" style="height:36px;padding:0 16px;font-size:12px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);cursor:pointer" onclick="closeModal();setTimeout(()=>openSettingsModal(1),80)">Paramètres → Paie</button></div>';
+  var c=b?_bulCompare(b):null,fe=function(x){return fmtEuro(x).replace(/\s*€/,'');},v=P.vars,_tx=v.tx||getTauxForYM(),_eu=function(n){return n.toFixed(2).replace('.',',')+' €';};
+  var btn='font-size:11px;padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:none;cursor:pointer;font-family:var(--font)';
+  var rowsBy={},fixBy={};if(c){c.rows.forEach(function(r){rowsBy[r.k]=r;});c.fixed.forEach(function(f){fixBy[f.lbl]=f;});}
+  // Note à droite du montant : ✓ si le bulletin correspond, sinon ce que dit le bulletin
+  var note=function(r,isFix){if(!c)return '';if(!r)return '<span class="pp-n"></span>';
+    if(r.ok)return '<span class="pp-n" style="color:var(--green)">✓</span>';
+    var t=isFix?fe(r.bm):r.h?fmtMin(r.bq):r.eur?fe(r.bm):String(r.bq);
+    return '<span class="pp-n" style="color:var(--amber)">bul. '+t+'</span>';};
+  var row=function(lbl,val,col,n){return '<div class="pp-r"><span class="pp-l">'+lbl+'</span><b'+(col?' style="color:'+col+'"':'')+'>'+fe(val)+'</b>'+(n!=null?n:c?'<span class="pp-n"></span>':'')+'</div>';};
+  var sub=function(lbl,val){return '<div class="pp-r pp-s"><span>'+lbl+'</span><b class="stag">'+fe(val)+'</b>'+(c?'<span class="pp-n"></span>':'')+'</div>';};
+  var tit=function(t,first){return '<div class="btit" style="margin:'+(first?'4px':'14px')+' 0 4px">'+t+'</div>';};
+  var vr=function(k,lbl,val,col){return row(lbl,val,col,note(rowsBy[k]));};
+  var vl='';
+  if(v.dimMin>0||rowsBy.dim)vl+=vr('dim','Dim ('+fmtMin(v.dimMin)+' × '+_tx.dim+'%)',v.supDim,'var(--text2)');
+  if(v.rhMin>0||rowsBy.rh)vl+=vr('rh','RH ('+fmtMin(v.rhMin)+' × '+_tx.rh+'%)',v.supRH,'var(--text2)');
+  if(v.ferMin>0||rowsBy.fer)vl+=vr('fer','Fériés ('+fmtMin(v.ferMin)+' × '+_tx.fer+'%)',v.supFer,'var(--text2)');
+  if(v.hsLow>0||rowsBy.hsLow)vl+=vr('hsLow','HS ≤8h ('+fmtMin(v.hsLow)+' × '+_tx.hsLow+'%)',v.supHSlow,'var(--blue)');
+  if(v.hsHigh>0||rowsBy.hsHigh)vl+=vr('hsHigh','HS >8h ('+fmtMin(v.hsHigh)+' × '+_tx.hsHigh+'%)',v.supHShigh,'var(--blue)');
+  if(v.nuitMin>0||rowsBy.nuit)vl+=vr('nuit','Nuit ('+fmtMin(v.nuitMin)+' × '+_tx.nuit+'%)',v.supNuit,'#9c7fe0');
+  if(v.antenne>0||rowsBy.antenne)vl+=vr('antenne','P. antenne ('+v.antenne+' × '+_eu(_tx.antenne)+')',v.supAntenne,'var(--amber)');
+  if(v.matin>0||rowsBy.matin)vl+=vr('matin','P. matin ('+v.matin+' × '+_eu(_tx.matin)+')',v.supMatin,'var(--amber)');
+  if(v.reel>0||rowsBy.reel)vl+=vr('reel','P. réal ('+v.reel+' × '+_eu(_tx.reel)+')',v.supReal,'var(--amber)');
+  if(v.coord>0||rowsBy.coord)vl+=vr('coord','P. coord ('+v.coord+' × '+_eu(_tx.coord)+')',v.supCoord,'var(--amber)');
+  if(v.supAbsResto>0||rowsBy.absResto)vl+=vr('absResto','Abs. restauration',v.supAbsResto,'var(--amber)');
+  if(!vl)vl='<div style="color:var(--text3);padding:3px 0">Aucune.</div>';
+  // En-tête : total brut (bulletin s'il existe, sinon estimation) et état
+  var top,d=c?c.diff:0,z=Math.abs(d)<=0.05;
+  if(c){var st=_BUL_ST[c.status],dc=z?'var(--green)':d>0?'var(--green)':'var(--red)';
+    var why=z?'Le total du bulletin correspond au calcul.':c.lateSum&&Math.abs(d-c.lateSum)<=0.1?'Écart entièrement dû aux rattrapages d’anciens mois.':c.lateSum?'Dont '+fe(c.lateSum)+' de rattrapages d’anciens mois.':'Écart entre le bulletin et le calcul de l’app.';
+    top='<div class="pp-top"><div><div style="font-size:11px;color:var(--text3)">total brut · bulletin</div><div style="font-size:22px;font-weight:700;color:var(--gold-pay)">'+fe(b.brut)+'</div><div style="font-size:10px;color:var(--text3)">calcul de l’app : '+fe(P.total)+'</div></div>'
+      +'<div style="text-align:right"><div style="font-size:12px;font-weight:600;color:'+st[1]+'">'+st[0]+' '+st[2]+'</div>'+(z?'':'<div style="font-size:18px;font-weight:700;color:'+dc+'">'+(d>0?'+':'−')+fe(Math.abs(d))+'</div>')+'</div></div>'
+      +'<div style="font-size:10.5px;color:var(--text3);margin:-4px 0 10px;line-height:1.4">'+why+(c?' « bul. » : montant ou quantité du bulletin quand il diffère.':'')+'</div>';}
+  else top='<div class="pp-top"><div><div style="font-size:11px;color:var(--text3)">total brut · estimé</div><div style="font-size:22px;font-weight:700;color:var(--gold-pay)">'+fe(P.total)+'</div></div><div style="text-align:right;font-size:11px;color:var(--text3)">aucun bulletin</div></div>';
+  var h=top;
+  if(v.paniers>0||(c&&c.paniers))h+='<div class="pp-r"><span class="pp-l">Paniers repas ('+v.paniers+' × '+(v.panierRate!=null?v.panierRate:getPanierRate()).toFixed(2).replace('.',',')+' €) <span style="font-size:9px">hors brut</span></span><b style="color:var(--amber)">'+fe(v.supPaniers)+'</b>'+(c?c.paniers?(c.paniers.bq===c.paniers.aq?'<span class="pp-n" style="color:var(--green)">✓</span>':'<span class="pp-n" style="color:var(--amber)">bul. '+c.paniers.bq+'</span>'):'<span class="pp-n"></span>':'')+'</div>';
+  h+='<div class="sep" style="margin:6px 0 4px"></div>';
+  h+=tit('Salaire de base',1)+row('Qualification',P.salQ,null,c?note(fixBy['Qualification'],1):null)+row('Ancienneté',P.salAnc,null,c?note(fixBy['Ancienneté'],1):null)+sub('Sous-total',P.base);
+  h+=tit('Variables <span style="font-weight:400;color:var(--text3);font-size:10px">('+MC[P.prevM]+')</span>')+vl+sub('Sous-total',v.total);
+  if(m===0){var cf=fixBy['Complément CP'];
+    h+=tit('Complément CP')+(P.compCP>0?row(P.compCPManual?'Montant du bulletin':'1/10 variables '+(y-1),P.compCP,null,c?note(cf,1):null):'<div style="color:var(--amber);display:flex;gap:5px;padding:4px 0"><span>⚠</span><span>1/10 des variables '+(y-1)+' non calculable : les données de l’année précédente sont incomplètes.</span></div>')
+      +'<div style="display:flex;gap:6px;margin-top:4px"><button onclick="editCompCP('+y+','+ym+')" style="'+btn+';color:var(--text2);padding:3px 8px">'+(P.compCPManual?'Modifier le montant':'Saisir le montant du bulletin')+'</button>'+(cf&&!cf.ok&&b.epv!=null?'<button onclick="useBulletinCompCP('+ym+')" style="'+btn+';color:var(--blue);padding:3px 8px">Reprendre le bulletin</button>':'')+'</div>';}
+  var naoF=fixBy['Mesures NAO'];
+  h+=tit('Primes fixes')+P.primesConv.map(function(p,i){return row(p.label,p.montant,'var(--text2)',c?(i===0||(naoF&&naoF.ok)?note(naoF,1):'<span class="pp-n"></span>'):null);}).join('')
+    +row('Ind. GPE'+(P.groupeClassif?' (Gr.'+P.groupeClassif+')':''),P.gpe,'var(--text2)',c?note(fixBy['Ind. GPE'],1):null)
+    +row('PFA ('+fmtEuro(P.pfaM)+'/mois)'+(P.pfaMensuelle?'':' (sem.)'),P.pfa,'var(--text2)',c?note(fixBy['PFA'],1):null)
+    +(P.supFamilial>0||fixBy['Suppl. familial']?row('Suppl. familial',P.supFamilial,'var(--text2)',c?note(fixBy['Suppl. familial'],1):null):'')
+    +P.primesCustom.map(function(p){return row(p.label,p.montant,'var(--text2)');}).join('')
+    +sub('Sous-total',P.totalFixes+P.totalPrimesCustom);
+  if(c&&c.late.length)h+=tit('Rattrapages et autres lignes du bulletin')+c.late.map(function(l){return '<div class="pp-r"><span class="pp-l">'+l.lbl+(l.q!=null?' ('+(_BUL_H[l.k]?fmtMin(Math.round(l.q*60)):l.q)+')':'')+'<span style="display:block;font-size:10px;font-style:italic">'+(l.info?'sans effet sur la comparaison':'rattrapage '+_deMois(l.ym)+' '+Math.floor(l.ym/12))+'</span></span><b style="color:var(--text2)">'+fe(l.mt)+'</b><span class="pp-n"></span></div>';}).join('')+sub('Sous-total',c.lateSum);
+  if(c)h+=c.alerts.map(function(a){return '<div style="font-size:11px;color:var(--amber);display:flex;gap:5px;padding:10px 0 0;line-height:1.45"><span>⚠</span><span>'+a+'</span></div>';}).join('');
+  h+='<div style="font-size:10px;color:var(--text3);text-align:center;margin-top:10px">taux : '+fmtEuro(P.tauxH)+'/h · '+P.heures.toFixed(2)+'h/mois</div>';
+  h+=(b?'':'<div style="font-size:11px;color:var(--text3);line-height:1.5;margin:14px 0 0">Importer le PDF du bulletin pour que l’app compare chaque ligne. Le fichier est lu sur le téléphone et n’est envoyé nulle part ; seuls les montants sont gardés.</div>')
+    +'<div style="display:flex;gap:8px;margin:12px 0 14px"><button onclick="window._bulFrom=\'recap\';importBulletins()" style="'+btn+';color:var(--text2)"><i class="ti ti-file-import" style="margin-right:4px"></i>'+(b?'Remplacer le bulletin':'Importer le bulletin (PDF)')+'</button>'+(b?'<button onclick="deleteBulletin('+ym+')" style="'+btn+';color:var(--text3)">Retirer</button>':'')+'</div>';
+  return '<div style="font-size:11px">'+h+'</div>';
 }
 function calcNuitMinShift(v){
   if(!v||!v.deb||!v.fin)return 0;
@@ -2653,7 +2678,7 @@ function _svSalHtml(y){
       if(cc&&cc.status!=='ecart')st='<span style="color:var(--green)">✓ bulletin</span>';
       else{nBad++;var d=cc?cc.diff:0;st=Math.abs(d)<0.05?'<span style="color:var(--amber)">⚠ lignes</span>':'<span style="color:'+(d>0?'var(--green)':'var(--red)')+'">'+(d>0?'+':'−')+fe(Math.abs(d))+'</span>';}}
     else{nE++;st='<span style="color:var(--text3)">'+(fut?'prévu':'estimé')+'</span>';}
-    rows+='<div class="sv-pr" onclick="'+(bu?'openBulletinModal('+ym+',\'recap\')':'openMergedMoisModal('+ym+',4)')+'"><span class="l">'+ML[m]+'</span><b style="opacity:'+(bu?'1':'.6')+'">'+fe(val)+'</b><span class="s">'+st+'</span><i>›</i></div>';
+    rows+='<div class="sv-pr" onclick="'+'openBulletinModal('+ym+',\'recap\')'+'"><span class="l">'+ML[m]+'</span><b style="opacity:'+(bu?'1':'.6')+'">'+fe(val)+'</b><span class="s">'+st+'</span><i>›</i></div>';
   }
   return '<div class="sv-yr"><button onclick="_svYearGo('+(y-1)+')">‹ '+(y-1)+'</button><span>Salaire '+y+'</span><button onclick="_svYearGo('+(y+1)+')">'+(y+1)+' ›</button></div>'
     +'<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0 2px"><span style="font-size:11px;color:var(--text3)">total brut'+(nE?' · dont '+nE+' mois estimé'+(nE>1?'s':''):'')+'</span><span style="font-size:17px;font-weight:700;color:var(--gold-pay)">'+(rows?fe(tot):'—')+'</span></div>'
@@ -2705,10 +2730,10 @@ function _bilanHtml(y){
     var pt=calcPayeMois(y,m);if(!(pt&&pt.configured&&pt.salQ&&pt.heures))continue;
     var ym=y*12+m,fut=ym>nowYM,bu=(S.bulletins||{})[ym],st=bu?_BUL_ST[_bulCompare(bu).status]:null;
     tot+=pt.total;n++;if(fut)prev++;
-    pay+='<div class="recap-row'+(bu?' rc-tap" onclick="openBulletinModal('+ym+',\'recap\')"':'"')+' style="padding:4px 0"><span style="color:'+(fut?'var(--text3)':'var(--text2)')+'">'+ML[m]+(fut?' <i style="font-size:10px">prévu</i>':'')+'</span><span style="display:flex;align-items:center;gap:6px"><b style="color:var(--gold-pay);opacity:'+(fut?'.6':'1')+'">'+fmtEuro(pt.total)+'</b><span style="width:12px;text-align:center;color:'+(st?st[1]:'transparent')+'">'+(st?st[0]:'·')+'</span><span class="rc-go">'+(bu?'›':'')+'</span></span></div>';
+    pay+='<div class="recap-row rc-tap" onclick="openBulletinModal('+ym+',\'recap\')" style="padding:4px 0"><span style="color:'+(fut?'var(--text3)':'var(--text2)')+'">'+ML[m]+(fut?' <i style="font-size:10px">prévu</i>':'')+'</span><span style="display:flex;align-items:center;gap:6px"><b style="color:var(--gold-pay);opacity:'+(fut?'.6':'1')+'">'+fmtEuro(pt.total)+'</b><span style="width:12px;text-align:center;color:'+(st?st[1]:'transparent')+'">'+(st?st[0]:'·')+'</span><span class="rc-go">›</span></span></div>';
   }
   var cpt=_fold('fold-cpt','','var(--blue)','Compteurs '+y,'année entière, planning compris',a.jours+' j',h);
-  h=_fold('fold-paie','','var(--gold-pay)','Paie '+y,n?'brut estimé · moyenne '+fmtEuro(tot/n)+'/mois':'brut estimé',n?fmtEuro(tot):'—','<div style="height:6px"></div>'+(n?pay+'<div class="recap-row" style="padding:6px 0 4px;margin-top:2px;border-top:0.5px solid var(--border2)"><span style="color:var(--text3)">Total'+(prev?' · dont '+prev+' mois prévus':'')+'</span><span style="display:flex;align-items:center;gap:6px"><b style="color:var(--gold-pay)">'+fmtEuro(tot)+'</b><span style="width:12px"></span><span class="rc-go"></span></span></div><div style="font-size:10px;color:var(--text3);padding-top:4px">✓ ou ⚠ : mois vérifié avec le bulletin importé, toucher pour l’ouvrir.</div><button class="rc-cbtn" onclick="window._bulFrom=\'recap\';importBulletins()">Importer des bulletins (PDF)</button>'
+  h=_fold('fold-paie','','var(--gold-pay)','Paie '+y,n?'brut estimé · moyenne '+fmtEuro(tot/n)+'/mois':'brut estimé',n?fmtEuro(tot):'—','<div style="height:6px"></div>'+(n?pay+'<div class="recap-row" style="padding:6px 0 4px;margin-top:2px;border-top:0.5px solid var(--border2)"><span style="color:var(--text3)">Total'+(prev?' · dont '+prev+' mois prévus':'')+'</span><span style="display:flex;align-items:center;gap:6px"><b style="color:var(--gold-pay)">'+fmtEuro(tot)+'</b><span style="width:12px"></span><span class="rc-go"></span></span></div><div style="font-size:10px;color:var(--text3);padding-top:4px">✓ ou ⚠ : mois vérifié avec le bulletin importé. Toucher un mois pour voir le détail.</div><button class="rc-cbtn" onclick="window._bulFrom=\'recap\';importBulletins()">Importer des bulletins (PDF)</button>'
        :'<div style="font-size:11px;color:var(--text3);padding:2px 0">Renseigner la paie dans Réglages → Paie pour voir l’historique.</div>'))+cpt;
   return h;
 }
@@ -5204,81 +5229,17 @@ function openMergedMoisModal(mym,tab){
     +(crRows?'<div class="sep"></div><div class="btit" style="margin-bottom:4px">Détail par semaine</div>'+crRows:'')
     +_moCfgBtn;
 
-  // === Paie ===
-  const paye=calcPayeMois(y,m);
-  let payeSection='';
-  {
-    const _MLp=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-    if(!paye.configured||!paye.salQ||!paye.heures){
-      payeSection='<div style="display:flex;flex-direction:column;align-items:center;gap:12px;padding:32px 16px;text-align:center">'
-        +'<div style="font-size:13px;font-weight:600;color:var(--text2)">Données de paie incomplètes</div>'
-        +'<div style="font-size:12px;color:var(--text3);line-height:1.5">Renseigner le palier, l’ancienneté et le taux de travail dans les paramètres pour voir l’estimation du salaire.</div>'
-        +'<button class="mb" style="height:36px;padding:0 16px;font-size:12px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);cursor:pointer" onclick="closeModal();setTimeout(()=>openSettingsModal(1),80)">Paramètres → Paie</button>'
-        +'</div>';
-    }else{
-      const _fe=v=>fmtEuro(v).replace(/\s*€/,'');
-      const _row=(lbl,val,c)=>'<div style="display:flex;justify-content:space-between;padding:3px 0"><span style="color:var(--text3)">'+lbl+'</span><b'+(c?' style="color:'+c+'"':'')+'>'+_fe(val)+'</b></div>';
-      const _rowb=(lbl,val)=>'<div style="display:flex;justify-content:space-between;padding:3px 0"><span style="color:var(--text3)">'+lbl+'</span><b>'+_fe(val)+'</b></div>';
-      const _stag=v=>'<b class="stag">'+_fe(v)+'</b>';
-      const _sub=(lbl,val)=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-top:0.5px solid var(--border2);margin-top:2px"><span>'+lbl+'</span>'+_stag(val)+'</div>';
-      const _subp=(lbl,val)=>'<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-top:0.5px solid var(--border2);margin-top:2px"><span>'+lbl+'</span>'+_stag(val)+'</div>';
-      const v=paye.vars;
-      const _tx=v.tx||getTauxForYM(),_eu=n=>n.toFixed(2).replace('.',',')+' €';
-      let varLines='';
-      if(v.dimMin>0)varLines+=_row('Dim ('+fmtMin(v.dimMin)+' × '+_tx.dim+'%)',v.supDim,'var(--text2)');
-      if(v.rhMin>0)varLines+=_row('RH ('+fmtMin(v.rhMin)+' × '+_tx.rh+'%)',v.supRH,'var(--text2)');
-      if(v.ferMin>0)varLines+=_row('Fériés ('+fmtMin(v.ferMin)+' × '+_tx.fer+'%)',v.supFer,'var(--text2)');
-      if(v.hsLow>0)varLines+=_row('HS ≤8h ('+fmtMin(v.hsLow)+' × '+_tx.hsLow+'%)',v.supHSlow,'var(--blue)');
-      if(v.hsHigh>0)varLines+=_row('HS >8h ('+fmtMin(v.hsHigh)+' × '+_tx.hsHigh+'%)',v.supHShigh,'var(--blue)');
-      if(v.nuitMin>0)varLines+=_row('Nuit ('+fmtMin(v.nuitMin)+' × '+_tx.nuit+'%)',v.supNuit,'#9c7fe0');
-      if(v.antenne>0)varLines+=_row('P. antenne ('+v.antenne+' × '+_eu(_tx.antenne)+')',v.supAntenne,'var(--amber)');
-      if(v.matin>0)varLines+=_row('P. matin ('+v.matin+' × '+_eu(_tx.matin)+')',v.supMatin,'var(--amber)');
-      if(v.reel>0)varLines+=_row('P. réal ('+v.reel+' × '+_eu(_tx.reel)+')',v.supReal,'var(--amber)');
-      if(v.coord>0)varLines+=_row('P. coord ('+v.coord+' × '+_eu(_tx.coord)+')',v.supCoord,'var(--amber)');
-      if(v.supAbsResto>0)varLines+=_row('Abs. restauration',v.supAbsResto,'var(--amber)');
-      if(!varLines)varLines='<div style="font-size:11px;color:var(--text3);padding:3px 0">Aucun.</div>';
-      payeSection=
-        '<div style="display:flex;justify-content:space-between;padding:2px 0 4px"><span></span><span style="font-size:10px;color:var(--text3)">euros</span></div>'
-        +'<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;margin-bottom:4px">'
-        +'<span style="font-size:11px;color:var(--text3)">total brut</span>'
-        +'<span style="font-size:15px;font-weight:700;color:var(--gold-pay)">'+_fe(paye.total)+'</span>'
-        +'</div>'
-        +(v.paniers>0?'<div style="display:flex;justify-content:space-between;padding:0;font-size:11px;margin-top:-2px"><span style="color:var(--text3)">Paniers repas ('+v.paniers+' × '+(v.panierRate!=null?v.panierRate:getPanierRate()).toFixed(2).replace('.',',')+' €)</span><b style="color:var(--amber)">'+_fe(v.supPaniers)+'</b></div>':'')
-        +'<div class="sep" style="margin-bottom:10px"></div>'
-        +_bulSummary(mym)
-        +'<div class="btit" style="margin-bottom:4px">Salaire de base</div>'
-        +'<div style="font-size:11px">'+_rowb('Qualification',paye.salQ)+_rowb('Ancienneté',paye.salAnc)+_sub('Sous-total',paye.base)+'</div>'
-        +'<div class="btit" style="margin-top:12px;margin-bottom:4px">Variables <span style="font-weight:400;color:var(--text3);font-size:10px">('+_MLp[paye.prevM]+')</span></div>'
-        +'<div style="font-size:11px">'+varLines+_subp('Sous-total',v.total)+'</div>'
-        +(m===0?'<div class="btit" style="margin-top:12px;margin-bottom:4px">Complément CP</div>'+(paye.compCP>0?'<div style="font-size:11px">'+_subp(paye.compCPManual?'Montant du bulletin':'1/10 variables '+(y-1),paye.compCP)+'</div>':'<div style="font-size:11px;color:var(--amber);display:flex;align-items:flex-start;gap:5px;padding:4px 0"><span style="flex-shrink:0">⚠</span><span>1/10 des variables '+(y-1)+' non calculable — les données de l\'année précédente sont incomplètes.</span></div>')+'<button onclick="editCompCP('+y+','+mym+')" style="margin-top:4px;font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;background:none;color:var(--text2);cursor:pointer">'+(paye.compCPManual?'Modifier le montant':'Saisir le montant du bulletin')+'</button>':'')
-        +'<div class="btit" style="margin-top:12px;margin-bottom:4px">Primes fixes</div>'
-        +'<div style="font-size:11px">'
-        +paye.primesConv.map(function(p){return _row(p.label,p.montant,'var(--text2)');}).join('')+_row('Ind. GPE'+(paye.groupeClassif?' (Gr.'+paye.groupeClassif+')':''),paye.gpe,'var(--text2)')
-        +_row('PFA ('+fmtEuro(paye.pfaM)+'/mois)'+(paye.pfaMensuelle?'':' (sem.)'),paye.pfa,'var(--text2)')
-        +(paye.supFamilial>0?_row('Suppl. familial',paye.supFamilial,'var(--text2)'):'')
-        +paye.primesCustom.map(function(p){
-          return '<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0">'
-            +'<span style="color:var(--text3);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+p.label+'</span>'
-            +'<b style="color:var(--text2)">+'+_fe(p.montant)+'</b>'
-            +'</div>';
-        }).join('')
-        +_subp('Sous-total',paye.totalFixes+paye.totalPrimesCustom)+'</div>'
-        +'<div style="font-size:10px;color:var(--text3);text-align:center;margin-top:10px">taux : '+fmtEuro(paye.tauxH)+'/h · '+paye.heures.toFixed(2)+'h/mois</div>';
-    }
-  }
-
   document.getElementById('modal-root').innerHTML=
     '<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet">'
     +'<div class="sh"></div>'
     +'<div class="stabs-row">'
     +'<div class="stabs-sp"></div>'
     +'<div id="mtp-bar" class="stabs-bar stabs-bar5" style="display:flex;background:var(--bg3);border-radius:10px;padding:3px;gap:2px;position:relative;z-index:0">'
-    +'<div id="mtp-pill" style="position:absolute;top:3px;bottom:3px;left:3px;width:calc((100% - 14px) / 5);border-radius:8px;background:var(--bg2);box-shadow:0 1px 3px rgba(0,0,0,.2);pointer-events:none;z-index:-1;transform:'+['translateX(0)','translateX(calc(100% + 2px))','translateX(calc(200% + 4px))','translateX(calc(300% + 6px))','translateX(calc(400% + 8px))'][tab||0]+'"></div>'
+    +'<div id="mtp-pill" style="position:absolute;top:3px;bottom:3px;left:3px;width:calc((100% - 10px) / 4);border-radius:8px;background:var(--bg2);box-shadow:0 1px 3px rgba(0,0,0,.2);pointer-events:none;z-index:-1;transform:'+['translateX(0)','translateX(calc(100% + 2px))','translateX(calc(200% + 4px))','translateX(calc(300% + 6px))','translateX(calc(400% + 8px))'][tab||0]+'"></div>'
     +'<button id="mtp-0" onclick="moisTab(0)" style="flex:1;padding:8px 4px;font-size:11px;font-weight:600;color:var(--text);background:transparent;border-radius:8px;border:none;cursor:pointer;font-family:var(--font)">Rendus</button>'
     +'<button id="mtp-1" onclick="moisTab(1)" style="flex:1;padding:8px 4px;font-size:11px;font-weight:400;color:var(--text3);background:transparent;border-radius:8px;border:none;cursor:pointer;font-family:var(--font)">HS</button>'
     +'<button id="mtp-2" onclick="moisTab(2)" style="flex:1;padding:8px 4px;font-size:11px;font-weight:400;color:var(--text3);background:transparent;border-radius:8px;border:none;cursor:pointer;font-family:var(--font)">Primes</button>'
     +'<button id="mtp-3" onclick="moisTab(3)" style="flex:1;padding:8px 4px;font-size:11px;font-weight:400;color:var(--text3);background:transparent;border-radius:8px;border:none;cursor:pointer;font-family:var(--font)">Nuit</button>'
-    +'<button id="mtp-4" onclick="moisTab(4)" style="flex:1;padding:8px 4px;font-size:11px;font-weight:400;color:var(--text3);background:transparent;border-radius:8px;border:none;cursor:pointer;font-family:var(--font)">Paie</button>'
     +'</div>'
     +'<button class="sh-x" onclick="closeModal()"><i class="ti ti-x"></i></button>'
     +'</div>'
@@ -5287,8 +5248,6 @@ function openMergedMoisModal(mym,tab){
     +'<div id="mtc-1" style="grid-area:1/1;visibility:hidden;pointer-events:none">'+hsSection+'</div>'
     +'<div id="mtc-2" style="grid-area:1/1;visibility:hidden;pointer-events:none">'+paniersHtml+'</div>'
     +'<div id="mtc-3" style="grid-area:1/1;visibility:hidden;pointer-events:none">'+nuitSection+'</div>'
-    +'<div id="mtc-4" style="grid-area:1/1;visibility:hidden;pointer-events:none">'+payeSection
-    +'</div>'
     +'</div>'
     +'<button class="mcancel mclose" onclick="closeModal()">Fermer</button>'
     +'</div></div>';
@@ -5304,8 +5263,8 @@ function openMergedMoisModal(mym,tab){
         if(_swBlock||Date.now()-_swT>600)return;
         var dx=e.changedTouches[0].clientX-_sxM,dy=Math.abs(e.changedTouches[0].clientY-_syM);
         if(Math.abs(dx)<65||dy>80)return;
-        var cur=0;for(var i=0;i<5;i++){var t=document.getElementById('mtc-'+i);if(t&&t.style.visibility!=='hidden')cur=i;}
-        moisTab(dx<0?Math.min(4,cur+1):Math.max(0,cur-1));
+        var cur=0;for(var i=0;i<4;i++){var t=document.getElementById('mtc-'+i);if(t&&t.style.visibility!=='hidden')cur=i;}
+        moisTab(dx<0?Math.min(3,cur+1):Math.max(0,cur-1));
       },{passive:true});
     }
   });
@@ -5319,8 +5278,9 @@ function _ptog(id){
   if(ch)ch.style.transform=open?'':'rotate(90deg)';
 }
 function moisTab(idx){
-  var _tx=['translateX(0)','translateX(calc(100% + 2px))','translateX(calc(200% + 4px))','translateX(calc(300% + 6px))','translateX(calc(400% + 8px))'];
-  for(let i=0;i<5;i++){
+  if(idx>3)idx=0; // ancien onglet Paie : remplacé par la page Paie du Suivi
+  var _tx=['translateX(0)','translateX(calc(100% + 2px))','translateX(calc(200% + 4px))','translateX(calc(300% + 6px))'];
+  for(let i=0;i<4;i++){
     const btn=document.getElementById('mtp-'+i),tab=document.getElementById('mtc-'+i);
     if(btn){btn.style.fontWeight=i===idx?'600':'400';btn.style.color=i===idx?'var(--text)':'var(--text3)';}
     if(tab){tab.style.visibility=i===idx?'':'hidden';tab.style.pointerEvents=i===idx?'':'none';}
@@ -6368,7 +6328,7 @@ function _confirmAddPrimeFixe(ym){
   S.profile.primesFixesCustom.push({id:'pfc_'+Date.now(),label:label,montant:montant,debutYM:window._apfDebut||ym,finYM:null});
   saveState();render();
   if(window._pfFromSettings){window._pfFromSettings=false;openSettingsModal(1);}
-  else{closeModal();openMergedMoisModal(ym,4);}
+  else{closeModal();openBulletinModal(ym);}
 }
 function openDeletePrimeFixeModal(id,ym){
   var primes=S.profile&&S.profile.primesFixesCustom||[];
@@ -6402,7 +6362,7 @@ function _deletePrimeFixeFrom(id,ym,fromYM){
   }
   saveState();render();
   if(window._pfFromSettings){window._pfFromSettings=false;openSettingsModal(1);}
-  else{closeModal();openMergedMoisModal(ym,4);}
+  else{closeModal();openBulletinModal(ym);}
 }
 function openDepuisModal(inputId,btnId){
   _depField={inputId:inputId,btnId:btnId};
