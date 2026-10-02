@@ -2610,6 +2610,26 @@ function saveNote(key,del){
   if(v)S.notes[key]=v;else delete S.notes[key];
   saveState();openDay(key);
 }
+// Heures sup faites un jour donné : même règle que le décompte de la semaine (calcHSWeek) —
+// dépassement sur la vacation prévue au cycle ce jour-là, arrondi à la demi-heure supérieure
+function _dayHSMin(date){
+  const key=dk(date),VAC=getVAC(),mon=getMonday(date),i=(date.getDay()+6)%7;
+  const _grid=getActiveCycleGrid(mon)||CYCLE,gridRow=_grid[lineIdx(mon)]||[];
+  const{vac,absent,echange,ecSelf,cycleVac}=getVac(date);if(absent)return 0;
+  const _cg=(S.conges||{})[key];if(_cg&&(_cg==='cg'||_cg==='rend'||_cg==='rend-hist'||_cg==='absent'))return 0;
+  const _dayBase=gridRow[i]&&gridRow[i]!=='RH'&&gridRow[i]!=='SV'&&VAC[gridRow[i]]?VAC[gridRow[i]].dur:0;
+  let w=0;const _ov=(S.overrides||{})[key];
+  if(echange){
+    if(_ov&&_ov.hs){if(ecSelf&&vac&&vac!=='RH')w=VAC[vac]?VAC[vac].dur:0;}
+    else if(cycleVac&&cycleVac!=='RH')w=VAC[cycleVac]?VAC[cycleVac].dur:0;
+  }else{
+    if(!vac||vac==='RH')return 0;
+    if(_ov&&_ov.vac&&!_ov.echange&&cycleVac&&VAC[cycleVac]&&VAC[cycleVac].mixte)w=(VAC[cycleVac].dur||0)+_calcMixteHsMin(cycleVac,_ov.vac,VAC);
+    else if(_ov&&_ov.vac&&!_ov.echange&&!_ov.hs)w=cycleVac==='RH'?(VAC[vac]?VAC[vac].dur:0):(cycleVac&&VAC[cycleVac]?VAC[cycleVac].dur:0);
+    else w=VAC[vac]?VAC[vac].dur:0;
+  }
+  const d=Math.max(0,w-_dayBase);return d>0?Math.ceil(d/30)*30:0;
+}
 function openDay(key){
   if(!key)return;pendingKey=key;_lpk=key;
   if(!document.body.classList.contains('modal-open'))_lockBodyScroll();
@@ -2708,6 +2728,7 @@ function openDay(key){
     var _pvac=getPayVac(date),_pv=_pvac?VAC[_pvac]:null,_epv=[];
     if(_pv){
       var _nMin=calcNuitMinShift(_pv);if(_nMin>0)_epv.push('<span style="color:#9c7fe0">Nuit '+fmtMin(_nMin)+'</span>');
+      var _hsD=_dayHSMin(date);if(_hsD>0)_epv.push('<span style="color:var(--blue)">HS +'+fmtMin(_hsD)+(sett.hsRendu?' rendues':'')+'</span>');
       if(_pv.primes&&_pv.primes.antenne)_epv.push('<span style="color:var(--amber)">Antenne</span>');
       if(_pv.primes&&_pv.primes.reel)_epv.push('<span style="color:var(--amber)">Réal</span>');
       if(_pv.primes&&_pv.primes.coord)_epv.push('<span style="color:var(--amber)">Coord</span>');
