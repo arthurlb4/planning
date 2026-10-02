@@ -1604,7 +1604,7 @@ function toggleTheme(){
 // NAVIGATION
 // ================================================================
 function goToday(){
-  window._flushAnim&&window._flushAnim();
+  window._pgFlush&&window._pgFlush();window._flushAnim&&window._flushAnim();
   const alreadyHere=!annualOpen&&curM===NOW.getMonth()&&curY===NOW.getFullYear();
   if(alreadyHere)return;
   const prevYm=curY*12+curM;
@@ -1633,13 +1633,10 @@ function openExternalUrl(url,browser){
 function navDir(d){
   window._flushAnim&&window._flushAnim();
   _calNavDir=d;
-  if(annualOpen){
-    if(window._annSlide){window._annSlide(d);return;}
-    window._titleDir=d;curY+=d;renderAnnual();_setTitle(document.getElementById('mtit'),String(curY));return;
-  }
+  // Flèches : la bande continue avance d'une page à chaque appui, même en plein mouvement
+  if(window._pgStep){window._pgStep(annualOpen?'y':'m',d);return;}
+  if(annualOpen){curY+=d;renderAnnual();_setTitle(document.getElementById('mtit'),String(curY));return;}
   let newY=curY,newM=curM+d;if(newM<0){newM=11;newY--;}if(newM>11){newM=0;newY++;}
-  if(newY*12+newM===TODAY_YM)_todayBtnHide();
-  if(window._calSlideTo){window._calSlideTo(newY,newM,d);return;}
   curM=newM;curY=newY;render();
 }
 
@@ -1851,6 +1848,7 @@ function _showMonthView(){
   if(mv){mv.style.visibility='visible';mv.style.height='';mv.style.overflow='';}
 }
 function toggleAnnual(){
+  window._pgFlush&&window._pgFlush();
   _calVeil(function(){
     const aw=document.getElementById('ann-wrap'),mv=document.getElementById('month-view');
     if(!annualOpen){
@@ -1887,6 +1885,7 @@ function renderAnnual(){
   el.innerHTML=_annHtml(curY);
 }
 function goToMonth(m){
+  window._pgFlush&&window._pgFlush();
   const y=curY;
   _calVeil(function(){
     curM=m;curY=y;
@@ -6675,7 +6674,7 @@ function init(){
   document.addEventListener('contextmenu',function(e){if(e.target.closest('#cal .dci'))e.preventDefault();});
 
   // Swipe gauche/droite : le mois suit le doigt et le mois voisin arrive à côté
-  let _swipeStartX=0,_swipeStartY=0,_swipeT=0,_swipeActive=false,_swipeDrag=false,_swipeLock=null,_swPeek={},_swSamples=[];
+  let _swipeStartX=0,_swipeStartY=0,_swipeT=0,_swipeActive=false,_swipeDrag=false,_swipeLock=null,_swPeek={},_swSamples=[],_swCaught=false,_swEatClick=false;
   // Écart entre deux mois = 2 × la marge entre le bord de l'écran et le calendrier
   function _swW(mv){const l=mv.getBoundingClientRect().left;return mv.offsetWidth+Math.max(16,2*Math.round(l));}
   // On déplace les .cal-wrap eux-mêmes (pas leur parent) : un parent transformé couperait l'effet verre
@@ -6696,16 +6695,10 @@ function init(){
     _syncWknNow(); // numéros et tuiles de semaines (ramenées, congés) comme sur le calendrier
     return el;
   }
-  // Aperçu du mois précédent (d=-1) ou suivant (d=1)
-  function _swGetPeek(d){
-    if(_swPeek[d])return _swPeek[d];
-    let m=curM+d,y=curY;if(m<0){m=11;y--;}if(m>11){m=0;y++;}
-    _swPeek[d]=_swBuildPeek(y,m);return _swPeek[d];
-  }
   // Flèches et bouton « auj. » : même glissement que le geste, vers n'importe quel mois
   let _slideBusy=false;
   window._calSlideTo=function(y,m,d){
-    _flushAnim();
+    _pgFlush();_flushAnim();
     const mv=_swMv(),wrap=_swWrap();
     if(!mv||!wrap){curY=y;curM=m;render();return;}
     _slideBusy=true;_swClearPeek();_titleTo(ML[m]+' '+y,d);
@@ -6730,26 +6723,11 @@ function init(){
   function _flushAnim(){
     if(!_pendingFinish)return;
     const f=_pendingFinish;
-    cancelAnimationFrame(_springRaf);_springRaf=0;_springCommit=false;clearTimeout(_slideT);
+    cancelAnimationFrame(_springRaf);_springRaf=0;clearTimeout(_slideT);
     f();
   }
   window._flushAnim=_flushAnim;
   function _swClearPeek(){Object.keys(_swPeek).forEach(function(k){_swPeek[k].remove();});_swPeek={};}
-  function _swPlace(x,anim){
-    const mv=_swMv(),wrap=_swWrap(),W=_swW(mv),tr=anim?'transform .28s cubic-bezier(.2,.8,.2,1)':'none';
-    if(!wrap)return;
-    wrap.style.transition=tr;wrap.style.transform='translateX('+x.toFixed(1)+'px)';
-    [-1,1].forEach(function(d){
-      const want=(d===1&&x<0)||(d===-1&&x>0);
-      if(!want&&!_swPeek[d])return;
-      const w2=_swGetPeek(d).firstChild;
-      w2.style.transition=tr;w2.style.transform='translateX('+(x+d*W).toFixed(1)+'px)';
-      _swPeek[d].style.visibility=want||anim?'':'hidden';
-    });
-  }
-  // ---- Vue annuelle : même principe, l'année voisine arrive à côté ----
-  // On déplace chaque tuile de mois (pas la grille) pour ne pas toucher à leur effet verre.
-  let _annPk={},_annBusy=false,_swMode='m';
   function _annGrid(){return document.getElementById('ann-grid');}
   function _annW(){const g=_annGrid();return g.offsetWidth+Math.max(16,2*Math.round(g.getBoundingClientRect().left));}
   function _annSetX(el,x,tr){Array.prototype.forEach.call(el.children,function(c){c.style.transition=tr;c.style.transform=x===null?'':'translateX('+x.toFixed(1)+'px)';});}
@@ -6760,63 +6738,9 @@ function init(){
     el.innerHTML=_annHtml(y);
     g.parentNode.appendChild(el);return el;
   }
-  function _annClear(){Object.keys(_annPk).forEach(function(k){_annPk[k].remove();});_annPk={};}
-  function _annPlace(x,anim){
-    const g=_annGrid(),W=_annW(),tr=anim?'transform .3s cubic-bezier(.2,.8,.2,1)':'none';
-    _annSetX(g,x,tr);
-    [-1,1].forEach(function(d){
-      const want=(d===1&&x<0)||(d===-1&&x>0);
-      if(!want&&!_annPk[d])return;
-      if(!_annPk[d])_annPk[d]=_annBuild(curY+d);
-      _annSetX(_annPk[d],x+d*W,tr);
-      _annPk[d].style.visibility=want||anim?'':'hidden';
-    });
-  }
-  function _annCommit(d){
-    window._titleDir=d;curY+=d;renderAnnual();_setTitle(document.getElementById('mtit'),String(curY));
-    _annClear();_annBusy=false;
-  }
-  // Flèches : glissement vers l'année précédente / suivante
-  window._annSlide=function(d){
-    _flushAnim();
-    if(_annBusy)return;_annBusy=true;_annClear();_titleTo(String(curY+d),d);
-    const g=_annGrid(),W=_annW(),pk=_annBuild(curY+d);_annPk.go=pk;
-    _annSetX(pk,d*W,'none');void pk.offsetWidth;
-    const tr='transform .36s cubic-bezier(.25,.8,.25,1)';
-    _annSetX(g,-d*W,tr);_annSetX(pk,0,tr);
-    _pendingFinish=function(){_pendingFinish=null;clearTimeout(_slideT);_annCommit(d);};
-    _slideT=setTimeout(_pendingFinish,370);
-  };
-  document.addEventListener('touchstart',function(e){
-    if(e.target.closest('.sheet')||e.target.closest('.dropdown'))return; // ignore modals/dropdowns
-    if(e.touches.length>1){_swipeActive=false;return;}
-    _swipeStartX=e.touches[0].clientX;
-    _swipeStartY=e.touches[0].clientY;
-    // Horodatage réel du toucher (e.timeStamp) : insensible aux ralentissements du téléphone pendant un rendu
-    _swipeT=e.timeStamp||performance.now();_swipeActive=true;_swipeDrag=false;_swipeLock=null;_swSamples=[[_swipeT,_swipeStartX]];
-  },{passive:true});
-  document.addEventListener('touchmove',function(e){
-    if(!_swipeActive)return;
-    const dx=e.touches[0].clientX-_swipeStartX,dy=e.touches[0].clientY-_swipeStartY;
-    // Derniers points du geste, pour connaître la vitesse au moment où le doigt se lève
-    const _now=e.timeStamp||performance.now();_swSamples.push([_now,e.touches[0].clientX]);while(_swSamples.length>2&&_now-_swSamples[1][0]>100)_swSamples.shift(); // garde un point d'appui juste avant les 100 dernières ms
-    if(!_swipeLock&&(Math.abs(dx)>10||Math.abs(dy)>10))_swipeLock=Math.abs(dx)>Math.abs(dy)*1.5?'h':'v';
-    if(_swipeLock!=='h')return;
-    e.preventDefault();
-    if(document.querySelector('#modal-root .overlay')||document.getElementById('lp-menu'))return;
-    if(_springCommit||_pendingFinish){if(!_swipeDrag)_flushAnim();} // un geste pendant un changement : on le termine net, puis on suit le doigt
-    if(annualOpen){
-      if(_annBusy&&!_springRaf)return;
-      if(!_swipeDrag){if(_springRaf){cancelAnimationFrame(_springRaf);_springRaf=0;_annBusy=false;}_swipeDrag=true;_swMode='y';_annClear();}
-      _annPlace(dx,false);return;
-    }
-    const mv=_swMv();if(!mv)return;
-    if(!_swipeDrag){if(_springRaf){cancelAnimationFrame(_springRaf);_springRaf=0;}_swipeDrag=true;_swMode='m';window._lpCancel&&window._lpCancel();mv.classList.remove('slide-left','slide-right','slide-in-left','slide-in-right');['--fo','--fx','--fs'].forEach(function(k){mv.style.removeProperty(k);});_swClearPeek();}
-    _swPlace(dx,false);
-  },{passive:false});
   // Ressort physique pour le retour en place d'un geste annulé : repart de la vitesse du doigt,
   // revient en douceur avec un très léger dépassement (amortissement 0,78), comme sur iOS
-  let _springRaf=0,_springCommit=false; // _springCommit : un changement de mois/année est en train de se terminer
+  let _springRaf=0;
   // to : position d'arrivée ; z : amortissement (0,78 = léger rebond pour un retour, 1 = arrivée nette pour un changement)
   function _spring(x0,v0,onFrame,onDone,to,z,w){
     cancelAnimationFrame(_springRaf);
@@ -6831,58 +6755,138 @@ function init(){
     };
     _springRaf=requestAnimationFrame(step);
   }
+  // ================================================================
+  // BANDE CONTINUE DE MOIS / D'ANNÉES (comme Google Agenda, Calendrier iOS)
+  // Les mois sont posés côte à côte sur une bande que le doigt déplace librement.
+  // Toucher l'écran pendant une animation « rattrape » la bande là où elle est.
+  // Le mois affiché n'est validé (rendu complet, sider…) qu'une fois la bande arrêtée :
+  // on enchaîne donc les coups secs sans jamais attendre.
+  // ================================================================
+  const PG={on:false,mode:'m',base:0,x:0,x0:0,pages:{},titleK:0,target:0,startK:0};
+  function _pgW(){return PG.mode==='y'?_annW():_swW(_swMv());}
+  function _pgTitle(k){if(PG.mode==='y')return String(PG.base+k);const ym=PG.base+k;return ML[ym%12]+' '+Math.floor(ym/12);}
+  function _pgSetMain(x){
+    if(PG.mode==='y'){_annSetX(_annGrid(),x,'none');return;}
+    const w=_swWrap();if(w){w.style.transition='none';w.style.transform=x?'translateX('+x.toFixed(1)+'px)':'';}
+  }
+  function _pgSetPage(el,x){
+    if(PG.mode==='y'){_annSetX(el,x,'none');return;}
+    const w=el.firstChild;w.style.transition='none';w.style.transform='translateX('+x.toFixed(1)+'px)';
+  }
+  function _pgBuild(k){
+    if(PG.mode==='y')return _annBuild(PG.base+k);
+    const ym=PG.base+k;return _swBuildPeek(Math.floor(ym/12),ym%12);
+  }
+  function _pgBegin(mode){
+    PG.on=true;PG.mode=mode;PG.base=mode==='y'?curY:curY*12+curM;
+    PG.x=0;PG.pages={};PG.titleK=0;PG.target=0;PG.startK=0;
+    window._lpCancel&&window._lpCancel();
+    if(mode==='m'){_swClearPeek();const mv=_swMv();if(mv)mv.classList.remove('slide-left','slide-right','slide-in-left','slide-in-right');}
+  }
+  // Place la bande : mois affiché + voisins visibles (créés à la demande)
+  function _pgLayout(){
+    const W=_pgW(),c=-PG.x/W,lo=Math.floor(c)-1,hi=Math.ceil(c)+1;
+    _pgSetMain(PG.x);
+    for(let k=lo;k<=hi;k++){
+      if(k===0)continue;
+      if(!PG.pages[k])PG.pages[k]=_pgBuild(k);
+      _pgSetPage(PG.pages[k],PG.x+k*W);PG.pages[k].style.visibility='';
+    }
+    Object.keys(PG.pages).forEach(function(kk){const k=+kk;if(k<lo||k>hi)PG.pages[k].style.visibility='hidden';});
+    const near=Math.round(c);
+    if(near!==PG.titleK){_titleTo(_pgTitle(near),near>PG.titleK?1:-1);PG.titleK=near;}
+  }
+  // La bande s'est arrêtée : on valide le mois / l'année atteint (un seul rendu complet)
+  function _pgEnd(){
+    const k=PG.target;
+    Object.keys(PG.pages).forEach(function(kk){PG.pages[kk].remove();});PG.pages={};
+    PG.on=false;PG.x=0;
+    if(PG.mode==='y'){
+      _annSetX(_annGrid(),null,'');
+      if(k){window._titleDir=k>0?1:-1;curY=PG.base+k;renderAnnual();_setTitle(document.getElementById('mtit'),String(curY));}
+      return;
+    }
+    const w=_swWrap();if(w){w.style.transition='';w.style.transform='';}
+    if(k){
+      const ym=PG.base+k;_calNavDir=k>0?1:-1;window._titleDir=_calNavDir;
+      curY=Math.floor(ym/12);curM=ym%12;if(ym===TODAY_YM)_todayBtnHide();
+      render();_syncWknNow();
+    }
+  }
+  // Fait glisser la bande jusqu'à la page k ; léger rebond si on revient sur la page de départ
+  function _pgGo(k,v0){
+    PG.target=k;const W=_pgW(),back=(k===PG.startK);
+    _spring(PG.x,v0||0,function(x){PG.x=x;_pgLayout();},_pgEnd,-k*W,back?0.78:1,back?0.0165:0.02);
+  }
+  // Termine immédiatement (avant un autre type de navigation)
+  function _pgFlush(){
+    if(!PG.on)return;
+    cancelAnimationFrame(_springRaf);_springRaf=0;
+    PG.x=-PG.target*_pgW();_pgEnd();
+  }
+  window._pgFlush=_pgFlush;
+  // Flèches : chaque appui ajoute une page à la cible, même pendant que la bande bouge
+  window._pgStep=function(mode,d){
+    _flushAnim();
+    if(PG.on&&PG.mode!==mode)_pgFlush();
+    if(!PG.on)_pgBegin(mode);
+    PG.startK=PG.target;
+    _pgGo(PG.target+d,0);
+  };
+  // Un appui qui a seulement « rattrapé » la bande ne doit pas ouvrir la fiche du jour
+  document.addEventListener('click',function(e){if(_swEatClick){_swEatClick=false;e.stopPropagation();e.preventDefault();}},true);
+
+  document.addEventListener('touchstart',function(e){
+    if(e.target.closest('.sheet')||e.target.closest('.dropdown'))return; // ignore modals/dropdowns
+    if(e.touches.length>1){_swipeActive=false;return;}
+    _swipeStartX=e.touches[0].clientX;
+    _swipeStartY=e.touches[0].clientY;
+    // Horodatage réel du toucher (e.timeStamp) : insensible aux ralentissements du téléphone pendant un rendu
+    _swipeT=e.timeStamp||performance.now();_swipeActive=true;_swipeDrag=false;_swipeLock=null;_swSamples=[[_swipeT,_swipeStartX]];
+    // Bande en mouvement : on la rattrape là où elle est
+    _swCaught=false;_swEatClick=false;
+    if(PG.on&&_springRaf){cancelAnimationFrame(_springRaf);_springRaf=0;_swCaught=true;_swEatClick=true;window._lpCancel&&window._lpCancel();}
+  },{passive:true});
+  document.addEventListener('touchmove',function(e){
+    if(!_swipeActive)return;
+    const dx=e.touches[0].clientX-_swipeStartX,dy=e.touches[0].clientY-_swipeStartY;
+    // Derniers points du geste, pour connaître la vitesse au moment où le doigt se lève
+    const _now=e.timeStamp||performance.now();_swSamples.push([_now,e.touches[0].clientX]);while(_swSamples.length>2&&_now-_swSamples[1][0]>100)_swSamples.shift();
+    if(!_swipeLock&&(Math.abs(dx)>10||Math.abs(dy)>10))_swipeLock=Math.abs(dx)>Math.abs(dy)*1.5?'h':'v';
+    if(_swipeLock!=='h')return;
+    e.preventDefault();
+    if(document.querySelector('#modal-root .overlay')||document.getElementById('lp-menu'))return;
+    const mode=annualOpen?'y':'m';
+    if(mode==='m'&&!_swMv())return;
+    if(!_swipeDrag){
+      _flushAnim();
+      if(PG.on&&PG.mode!==mode)_pgFlush();
+      if(!PG.on)_pgBegin(mode);
+      // Page de référence : celle vers laquelle la bande allait si on l'a rattrapée, sinon la plus proche
+      _swipeDrag=true;PG.x0=PG.x-dx;PG.startK=_swCaught?PG.target:Math.round(-PG.x/_pgW());
+    }
+    PG.x=PG.x0+dx;_pgLayout();
+  },{passive:false});
   function _swEnd(e,cancel){
     if(!_swipeActive)return;
     _swipeActive=false;
-    const dx=e.changedTouches[0].clientX-_swipeStartX;
-    const dy=e.changedTouches[0].clientY-_swipeStartY;
-    // Décision comme sur iOS : on change si le doigt est lâché au-delà de la moitié de la largeur,
-    // ou si un coup rapide (vitesse au lâcher, pas la moyenne du geste) va dans le même sens que le glissement.
-    // Un geste lent qui revient en arrière ou s'arrête avant la moitié ramène le mois en place.
-    const _ref=annualOpen?document.getElementById('ann-grid'):_swMv(),_half=((_ref&&_ref.offsetWidth)||window.innerWidth)/2;
-    const _tEnd=e.timeStamp||performance.now();
-    const _last=_swSamples[_swSamples.length-1],_first=_swSamples[0],_dt=Math.max(1,_tEnd-_first[0]);
-    const vRel=(_tEnd-_last[0]>80)?0:(e.changedTouches[0].clientX-_first[1])/_dt; // px/ms, 0 si le doigt s'est arrêté avant de lever
-    const flick=Math.abs(vRel)>0.3&&Math.sign(vRel)===Math.sign(dx)&&Math.abs(dx)>12;
-    const go=!cancel&&_swipeLock==='h'&&(flick||(Math.abs(dx)>_half&&!(Math.sign(vRel)===-Math.sign(dx)&&Math.abs(vRel)>0.2)));
     if(!_swipeDrag){
-      if(document.querySelector('#modal-root .overlay')||document.getElementById('lp-menu'))return;
-      if(go)navDir(dx<0?1:-1);
+      // Simple appui (ou défilement vertical) pendant que la bande bougeait : elle repart vers sa page
+      if(_swCaught&&PG.on)_pgGo(PG.target,0);
       return;
     }
     _swipeDrag=false;
-    if(_swMode==='y'){
-      const d=dx<0?1:-1;
-      _annBusy=true;
-      if(!go){_spring(dx,vRel,function(x){_annPlace(x,false);},function(){_annSetX(_annGrid(),null,'');_annClear();_annBusy=false;});return;}
-      _titleTo(String(curY+d),d);
-      _springCommit=true;_pendingFinish=function(){_pendingFinish=null;_springCommit=false;_annCommit(d);};
-      _spring(dx,vRel,function(x){_annPlace(x,false);},function(){if(_pendingFinish)_pendingFinish();},-d*_annW(),1,0.02);
-      return;
-    }
-    const mv=_swMv();if(!mv)return;
-    const W=_swW(mv),d=dx<0?1:-1;
-    if(!go){
-      _spring(dx,vRel,function(x){_swPlace(x,false);},function(){const wrap=_swWrap();if(wrap){wrap.style.transition='';wrap.style.transform='';}_swClearPeek();});
-      return;
-    }
-    {let ty=curY,tm=curM+d;if(tm<0){tm=11;ty--;}if(tm>11){tm=0;ty++;}_titleTo(ML[tm]+' '+ty,d);}
-    // Le mois continue sur l'élan du doigt jusqu'à sa place (pas de durée fixe)
-    _springCommit=true;
-    _pendingFinish=function(){
-      _pendingFinish=null;_springCommit=false;
-      const wrap=_swWrap();
-      if(go){
-        _calNavDir=d;
-        let newY=curY,newM=curM+d;if(newM<0){newM=11;newY--;}if(newM>11){newM=0;newY++;}
-        if(newY*12+newM===TODAY_YM)_todayBtnHide();
-        curM=newM;curY=newY;window._titleDir=d;
-        if(wrap){wrap.style.transition='none';wrap.style.transform='';}
-        _swClearPeek();
-        render();_syncWknNow();
-      }
-    };
-    _spring(dx,vRel,function(x){_swPlace(x,false);},function(){if(_pendingFinish)_pendingFinish();},-d*W,1,0.02);
+    // Vitesse au moment où le doigt se lève (pas la moyenne du geste), comme sur iOS
+    const _tEnd=e.timeStamp||performance.now();
+    const _last=_swSamples[_swSamples.length-1],_first=_swSamples[0],_dt=Math.max(1,_tEnd-_first[0]);
+    const vRel=(_tEnd-_last[0]>80)?0:(e.changedTouches[0].clientX-_first[1])/_dt; // px/ms
+    const W=_pgW(),c=-PG.x/W;
+    let k;
+    if(cancel)k=PG.startK;
+    // coup sec : page suivante dans le sens du geste, au-delà de celle que la bande visait déjà
+    else if(Math.abs(vRel)>0.3)k=vRel<0?Math.max(Math.floor(c+1e-6)+1,PG.startK+1):Math.min(Math.ceil(c-1e-6)-1,PG.startK-1);
+    else k=Math.round(c); // geste lent : la page la plus proche (au-delà de la moitié)
+    _pgGo(k,vRel);
   }
   document.addEventListener('touchend',function(e){_swEnd(e,false);},{passive:true});
   document.addEventListener('touchcancel',function(e){_swEnd(e,true);},{passive:true});
