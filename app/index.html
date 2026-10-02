@@ -634,6 +634,10 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .pwa button{background:transparent;border:none;color:var(--text3);font-size:16px;cursor:pointer;margin-left:auto;}
 
 /* Recap */
+.sv-sw{display:flex;gap:2px;background:var(--bg3);border-radius:9px;padding:2px;margin:0 auto 12px;width:max-content}.sv-sw button{border:none;background:none;color:var(--text3);font-size:11.5px;padding:5px 14px;border-radius:7px;font-family:var(--font);cursor:pointer}.sv-sw button.on{background:var(--bg2);color:var(--text);font-weight:600}
+.sv-btns{display:flex;gap:8px;margin-bottom:10px}.sv-btns button{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:14px 8px;border:0.5px solid var(--border);border-radius:14px;background:var(--bg3);color:var(--blue);font-size:12.5px;font-weight:600;font-family:var(--font);cursor:pointer}.sv-btns i{font-size:22px}
+.sv-card{background:var(--bg3);border:0.5px solid var(--border);border-radius:14px;padding:12px;margin-bottom:8px}.sv-h{font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px}.sv-h small{font-weight:400;font-size:10.5px;color:var(--text3);margin-left:4px}
+.sv-line{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;font-size:12.5px;color:var(--text2);border-top:0.5px solid var(--border2)}.sv-line:first-of-type{border-top:none}.sv-tap{cursor:pointer}.sv-r{display:flex;align-items:baseline;gap:6px}.sv-r b{font-size:13.5px}.sv-r small{font-size:10.5px;color:var(--text3)}.sv-r i{font-style:normal;color:var(--text3);margin-left:2px}
 .fold{background:var(--bg3);border:0.5px solid var(--border);border-radius:14px;margin-bottom:8px;overflow:hidden}
 .fold>summary{list-style:none;display:flex;align-items:center;gap:11px;padding:12px;min-height:44px;cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
 .fold>summary::-webkit-details-marker{display:none}
@@ -2617,6 +2621,31 @@ function _rhAcqCheck(){
   rh.lines.forEach(function(l){if(l.nature)sheet[l.ym]=(sheet[l.ym]||0)+l.acq;});
   var r={asOfYM:asOfYM,ed:ed,sheet:sheet};window._rhAcqC={at:o.at,r:r};return r;
 }
+// ── Suivi : vue simple (imports + écarts en bref) ou complète (tous les blocs) ──
+function _suiviMode(){try{return localStorage.getItem('pl_suivi_mode')||'simple';}catch(e){return 'simple';}}
+function suiviSetMode(m){try{localStorage.setItem('pl_suivi_mode',m);}catch(e){}
+  var a=document.getElementById('sv-simple'),b=document.getElementById('sv-full');if(a)a.style.display=m==='simple'?'':'none';if(b)b.style.display=m==='simple'?'none':'';
+  document.querySelectorAll('.sv-sw button').forEach(function(x){x.classList.toggle('on',x.dataset.m===m);});}
+function _suiviSwitch(){var m=_suiviMode();return '<div class="sv-sw"><button data-m="simple" class="'+(m==='simple'?'on':'')+'" onclick="suiviSetMode(\'simple\')">Simple</button><button data-m="full" class="'+(m==='simple'?'':'on')+'" onclick="suiviSetMode(\'full\')">Complet</button></div>';}
+function _suiviSimple(y){
+  var fe=function(x){return (x>0?'+':'')+fmtEuro(x).replace(/\s*€/,' €');};
+  // Rendus : écart du dernier tableau Gestion (+ = le tableau laisse plus d'heures que l'app)
+  var c=S.profile&&S.profile.rhCmp,o=S.profile&&S.profile.rhTable,rd;
+  if(!c||!o)rd='<div class="sv-line"><span>Aucun tableau importé</span></div>';
+  else{var e=-c.d,ok=Math.abs(e)<2;
+    rd='<div class="sv-line sv-tap" onclick="rhOpenFromRecap()"><span>Tableau du '+new Date(c.ed+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long'})+'</span><span class="sv-r">'
+      +(ok?'<b style="color:var(--green)">✓ identique</b>':'<b style="color:'+(e>0?'var(--green)':'var(--red)')+'">'+(e>0?'+':'−')+fmtMin(Math.abs(e))+'</b><small>'+(e>0?'favorable':'à faire corriger')+'</small>')+'<i>›</i></span></div>';}
+  // Salaire : un mot par bulletin importé
+  var yms=Object.keys(S.bulletins||{}).map(Number).filter(function(k){return Math.floor(k/12)===y;}).sort(function(a,b){return a-b;}),sal='';
+  yms.forEach(function(ym){var cc;try{cc=_bulCompare(S.bulletins[ym]);}catch(er){return;}
+    var ok=cc.status!=='ecart',d=cc.diff;
+    sal+='<div class="sv-line sv-tap" onclick="openBulletinModal('+ym+',\'recap\')"><span>'+ML[ym%12]+'</span><span class="sv-r">'
+      +(ok?'<b style="color:var(--green)">✓ conforme</b>'+(cc.status==='late'?'<small>rattrapages</small>':''):Math.abs(d)<0.05?'<b style="color:var(--amber)">⚠ même total</b><small>lignes à vérifier</small>':'<b style="color:'+(d>0?'var(--green)':'var(--red)')+'">'+fe(d)+'</b><small>'+(d>0?'favorable':'à vérifier')+'</small>')+'<i>›</i></span></div>';});
+  if(!sal)sal='<div class="sv-line"><span>Aucun bulletin importé</span></div>';
+  return '<div class="sv-btns"><button onclick="rhOpenFromRecap(true)"><i class="ti ti-table-import"></i>Tableau Gestion</button><button onclick="window._bulFrom=\'recap\';importBulletins()"><i class="ti ti-file-import"></i>Bulletins (PDF)</button></div>'
+    +'<div class="sv-card"><div class="sv-h">Rendus <small>écart avec le tableau Gestion</small></div>'+rd+'</div>'
+    +'<div class="sv-card"><div class="sv-h">Salaire '+y+' <small>écart avec les bulletins</small></div>'+sal+'</div>';
+}
 // Bloc « Rendus » du récap : heures acquises et rendus posés mois par mois, acquises vérifiées avec le tableau Gestion
 function _acqHtml(y,dispoTxt){
   var gen=buildGen(false),nowYM=NOW.getFullYear()*12+NOW.getMonth(),chk=_rhAcqCheck(),createdYM=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:2026*12;
@@ -4563,11 +4592,14 @@ function openMergedRenduCgModal(limit,tab){
   const rcgCgKeys=Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='cg'&&k.startsWith(nowY+'-');}).sort();
   const rcgCgSections=_rhMonthSections(rcgCgKeys,'cg')||'<div style="font-size:11px;color:var(--text3);padding:2px 0">Aucun congé.</div>';
   const rcgHistHtml=(S.history||[]).slice(0,8).map(function(e){return '<div class="hrow"><div class="hdot" style="background:'+e.c+'"></div><span class="htime">'+e.t+'</span><span class="hdesc">'+_histTxt(e.d)+'</span></div>';}).join('')||'<span style="font-size:11px;color:var(--text3)">Aucune modification.</span>';
-  const recapRows=''
+  const recapRows=_suiviSwitch()
+    +'<div id="sv-simple"'+(_suiviMode()==='simple'?'':' style="display:none"')+'>'+_suiviSimple(nowY)+'</div>'
+    +'<div id="sv-full"'+(_suiviMode()==='simple'?' style="display:none"':'')+'>'
     +_fold('fold-cg','beach','var(--green)','Congés '+nowY,'posés / droits de l’année · il reste '+restNow+'j',rcgUsedCurY+' / '+(rcgUsedCurY+restNow)+' j','<div style="height:6px"></div>'+rcgCgSections)
     +_acqHtml(nowY,'libre en '+MC[TODAY_YM%12]+' : '+fmtMin(calcTrueDispo(TODAY_YM).total))
     +_bilanHtml(nowY)
     +_fold('fold-hist','history','var(--text2)','Dernières modifications',(S.history||[]).length?'dernière le '+S.history[0].t:'aucune',(S.history||[]).length||'','<div style="height:6px"></div>'+rcgHistHtml)
+    +'</div>'
     +'<div style="height:12px"></div>';
   const dispoColor=dispoMois<=0?'var(--red)':dispoMois<120?'var(--amber)':'var(--rend-text)';
   const _as1Map={};afterStep1.forEach(function(e){_as1Map[e.ym]=e.amount;});
