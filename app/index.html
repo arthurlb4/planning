@@ -2370,6 +2370,43 @@ function updateRecap(){
   el.innerHTML='<div class="recap-row"><span>Congés '+NOW.getFullYear()+' restants</span><b style="color:var(--green)">'+restCurY+' j</b></div>'
     +'<div class="recap-row"><span>Rendus posés</span><b style="color:var(--rend-text)">'+fmtMin(rendusMin)+'</b></div>';
 }
+// Bilan de l'année : compteurs (depuis le 1er janvier, comparés à la même période l'an dernier) et paie mois par mois
+function _bilanCount(y,toMonth,toDay){
+  var c={jours:0,nuits:0,dim:0,fer:0,matins:0},d=new Date(y,0,1,12),end=new Date(y,toMonth,toDay,12);
+  while(d<=end){
+    var k=dk(d),g=getVac(d),cg=(S.conges||{})[k];
+    if(!g.absent&&!(cg==='cg'||cg==='rend'||cg==='rend-hist'||cg==='absent')&&!(g.echange&&!g.ecSelf)&&g.vac&&g.vac!=='RH'){
+      var V=getVAC(d)[g.vac];
+      c.jours++;
+      if(V&&calcNuitMinShift(V)>0)c.nuits++;
+      if(d.getDay()===0)c.dim++;
+      if(FERIES.has(k))c.fer++;
+      if(V&&V.deb&&_toMinApp(V.deb)<240)c.matins++;
+    }
+    d.setDate(d.getDate()+1);
+  }
+  return c;
+}
+function _bilanHtml(y){
+  var nowY=NOW.getFullYear(),lastM=y===nowY?NOW.getMonth():11,lastD=y===nowY?NOW.getDate():31;
+  var a=_bilanCount(y,lastM,lastD),b=_bilanCount(y-1,lastM,lastD);
+  var row=function(lbl,v,p){var df=v-p,dc=df>0?'var(--amber)':df<0?'var(--text3)':'var(--text3)';
+    return '<div class="recap-row" style="padding:4px 0"><span style="color:var(--text2)">'+lbl+'</span><span><b>'+v+'</b><span style="display:inline-block;min-width:44px;text-align:right;font-size:11px;color:'+dc+'">'+(df>0?'+':'')+(df||'=')+'</span></span></div>';};
+  var h='<div class="btit">Compteurs '+y+'</div>'
+    +'<div style="font-size:11px;color:var(--text3);margin:-2px 0 6px">Du 1er janvier au '+lastD+' '+MC[lastM]+', écart avec la même période en '+(y-1)+'</div>'
+    +row('Jours travaillés',a.jours,b.jours)+row('Avec heures de nuit',a.nuits,b.nuits)+row('Dimanches',a.dim,b.dim)+row('Fériés',a.fer,b.fer)+row('Matins (avant 4h)',a.matins,b.matins);
+  var pay='',tot=0,n=0;
+  for(var m=0;m<=lastM;m++){
+    var pt=calcPayeMois(y,m);if(!(pt&&pt.configured&&pt.salQ&&pt.heures))continue;
+    tot+=pt.total;n++;
+    pay+='<div class="recap-row" style="padding:4px 0"><span style="color:var(--text2)">'+ML[m]+'</span><b style="color:var(--gold-pay)">'+fmtEuro(pt.total)+'</b></div>';
+  }
+  h+='<div class="btit" style="margin-top:14px">Paie '+y+' <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text3)">· brut estimé</span></div>'
+    +(n?pay+'<div class="recap-row" style="padding:6px 0 4px;margin-top:2px;border-top:0.5px solid var(--border2)"><span style="color:var(--text3)">Total · moyenne '+fmtEuro(tot/n)+'</span><b style="color:var(--gold-pay)">'+fmtEuro(tot)+'</b></div>'
+       :'<div style="font-size:11px;color:var(--text3);padding:2px 0">Renseigne ta paie dans Réglages → Paie pour voir l’historique.</div>')
+    +'<div style="height:14px"></div>';
+  return h;
+}
 function openRecapModal(){
   document.querySelectorAll('[onclick*="openRecapModal"]').forEach(el=>el.classList.add('active'));_lockBodyScroll();
   setTimeout(function(){if(document.documentElement.classList.contains('touch')){const _t=document.createElement('button');_t.style.cssText='position:fixed;opacity:0;pointer-events:none;top:0;left:0';document.body.appendChild(_t);_t.focus();document.body.removeChild(_t);}},50);
@@ -2522,6 +2559,41 @@ function _dayNavSetup(key){
     setTimeout(function(){window._dayNavDir=nd;openDay(dk(dt));},160);
   },{passive:true});
 }
+// Repos entre deux vacations (11 h minimum) : simple signalement, rien n'est bloqué
+function _shiftSpan(d){
+  var k=dk(d),g=getVac(d),cg=(S.conges||{})[k];
+  if(g.absent||cg==='cg'||cg==='rend'||cg==='rend-hist'||cg==='absent'||(g.echange&&!g.ecSelf)||!g.vac||g.vac==='RH')return null;
+  var V=getVAC(d)[g.vac];if(!V||!V.deb||!V.fin)return null;
+  var a=_toMinApp(V.deb),b=_toMinApp(V.fin);if(a==null||b==null)return null;
+  var base=Math.round(new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime()/60000);
+  return{start:base+a,end:base+(b>a?b:b+1440),vac:g.vac};
+}
+function _restWarn(key){
+  var d=new Date(key+'T12:00:00'),me=_shiftSpan(d);if(!me)return '';
+  var p=new Date(d);p.setDate(p.getDate()-1);var n=new Date(d);n.setDate(n.getDate()+1);
+  var pv=_shiftSpan(p),nx=_shiftSpan(n),out=[];
+  if(pv&&me.start-pv.end<660)out.push('repos de '+fmtMin(me.start-pv.end)+' après la '+pv.vac+' de la veille');
+  if(nx&&nx.start-me.end<660)out.push('repos de '+fmtMin(nx.start-me.end)+' avant la '+nx.vac+' du lendemain');
+  if(!out.length)return '';
+  return '<div style="font-size:12px;color:var(--amber);margin-top:5px;display:flex;gap:6px;align-items:baseline"><i class="ti ti-moon-stars" style="font-size:13px"></i><span>Moins de 11 h : '+out.join(' ; ')+'</span></div>';
+}
+// Note libre sur un jour (visible dans la fiche du jour)
+function openNoteModal(key){
+  var cur=(S.notes||{})[key]||'',d=new Date(key+'T12:00:00');
+  document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)openDay(\''+key+'\')"><div class="sheet">'
+    +'<div class="sh"></div><div class="st">Note · '+fmtDate(d)+'</div>'
+    +'<textarea id="note-txt" rows="4" maxlength="500" placeholder="Remplacement, formation, rappel…" style="width:100%;padding:10px 12px;border:0.5px solid var(--border);border-radius:var(--r);font:14px var(--font);background:var(--bg2);color:var(--text);resize:none;margin-bottom:10px"></textarea>'
+    +'<div class="mbtns">'+(cur?'<button class="mb del" style="border:none" onclick="saveNote(\''+key+'\',true)">Supprimer</button>':'<button class="mb" onclick="openDay(\''+key+'\')">Annuler</button>')
+    +'<button class="mb pri" onclick="saveNote(\''+key+'\')">Enregistrer</button></div>'
+    +'</div></div>';
+  var t=document.getElementById('note-txt');t.value=cur;setTimeout(function(){t.focus();},250);
+}
+function saveNote(key,del){
+  var v=del?'':(document.getElementById('note-txt').value||'').trim();
+  if(!S.notes)S.notes={};
+  if(v)S.notes[key]=v;else delete S.notes[key];
+  saveState();openDay(key);
+}
 function openDay(key){
   if(!key)return;pendingKey=key;_lpk=key;
   if(!document.body.classList.contains('modal-open'))_lockBodyScroll();
@@ -2641,20 +2713,28 @@ function openDay(key){
   } else {
     _renduBtn='<button style="font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;background:none;color:var(--text2);cursor:pointer;white-space:nowrap" onclick="openExtraRenduModal(\''+key+'\')">+ Rendu</button>';
   }
+  var _note=(S.notes||{})[key]||'';
+  var _noteBtn=_note?'':'<button style="font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;background:none;color:var(--text2);cursor:pointer;white-space:nowrap" onclick="openNoteModal(\''+key+'\')">+ Note</button>';
+  _renduBtn='<div style="display:flex;gap:6px;align-items:center">'+_noteBtn+_renduBtn+'</div>';
+  var _noteHtml=_note?'<div onclick="openNoteModal(\''+key+'\')" style="cursor:pointer;margin-top:8px;padding:7px 10px;border-radius:8px;background:rgba(255,250,243,.05);font-size:12.5px;color:var(--text2);line-height:1.4;display:flex;gap:7px"><i class="ti ti-note" style="font-size:14px;color:var(--text3);margin-top:1px"></i><span style="white-space:pre-wrap;word-break:break-word"></span></div>':'';
   var _dayBox='';
   if(vac&&vac!=='RH'&&!absent&&VAC[vac]){
     _dayBox='<div style="background:var(--bg3);border-radius:10px;padding:10px 14px;margin-bottom:12px">'
       +'<div style="display:flex;align-items:center;justify-content:space-between"><div style="font-size:15px;font-weight:600;color:var(--text)">'+lbl+(tt?' — '+tt:'')+'</div>'+_renduBtn+'</div>'
       +'<div style="font-size:12px;color:var(--text2);margin-top:3px">'+VAC[vac].deb+'→'+VAC[vac].fin+' · '+fmtMin(dur)+'</div>'
       +(epvHtml?'<div style="margin-top:3px">'+epvHtml+'</div>':'')
+      +_restWarn(key)
+      +_noteHtml
       +'</div>';
   } else {
     _dayBox='<div style="background:var(--bg3);border-radius:10px;padding:10px 14px;margin-bottom:12px">'
       +'<div style="display:flex;align-items:center;justify-content:space-between"><div style="font-size:15px;font-weight:600;color:var(--text)">'+lbl+(tt?' — '+tt:'')+'</div>'+_renduBtn+'</div>'
+      +_noteHtml
       +'</div>';
   }
 
   document.getElementById('modal-root').innerHTML=`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="sh"></div>${_dayBox}${vgHtml}<div style="height:16px"></div>${ah}${echange?`<button class="mb del wide" style="font-size:11px;padding:8px;margin-bottom:4px" onclick="cancelExchange('${key}')">Annuler l'échange</button>`:ov?`<button class="mb wide ghost" style="font-size:11px;padding:8px;margin-bottom:4px" onclick="resetVac()">Remettre le cycle (${cycleVac?vLbl(cycleVac,VAC):'repos'})</button>`:''}<button class="mcancel mclose" onclick="closeModal()">Fermer</button></div></div>`;
+  if(_note){var _ns=document.querySelector('#modal-root .ti-note');if(_ns)_ns.nextElementSibling.textContent=_note;}
   _dayNavSetup(key);
 }
 function avw(sel){
@@ -4184,6 +4264,7 @@ function openMergedRenduCgModal(limit,tab){
   const rcgRdSections=_rhMonthSections(rcgRdKeys,'rend')||'<div style="font-size:11px;color:var(--text3);padding:2px 0">Aucun rendu.</div>';
   const rcgHistHtml=(S.history||[]).slice(0,8).map(function(e){return '<div class="hrow"><div class="hdot" style="background:'+e.c+'"></div><span class="htime">'+e.t+'</span><span class="hdesc">'+e.d+'</span></div>';}).join('')||'<span style="font-size:11px;color:var(--text3)">Aucune modification.</span>';
   const recapRows=''
+    +_bilanHtml(nowY)
     +'<div class="btit">Récapitulatif</div>'
     +'<div class="recap-row" style="padding:5px 0"><span style="color:var(--text3)">Congés '+nowY+' posés</span><b style="color:var(--green)">'+rcgUsedCurY+' j</b></div>'
     +'<div style="margin-bottom:8px">'+rcgCgSections+'</div>'
