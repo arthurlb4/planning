@@ -2378,7 +2378,7 @@ function _bilanCount(y,toMonth,toDay){
     if(!g.absent&&!(cg==='cg'||cg==='rend'||cg==='rend-hist'||cg==='absent')&&!(g.echange&&!g.ecSelf)&&g.vac&&g.vac!=='RH'){
       var V=getVAC(d)[g.vac];
       c.jours++;
-      if(V&&calcNuitMinShift(V)>0)c.nuits++;
+      if(V)c.nuits+=calcNuitMinShift(V)||0; // minutes de nuit
       if(d.getDay()===0)c.dim++;
       if(FERIES.has(k))c.fer++;
       if(V&&V.deb&&_toMinApp(V.deb)<240)c.matins++;
@@ -2390,11 +2390,11 @@ function _bilanCount(y,toMonth,toDay){
 function _bilanHtml(y){
   var nowY=NOW.getFullYear(),lastM=y===nowY?NOW.getMonth():11,lastD=y===nowY?NOW.getDate():31;
   var a=_bilanCount(y,lastM,lastD),b=_bilanCount(y-1,lastM,lastD);
-  var row=function(lbl,v,p){var df=v-p,dc=df>0?'var(--amber)':df<0?'var(--text3)':'var(--text3)';
-    return '<div class="recap-row" style="padding:4px 0"><span style="color:var(--text2)">'+lbl+'</span><span><b>'+v+'</b><span style="display:inline-block;min-width:44px;text-align:right;font-size:11px;color:'+dc+'">'+(df>0?'+':'')+(df||'=')+'</span></span></div>';};
+  var row=function(lbl,v,p,h){var df=v-p,dc=df>0?'var(--amber)':'var(--text3)',f=function(x){return h?fmtMin(x):String(x);};
+    return '<div class="recap-row" style="padding:4px 0"><span style="color:var(--text2)">'+lbl+'</span><span><b>'+f(v)+'</b><span style="display:inline-block;min-width:60px;text-align:right;font-size:11px;color:'+dc+'">'+(df>0?'+'+f(df):df<0?'−'+f(-df):'=')+'</span></span></div>';};
   var h='<div class="btit">Compteurs '+y+'</div>'
     +'<div style="font-size:11px;color:var(--text3);margin:-2px 0 6px">Du 1er janvier au '+lastD+' '+MC[lastM]+', écart avec la même période en '+(y-1)+'</div>'
-    +row('Jours travaillés',a.jours,b.jours)+row('Avec heures de nuit',a.nuits,b.nuits)+row('Dimanches',a.dim,b.dim)+row('Fériés',a.fer,b.fer)+row('Matins (avant 4h)',a.matins,b.matins);
+    +row('Jours travaillés',a.jours,b.jours)+row('Heures de nuit',a.nuits,b.nuits,true)+row('Dimanches',a.dim,b.dim)+row('Fériés',a.fer,b.fer)+row('Matins (avant 4h)',a.matins,b.matins);
   var pay='',tot=0,n=0;
   for(var m=0;m<=lastM;m++){
     var pt=calcPayeMois(y,m);if(!(pt&&pt.configured&&pt.salQ&&pt.heures))continue;
