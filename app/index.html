@@ -2381,29 +2381,41 @@ function _bulCompare(b){
   return{P:P,rows:rows,fixed:fixed,late:late,lateSum:lateSum,alerts:alerts,diff:diff,status:status,nBad:nBad,paniers:b.paniers?{bq:b.paniers.q,aq:v.paniers}:null};
 }
 var _BUL_ST={ok:['✓','var(--green)','Conforme'],late:['✓','var(--green)','Conforme, avec des rattrapages'],ecart:['⚠','var(--amber)','Écarts à vérifier']};
+// Résumé en haut de l'onglet Paie (le détail est en bas, sous le calcul)
+function _bulSummary(ym){
+  var b=(S.bulletins||{})[ym];if(!b)return'';
+  var c=_bulCompare(b),st=_BUL_ST[c.status],d=c.diff,z=Math.abs(d)<=0.05;
+  return '<button onclick="var e=document.getElementById(\'bul-blk\');if(e)e.scrollIntoView({behavior:\'smooth\',block:\'start\'})" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;margin:2px 0 10px;padding:8px 10px;border:0.5px solid var(--border);border-radius:10px;background:var(--bg3);color:var(--text2);font-size:11px;cursor:pointer;font-family:var(--font)">'
+    +'<span>Bulletin '+_deMois(ym)+' · <b style="color:'+st[1]+'">'+st[0]+' '+st[2]+'</b></span>'
+    +'<span style="display:flex;align-items:center;gap:6px">'+(z?'':'<b style="color:var(--amber)">'+(d>0?'+':'')+fmtEuro(d).replace(/\s*€/,'')+'</b>')+'<i class="ti ti-chevron-down" style="color:var(--text3)"></i></span></button>';
+}
 function _bulHtml(ym){
-  var b=(S.bulletins||{})[ym],mo=MC[ym%12];
+  var b=(S.bulletins||{})[ym];
   var imp='<button onclick="importBulletins()" style="font-size:11px;padding:5px 10px;border:1px solid var(--border);border-radius:8px;background:none;color:var(--text2);cursor:pointer;font-family:var(--font)"><i class="ti ti-file-import" style="margin-right:4px"></i>'+(b?'Remplacer':'Importer le bulletin '+_deMois(ym))+'</button>';
   var hist=Object.keys(S.bulletins||{}).map(Number).sort(function(a,c){return a-c;});
   var histHtml=hist.length?'<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px">'+hist.map(function(h){var st=_BUL_ST[_bulCompare(S.bulletins[h]).status];return '<button onclick="openMergedMoisModal('+h+',4)" style="font-size:10px;padding:3px 7px;border-radius:6px;border:0.5px solid '+(h===ym?'var(--text3)':'var(--border)')+';background:none;color:var(--text2);cursor:pointer;font-family:var(--font)">'+MCs[h%12]+(Math.floor(h/12)!==Math.floor(ym/12)?' '+String(Math.floor(h/12)).slice(2):'')+' <span style="color:'+st[1]+'">'+st[0]+'</span></button>';}).join('')+'</div>':'';
-  if(!b)return '<div class="btit" style="margin-bottom:6px">Bulletin</div><div style="font-size:11px;color:var(--text3);line-height:1.5;margin-bottom:8px">Importe le PDF de ton bulletin : l’app compare chaque ligne avec son calcul. Le fichier est lu sur ton téléphone et n’est envoyé nulle part ; seuls les montants sont gardés.</div>'+imp+histHtml;
+  if(!b)return '<div id="bul-blk" class="btit" style="margin-bottom:6px">Bulletin</div><div style="font-size:11px;color:var(--text3);line-height:1.5;margin-bottom:8px">Importe le PDF de ton bulletin : l’app compare chaque ligne avec son calcul. Le fichier est lu sur ton téléphone et n’est envoyé nulle part ; seuls les montants sont gardés.</div>'+imp+histHtml;
   var c=_bulCompare(b),st=_BUL_ST[c.status],fe=function(x){return fmtEuro(x).replace(/\s*€/,'');};
   var q=function(r,x){return r.eur?fe(x):r.h?fmtMin(x):String(x);};
-  var cell='style="text-align:right;white-space:nowrap;padding:3px 0 3px 8px"',head='<tr style="color:var(--text3);font-size:10px"><td></td><td '+cell+'>bulletin</td><td '+cell+'>app</td><td style="width:16px"></td></tr>';
+  var cell='style="text-align:right;white-space:nowrap;padding:3px 0 3px 8px"',lbl='style="color:var(--text3);padding:3px 0"';
+  var head='<tr style="color:var(--text3);font-size:10px"><td></td><td '+cell+'>bulletin</td><td '+cell+'>app</td><td style="width:16px"></td></tr>';
+  var sec=function(t,top){return '<tr><td colspan="4" class="btit" style="padding:'+(top?'12px':'6px')+' 0 2px;font-size:11px">'+t+'</td></tr>';};
   var mark=function(ok){return '<td style="text-align:right;padding-left:6px;color:'+(ok?'var(--green)':'var(--amber)')+'">'+(ok?'✓':'⚠')+'</td>';};
-  var trs=c.rows.map(function(r){return '<tr><td style="color:var(--text3);padding:3px 0">'+r.lbl+'</td><td '+cell+'><b>'+q(r,r.bq)+'</b></td><td '+cell+'>'+q(r,r.aq)+'</td>'+mark(r.ok)+'</tr>';}).join('');
-  if(c.paniers)trs+='<tr><td style="color:var(--text3);padding:3px 0">Paniers <span style="font-size:9px">(hors brut)</span></td><td '+cell+'><b>'+c.paniers.bq+'</b></td><td '+cell+'>'+c.paniers.aq+'</td>'+mark(c.paniers.bq===c.paniers.aq)+'</tr>';
-  var ftrs=c.fixed.map(function(f){return '<tr><td style="color:var(--text3);padding:3px 0">'+f.lbl+(f.key==='epv'&&!f.ok?' <a onclick="useBulletinCompCP('+ym+')" style="color:var(--blue);cursor:pointer;font-size:10px">reprendre</a>':'')+'</td><td '+cell+'><b>'+fe(f.bm)+'</b></td><td '+cell+'>'+fe(f.am)+'</td>'+mark(f.ok)+'</tr>';}).join('');
-  var lateHtml=c.late.length?'<div class="btit" style="margin:10px 0 4px">Autres lignes</div><div style="font-size:11px">'+c.late.map(function(l){return '<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0"><span style="color:var(--text3)">'+l.lbl+(l.q!=null?' ('+(_BUL_H[l.k]?fmtMin(Math.round(l.q*60)):l.q)+')':'')+' · <i>'+(l.info?'sans effet sur la comparaison':'rattrapage de '+MC[l.ym%12]+' '+Math.floor(l.ym/12))+'</i></span><b>'+fe(l.mt)+'</b></div>';}).join('')+'</div>':'';
-  var tot='<div style="display:flex;justify-content:space-between;padding:6px 0 0;margin-top:6px;border-top:0.5px solid var(--border2);font-size:12px"><span>Total brut</span><span><b>'+fe(b.brut)+'</b> <span style="color:var(--text3);font-size:11px">· app '+fe(c.P.total)+'</span></span></div>'
-    +(Math.abs(c.diff)>0.05?'<div style="font-size:10px;color:var(--text3);text-align:right;margin-top:2px">écart '+(c.diff>0?'+':'')+fe(c.diff)+(c.lateSum&&Math.abs(c.diff-c.lateSum)<=0.1?' : entièrement dû aux rattrapages':c.lateSum?' dont '+fe(c.lateSum)+' de rattrapages':'')+'</div>':'');
-  var al=c.alerts.map(function(a){return '<div style="font-size:11px;color:var(--amber);display:flex;gap:5px;padding:6px 0 0;line-height:1.45"><span>⚠</span><span>'+a+'</span></div>';}).join('');
-  return '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><div class="btit">Bulletin '+_deMois(ym)+'</div><span style="font-size:11px;font-weight:600;color:'+st[1]+'">'+st[0]+' '+st[2]+'</span></div>'
+  var trs=c.rows.map(function(r){return '<tr><td '+lbl+'>'+r.lbl+'</td><td '+cell+'><b>'+q(r,r.bq)+'</b></td><td '+cell+'>'+q(r,r.aq)+'</td>'+mark(r.ok)+'</tr>';}).join('');
+  if(c.paniers)trs+='<tr><td '+lbl+'>Paniers <span style="font-size:9px">(hors brut)</span></td><td '+cell+'><b>'+c.paniers.bq+'</b></td><td '+cell+'>'+c.paniers.aq+'</td>'+mark(c.paniers.bq===c.paniers.aq)+'</tr>';
+  var ftrs=c.fixed.map(function(f){return '<tr><td '+lbl+'>'+f.lbl+(f.key==='epv'&&!f.ok?' <a onclick="useBulletinCompCP('+ym+')" style="color:var(--blue);cursor:pointer;font-size:10px">reprendre</a>':'')+'</td><td '+cell+'><b>'+fe(f.bm)+'</b></td><td '+cell+'>'+fe(f.am)+'</td>'+mark(f.ok)+'</tr>';}).join('');
+  var ltrs=c.late.map(function(l){return '<tr><td '+lbl+'>'+l.lbl+(l.q!=null?' ('+(_BUL_H[l.k]?fmtMin(Math.round(l.q*60)):l.q)+')':'')+'<div style="font-size:10px;font-style:italic">'+(l.info?'sans effet sur la comparaison':'rattrapage de '+MC[l.ym%12]+' '+Math.floor(l.ym/12))+'</div></td><td '+cell+' valign="top"><b>'+fe(l.mt)+'</b></td><td '+cell+' valign="top">—</td><td></td></tr>';}).join('');
+  var d=c.diff,z=Math.abs(d)<=0.05,why=z?'':c.lateSum&&Math.abs(d-c.lateSum)<=0.1?'entièrement dû aux rattrapages':c.lateSum?'dont '+fe(c.lateSum)+' de rattrapages':'';
+  var tot='<tr style="border-top:0.5px solid var(--border2)"><td style="padding:8px 0 3px;font-size:12px">Total brut</td><td style="text-align:right;white-space:nowrap;padding:8px 0 3px 8px;font-size:12px"><b>'+fe(b.brut)+'</b></td><td style="text-align:right;white-space:nowrap;padding:8px 0 3px 8px;font-size:12px">'+fe(c.P.total)+'</td><td></td></tr>'
+    +'<tr><td style="padding:4px 0;font-size:12px">Écart</td><td colspan="2" style="text-align:right;padding:4px 0 4px 8px"><span style="display:inline-block;padding:3px 10px;border-radius:8px;font-size:16px;font-weight:700;background:'+(z?'var(--green-l)':'rgba(224,160,60,.14)')+';color:'+(z?'var(--green)':'var(--amber)')+'">'+(d>0?'+':'')+fe(d)+'</span></td>'+mark(z)+'</tr>'
+    +(why?'<tr><td colspan="3" style="text-align:right;font-size:10px;color:var(--text3);padding:0 0 2px">'+why+'</td><td></td></tr>':'');
+  var al=c.alerts.map(function(a){return '<div style="font-size:11px;color:var(--amber);display:flex;gap:5px;padding:8px 0 0;line-height:1.45"><span>⚠</span><span>'+a+'</span></div>';}).join('');
+  return '<div id="bul-blk" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;scroll-margin-top:12px"><div class="btit">Bulletin '+_deMois(ym)+'</div><span style="font-size:11px;font-weight:600;color:'+st[1]+'">'+st[0]+' '+st[2]+'</span></div>'
     +'<table style="width:100%;border-collapse:collapse;font-size:11px">'
-    +'<tr><td colspan="4" class="btit" style="padding:6px 0 0;font-size:11px">Variables <span style="font-weight:400;color:var(--text3);font-size:10px">('+MC[(ym+11)%12]+')</span></td></tr>'+head+(trs||'<tr><td colspan="4" style="color:var(--text3);padding:3px 0">Aucune.</td></tr>')
-    +'<tr><td colspan="4" class="btit" style="padding:12px 0 2px;font-size:11px">Fixe</td></tr>'+ftrs+'</table>'
-    +lateHtml+tot+al
-    +'<div style="display:flex;gap:8px;margin-top:10px">'+imp+'<button onclick="deleteBulletin('+ym+')" style="font-size:11px;padding:5px 10px;border:1px solid var(--border);border-radius:8px;background:none;color:var(--text3);cursor:pointer;font-family:var(--font)">Retirer</button></div>'+histHtml;
+    +sec('Variables <span style="font-weight:400;color:var(--text3);font-size:10px">('+MC[(ym+11)%12]+')</span>')+head+(trs||'<tr><td colspan="4" '+lbl+'>Aucune.</td></tr>')
+    +sec('Fixe',1)+ftrs+(ltrs?sec('Autres lignes',1)+ltrs:'')+tot+'</table>'
+    +al
+    +'<div style="display:flex;gap:8px;margin-top:12px">'+imp+'<button onclick="deleteBulletin('+ym+')" style="font-size:11px;padding:5px 10px;border:1px solid var(--border);border-radius:8px;background:none;color:var(--text3);cursor:pointer;font-family:var(--font)">Retirer</button></div>'+histHtml;
 }
 function calcNuitMinShift(v){
   if(!v||!v.deb||!v.fin)return 0;
@@ -5075,8 +5087,7 @@ function openMergedMoisModal(mym,tab){
         +'</div>'
         +(v.paniers>0?'<div style="display:flex;justify-content:space-between;padding:0;font-size:11px;margin-top:-2px"><span style="color:var(--text3)">Paniers repas ('+v.paniers+' × '+(v.panierRate!=null?v.panierRate:getPanierRate()).toFixed(2).replace('.',',')+' €)</span><b style="color:var(--amber)">'+_fe(v.supPaniers)+'</b></div>':'')
         +'<div class="sep" style="margin-bottom:10px"></div>'
-        +_bulHtml(mym)
-        +'<div class="sep" style="margin:12px 0 10px"></div>'
+        +_bulSummary(mym)
         +'<div class="btit" style="margin-bottom:4px">Salaire de base</div>'
         +'<div style="font-size:11px">'+_rowb('Qualification',paye.salQ)+_rowb('Ancienneté',paye.salAnc)+_sub('Sous-total',paye.base)+'</div>'
         +'<div class="btit" style="margin-top:12px;margin-bottom:4px">Variables <span style="font-weight:400;color:var(--text3);font-size:10px">('+_MLp[paye.prevM]+')</span></div>'
@@ -5094,7 +5105,8 @@ function openMergedMoisModal(mym,tab){
             +'</div>';
         }).join('')
         +_subp('Sous-total',paye.totalFixes+paye.totalPrimesCustom)+'</div>'
-        +'<div style="font-size:10px;color:var(--text3);text-align:center;margin-top:10px">taux : '+fmtEuro(paye.tauxH)+'/h · '+paye.heures.toFixed(2)+'h/mois</div>';
+        +'<div style="font-size:10px;color:var(--text3);text-align:center;margin-top:10px">taux : '+fmtEuro(paye.tauxH)+'/h · '+paye.heures.toFixed(2)+'h/mois</div>'
+        +'<div class="sep" style="margin:14px 0 10px"></div>'+_bulHtml(mym);
     }
   }
 
