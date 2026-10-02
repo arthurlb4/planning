@@ -389,7 +389,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .dx-box{margin-top:0}
 .dx-tile{display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding:10px 12px;background:var(--bg2);border:0.5px solid var(--border);border-radius:10px;font-size:12px;font-weight:600;color:var(--text)}
 .dx-tile b{font-size:20px;font-weight:600;white-space:nowrap}
-.dx-minis{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:6px}
+.dx-minis{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:6px;margin-top:6px}
 .dx-mini{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:7px 4px 6px;background:var(--bg2);border:0.5px solid var(--border);border-radius:10px;font-size:10px;color:var(--text2);text-align:center;line-height:1.25;font-family:inherit}
 .dx-mini b{font-size:20px;font-weight:600;line-height:1.2;white-space:nowrap}
 @media(max-width:720px){.dx-mini{font-size:9px}.dx-mini b,.dx-tile b{font-size:16px}}
@@ -646,6 +646,9 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .fold .ti-chevron-down{color:var(--text3);font-size:15px;transition:transform .2s ease;flex-shrink:0}
 .fold[open]>summary .ti-chevron-down{transform:rotate(180deg)}
 .fold>.fb{padding:2px 12px 12px;border-top:0.5px solid var(--border2)}
+.fold .rc-tap{cursor:pointer;border-radius:8px;margin:0 -6px;padding-left:6px!important;padding-right:6px!important}.fold .rc-tap:active{background:rgba(255,255,255,.05)}
+.fold .rc-go{width:8px;color:var(--text3);font-size:12px;text-align:right}
+.rc-cbtn{flex:1;width:100%;margin-top:10px;padding:9px;border:0.5px solid var(--border);border-radius:10px;background:none;color:var(--blue);font-size:12px;font-family:var(--font);cursor:pointer}
 .recap-row{display:flex;justify-content:space-between;align-items:center;min-height:22px;font-size:11px;padding:2px 0;color:var(--text2);}
 .recap-row b{font-weight:600;}
 @keyframes gcal-breathe{0%,100%{opacity:.25;}50%{opacity:1;}}
@@ -2406,14 +2409,17 @@ function _bulSummary(ym){
   if(b){var c=_bulCompare(b),st=_BUL_ST[c.status],d=c.diff,z=Math.abs(d)<=0.05;
     inner='<span>Bulletin '+_deMois(ym)+' · <b style="color:'+st[1]+'">'+st[0]+' '+st[2]+'</b></span><span style="display:flex;align-items:center;gap:6px">'+(z?'':'<b style="color:var(--amber)">'+(d>0?'+':'')+fmtEuro(d).replace(/\s*€/,'')+'</b>')+'<i class="ti ti-chevron-right" style="color:var(--text3)"></i></span>';}
   else inner='<span><i class="ti ti-file-import" style="margin-right:5px"></i>Importer le bulletin '+_deMois(ym)+'</span><i class="ti ti-chevron-right" style="color:var(--text3)"></i>';
-  return '<button onclick="openBulletinModal('+ym+')" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;margin:2px 0 10px;padding:9px 10px;border:0.5px solid var(--border);border-radius:10px;background:var(--bg3);color:var(--text2);font-size:11px;cursor:pointer;font-family:var(--font)">'+inner+'</button>';
+  return '<button onclick="openBulletinModal('+ym+',\'paie\')" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;margin:2px 0 10px;padding:9px 10px;border:0.5px solid var(--border);border-radius:10px;background:var(--bg3);color:var(--text2);font-size:11px;cursor:pointer;font-family:var(--font)">'+inner+'</button>';
 }
-function openBulletinModal(ym){
+function openBulletinModal(ym,from){
   if(!document.body.classList.contains('modal-open'))_lockBodyScroll();
-  var back='openMergedMoisModal('+ym+',4)';
-  document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)'+back+'"><div class="sheet"><div class="sh"></div>'
+  if(from){window._bulFrom=from;if(from==='paie')window._bulFromYM=ym;}
+  var rc=window._bulFrom==='recap',fy=window._bulFromYM!=null?window._bulFromYM:ym;
+  var back=rc?'openMergedRenduCgModal(6,2)':'openMergedMoisModal('+fy+',4)',lbl=rc?'‹ Récap':'‹ Paie '+_deMois(fy);
+  document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="sh"></div>'
+    +'<div style="'+_navBackCss+'" onclick="'+back+'">'+lbl+'</div>'
     +'<div class="st">Bulletin '+_deMois(ym)+' '+Math.floor(ym/12)+'</div>'+_bulHtml(ym)
-    +'<button class="mcancel mclose" onclick="'+back+'">Fermer</button></div></div>';
+    +'<button class="mcancel mclose" onclick="closeModal()">Fermer</button></div></div>';
 }
 function _bulHtml(ym){
   var b=(S.bulletins||{})[ym],btn='font-size:11px;padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:none;cursor:pointer;font-family:var(--font)';
@@ -2614,13 +2620,13 @@ function _acqHtml(y){
     else if(chk&&ym<chk.asOfYM){var sv=chk.sheet[ym]||0,ok=Math.abs(sv-a)<2;if(ok)nOk++;else nBad++;
       mark='<span style="color:'+(ok?'var(--green)':'var(--amber)')+'">'+(ok?'✓':'⚠')+'</span>';
       if(!ok)note='<span style="color:var(--amber)">tableau '+fmtMin(sv)+'</span>';}
-    rows+='<div class="recap-row" style="padding:4px 0;gap:8px"><span style="flex:1;color:'+(fut?'var(--text3)':'var(--text2)')+'">'+ML[m]+(fut?' <i style="font-size:10px">prévu</i>':'')+'</span>'
+    rows+='<div class="recap-row'+(mark?' rc-tap" onclick="rhOpenFromRecap()"':'"')+' style="padding:4px 0;gap:8px"><span style="flex:1;color:'+(fut?'var(--text3)':'var(--text2)')+'">'+ML[m]+(fut?' <i style="font-size:10px">prévu</i>':'')+'</span>'
       +'<span style="font-size:10px;white-space:nowrap">'+note+'</span>'
-      +'<b style="width:52px;text-align:right;color:var(--rend-text);opacity:'+(fut?'.6':'1')+'">'+fmtMin(a)+'</b><span style="width:12px;text-align:center">'+mark+'</span></div>';
+      +'<b style="width:52px;text-align:right;color:var(--rend-text);opacity:'+(fut?'.6':'1')+'">'+fmtMin(a)+'</b><span style="width:12px;text-align:center">'+mark+'</span><span class="rc-go">'+(mark?'›':'')+'</span></div>';
   }
   var sub=chk?'tableau Gestion du '+chk.ed.toLocaleDateString('fr-FR')+(nBad?' · '+nBad+' mois à vérifier':nOk?' · tout correspond':''):'tableau Gestion non importé';
-  var foot=chk?'✓ ou ⚠ : heures acquises comparées au tableau Gestion. « tableau » : mois antérieur au suivi dans l’app, repris du tableau.':'Importer le tableau Gestion (Réglages → Tableau RH) pour vérifier chaque mois.';
-  return _fold('fold-acq','','var(--rend-text)','Rendus acquis en '+y,sub,fmtMin(tot),'<div style="height:6px"></div>'+(rows||'<div style="font-size:11px;color:var(--text3);padding:2px 0">Aucune heure acquise.</div>')+'<div style="font-size:10px;color:var(--text3);padding-top:6px">'+foot+'</div>');
+  var foot=chk?'✓ ou ⚠ : heures acquises comparées au tableau Gestion, toucher pour l’ouvrir. « tableau » : mois antérieur au suivi dans l’app, repris du tableau.':'Importer le tableau Gestion pour vérifier chaque mois.';
+  return _fold('fold-acq','','var(--rend-text)','Rendus acquis en '+y,sub,fmtMin(tot),'<div style="height:6px"></div>'+(rows||'<div style="font-size:11px;color:var(--text3);padding:2px 0">Aucune heure acquise.</div>')+'<div style="font-size:10px;color:var(--text3);padding-top:6px">'+foot+'</div>'+(chk?'<div style="display:flex;gap:6px"><button class="rc-cbtn" onclick="rhOpenFromRecap()">Ouvrir le tableau Gestion</button><button class="rc-cbtn" onclick="rhOpenFromRecap(true)">Importer un nouveau</button></div>':'<button class="rc-cbtn" onclick="rhOpenFromRecap(true)">Importer le tableau Gestion (Excel)</button>'));
 }
 function _bilanHtml(y){
   var lastM=11,lastD=31; // année entière : les jours à venir sont pris dans le planning
@@ -2634,10 +2640,10 @@ function _bilanHtml(y){
     var pt=calcPayeMois(y,m);if(!(pt&&pt.configured&&pt.salQ&&pt.heures))continue;
     var ym=y*12+m,fut=ym>nowYM,bu=(S.bulletins||{})[ym],st=bu?_BUL_ST[_bulCompare(bu).status]:null;
     tot+=pt.total;n++;if(fut)prev++;
-    pay+='<div class="recap-row" style="padding:4px 0"><span style="color:'+(fut?'var(--text3)':'var(--text2)')+'">'+ML[m]+(fut?' <i style="font-size:10px">prévu</i>':'')+'</span><span style="display:flex;align-items:center;gap:6px"><b style="color:var(--gold-pay);opacity:'+(fut?'.6':'1')+'">'+fmtEuro(pt.total)+'</b><span style="width:12px;text-align:center;color:'+(st?st[1]:'transparent')+'" title="'+(st?'bulletin : '+st[2]:'')+'">'+(st?st[0]:'·')+'</span></span></div>';
+    pay+='<div class="recap-row'+(bu?' rc-tap" onclick="openBulletinModal('+ym+',\'recap\')"':'"')+' style="padding:4px 0"><span style="color:'+(fut?'var(--text3)':'var(--text2)')+'">'+ML[m]+(fut?' <i style="font-size:10px">prévu</i>':'')+'</span><span style="display:flex;align-items:center;gap:6px"><b style="color:var(--gold-pay);opacity:'+(fut?'.6':'1')+'">'+fmtEuro(pt.total)+'</b><span style="width:12px;text-align:center;color:'+(st?st[1]:'transparent')+'">'+(st?st[0]:'·')+'</span><span class="rc-go">'+(bu?'›':'')+'</span></span></div>';
   }
   var cpt=_fold('fold-cpt','','var(--blue)','Compteurs '+y,'année entière, planning compris',a.jours+' j',h);
-  h=_fold('fold-paie','','var(--gold-pay)','Paie '+y,n?'brut estimé · moyenne '+fmtEuro(tot/n)+'/mois':'brut estimé',n?fmtEuro(tot):'—','<div style="height:6px"></div>'+(n?pay+'<div class="recap-row" style="padding:6px 0 4px;margin-top:2px;border-top:0.5px solid var(--border2)"><span style="color:var(--text3)">Total'+(prev?' · dont '+prev+' mois prévus':'')+'</span><span style="display:flex;align-items:center;gap:6px"><b style="color:var(--gold-pay)">'+fmtEuro(tot)+'</b><span style="width:12px"></span></span></div><div style="font-size:10px;color:var(--text3);padding-top:4px">✓ ou ⚠ : mois vérifié avec le bulletin importé.</div>'
+  h=_fold('fold-paie','','var(--gold-pay)','Paie '+y,n?'brut estimé · moyenne '+fmtEuro(tot/n)+'/mois':'brut estimé',n?fmtEuro(tot):'—','<div style="height:6px"></div>'+(n?pay+'<div class="recap-row" style="padding:6px 0 4px;margin-top:2px;border-top:0.5px solid var(--border2)"><span style="color:var(--text3)">Total'+(prev?' · dont '+prev+' mois prévus':'')+'</span><span style="display:flex;align-items:center;gap:6px"><b style="color:var(--gold-pay)">'+fmtEuro(tot)+'</b><span style="width:12px"></span><span class="rc-go"></span></span></div><div style="font-size:10px;color:var(--text3);padding-top:4px">✓ ou ⚠ : mois vérifié avec le bulletin importé, toucher pour l’ouvrir.</div><button class="rc-cbtn" onclick="window._bulFrom=\'recap\';importBulletins()">Importer des bulletins (PDF)</button>'
        :'<div style="font-size:11px;color:var(--text3);padding:2px 0">Renseigner la paie dans Réglages → Paie pour voir l’historique.</div>'))+cpt;
   return h;
 }
@@ -2937,7 +2943,7 @@ function openDay(key){
     if((hasCg==='rend'||hasCg==='rend-hist')&&_rendStatus(key)==='rend-hist'){
       var _isH=hasCg==='rend-hist';
       ah+='<div style="font-size:11px;color:var(--text3);margin-top:8px;line-height:1.45">'
-        +(_isH?'Déjà déduit dans le tableau RH : l’app ne le décompte pas.':'Pas encore saisi par le gestionnaire : l’app le décompte elle-même.')
+        +(_isH?'Déjà déduit dans le tableau Gestion : l’app ne le décompte pas.':'Pas encore saisi par le gestionnaire : l’app le décompte elle-même.')
         +' <button style="font-size:11px;padding:3px 8px;margin-top:4px;border:1px solid var(--border);border-radius:6px;background:none;color:var(--text2);cursor:pointer" onclick="rendToggleHist(\''+key+'\')">'
         +(_isH?'Pas encore saisi ? Le décompter':'Il l’a saisi : ne plus le décompter')+'</button></div>';
     }
@@ -3471,7 +3477,7 @@ function _rhParse(cells,fileName){
   let hdrRow=null;const hdrs=[]; // [{col,name}] dans l'ordre des colonnes
   const colIdx=c=>c.split('').reduce((n,ch)=>n*26+ch.charCodeAt(0)-64,0);
   for(const r of rowsN){const cs=byRow[r];const k=Object.keys(cs).find(c=>typeof cs[c]==='string'&&/date acquisition/.test(norm(cs[c])));if(k){hdrRow=r;Object.keys(cs).filter(c=>typeof cs[c]==='string').sort((a,b)=>colIdx(a)-colIdx(b)).forEach(c=>hdrs.push({col:c,name:norm(cs[c])}));break;}}
-  if(!hdrRow)throw new Error('Colonne « Date acquisition » introuvable : est-ce bien le tableau RH ?');
+  if(!hdrRow)throw new Error('Colonne « Date acquisition » introuvable : est-ce bien le tableau Gestion ?');
   const C=(name,after)=>{const st=after?hdrs.findIndex(h=>h.col===after)+1:0;const h=hdrs.slice(st).find(h=>h.name.startsWith(name));return h?h.col:null;};
   const cDate=C('date acquisition'),cNat=C('nature'),cAcq=C('acquisition'),cCons=C('consommation'),cSol=C('solde'),cVal=C('validite',cSol),cStock=C('conso sur stock'),cCom=C('commentaire');
   const cRep1=C('report 1'),cVal1=cRep1?C('validite',cRep1):null,cRep2=C('report 2'),cVal2=cRep2?C('validite',cRep2):null;
@@ -3515,7 +3521,10 @@ function _rhStored(){
   if(!o){try{const l=JSON.parse(localStorage.getItem(_rhStoreKey())||'null');if(l&&l.cells){_rhStore(l.cells,l.name);o=S.profile&&S.profile.rhTable;}}catch(e){}}
   try{return o&&o.cells?_rhParse(o.cells,o.name):null;}catch(e){return null;}}
 // Bouton du modal rendus : tableau gardé en mémoire s'il y en a un, sinon choix du fichier
-function rhCompareQuick(){window._rvFromRendus=true;const rh=_rhStored();if(rh)rhCompareShow(rh);else rhCompareOpen();}
+// Ouverture depuis le Récap : le modal affiche « ‹ Récap » pour y revenir
+function rhOpenFromRecap(newFile){window._rvFrom='recap';const rh=newFile?null:_rhStored();if(rh)rhCompareShow(rh);else rhCompareOpen();}
+function _rvGoBack(){window._rvFrom=null;openMergedRenduCgModal(6,2);}
+var _navBackCss='display:inline-flex;align-items:center;gap:3px;color:var(--blue);font-size:13px;margin:0 0 6px;cursor:pointer';
 function rhCompareOpen(mode){
   let inp=document.getElementById('rh-file');
   if(!inp){inp=document.createElement('input');inp.type='file';inp.id='rh-file';inp.accept='.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';inp.style.display='none';document.body.appendChild(inp);
@@ -3532,10 +3541,10 @@ function _rhImportPromptIfNeeded(){
   if(!f||document.getElementById('modal-root').innerHTML)return;
   try{localStorage.removeItem('pl_rh_import_prompt');}catch(e){}
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet">'
-    +'<div class="sh"></div><div class="st">Importer le tableau RH ?</div>'
+    +'<div class="sh"></div><div class="st">Importer le tableau Gestion ?</div>'
     +'<div style="font-size:13px;color:var(--text2);line-height:1.5;margin:8px 0 14px">Choisir le fichier Excel envoyé par le gestionnaire : l’app reprend le matelas et le solde d’heures mois par mois, avec leurs dates d’expiration et leurs reports. Le fichier est lu sur l’appareil, rien n’est envoyé.</div>'
-    +'<button class="rc-btn" style="height:42px" onclick="closeModal();rhImportOpen()">Choisir le tableau RH</button>'
-    +'<button class="rc-btn rc-btn2" style="margin-top:8px;height:38px" onclick="closeModal()">Plus tard (Réglages → Tableau RH)</button>'
+    +'<button class="rc-btn" style="height:42px" onclick="closeModal();rhImportOpen()">Choisir le tableau Gestion</button>'
+    +'<button class="rc-btn rc-btn2" style="margin-top:8px;height:38px" onclick="closeModal()">Plus tard (Réglages → Tableau Gestion)</button>'
     +'</div></div>';
 }
 function _rhImportPlan(rh,keepCounted){
@@ -3571,7 +3580,7 @@ function rhImportPreview(rh){
   const histH=P.toHist.filter(k=>!P.maybeLate.includes(k)).reduce((t,k)=>t+getDur(new Date(k+'T12:00:00')),0);
   const hist=P.toHist.filter(k=>!P.maybeLate.includes(k));
   const html='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet" style="max-height:88vh;overflow:auto">'
-    +'<div class="sh"></div><div class="st">Repartir du tableau RH</div>'
+    +'<div class="sh"></div><div class="st">Repartir du tableau Gestion</div>'
     +'<div style="font-size:11px;color:var(--text3);margin:2px 0 10px">Tableau édité le '+P.ed.toLocaleDateString('fr-FR')+' · fichier lu sur l’appareil, rien n’est envoyé</div>'
     +'<table class="rc-t rc-sum"><tr><th></th><th>Actuellement</th><th>Après import</th></tr>'
     +(P.matelas!==null&&P.matelas!==undefined?row('Matelas',fmtMin(pr.matelas||0),fmtMin(P.matelas)):'')
@@ -3605,7 +3614,7 @@ function rhImportApply(){
 }
 function rhImportUndo(){
   const pr=S.profile,b=pr&&pr._rhImportBackup;if(!b)return;
-  if(!confirm('Annuler l’import du tableau RH et revenir aux valeurs précédentes ?'))return;
+  if(!confirm('Annuler l’import du tableau Gestion et revenir aux valeurs précédentes ?'))return;
   pr.matelas=b.matelas;pr.ephSolde=b.ephSolde;pr.ephSoldeCreatedYM=b.ephSoldeCreatedYM;
   if(b.ephSoldeSplit)pr.ephSoldeSplit=b.ephSoldeSplit;else delete pr.ephSoldeSplit;
   if(b.ephBaseDate)pr.ephBaseDate=b.ephBaseDate;else delete pr.ephBaseDate;
@@ -3767,7 +3776,7 @@ function rhCompareShow(rh){
     +(wkRows?'<div class="rv-dh" style="font-size:10px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:.03em">Par semaine (commentaires du gestionnaire)</div><table class="rc-t"><tr><th></th><th></th><th></th><th></th></tr>'+wkRows+'</table>':'')
     +(wkCmt?'<div class="rv-why" style="font-size:11px;color:var(--text3)">'+(wkCmt>1?'Ces semaines : le commentaire ne correspond pas':'Le commentaire ne correspond pas')+', mais le total déduit est le même que l’app. Rien à corriger.</div>':'');
   const html='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet rv-sheet" style="max-height:88vh;overflow:auto">'
-    +'<div class="sh"></div><div class="st">Tableau Gestion</div>'
+    +'<div class="sh"></div>'+(window._rvFrom==='recap'?'<div style="'+_navBackCss+'" onclick="_rvGoBack()">‹ Récap</div>':'')+'<div class="st">Tableau Gestion</div>'
     +'<div style="font-size:11px;color:var(--text3);margin:2px 0 12px">Édité le '+asOf.toLocaleDateString('fr-FR')+'</div>'
     +'<div class="rv-hero"><div class="rv-hl">Heures restantes</div><div class="rv-hr">'
     +'<div><b>'+fmtMin(solRh)+'</b><span>Tableau</span></div><div><b>'+fmtMin(sumSolApp)+'</b><span>App</span></div><div class="'+(bad(dSol)?(dSol<0?'g':'e'):'g')+'"><b>'+(bad(dSol)?fmtE(-dSol):'✓')+'</b><span>'+(!bad(dSol)?'Écart':dSol<0?'Favorable':'À faire corriger')+'</span></div></div>'
@@ -4696,9 +4705,6 @@ function openMergedRenduCgModal(limit,tab){
     +'<div class="dx-minis">'
     +'<div class="dx-mini"><span>Matelas</span><b style="color:'+(matelasVal>0?'var(--blue)':'var(--text3)')+'">'+(matelasVal>0?fmtMin(matelasVal):'—')+'</b></div>'
     +'__EXPIRE__'
-    +(function(){const c=S.profile&&S.profile.rhCmp;if(!c)return '<button class="dx-mini dx-mbtn" onclick="event.stopPropagation();rhCompareQuick()"><span>Comparer<br>avec l’Excel</span></button>';
-      const e=-c.d,ok=e>-2,txt=Math.abs(e)<2?'=':(e>0?'+':'−')+fmtMin(Math.abs(e)); // positif = l'app compte moins que le tableau
-      return '<button class="dx-mini dx-mbtn" onclick="event.stopPropagation();rhCompareQuick()"><span>Écart Gestion</span><b style="color:'+(ok?'var(--green)':'var(--red)')+'">'+txt+'</b></button>';})()
     +'</div>'
     +'</div>';
   let _expAmt=0,_repAmt=0;
@@ -5268,8 +5274,7 @@ function _lockBodyScroll(){var sy=window.scrollY;document.body.style.top='-'+sy+
 function _unlockBodyScroll(){var top=parseInt(document.body.style.top||'0');document.body.classList.remove('modal-open');document.body.style.top='';window.scrollTo(0,-top);}
 function closeModal(){
   // Tableau Gestion ouvert depuis le modal rendus : on y revient à la fermeture
-  const _rvBack=!!document.querySelector('#modal-root .rv-sheet')&&window._rvFromRendus;
-  if(document.querySelector('#modal-root .rv-sheet'))window._rvFromRendus=false;
+  window._rvFrom=null;
   if(window._settingsPid){try{saveProfileFromDD(window._settingsPid);}catch(e){}window._settingsPid=null;}
   document.getElementById('modal-root').innerHTML='';pendingKey=null;document.querySelectorAll('.bloc.active,.ctr.active').forEach(el=>el.classList.remove('active'));_unlockBodyScroll();
   // Kill sticky hover on touch devices
@@ -5278,7 +5283,6 @@ function closeModal(){
     tmp.style.cssText='position:fixed;opacity:0;pointer-events:none;top:0;left:0';
     document.body.appendChild(tmp);tmp.focus();document.body.removeChild(tmp);
   }
-  if(_rvBack)openMergedRenduCgModal();
 }
 
 // ================================================================
@@ -6006,7 +6010,7 @@ function openSettingsModal(tab){
     +_sh+'Génération des rendus</div>'
     +'<div class="srow" '+_sr+'><div style="display:flex;gap:20px;align-items:center;flex:1;padding-left:4px">'+_rendDots+'</div><button '+_bS+' onclick="openAnnualSettingsModal('+new Date().getFullYear()+')">Changer</button></div>'
     +_sh+'Soldes initiaux</div>'
-    +'<div class="srow" '+_sr+'><div class="slbl">Tableau RH <span style="color:var(--text3);font-size:10px">'+(pr.profile.rhImportedAt?'importé, suivi depuis le '+new Date(pr.profile.rhImportedAt+'T12:00:00').toLocaleDateString('fr-FR'):'repartir du fichier Excel')+'</span></div><div style="display:flex;gap:6px">'+(pr.profile._rhImportBackup?'<button '+_bS+' onclick="rhImportUndo()">Annuler</button>':'')+'<button '+_bS+' onclick="closeModal();rhImportOpen()">Importer</button></div></div>'
+    +'<div class="srow" '+_sr+'><div class="slbl">Tableau Gestion <span style="color:var(--text3);font-size:10px">'+(pr.profile.rhImportedAt?'importé, suivi depuis le '+new Date(pr.profile.rhImportedAt+'T12:00:00').toLocaleDateString('fr-FR'):'repartir du fichier Excel')+'</span></div><div style="display:flex;gap:6px">'+(pr.profile._rhImportBackup?'<button '+_bS+' onclick="rhImportUndo()">Annuler</button>':'')+'<button '+_bS+' onclick="closeModal();rhImportOpen()">Importer</button></div></div>'
     +'<div class="srow" '+_sr+'><div class="slbl">Matelas <span style="color:var(--text3);font-size:10px">stock initial permanent</span></div><input id="ps-matelas" '+_onb+' value="'+fmtMin(pr.profile.matelas||0)+'" onfocus="if(this.value)this.select()" style="'+_inpR+'"></div>'
     +'<div class="srow" '+_sr+'><div class="slbl">Stock éphémère <span style="color:var(--text3);font-size:10px">stock initial éphémère</span></div><input id="ps-eph" '+_onb+' value="'+fmtMin(Math.round((pr.profile.ephSolde||0)*60))+'" onfocus="if(this.value)this.select()" style="'+_inpR+'"></div>'
     +'<div class="srow" '+_sr+'><div class="slbl">CET <span style="color:var(--text3);font-size:10px">compte épargne-temps initial</span></div><input id="ps-cet-init" type="number" '+_onb+' value="'+(pr.profile.cetInit||0)+'" onfocus="if(this.value)this.select()" style="'+_inpR+'"></div>';
