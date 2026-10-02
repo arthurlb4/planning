@@ -185,6 +185,13 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 
 
 .dc{width:100%;aspect-ratio:6/5;position:relative;border-radius:var(--r);display:block;}
+/* Bandeau d'annulation après une action */
+#undo-toast{position:fixed;left:50%;bottom:28px;z-index:450;display:flex;align-items:center;gap:14px;padding:9px 9px 9px 18px;border-radius:999px;
+  background:rgba(44,44,42,.96);box-shadow:inset .5px .5px 0 rgba(255,250,243,.16),0 12px 32px rgba(0,0,0,.5);color:var(--text);font:500 14px var(--font);white-space:nowrap;
+  transform:translate(-50%,calc(100% + 40px));opacity:0;transition:transform .32s cubic-bezier(.2,.9,.3,1.1),opacity .2s ease;pointer-events:none}
+#undo-toast.on{transform:translate(-50%,0);opacity:1;pointer-events:auto}
+#undo-toast button{border:none;border-radius:999px;padding:7px 14px;background:rgba(98,150,190,.22);color:#8fbbe0;font:600 13px var(--font);cursor:pointer}
+@media (prefers-reduced-motion:reduce){#undo-toast{transition:opacity .2s ease}}
 /* Appui long sur un jour : menu rapide */
 .dci{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 .dci.lp-on{transform:scale(1.1);z-index:5;box-shadow:0 10px 26px rgba(0,0,0,.55)}
@@ -840,7 +847,21 @@ function getProfiles(){
 // UNDO / REDO
 // ================================================================
 function snap(){return JSON.stringify({ov:S.overrides,co:S.conges,hi:S.history,mat:(S.profile&&S.profile.matelas)||0,mk:JSON.parse(JSON.stringify(S.matelasKeys||{}))});}
-function pushUndo(){_us.push(snap());if(_us.length>30)_us.shift();_rs=[];updateUrBtns();}
+function pushUndo(label){var sn=snap();_us.push(sn);if(_us.length>30)_us.shift();_rs=[];updateUrBtns();
+  // Bandeau « … · Annuler » si l'action a réellement modifié quelque chose
+  if(label){clearTimeout(window._utT);window._utT=setTimeout(function(){if(snap()!==sn&&_us[_us.length-1]===sn)_undoToast(label);},60);}
+}
+function _undoToast(label){
+  var t=document.getElementById('undo-toast');
+  if(!t){t=document.createElement('div');t.id='undo-toast';t.setAttribute('role','status');document.body.appendChild(t);}
+  t.innerHTML='<span></span><button type="button">Annuler</button>';
+  t.firstChild.textContent=label;
+  t.lastChild.onclick=function(e){e.stopPropagation();undoAction();_hideUndoToast();};
+  clearTimeout(window._utHide);
+  requestAnimationFrame(function(){t.classList.add('on');});
+  window._utHide=setTimeout(_hideUndoToast,4500);
+}
+function _hideUndoToast(){var t=document.getElementById('undo-toast');if(t)t.classList.remove('on');}
 function undoAction(){if(!_us.length)return;_rs.push(snap());const p=JSON.parse(_us.pop());S.overrides=p.ov;S.conges=p.co;S.history=p.hi;if(S.profile)S.profile.matelas=p.mat||0;S.matelasKeys=p.mk||{};saveState();render();updateUrBtns();gcalTrigger();}
 function redoAction(){if(!_rs.length)return;_us.push(snap());const n=JSON.parse(_rs.pop());S.overrides=n.ov;S.conges=n.co;S.history=n.hi;if(S.profile)S.profile.matelas=n.mat||0;S.matelasKeys=n.mk||{};saveState();render();updateUrBtns();gcalTrigger();}
 function updateUrBtns(){const u=document.getElementById('undo-btn'),r=document.getElementById('redo-btn');if(u)u.disabled=!_us.length;if(r)r.disabled=!_rs.length;}
@@ -2639,7 +2660,7 @@ function avw(sel){
 var _pendingVacSel=null;
 function avwConfirm(){
   if(!_pendingVacSel)return;
-  pushUndo();
+  pushUndo('Vacation modifiée');
   var{key,sel,date,cv}=_pendingVacSel;
   var hs=document.getElementById('hs-toggle')?document.getElementById('hs-toggle').checked:false;
   var formation=document.getElementById('formation-toggle')?document.getElementById('formation-toggle').checked:false;
@@ -2666,19 +2687,19 @@ function confirmExtraRendu(key){
   var dur=parseInt(document.getElementById('exr-dur').value)||0;
   var label=(document.getElementById('exr-label').value||'').trim();
   if(dur<=0)return;
-  pushUndo();
+  pushUndo('Rendu ajouté');
   if(!S.extraRendus)S.extraRendus={};
   S.extraRendus[key]={dur:dur,label:label};
   saveState();render();openDay(key);
 }
 function removeExtraRendu(key){
-  pushUndo();
+  pushUndo('Rendu retiré');
   if(S.extraRendus)delete S.extraRendus[key];
   saveState();render();openDay(key);
 }
-function resetVac(){pushUndo();var _pk=pendingKey;removeHistoryForKey(_pk);if(!S.overrides)S.overrides={};delete S.overrides[_pk];if(!S.conges)S.conges={};delete S.conges[_pk];saveState();closeModal();render();popCell(_pk);gcalTrigger();}
-function setAbsent(){pushUndo();var date=new Date(pendingKey+'T12:00:00');if(!S.overrides)S.overrides={};S.overrides[pendingKey]={absent:true};if(!S.conges)S.conges={};S.conges[pendingKey]='absent';logH(fmtDate(date)+' -> absent','#c88048',pendingKey);saveState();closeModal();render();gcalTrigger();}
-function resetAbsent(){pushUndo();removeHistoryForKey(pendingKey);if(!S.overrides)S.overrides={};delete S.overrides[pendingKey];if(!S.conges)S.conges={};delete S.conges[pendingKey];saveState();closeModal();render();gcalTrigger();}
+function resetVac(){pushUndo('Vacation remise');var _pk=pendingKey;removeHistoryForKey(_pk);if(!S.overrides)S.overrides={};delete S.overrides[_pk];if(!S.conges)S.conges={};delete S.conges[_pk];saveState();closeModal();render();popCell(_pk);gcalTrigger();}
+function setAbsent(){pushUndo('Absence posée');var date=new Date(pendingKey+'T12:00:00');if(!S.overrides)S.overrides={};S.overrides[pendingKey]={absent:true};if(!S.conges)S.conges={};S.conges[pendingKey]='absent';logH(fmtDate(date)+' -> absent','#c88048',pendingKey);saveState();closeModal();render();gcalTrigger();}
+function resetAbsent(){pushUndo('Absence retirée');removeHistoryForKey(pendingKey);if(!S.overrides)S.overrides={};delete S.overrides[pendingKey];if(!S.conges)S.conges={};delete S.conges[pendingKey];saveState();closeModal();render();gcalTrigger();}
 function popCell(key){var el=document.querySelector('.dci[data-key="'+key+'"]');if(el){el.classList.add('pop');el.addEventListener('animationend',function(){el.classList.remove('pop');},{once:true});}}
 function showBlockAlert(title,msg){
   document.getElementById('modal-root').innerHTML='<div class="overlay" style="z-index:400"><div class="sheet" style="max-height:220px"><div class="sh"></div>'
@@ -2693,14 +2714,14 @@ function poseConge(t){
   if(t==='cg'&&(_pcEx==='rend'||_pcEx==='rend-hist')){showBlockAlert('Conflit','Ce jour est déjà un rendu. Supprimez-le avant de poser un congé.');return;}
   if(t==='rend'&&_pcEx==='cg'){showBlockAlert('Conflit','Ce jour est déjà un congé. Supprimez-le avant de poser un rendu.');return;}
   if(t==='cg'){const _pcY=new Date(pendingKey+'T12:00:00').getFullYear();if(computeCongesRest(_pcY)<=0){showBlockAlert('Solde insuffisant','Plus de congés disponibles pour '+_pcY+'.');return;}}
-  pushUndo();var date=new Date(pendingKey+'T12:00:00');
+  pushUndo('Congé posé');var date=new Date(pendingKey+'T12:00:00');
   var stored=t;
   if(t==='rend')stored=_rendStatus(dk(date));
   S.conges[pendingKey]=stored;logH(fmtDate(date)+' -> '+(t==='cg'?'congé':stored==='rend-hist'?'rendu hist. '+fmtMin(getDur(date)):'rendu '+fmtMin(getDur(date))),t==='cg'?'#6a9878':'#A8BF7A',pendingKey);
   saveState();closeModal();render();popCell(pendingKey);}
 function rendToggleHist(key){
   const c=(S.conges||{})[key];if(c!=='rend'&&c!=='rend-hist')return;
-  pushUndo();const d=new Date(key+'T12:00:00');
+  pushUndo('Rendu modifié');const d=new Date(key+'T12:00:00');
   S.conges[key]=c==='rend'?'rend-hist':'rend';
   logH(fmtDate(d)+' -> '+(c==='rend'?'rendu déjà déduit par le gestionnaire':'rendu décompté par l’app')+' '+fmtMin(getDur(d)),'#A8BF7A',key);
   saveState();openDay(key);render();
@@ -2729,14 +2750,14 @@ function recalcAllMatelas(){
 }
 function useMatelasForDay(){
   var key=pendingKey;if(!key||!S.conges||S.conges[key]!=='rend')return;
-  pushUndo();
+  pushUndo('Matelas utilisé');
   recalcAllMatelas();
   saveState();closeModal();render();
 }
 function removeCongé(){
   const key=pendingKey;
   if(!S.conges||!key)return;
-  pushUndo();
+  pushUndo((({cg:'Congé retiré',rend:'Rendu retiré','rend-hist':'Rendu retiré',absent:'Absence retirée'})[(S.conges||{})[pendingKey]]||'Retiré'));
   const type=S.conges[key];
   if(!type){saveState();closeModal();render();return;}
   // Find all days of the same type connected to this day (no worked-day gap)
@@ -3389,7 +3410,7 @@ function canPlaceRendu(newKeys){
 }
 
 function _applyPoseMatelas(type,startKey,endKey){
-  pushUndo();
+  pushUndo((type==='cg'?'Congé posé':type==='rend'?'Rendu posé':'Absence posée'));
   if(!S.conges)S.conges={};
   var _s=new Date(startKey+'T12:00:00'),_e=new Date(endKey+'T12:00:00'),_d=new Date(_s);
   var _label=type==='rend'?'rendu':'congé';
@@ -3455,7 +3476,7 @@ function applyPose(type,startKey,unique){
 
   }
 
-  pushUndo();
+  pushUndo((type==='cg'?(unique?'Congé posé':'Congés posés'):type==='rend'?(unique?'Rendu posé':'Rendus posés'):'Absence posée'));
   if(!S.conges)S.conges={};if(!S.overrides)S.overrides={};
   const _createdYM_w=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:2026*12;
   var d=new Date(start);
@@ -3521,7 +3542,7 @@ function toggleHistPanel(btn){
 
 function cancelExchange(key){
   if(!S.overrides)return;
-  pushUndo();
+  pushUndo('Échange annulé');
   // Find the partner key: look for ec2 (the day we gave away) or ec (the day we took)
   const ov1=S.overrides[key];
   if(!ov1||!ov1.echange)return;
@@ -5374,7 +5395,7 @@ function confirmExchange(){
   var myOrigVac=getVac(date);
   var myOrigVacName=myOrigVac.vac||myCycle;
   var hsEx=document.getElementById('hs-toggle-ex')?document.getElementById('hs-toggle-ex').checked:false;
-  pushUndo();
+  pushUndo('Échange enregistré');
   if(!S.overrides)S.overrides={};
   // myKey: mon jour original que je DONNE au collègue → je suis absent (gris)
   S.overrides[myKey]={vac:myOrigVacName,fromSV:false,echange:true,ecSelf:false,hs:hsEx};
