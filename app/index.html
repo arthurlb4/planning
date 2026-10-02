@@ -2581,9 +2581,37 @@ function _bilanCount(y,toMonth,toDay){
 var _foldOpen={};
 function _fold(id,icon,color,title,sub,val,body){
   return '<details class="fold" id="'+id+'"'+(_foldOpen[id]?' open':'')+' ontoggle="_foldOpen[this.id]=this.open"><summary>'
-    +'<span class="fi" style="color:'+color+';background:color-mix(in srgb,'+color+' 16%,transparent)"><i class="ti ti-'+icon+'"></i></span>'
     +'<span class="fh"><div class="ft">'+title+'</div>'+(sub?'<div class="fs">'+sub+'</div>':'')+'</span>'
     +'<span class="fv" style="color:'+color+'">'+val+'</span><i class="ti ti-chevron-down"></i></summary><div class="fb">'+body+'</div></details>';
+}
+// Heures de rendus acquises mois par mois, comparées au dernier tableau Gestion importé
+function _rhAcqCheck(){
+  var o=S.profile&&S.profile.rhTable;if(!o)return null;
+  if(window._rhAcqC&&window._rhAcqC.at===o.at)return window._rhAcqC.r;
+  var rh=_rhStored();if(!rh)return null;
+  var ed=rh.edition,asOfYM=ed.getFullYear()*12+ed.getMonth(),sheet={};
+  rh.lines.forEach(function(l){if(l.nature)sheet[l.ym]=(sheet[l.ym]||0)+l.acq;});
+  var r={asOfYM:asOfYM,ed:ed,sheet:sheet};window._rhAcqC={at:o.at,r:r};return r;
+}
+function _acqHtml(y){
+  var gen=buildGen(false),nowYM=NOW.getFullYear()*12+NOW.getMonth(),chk=_rhAcqCheck(),createdYM=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:2026*12;
+  var rows='',tot=0,nOk=0,nBad=0;
+  for(var m=0;m<12;m++){
+    var ym=y*12+m,g=gen[ym]||{},pre=ym<createdYM;
+    // Avant le début du suivi dans l'app : heures reprises du tableau Gestion
+    var a=pre?(chk&&chk.sheet[ym])||0:(g.fer||0)+(g.dim||0)+(g.rh||0)+(g.hs||0)+(g.ram||0)+(g.extra||0);if(!a)continue;
+    var fut=ym>nowYM;tot+=a;
+    var mk='';
+    if(pre)mk='<span style="font-size:10px;color:var(--text3)">tableau</span><span style="width:12px"></span>';
+    else if(chk&&ym<chk.asOfYM){var sv=chk.sheet[ym]||0,ok=Math.abs(sv-a)<2;if(ok)nOk++;else nBad++;
+      mk='<span style="width:12px;text-align:center;color:'+(ok?'var(--green)':'var(--amber)')+'">'+(ok?'✓':'⚠')+'</span>';
+      if(!ok)mk='<span style="font-size:10px;color:var(--amber)">tableau '+fmtMin(sv)+'</span>'+mk;}
+    else mk='<span style="width:12px;text-align:center;color:transparent">·</span>';
+    rows+='<div class="recap-row" style="padding:4px 0"><span style="color:'+(fut?'var(--text3)':'var(--text2)')+'">'+ML[m]+(fut?' <i style="font-size:10px">prévu</i>':'')+'</span><span style="display:flex;align-items:center;gap:6px"><b style="color:var(--rend-text);opacity:'+(fut?'.6':'1')+'">'+fmtMin(a)+'</b>'+mk+'</span></div>';
+  }
+  var sub=chk?'tableau Gestion du '+chk.ed.toLocaleDateString('fr-FR')+(nBad?' · '+nBad+' mois à vérifier':nOk?' · tout correspond':''):'tableau Gestion non importé';
+  var foot=chk?'✓ ou ⚠ : heures acquises comparées au tableau Gestion. « tableau » : mois antérieur au suivi dans l’app, repris du tableau.':'Importe le tableau Gestion (Réglages → Tableau RH) pour vérifier chaque mois.';
+  return _fold('fold-acq','','var(--rend-text)','Rendus acquis en '+y,sub,fmtMin(tot),'<div style="height:6px"></div>'+(rows||'<div style="font-size:11px;color:var(--text3);padding:2px 0">Aucune heure acquise.</div>')+'<div style="font-size:10px;color:var(--text3);padding-top:6px">'+foot+'</div>');
 }
 function _bilanHtml(y){
   var nowY=NOW.getFullYear(),lastM=y===nowY?NOW.getMonth():11,lastD=y===nowY?NOW.getDate():31;
@@ -2592,14 +2620,15 @@ function _bilanHtml(y){
     return '<div class="recap-row" style="padding:4px 0"><span style="color:var(--text2)">'+lbl+'</span><span><b>'+f(v)+'</b><span style="display:inline-block;min-width:60px;text-align:right;font-size:11px;color:'+dc+'">'+(df>0?'+'+f(df):df<0?'−'+f(-df):'=')+'</span></span></div>';};
   var h='<div style="font-size:11px;color:var(--text3);margin:8px 0 6px">Écart avec la même période en '+(y-1)+'</div>'
     +row('Jours travaillés',a.jours,b.jours)+row('Heures de nuit',a.nuits,b.nuits,true)+row('Dimanches',a.dim,b.dim)+row('Fériés',a.fer,b.fer)+row('Matins (avant 4h)',a.matins,b.matins);
-  var pay='',tot=0,n=0;
-  for(var m=0;m<=lastM;m++){
+  var pay='',tot=0,n=0,nowYM=NOW.getFullYear()*12+NOW.getMonth(),prev=0;
+  for(var m=0;m<12;m++){
     var pt=calcPayeMois(y,m);if(!(pt&&pt.configured&&pt.salQ&&pt.heures))continue;
-    tot+=pt.total;n++;
-    pay+='<div class="recap-row" style="padding:4px 0"><span style="color:var(--text2)">'+ML[m]+'</span><b style="color:var(--gold-pay)">'+fmtEuro(pt.total)+'</b></div>';
+    var ym=y*12+m,fut=ym>nowYM,bu=(S.bulletins||{})[ym],st=bu?_BUL_ST[_bulCompare(bu).status]:null;
+    tot+=pt.total;n++;if(fut)prev++;
+    pay+='<div class="recap-row" style="padding:4px 0"><span style="color:'+(fut?'var(--text3)':'var(--text2)')+'">'+ML[m]+(fut?' <i style="font-size:10px">prévu</i>':'')+'</span><span style="display:flex;align-items:center;gap:6px"><b style="color:var(--gold-pay);opacity:'+(fut?'.6':'1')+'">'+fmtEuro(pt.total)+'</b><span style="width:12px;text-align:center;color:'+(st?st[1]:'transparent')+'" title="'+(st?'bulletin : '+st[2]:'')+'">'+(st?st[0]:'·')+'</span></span></div>';
   }
-  var cpt=_fold('fold-cpt','chart-bar','var(--blue)','Compteurs '+y,'du 1er janvier au '+lastD+' '+MC[lastM],a.jours+' j',h);
-  h=_fold('fold-paie','coin-euro','var(--gold-pay)','Paie '+y,n?'brut estimé · '+Math.round(tot/n).toLocaleString('fr-FR')+' € par mois':'brut estimé',n?fmtEuro(tot):'—','<div style="height:6px"></div>'+(n?pay+'<div class="recap-row" style="padding:6px 0 4px;margin-top:2px;border-top:0.5px solid var(--border2)"><span style="color:var(--text3)">Total · moyenne '+fmtEuro(tot/n)+'</span><b style="color:var(--gold-pay)">'+fmtEuro(tot)+'</b></div>'
+  var cpt=_fold('fold-cpt','','var(--blue)','Compteurs '+y,'du 1er janvier au '+lastD+' '+MC[lastM],a.jours+' j',h);
+  h=_fold('fold-paie','','var(--gold-pay)','Paie '+y,n?'brut estimé · moyenne '+fmtEuro(tot/n)+'/mois':'brut estimé',n?fmtEuro(tot):'—','<div style="height:6px"></div>'+(n?pay+'<div class="recap-row" style="padding:6px 0 4px;margin-top:2px;border-top:0.5px solid var(--border2)"><span style="color:var(--text3)">Total'+(prev?' · dont '+prev+' mois prévus':'')+'</span><span style="display:flex;align-items:center;gap:6px"><b style="color:var(--gold-pay)">'+fmtEuro(tot)+'</b><span style="width:12px"></span></span></div><div style="font-size:10px;color:var(--text3);padding-top:4px">✓ ou ⚠ : mois vérifié avec le bulletin importé.</div>'
        :'<div style="font-size:11px;color:var(--text3);padding:2px 0">Renseigne ta paie dans Réglages → Paie pour voir l’historique.</div>'))+cpt;
   return h;
 }
@@ -4372,7 +4401,7 @@ function openRestantsModal(){
 function openMergedRenduCgModal(limit,tab){
   limit=limit||11;
   const _modalWasOpen=document.body.classList.contains('modal-open');
-  if(!_modalWasOpen)_lockBodyScroll();
+  if(!_modalWasOpen){_lockBodyScroll();_foldOpen={};}
   // === Rendus éphémères ===
   const{gen,realAvail,prevEph,preExpiry,matelas:matelasVal}=calcSoldes();
   const ML2=MCs;
@@ -4483,8 +4512,9 @@ function openMergedRenduCgModal(limit,tab){
   const rcgRdSections=_rhMonthSections(rcgRdKeys,'rend')||'<div style="font-size:11px;color:var(--text3);padding:2px 0">Aucun rendu.</div>';
   const rcgHistHtml=(S.history||[]).slice(0,8).map(function(e){return '<div class="hrow"><div class="hdot" style="background:'+e.c+'"></div><span class="htime">'+e.t+'</span><span class="hdesc">'+_histTxt(e.d)+'</span></div>';}).join('')||'<span style="font-size:11px;color:var(--text3)">Aucune modification.</span>';
   const recapRows=''
-    +_fold('fold-cg','beach','var(--green)','Congés posés en '+nowY,'il en reste '+restNow+' j',rcgUsedCurY+' j','<div style="height:6px"></div>'+rcgCgSections)
+    +_fold('fold-cg','beach','var(--green)','Congés posés en '+nowY,'il reste '+restNow+'j',rcgUsedCurY+' j','<div style="height:6px"></div>'+rcgCgSections)
     +_fold('fold-rd','clock-hour-4','var(--rend-text)','Rendus posés en '+nowY,'disponible en '+MC[_viewedYM%12]+' : '+fmtMin(dispoMois),fmtMin(rcgRendusMin),'<div style="height:6px"></div>'+rcgRdSections)
+    +_acqHtml(nowY)
     +_bilanHtml(nowY)
     +_fold('fold-hist','history','var(--text2)','Dernières modifications',(S.history||[]).length?'dernière le '+S.history[0].t:'aucune',(S.history||[]).length||'','<div style="height:6px"></div>'+rcgHistHtml)
     +'<div style="height:12px"></div>';
@@ -5196,6 +5226,8 @@ function moisTab(idx){
   var _p=document.getElementById('mtp-pill');if(_p)_p.style.transform=_tx[idx]||_tx[0];
 }
 function rcgTab(idx){
+  // En quittant le récap, ses blocs se replient
+  if(idx!==2){_foldOpen={};document.querySelectorAll('#rcc-2 details.fold[open]').forEach(function(d){d.open=false;});}
   var _tx=['translateX(0)','translateX(calc(100% + 2px))','translateX(calc(200% + 4px))'];
   for(let i=0;i<3;i++){
     const btn=document.getElementById('rcp-'+i),tab=document.getElementById('rcc-'+i);
