@@ -95,11 +95,13 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .mnav.today.hide-l{max-width:0;opacity:0;padding-left:0;padding-right:0;border-color:transparent;pointer-events:none;transform:translateX(-10px);}
 .mnav.today.hide-r{max-width:0;opacity:0;padding-left:0;padding-right:0;border-color:transparent;pointer-events:none;transform:translateX(10px);}
 .mtit{font-size:15px;font-weight:500;cursor:pointer;padding:4px 8px;border-radius:var(--r);transition:background .1s;position:absolute;left:50%;transform:translateX(-50%);white-space:nowrap;}
-/* Titre mois/année : l'ancien sort et le nouveau arrive dans le sens du défilement (--md = 1 suivant, -1 précédent) */
-.mtit .mt-o{position:absolute;left:50%;top:4px;white-space:nowrap;pointer-events:none;animation:mtOut .26s ease forwards}
-.mtit .mt-n{display:inline-block;animation:mtIn .32s cubic-bezier(.2,.8,.2,1)}
-@keyframes mtOut{from{transform:translateX(-50%);opacity:1}to{transform:translateX(calc(-50% - var(--md,1) * 30px));opacity:0}}
-@keyframes mtIn{from{transform:translateX(calc(var(--md,1) * 30px));opacity:0}to{transform:none;opacity:1}}
+/* Titre mois/année : glisse en même temps que le calendrier, dans le sens du défilement (--md = 1 suivant, -1 précédent) */
+.mtit.mt-anim{display:inline-grid}
+.mtit .mt-o,.mtit .mt-n{grid-area:1/1;justify-self:center;white-space:nowrap}
+.mtit .mt-o{pointer-events:none;animation:mtOut .34s cubic-bezier(.25,.8,.25,1) forwards}
+.mtit .mt-n{animation:mtIn .34s cubic-bezier(.25,.8,.25,1) both}
+@keyframes mtOut{to{transform:translateX(calc(var(--md,1) * -46px));opacity:0}}
+@keyframes mtIn{from{transform:translateX(calc(var(--md,1) * 46px));opacity:0}}
 
 /* Month view */
 /* Pas de fondu sur les vues : l'opacité ferait changer l'effet verre (glissements et voile à la place) */
@@ -1602,11 +1604,13 @@ function _setTitle(el,txt){
   if(cur===txt)return;
   el.setAttribute('data-t',txt);
   if(!d||cur===null){el.textContent=txt;return;}
-  el.style.setProperty('--md',d);
+  el.style.setProperty('--md',d);el.classList.add('mt-anim');
   el.innerHTML='<span class="mt-o"></span><span class="mt-n"></span>';
   el.firstChild.textContent=cur;el.lastChild.textContent=txt;
-  clearTimeout(el._mtT);el._mtT=setTimeout(function(){if(el.getAttribute('data-t')===txt)el.textContent=txt;},340);
+  clearTimeout(el._mtT);el._mtT=setTimeout(function(){if(el.getAttribute('data-t')===txt){el.textContent=txt;el.classList.remove('mt-anim');}},360);
 }
+// Lance le changement de titre au début d'un glissement (en même temps que le calendrier)
+function _titleTo(txt,d){var el=document.getElementById('mtit');if(!el)return;window._titleDir=d;_setTitle(el,txt);}
 function render(){
   if(S.matelasKeys&&Object.keys(S.matelasKeys).length)recalcAllMatelas();
   autoReportEph();
@@ -6500,7 +6504,7 @@ function init(){
   window._calSlideTo=function(y,m,d){
     const mv=_swMv(),wrap=_swWrap();
     if(!mv||!wrap||_slideBusy){curY=y;curM=m;render();return;}
-    _slideBusy=true;_swClearPeek();
+    _slideBusy=true;_swClearPeek();_titleTo(ML[m]+' '+y,d);
     const W=_swW(mv),pk=_swBuildPeek(y,m),w2=pk.firstChild;_swPeek.go=pk;
     w2.style.transition='none';w2.style.transform='translateX('+(d*W)+'px)';
     void w2.offsetWidth;
@@ -6559,7 +6563,7 @@ function init(){
   }
   // Flèches : glissement vers l'année précédente / suivante
   window._annSlide=function(d){
-    if(_annBusy)return;_annBusy=true;_annClear();
+    if(_annBusy)return;_annBusy=true;_annClear();_titleTo(String(curY+d),d);
     const g=_annGrid(),W=_annW(),pk=_annBuild(curY+d);_annPk.go=pk;
     _annSetX(pk,d*W,'none');void pk.offsetWidth;
     const tr='transform .36s cubic-bezier(.25,.8,.25,1)';
@@ -6605,6 +6609,7 @@ function init(){
     if(_swMode==='y'){
       const d=dx<0?1:-1;
       _annBusy=true;_annPlace(go?-d*_annW():0,true);
+      if(go)_titleTo(String(curY+d),d);
       setTimeout(function(){
         if(go)_annCommit(d);
         else{_annSetX(_annGrid(),null,'');_annClear();_annBusy=false;}
@@ -6614,6 +6619,7 @@ function init(){
     const mv=_swMv();if(!mv)return;
     const W=_swW(mv),d=dx<0?1:-1;
     _swPlace(go?-d*W:0,true);
+    if(go){let ty=curY,tm=curM+d;if(tm<0){tm=11;ty--;}if(tm>11){tm=0;ty++;}_titleTo(ML[tm]+' '+ty,d);}
     setTimeout(function(){
       const wrap=_swWrap();
       if(go){
