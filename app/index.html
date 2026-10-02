@@ -627,14 +627,18 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .pwa button{background:transparent;border:none;color:var(--text3);font-size:16px;cursor:pointer;margin-left:auto;}
 
 /* Recap */
-.fold{border-bottom:0.5px solid var(--border2)}
-.fold>summary{list-style:none;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:11px 0;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.fold{background:var(--bg3);border:0.5px solid var(--border);border-radius:14px;margin-bottom:8px;overflow:hidden}
+.fold>summary{list-style:none;display:flex;align-items:center;gap:11px;padding:12px;min-height:44px;cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
 .fold>summary::-webkit-details-marker{display:none}
-.fold>summary .ft{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text2)}
-.fold>summary .fv{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600}
-.fold>summary .ti-chevron-down{color:var(--text3);font-size:14px;transition:transform .2s ease}
+.fold>summary:active{background:rgba(255,255,255,.03)}
+.fold .fi{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:17px;flex-shrink:0}
+.fold .fh{flex:1;min-width:0}
+.fold .ft{font-size:13px;font-weight:600;color:var(--text)}
+.fold .fs{font-size:10.5px;color:var(--text3);margin-top:2px;line-height:1.35}
+.fold .fv{font-size:14px;font-weight:700;white-space:nowrap}
+.fold .ti-chevron-down{color:var(--text3);font-size:15px;transition:transform .2s ease;flex-shrink:0}
 .fold[open]>summary .ti-chevron-down{transform:rotate(180deg)}
-.fold>.fb{padding:0 0 12px}
+.fold>.fb{padding:2px 12px 12px;border-top:0.5px solid var(--border2)}
 .recap-row{display:flex;justify-content:space-between;align-items:center;min-height:22px;font-size:11px;padding:2px 0;color:var(--text2);}
 .recap-row b{font-weight:600;}
 @keyframes gcal-breathe{0%,100%{opacity:.25;}50%{opacity:1;}}
@@ -2575,15 +2579,18 @@ function _bilanCount(y,toMonth,toDay){
 }
 // Bloc dépliant du récapitulatif (l'état ouvert/fermé est gardé pendant la session)
 var _foldOpen={};
-function _fold(id,title,val,color,body){
-  return '<details class="fold" id="'+id+'"'+(_foldOpen[id]?' open':'')+' ontoggle="_foldOpen[this.id]=this.open"><summary><span class="ft">'+title+'</span><span class="fv"><span style="color:'+(color||'var(--text)')+'">'+val+'</span><i class="ti ti-chevron-down"></i></span></summary><div class="fb">'+body+'</div></details>';
+function _fold(id,icon,color,title,sub,val,body){
+  return '<details class="fold" id="'+id+'"'+(_foldOpen[id]?' open':'')+' ontoggle="_foldOpen[this.id]=this.open"><summary>'
+    +'<span class="fi" style="color:'+color+';background:color-mix(in srgb,'+color+' 16%,transparent)"><i class="ti ti-'+icon+'"></i></span>'
+    +'<span class="fh"><div class="ft">'+title+'</div>'+(sub?'<div class="fs">'+sub+'</div>':'')+'</span>'
+    +'<span class="fv" style="color:'+color+'">'+val+'</span><i class="ti ti-chevron-down"></i></summary><div class="fb">'+body+'</div></details>';
 }
 function _bilanHtml(y){
   var nowY=NOW.getFullYear(),lastM=y===nowY?NOW.getMonth():11,lastD=y===nowY?NOW.getDate():31;
   var a=_bilanCount(y,lastM,lastD),b=_bilanCount(y-1,lastM,lastD);
   var row=function(lbl,v,p,h){var df=v-p,dc=df>0?'var(--amber)':'var(--text3)',f=function(x){return h?fmtMin(x):String(x);};
     return '<div class="recap-row" style="padding:4px 0"><span style="color:var(--text2)">'+lbl+'</span><span><b>'+f(v)+'</b><span style="display:inline-block;min-width:60px;text-align:right;font-size:11px;color:'+dc+'">'+(df>0?'+'+f(df):df<0?'−'+f(-df):'=')+'</span></span></div>';};
-  var h='<div style="font-size:11px;color:var(--text3);margin:-2px 0 6px">Du 1er janvier au '+lastD+' '+MC[lastM]+', écart avec la même période en '+(y-1)+'</div>'
+  var h='<div style="font-size:11px;color:var(--text3);margin:8px 0 6px">Écart avec la même période en '+(y-1)+'</div>'
     +row('Jours travaillés',a.jours,b.jours)+row('Heures de nuit',a.nuits,b.nuits,true)+row('Dimanches',a.dim,b.dim)+row('Fériés',a.fer,b.fer)+row('Matins (avant 4h)',a.matins,b.matins);
   var pay='',tot=0,n=0;
   for(var m=0;m<=lastM;m++){
@@ -2591,9 +2598,9 @@ function _bilanHtml(y){
     tot+=pt.total;n++;
     pay+='<div class="recap-row" style="padding:4px 0"><span style="color:var(--text2)">'+ML[m]+'</span><b style="color:var(--gold-pay)">'+fmtEuro(pt.total)+'</b></div>';
   }
-  h=_fold('fold-cpt','Compteurs '+y,a.jours+' jours','var(--text)',h);
-  h+=_fold('fold-paie','Paie '+y,n?fmtEuro(tot):'—','var(--gold-pay)','<div style="font-size:11px;color:var(--text3);margin:-2px 0 6px">Brut estimé par l’app</div>'+(n?pay+'<div class="recap-row" style="padding:6px 0 4px;margin-top:2px;border-top:0.5px solid var(--border2)"><span style="color:var(--text3)">Total · moyenne '+fmtEuro(tot/n)+'</span><b style="color:var(--gold-pay)">'+fmtEuro(tot)+'</b></div>'
-       :'<div style="font-size:11px;color:var(--text3);padding:2px 0">Renseigne ta paie dans Réglages → Paie pour voir l’historique.</div>'));
+  var cpt=_fold('fold-cpt','chart-bar','var(--blue)','Compteurs '+y,'du 1er janvier au '+lastD+' '+MC[lastM],a.jours+' j',h);
+  h=_fold('fold-paie','coin-euro','var(--gold-pay)','Paie '+y,n?'brut estimé · '+Math.round(tot/n).toLocaleString('fr-FR')+' € par mois':'brut estimé',n?fmtEuro(tot):'—','<div style="height:6px"></div>'+(n?pay+'<div class="recap-row" style="padding:6px 0 4px;margin-top:2px;border-top:0.5px solid var(--border2)"><span style="color:var(--text3)">Total · moyenne '+fmtEuro(tot/n)+'</span><b style="color:var(--gold-pay)">'+fmtEuro(tot)+'</b></div>'
+       :'<div style="font-size:11px;color:var(--text3);padding:2px 0">Renseigne ta paie dans Réglages → Paie pour voir l’historique.</div>'))+cpt;
   return h;
 }
 function openRecapModal(){
@@ -4476,10 +4483,10 @@ function openMergedRenduCgModal(limit,tab){
   const rcgRdSections=_rhMonthSections(rcgRdKeys,'rend')||'<div style="font-size:11px;color:var(--text3);padding:2px 0">Aucun rendu.</div>';
   const rcgHistHtml=(S.history||[]).slice(0,8).map(function(e){return '<div class="hrow"><div class="hdot" style="background:'+e.c+'"></div><span class="htime">'+e.t+'</span><span class="hdesc">'+_histTxt(e.d)+'</span></div>';}).join('')||'<span style="font-size:11px;color:var(--text3)">Aucune modification.</span>';
   const recapRows=''
+    +_fold('fold-cg','beach','var(--green)','Congés posés en '+nowY,'il en reste '+restNow+' j',rcgUsedCurY+' j','<div style="height:6px"></div>'+rcgCgSections)
+    +_fold('fold-rd','clock-hour-4','var(--rend-text)','Rendus posés en '+nowY,'disponible en '+MC[_viewedYM%12]+' : '+fmtMin(dispoMois),fmtMin(rcgRendusMin),'<div style="height:6px"></div>'+rcgRdSections)
     +_bilanHtml(nowY)
-    +_fold('fold-cg','Congés '+nowY+' posés',rcgUsedCurY+' j','var(--green)',rcgCgSections)
-    +_fold('fold-rd','Rendus '+nowY+' posés',fmtMin(rcgRendusMin),'var(--rend-text)',rcgRdSections)
-    +_fold('fold-hist','Dernières modifications',(S.history||[]).length||'—','var(--text3)',rcgHistHtml)
+    +_fold('fold-hist','history','var(--text2)','Dernières modifications',(S.history||[]).length?'dernière le '+S.history[0].t:'aucune',(S.history||[]).length||'','<div style="height:6px"></div>'+rcgHistHtml)
     +'<div style="height:12px"></div>';
   const dispoColor=dispoMois<=0?'var(--red)':dispoMois<120?'var(--amber)':'var(--rend-text)';
   const _as1Map={};afterStep1.forEach(function(e){_as1Map[e.ym]=e.amount;});
