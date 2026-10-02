@@ -2499,6 +2499,26 @@ function getDayVacs(dw,allVK){
 
 var _lpk=null; // backup of pendingKey for avw()
 
+// Fiche du jour : glisser à gauche / à droite pour passer au jour suivant / précédent
+function _dayNavSetup(key){
+  var sh=document.querySelector('#modal-root .sheet');if(!sh)return;
+  var d=window._dayNavDir||0;window._dayNavDir=0;
+  if(d){
+    sh.style.animation='none';sh.style.transition='none';sh.style.transform='translateX('+(d*106)+'%)';void sh.offsetWidth;
+    sh.style.transition='transform .3s cubic-bezier(.2,.8,.2,1)';sh.style.transform='';
+    setTimeout(function(){sh.style.transition='';},320);
+  }
+  var sx=0,sy=0,skip=false;
+  sh.addEventListener('touchstart',function(e){skip=!!e.target.closest('input,select,textarea')||e.touches.length>1;sx=e.touches[0].clientX;sy=e.touches[0].clientY;},{passive:true});
+  sh.addEventListener('touchend',function(e){
+    if(skip)return;
+    var dx=e.changedTouches[0].clientX-sx,dy=e.changedTouches[0].clientY-sy;
+    if(Math.abs(dx)<60||Math.abs(dx)<Math.abs(dy)*1.5)return;
+    var nd=dx<0?1:-1,dt=new Date(key+'T12:00:00');dt.setDate(dt.getDate()+nd);
+    sh.style.transition='transform .16s cubic-bezier(.4,0,1,1)';sh.style.transform='translateX('+(-nd*106)+'%)';
+    setTimeout(function(){window._dayNavDir=nd;openDay(dk(dt));},160);
+  },{passive:true});
+}
 function openDay(key){
   if(!key)return;pendingKey=key;_lpk=key;
   if(!document.body.classList.contains('modal-open'))_lockBodyScroll();
@@ -2632,6 +2652,7 @@ function openDay(key){
   }
 
   document.getElementById('modal-root').innerHTML=`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="sh"></div>${_dayBox}${vgHtml}<div style="height:0.5px;background:var(--border);margin:16px 0;opacity:.5"></div>${ah}${echange?`<button class="mb del wide" style="font-size:11px;padding:8px;margin-bottom:4px" onclick="cancelExchange('${key}')">Annuler l'échange</button>`:ov?`<button class="mb wide ghost" style="font-size:11px;padding:8px;margin-bottom:4px" onclick="resetVac()">Remettre le cycle (${cycleVac?vLbl(cycleVac,VAC):'repos'})</button>`:''}<button class="mcancel mclose" onclick="closeModal()">Fermer</button></div></div>`;
+  _dayNavSetup(key);
 }
 function avw(sel){
   if(!sel)return;
