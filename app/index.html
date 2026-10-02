@@ -1602,6 +1602,7 @@ function toggleTheme(){
 // NAVIGATION
 // ================================================================
 function goToday(){
+  window._flushAnim&&window._flushAnim();
   const alreadyHere=!annualOpen&&curM===NOW.getMonth()&&curY===NOW.getFullYear();
   if(alreadyHere)return;
   const prevYm=curY*12+curM;
@@ -1628,6 +1629,7 @@ function openExternalUrl(url,browser){
   }
 }
 function navDir(d){
+  window._flushAnim&&window._flushAnim();
   _calNavDir=d;
   if(annualOpen){
     if(window._annSlide){window._annSlide(d);return;}
@@ -6680,8 +6682,9 @@ function init(){
   // Flèches et bouton « auj. » : même glissement que le geste, vers n'importe quel mois
   let _slideBusy=false;
   window._calSlideTo=function(y,m,d){
+    _flushAnim();
     const mv=_swMv(),wrap=_swWrap();
-    if(!mv||!wrap||_slideBusy){curY=y;curM=m;render();return;}
+    if(!mv||!wrap){curY=y;curM=m;render();return;}
     _slideBusy=true;_swClearPeek();_titleTo(ML[m]+' '+y,d);
     const W=_swW(mv),pk=_swBuildPeek(y,m),w2=pk.firstChild;_swPeek.go=pk;
     w2.style.transition='none';w2.style.transform='translateX('+(d*W)+'px)';
@@ -6689,14 +6692,25 @@ function init(){
     const tr='transform .34s cubic-bezier(.25,.8,.25,1)';
     wrap.style.transition=tr;wrap.style.transform='translateX('+(-d*W)+'px)';
     w2.style.transition=tr;w2.style.transform='translateX(0px)';
-    setTimeout(function(){
+    _pendingFinish=function(){
+      _pendingFinish=null;clearTimeout(_slideT);
       _calNavDir=d;window._titleDir=d;curY=y;curM=m;
       wrap.style.transition='none';wrap.style.transform='';
       _swClearPeek();
       render();_syncWknNow();
       _slideBusy=false;
-    },350);
+    };
+    _slideT=setTimeout(_pendingFinish,350);
   };
+  // Une nouvelle navigation pendant une animation : on termine celle-ci aussitôt, puis on enchaîne
+  let _pendingFinish=null,_slideT=0;
+  function _flushAnim(){
+    if(!_pendingFinish)return;
+    const f=_pendingFinish;
+    cancelAnimationFrame(_springRaf);_springRaf=0;_springCommit=false;clearTimeout(_slideT);
+    f();
+  }
+  window._flushAnim=_flushAnim;
   function _swClearPeek(){Object.keys(_swPeek).forEach(function(k){_swPeek[k].remove();});_swPeek={};}
   function _swPlace(x,anim){
     const mv=_swMv(),wrap=_swWrap(),W=_swW(mv),tr=anim?'transform .28s cubic-bezier(.2,.8,.2,1)':'none';
@@ -6741,12 +6755,14 @@ function init(){
   }
   // Flèches : glissement vers l'année précédente / suivante
   window._annSlide=function(d){
+    _flushAnim();
     if(_annBusy)return;_annBusy=true;_annClear();_titleTo(String(curY+d),d);
     const g=_annGrid(),W=_annW(),pk=_annBuild(curY+d);_annPk.go=pk;
     _annSetX(pk,d*W,'none');void pk.offsetWidth;
     const tr='transform .36s cubic-bezier(.25,.8,.25,1)';
     _annSetX(g,-d*W,tr);_annSetX(pk,0,tr);
-    setTimeout(function(){_annCommit(d);},370);
+    _pendingFinish=function(){_pendingFinish=null;clearTimeout(_slideT);_annCommit(d);};
+    _slideT=setTimeout(_pendingFinish,370);
   };
   document.addEventListener('touchstart',function(e){
     if(e.target.closest('.sheet')||e.target.closest('.dropdown'))return; // ignore modals/dropdowns
@@ -6764,7 +6780,7 @@ function init(){
     if(_swipeLock!=='h')return;
     e.preventDefault();
     if(document.querySelector('#modal-root .overlay')||document.getElementById('lp-menu'))return;
-    if(_springCommit)return; // on laisse finir le changement en cours
+    if(_springCommit||_pendingFinish){if(!_swipeDrag)_flushAnim();} // un geste pendant un changement : on le termine net, puis on suit le doigt
     if(annualOpen){
       if(_annBusy&&!_springRaf)return;
       if(!_swipeDrag){if(_springRaf){cancelAnimationFrame(_springRaf);_springRaf=0;_annBusy=false;}_swipeDrag=true;_swMode='y';_annClear();}
@@ -6814,7 +6830,8 @@ function init(){
       _annBusy=true;
       if(!go){_spring(dx,vRel,function(x){_annPlace(x,false);},function(){_annSetX(_annGrid(),null,'');_annClear();_annBusy=false;});return;}
       _titleTo(String(curY+d),d);
-      _springCommit=true;_spring(dx,vRel,function(x){_annPlace(x,false);},function(){_springCommit=false;_annCommit(d);},-d*_annW(),1,0.02);
+      _springCommit=true;_pendingFinish=function(){_pendingFinish=null;_springCommit=false;_annCommit(d);};
+      _spring(dx,vRel,function(x){_annPlace(x,false);},function(){if(_pendingFinish)_pendingFinish();},-d*_annW(),1,0.02);
       return;
     }
     const mv=_swMv();if(!mv)return;
@@ -6826,8 +6843,8 @@ function init(){
     {let ty=curY,tm=curM+d;if(tm<0){tm=11;ty--;}if(tm>11){tm=0;ty++;}_titleTo(ML[tm]+' '+ty,d);}
     // Le mois continue sur l'élan du doigt jusqu'à sa place (pas de durée fixe)
     _springCommit=true;
-    _spring(dx,vRel,function(x){_swPlace(x,false);},function(){
-      _springCommit=false;
+    _pendingFinish=function(){
+      _pendingFinish=null;_springCommit=false;
       const wrap=_swWrap();
       if(go){
         _calNavDir=d;
@@ -6838,7 +6855,8 @@ function init(){
         _swClearPeek();
         render();_syncWknNow();
       }
-    },-d*W,1,0.02);
+    };
+    _spring(dx,vRel,function(x){_swPlace(x,false);},function(){if(_pendingFinish)_pendingFinish();},-d*W,1,0.02);
   }
   document.addEventListener('touchend',function(e){_swEnd(e,false);},{passive:true});
   document.addEventListener('touchcancel',function(e){_swEnd(e,true);},{passive:true});
