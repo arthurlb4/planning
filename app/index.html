@@ -2606,27 +2606,33 @@ function _rhAcqCheck(){
   rh.lines.forEach(function(l){if(l.nature)sheet[l.ym]=(sheet[l.ym]||0)+l.acq;});
   var r={asOfYM:asOfYM,ed:ed,sheet:sheet};window._rhAcqC={at:o.at,r:r};return r;
 }
-function _acqHtml(y){
+// Bloc « Rendus » du récap : heures acquises et rendus posés mois par mois, acquises vérifiées avec le tableau Gestion
+function _acqHtml(y,dispoTxt){
   var gen=buildGen(false),nowYM=NOW.getFullYear()*12+NOW.getMonth(),chk=_rhAcqCheck(),createdYM=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:2026*12;
-  var rows='',tot=0,nOk=0,nBad=0;
+  // Rendus posés, rattachés au mois du dimanche de leur semaine (comme le reste de l'app)
+  var pos={},posTot=0;
+  Object.keys(S.conges||{}).forEach(function(k){if(S.conges[k]!=='rend')return;var d=new Date(k+'T12:00:00'),sun=getMonday(d);sun.setDate(sun.getDate()+6);var ym=sun.getFullYear()*12+sun.getMonth();if(Math.floor(ym/12)!==y)return;var v=getDur(d);pos[ym]=(pos[ym]||0)+v;posTot+=v;});
+  var cell='width:50px;text-align:right;white-space:nowrap';
+  var rows='<div class="recap-row" style="padding:2px 0;gap:8px;font-size:9.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.03em"><span style="flex:1"></span><span style="'+cell+'">acquises</span><span style="'+cell+'">posées</span><span style="width:12px"></span><span class="rc-go"></span></div>',tot=0,nOk=0,nBad=0,n=0;
   for(var m=0;m<12;m++){
     var ym=y*12+m,g=gen[ym]||{},pre=ym<createdYM;
     // Avant le début du suivi dans l'app : heures reprises du tableau Gestion
-    var a=pre?(chk&&chk.sheet[ym])||0:(g.fer||0)+(g.dim||0)+(g.rh||0)+(g.hs||0)+(g.ram||0)+(g.extra||0);if(!a)continue;
-    var fut=ym>nowYM;tot+=a;
-    // Colonne de droite fixe (heures puis ✓/⚠) ; la note « tableau » passe devant
+    var a=pre?(chk&&chk.sheet[ym])||0:(g.fer||0)+(g.dim||0)+(g.rh||0)+(g.hs||0)+(g.ram||0)+(g.extra||0),p=pos[ym]||0;if(!a&&!p)continue;
+    var fut=ym>nowYM;tot+=a;n++;
     var note='',mark='';
     if(pre)note='<span style="color:var(--text3)">tableau</span>';
-    else if(chk&&ym<chk.asOfYM){var sv=chk.sheet[ym]||0,ok=Math.abs(sv-a)<2;if(ok)nOk++;else nBad++;
+    else if(a&&chk&&ym<chk.asOfYM){var sv=chk.sheet[ym]||0,ok=Math.abs(sv-a)<2;if(ok)nOk++;else nBad++;
       mark='<span style="color:'+(ok?'var(--green)':'var(--amber)')+'">'+(ok?'✓':'⚠')+'</span>';
       if(!ok)note='<span style="color:var(--amber)">tableau '+fmtMin(sv)+'</span>';}
-    rows+='<div class="recap-row'+(mark?' rc-tap" onclick="rhOpenFromRecap()"':'"')+' style="padding:4px 0;gap:8px"><span style="flex:1;color:'+(fut?'var(--text3)':'var(--text2)')+'">'+ML[m]+(fut?' <i style="font-size:10px">prévu</i>':'')+'</span>'
+    rows+='<div class="recap-row'+(mark?' rc-tap" onclick="rhOpenFromRecap()"':'"')+' style="padding:4px 0;gap:8px"><span style="flex:1;min-width:0;color:'+(fut?'var(--text3)':'var(--text2)')+'">'+ML[m]+(fut?' <i style="font-size:10px">prévu</i>':'')+'</span>'
       +'<span style="font-size:10px;white-space:nowrap">'+note+'</span>'
-      +'<b style="width:52px;text-align:right;color:var(--rend-text);opacity:'+(fut?'.6':'1')+'">'+fmtMin(a)+'</b><span style="width:12px;text-align:center">'+mark+'</span><span class="rc-go">'+(mark?'›':'')+'</span></div>';
+      +'<b style="'+cell+';color:var(--rend-text);opacity:'+(fut?'.6':'1')+'">'+(a?fmtMin(a):'—')+'</b>'
+      +'<span style="'+cell+';color:'+(p?'var(--text)':'var(--text3)')+'">'+(p?fmtMin(p):'—')+'</span>'
+      +'<span style="width:12px;text-align:center">'+mark+'</span><span class="rc-go">'+(mark?'›':'')+'</span></div>';
   }
-  var sub=chk?'tableau Gestion du '+chk.ed.toLocaleDateString('fr-FR')+(nBad?' · '+nBad+' mois à vérifier':nOk?' · tout correspond':''):'tableau Gestion non importé';
+  var sub='posées / acquises'+(dispoTxt?' · '+dispoTxt:'')+'<br>'+(chk?'Gestion du '+chk.ed.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'})+(nBad?' · '+nBad+' mois à vérifier':nOk?' · tout correspond':''):'tableau Gestion non importé');
   var foot=chk?'✓ ou ⚠ : heures acquises comparées au tableau Gestion, toucher pour l’ouvrir. « tableau » : mois antérieur au suivi dans l’app, repris du tableau.':'Importer le tableau Gestion pour vérifier chaque mois.';
-  return _fold('fold-acq','','var(--rend-text)','Rendus acquis en '+y,sub,fmtMin(tot),'<div style="height:6px"></div>'+(rows||'<div style="font-size:11px;color:var(--text3);padding:2px 0">Aucune heure acquise.</div>')+'<div style="font-size:10px;color:var(--text3);padding-top:6px">'+foot+'</div>'+(chk?'<div style="display:flex;gap:6px"><button class="rc-cbtn" onclick="rhOpenFromRecap()">Ouvrir le tableau Gestion</button><button class="rc-cbtn" onclick="rhOpenFromRecap(true)">Importer un nouveau</button></div>':'<button class="rc-cbtn" onclick="rhOpenFromRecap(true)">Importer le tableau Gestion (Excel)</button>'));
+  return _fold('fold-acq','','var(--rend-text)','Rendus '+y,sub,fmtMin(posTot)+' / '+fmtMin(tot),'<div style="height:6px"></div>'+(n?rows:'<div style="font-size:11px;color:var(--text3);padding:2px 0">Aucune heure.</div>')+'<div style="font-size:10px;color:var(--text3);padding-top:6px">'+foot+'</div>'+(chk?'<div style="display:flex;gap:6px"><button class="rc-cbtn" onclick="rhOpenFromRecap()">Ouvrir le tableau Gestion</button><button class="rc-cbtn" onclick="rhOpenFromRecap(true)">Importer un nouveau</button></div>':'<button class="rc-cbtn" onclick="rhOpenFromRecap(true)">Importer le tableau Gestion (Excel)</button>'));
 }
 function _bilanHtml(y){
   var lastM=11,lastD=31; // année entière : les jours à venir sont pris dans le planning
@@ -3522,8 +3528,9 @@ function _rhStored(){
   try{return o&&o.cells?_rhParse(o.cells,o.name):null;}catch(e){return null;}}
 // Bouton du modal rendus : tableau gardé en mémoire s'il y en a un, sinon choix du fichier
 // Ouverture depuis le Récap : le modal affiche « ‹ Récap » pour y revenir
-function rhOpenFromRecap(newFile){window._rvFrom='recap';const rh=newFile?null:_rhStored();if(rh)rhCompareShow(rh);else rhCompareOpen();}
-function _rvGoBack(){window._rvFrom=null;openMergedRenduCgModal(6,2);}
+function rhOpenFrom(from,newFile){window._rvFrom=from;const rh=newFile?null:_rhStored();if(rh)rhCompareShow(rh);else rhCompareOpen();}
+function rhOpenFromRecap(newFile){rhOpenFrom('recap',newFile);}
+function _rvGoBack(){const t=window._rvFrom==='rendus'?0:2;window._rvFrom=null;openMergedRenduCgModal(6,t);}
 var _navBackCss='display:inline-flex;align-items:center;gap:3px;color:var(--blue);font-size:13px;margin:0 0 6px;cursor:pointer';
 function rhCompareOpen(mode){
   let inp=document.getElementById('rh-file');
@@ -3749,7 +3756,7 @@ function rhCompareShow(rh){
     return '<tr'+(b?(consOk?' class="rc-cmt"':' class="rc-hl"'):cited?'':' style="opacity:.55"')+'><td>S'+w+(b&&consOk?' <i class="rc-n">commentaire seulement</i>':'')+'</td><td>'+(cited?fmtMin(sh):'pas cité')+'</td><td>'+(a?fmtMin(a):'—')+'</td>'+(cited?(bad(d)?'<td'+(b&&consOk?'':' class="'+(d>0?'rc-pos':'rc-neg')+'"')+'>'+fmtE(d)+'</td>':'<td><span class="rc-ok">✓</span></td>'):'<td></td>')+'</tr>';}).join('');
   // Matelas
   const matApp=calcSoldes().matelas,hasMat=rh.tot.stockAct!==null&&rh.tot.stockAct!==undefined,matBad=hasMat&&bad(matApp-rh.tot.stockAct);
-  if(matBad)item('Matelas',matApp>rh.tot.stockAct?'L’app en compte plus':'Le tableau en compte plus',fmtE(matApp-rh.tot.stockAct),cmp(rh.tot.stockAct,matApp));
+  if(matBad)item('Matelas',matApp>rh.tot.stockAct?'L’app en compte plus':'Le tableau en compte plus',fmtE(rh.tot.stockAct-matApp),cmp(rh.tot.stockAct,matApp));
   // Solde de départ saisi à la main : proposer la répartition du tableau
   const _sg=_rhStartSplit(rh),_hasSplit=!!(S.profile&&S.profile.ephSoldeSplit&&Object.keys(S.profile.ephSoldeSplit).length);
   const _sgTxt=Object.keys(_sg.split).map(Number).sort((a,b)=>a-b).map(ym=>ymL(ym)+' '+fmtMin(_sg.split[ym])).join(' · ');
@@ -3776,7 +3783,7 @@ function rhCompareShow(rh){
     +(wkRows?'<div class="rv-dh" style="font-size:10px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:.03em">Par semaine (commentaires du gestionnaire)</div><table class="rc-t"><tr><th></th><th></th><th></th><th></th></tr>'+wkRows+'</table>':'')
     +(wkCmt?'<div class="rv-why" style="font-size:11px;color:var(--text3)">'+(wkCmt>1?'Ces semaines : le commentaire ne correspond pas':'Le commentaire ne correspond pas')+', mais le total déduit est le même que l’app. Rien à corriger.</div>':'');
   const html='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet rv-sheet" style="max-height:88vh;overflow:auto">'
-    +'<div class="sh"></div>'+(window._rvFrom==='recap'?'<div style="'+_navBackCss+'" onclick="_rvGoBack()">‹ Récap</div>':'')+'<div class="st">Tableau Gestion</div>'
+    +'<div class="sh"></div>'+(window._rvFrom?'<div style="'+_navBackCss+'" onclick="_rvGoBack()">‹ '+(window._rvFrom==='rendus'?'Rendus':'Récap')+'</div>':'')+'<div class="st">Tableau Gestion</div>'
     +'<div style="font-size:11px;color:var(--text3);margin:2px 0 12px">Édité le '+asOf.toLocaleDateString('fr-FR')+'</div>'
     +'<div class="rv-hero"><div class="rv-hl">Heures restantes</div><div class="rv-hr">'
     +'<div><b>'+fmtMin(solRh)+'</b><span>Tableau</span></div><div><b>'+fmtMin(sumSolApp)+'</b><span>App</span></div><div class="'+(bad(dSol)?(dSol<0?'g':'e'):'g')+'"><b>'+(bad(dSol)?fmtE(-dSol):'✓')+'</b><span>'+(!bad(dSol)?'Écart':dSol<0?'Favorable':'À faire corriger')+'</span></div></div>'
@@ -4543,15 +4550,11 @@ function openMergedRenduCgModal(limit,tab){
   const {total:dispoMois,stockActif,reserved,reservedMonths,afterStep1,reservedDetail,genSnapshot}=calcTrueDispo(_viewedYM);
   const rcgUsedCurY=calcCongesUsedForYear(nowY);
   const rcgCgKeys=Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='cg'&&k.startsWith(nowY+'-');}).sort();
-  const rcgRdKeys=Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='rend'&&k.startsWith(nowY+'-');}).sort();
-  const rcgRendusMin=rcgRdKeys.reduce(function(s,k){return s+getDur(new Date(k+'T12:00:00'));},0);
   const rcgCgSections=_rhMonthSections(rcgCgKeys,'cg')||'<div style="font-size:11px;color:var(--text3);padding:2px 0">Aucun congé.</div>';
-  const rcgRdSections=_rhMonthSections(rcgRdKeys,'rend')||'<div style="font-size:11px;color:var(--text3);padding:2px 0">Aucun rendu.</div>';
   const rcgHistHtml=(S.history||[]).slice(0,8).map(function(e){return '<div class="hrow"><div class="hdot" style="background:'+e.c+'"></div><span class="htime">'+e.t+'</span><span class="hdesc">'+_histTxt(e.d)+'</span></div>';}).join('')||'<span style="font-size:11px;color:var(--text3)">Aucune modification.</span>';
   const recapRows=''
     +_fold('fold-cg','beach','var(--green)','Congés '+nowY,'posés / droits de l’année · il reste '+restNow+'j',rcgUsedCurY+' / '+(rcgUsedCurY+restNow)+' j','<div style="height:6px"></div>'+rcgCgSections)
-    +_fold('fold-rd','clock-hour-4','var(--rend-text)','Rendus posés en '+nowY,'disponible en '+MC[_viewedYM%12]+' : '+fmtMin(dispoMois),fmtMin(rcgRendusMin),'<div style="height:6px"></div>'+rcgRdSections)
-    +_acqHtml(nowY)
+    +_acqHtml(nowY,'libre en '+MC[_viewedYM%12]+' : '+fmtMin(dispoMois))
     +_bilanHtml(nowY)
     +_fold('fold-hist','history','var(--text2)','Dernières modifications',(S.history||[]).length?'dernière le '+S.history[0].t:'aucune',(S.history||[]).length||'','<div style="height:6px"></div>'+rcgHistHtml)
     +'<div style="height:12px"></div>';
@@ -4705,6 +4708,9 @@ function openMergedRenduCgModal(limit,tab){
     +'<div class="dx-minis">'
     +'<div class="dx-mini"><span>Matelas</span><b style="color:'+(matelasVal>0?'var(--blue)':'var(--text3)')+'">'+(matelasVal>0?fmtMin(matelasVal):'—')+'</b></div>'
     +'__EXPIRE__'
+    +(function(){const c=S.profile&&S.profile.rhCmp;if(!c)return '<button class="dx-mini dx-mbtn" onclick="event.stopPropagation();rhOpenFrom(\'rendus\')"><span>Comparer<br>avec l’Excel</span></button>';
+      const e=-c.d,ok=e>-2,txt=Math.abs(e)<2?'=':(e>0?'+':'−')+fmtMin(Math.abs(e)); // positif = le tableau laisse plus d'heures que l'app
+      return '<button class="dx-mini dx-mbtn" onclick="event.stopPropagation();rhOpenFrom(\'rendus\')"><span>Écart Gestion</span><b style="color:'+(ok?'var(--green)':'var(--red)')+'">'+txt+'</b></button>';})()
     +'</div>'
     +'</div>';
   let _expAmt=0,_repAmt=0;
