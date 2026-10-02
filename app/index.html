@@ -5285,7 +5285,7 @@ function _wvCell(code,VAC,isOv){
 })();
 // Swipe down to close modal
 (function(){
-  var startY=0,startX=0,startScroll=0,prevClientY=0,sheet=null,overlay=null,dragging=false,dirLocked=null;
+  var startY=0,startX=0,startScroll=0,prevClientY=0,sheet=null,overlay=null,dragging=false,dirLocked=null,canClose=false,pulled=0;
   document.addEventListener('touchstart',function(e){
     var el=e.target.closest('.sheet');
     if(!el)return;
@@ -5295,7 +5295,11 @@ function _wvCell(code,VAC,isOv){
     if(e.target.closest('select,input,textarea'))return;
     sheet=el;overlay=el.closest('.overlay');
     startScroll=sheet.scrollTop;
-    dragging=true;dirLocked=null;
+    // Le geste ne peut fermer le modal que s'il commence avec le contenu déjà tout en haut
+    // (modal et zones défilantes à l'intérieur) : sinon, glisser vers le bas fait défiler
+    canClose=startScroll<=0;
+    for(var _n=e.target;canClose&&_n&&_n!==el;_n=_n.parentElement){if(_n.scrollTop>0&&_n.scrollHeight>_n.clientHeight+1)canClose=false;}
+    dragging=true;dirLocked=null;pulled=0;
     sheet.style.transition='none';
   },{passive:true});
   document.addEventListener('touchmove',function(e){
@@ -5327,8 +5331,9 @@ function _wvCell(code,VAC,isOv){
     }
     if(dirLocked==='h'){dragging=false;sheet.style.transform='';sheet.style.transition='';if(overlay){overlay.classList.remove('ov-drag');['--ovh','--ovb','--ova'].forEach(function(k){overlay.style.removeProperty(k);});}return;}
     // Swipe down at top = close gesture; swipe up at bottom = prevent body overscroll
-    if(dy>0&&sheet.scrollTop<=0){
+    if(dy>0&&canClose&&sheet.scrollTop<=0){
       e.preventDefault();
+      if(!pulled)pulled=dy; // point où le modal commence à être tiré
       sheet.style.transform='translateY('+Math.min(dy,300)+'px)';
       // Pendant le glissé : le voile ne couvre plus que la zone au-dessus du modal, où flou et assombrissement
       // s'estompent avec le geste ; derrière le modal, c'est le modal lui-même qui floute ce qu'il recouvre.
@@ -5348,7 +5353,8 @@ function _wvCell(code,VAC,isOv){
     dragging=false;
     var dy=e.changedTouches[0].clientY-startY;
     sheet.style.transition='transform .2s ease';
-    if(dy>80){
+    // Fermeture seulement si le modal a vraiment été tiré vers le bas (pas après un simple défilement)
+    if(pulled&&canClose&&dy>80){
       sheet.style.transform='translateY(100%)';
       var _tr='background .2s ease,backdrop-filter .2s ease,-webkit-backdrop-filter .2s ease';
       if(overlay){overlay.style.setProperty('--ovh','100%');overlay.style.setProperty('--ovb','0px');overlay.style.setProperty('--ova','0');}
