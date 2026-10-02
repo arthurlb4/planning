@@ -636,7 +636,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 /* Recap */
 .sv-sw{display:flex;gap:2px;background:var(--bg3);border-radius:9px;padding:2px;margin:0 auto 12px;width:max-content}.sv-sw button{border:none;background:none;color:var(--text3);font-size:11.5px;padding:5px 14px;border-radius:7px;font-family:var(--font);cursor:pointer}.sv-sw button.on{background:var(--bg2);color:var(--text);font-weight:600}
 .sv-yr{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}.sv-yr span{font-size:13px;font-weight:600;color:var(--text)}.sv-yr button{border:none;background:none;color:var(--blue);font-size:11.5px;font-family:var(--font);cursor:pointer;padding:4px 2px}
-.pp-r{display:flex;align-items:center;gap:8px;padding:3px 0}.pp-r .pp-l{flex:1;min-width:0;color:var(--text3)}.pp-r>b{text-align:right;white-space:nowrap}.pp-n{width:74px;text-align:right;font-size:10px;white-space:nowrap;flex-shrink:0}.pp-s{border-top:0.5px solid var(--border2);margin-top:2px;padding:4px 0}.pp-s>span:first-child{flex:1}.pp-top{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;margin:2px 0 10px}
+.pp-r{display:flex;align-items:center;gap:8px;padding:3px 0}.pp-r .pp-l{flex:1;min-width:0;color:var(--text3)}.pp-r>b{text-align:right;white-space:nowrap}.pp-r>b,.pp-v{min-width:66px;text-align:right;flex-shrink:0}.pp-n{width:86px;text-align:right;font-size:10px;white-space:nowrap;flex-shrink:0}.pp-s{border-top:0.5px solid var(--border2);margin-top:2px;padding:4px 0}.pp-s>span:first-child{flex:1}.pp-top{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;margin:2px 0 10px}
 .sv-pr{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:11.5px;cursor:pointer}.sv-pr .l{flex:1;color:var(--text3)}.sv-pr b{color:var(--gold-pay);width:78px;text-align:right}.sv-pr .s{width:74px;text-align:right;font-size:10.5px;white-space:nowrap}.sv-pr i{font-style:normal;color:var(--text3);width:8px}
 .sv-btns{display:flex;gap:8px;margin-bottom:10px}.sv-btns button{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:14px 8px;border:0.5px solid var(--border);border-radius:14px;background:var(--bg3);color:var(--blue);font-size:12.5px;font-weight:600;font-family:var(--font);cursor:pointer}.sv-btns i{font-size:22px}
 .sv-card{background:var(--bg3);border:0.5px solid var(--border);border-radius:14px;padding:12px;margin-bottom:8px}.sv-h{font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px}.sv-h small{font-weight:400;font-size:10.5px;color:var(--text3);margin-left:4px}
@@ -2437,68 +2437,54 @@ function _payPageHtml(ym){
     +'<div style="font-size:13px;font-weight:600;color:var(--text2)">Données de paie incomplètes</div>'
     +'<div style="font-size:12px;color:var(--text3);line-height:1.5">Renseigner le palier, l’ancienneté et le taux de travail dans les paramètres pour voir l’estimation du salaire.</div>'
     +'<button class="mb" style="height:36px;padding:0 16px;font-size:12px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);cursor:pointer" onclick="closeModal();setTimeout(()=>openSettingsModal(1),80)">Paramètres → Paie</button></div>';
-  var c=b?_bulCompare(b):null,fe=function(x){return fmtEuro(x).replace(/\s*€/,'');},r2=function(x){return Math.round(x*100)/100;},v=P.vars,_tx=v.tx||getTauxForYM(),_eu=function(n){return n.toFixed(2).replace('.',',')+' €';};
+  var c=b?_bulCompare(b):null,fe=function(x){return fmtEuro(x).replace(/\s*€/,'');},v=P.vars,_tx=v.tx||getTauxForYM(),_eu=function(n){return n.toFixed(2).replace('.',',')+' €';};
   var btn='font-size:11px;padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:none;cursor:pointer;font-family:var(--font)';
   var rowsBy={},fixBy={};if(c){c.rows.forEach(function(r){rowsBy[r.k]=r;});c.fixed.forEach(function(f){fixBy[f.lbl]=f;});}
-  // Colonne de droite (avec un bulletin) : ✓ si l'app trouve pareil, sinon la valeur de l'app
-  var E='<span class="pp-n"></span>',ok='<span class="pp-n" style="color:var(--green)">✓</span>';
-  var app=function(same,t){return same?ok:'<span class="pp-n" style="color:var(--amber)">'+t+'</span>';};
-  var cmpE=function(bv,av){return app(Math.abs(bv-av)<=0.05,fe(av));};
-  var row=function(lbl,val,col,n){return '<div class="pp-r"><span class="pp-l">'+lbl+'</span><b'+(col?' style="color:'+col+'"':'')+'>'+fe(val)+'</b>'+(c?(n||E):'')+'</div>';};
-  var sub=function(lbl,val,n){return '<div class="pp-r pp-s"><span>'+lbl+'</span><b class="stag">'+fe(val)+'</b>'+(c?(n||E):'')+'</div>';};
+  // Colonne bulletin (à gauche du calcul de l'app) : ✓ si pareil, sinon ⚠ et le montant du bulletin
+  var E='<span class="pp-n"></span>',OK='<span class="pp-n" style="color:var(--green)">✓</span>';
+  var bul=function(same,bv){return same?OK:'<span class="pp-n" style="color:var(--amber)">⚠ '+fe(bv)+'</span>';};
+  var cmp=function(bv,av){return bul(Math.abs(bv-av)<=0.05,bv);};
+  var row=function(lbl,val,col,n){return '<div class="pp-r"><span class="pp-l">'+lbl+'</span>'+(c?(n||E):'')+'<b'+(col?' style="color:'+col+'"':'')+'>'+fe(val)+'</b></div>';};
+  var sub=function(lbl,val,n){return '<div class="pp-r pp-s"><span>'+lbl+'</span>'+(c?(n||E):'')+'<span class="pp-v"><b class="stag">'+fe(val)+'</b></span></div>';};
   var tit=function(t,first){return '<div class="btit" style="margin:'+(first?'4px':'14px')+' 0 4px">'+t+'</div>';};
-  // Variables : avec un bulletin, quantités et montants du bulletin ; l'app à droite
   var vl='',vb=0;
-  var vr=function(k,name,aq,am,fq,tail,col){
-    var r=rowsBy[k];if(!(aq>0)&&!r)return;
-    if(!c){vl+=row(name+' ('+fq(aq)+tail+')',am,col);return;}
-    var bq=r?r.bq:0,bm=r?r.bm:0;vb+=bm;
-    vl+=row(name+' ('+fq(bq)+tail+')',bm,col,app(r?r.ok:!(aq>0),fq(aq)));};
-  var n0=function(x){return String(x);};
-  vr('dim','Dim',v.dimMin,v.supDim,fmtMin,' × '+_tx.dim+'%','var(--text2)');
-  vr('rh','RH',v.rhMin,v.supRH,fmtMin,' × '+_tx.rh+'%','var(--text2)');
-  vr('fer','Fériés',v.ferMin,v.supFer,fmtMin,' × '+_tx.fer+'%','var(--text2)');
-  vr('hsLow','HS ≤8h',v.hsLow,v.supHSlow,fmtMin,' × '+_tx.hsLow+'%','var(--blue)');
-  vr('hsHigh','HS >8h',v.hsHigh,v.supHShigh,fmtMin,' × '+_tx.hsHigh+'%','var(--blue)');
-  vr('nuit','Nuit',v.nuitMin,v.supNuit,fmtMin,' × '+_tx.nuit+'%','#9c7fe0');
-  vr('antenne','P. antenne',v.antenne,v.supAntenne,n0,' × '+_eu(_tx.antenne),'var(--amber)');
-  vr('matin','P. matin',v.matin,v.supMatin,n0,' × '+_eu(_tx.matin),'var(--amber)');
-  vr('reel','P. réal',v.reel,v.supReal,n0,' × '+_eu(_tx.reel),'var(--amber)');
-  vr('coord','P. coord',v.coord,v.supCoord,n0,' × '+_eu(_tx.coord),'var(--amber)');
-  if(v.supAbsResto>0||rowsBy.absResto){var ra=rowsBy.absResto;if(c){vb+=ra?ra.bm:0;vl+=row('Abs. restauration',ra?ra.bm:0,'var(--amber)',cmpE(ra?ra.bm:0,v.supAbsResto));}else vl+=row('Abs. restauration',v.supAbsResto,'var(--amber)');}
+  var vr=function(k,lbl,aq,am,col){var r=rowsBy[k];if(!(aq>0)&&!r)return;var bm=r?r.bm:0;vb+=bm;
+    vl+=row(lbl,am,col,c?(r?(r.ok?OK:bul(false,bm)):bul(false,0)):null);};
+  vr('dim','Dim ('+fmtMin(v.dimMin)+' × '+_tx.dim+'%)',v.dimMin,v.supDim,'var(--text2)');
+  vr('rh','RH ('+fmtMin(v.rhMin)+' × '+_tx.rh+'%)',v.rhMin,v.supRH,'var(--text2)');
+  vr('fer','Fériés ('+fmtMin(v.ferMin)+' × '+_tx.fer+'%)',v.ferMin,v.supFer,'var(--text2)');
+  vr('hsLow','HS ≤8h ('+fmtMin(v.hsLow)+' × '+_tx.hsLow+'%)',v.hsLow,v.supHSlow,'var(--blue)');
+  vr('hsHigh','HS >8h ('+fmtMin(v.hsHigh)+' × '+_tx.hsHigh+'%)',v.hsHigh,v.supHShigh,'var(--blue)');
+  vr('nuit','Nuit ('+fmtMin(v.nuitMin)+' × '+_tx.nuit+'%)',v.nuitMin,v.supNuit,'#9c7fe0');
+  vr('antenne','P. antenne ('+v.antenne+' × '+_eu(_tx.antenne)+')',v.antenne,v.supAntenne,'var(--amber)');
+  vr('matin','P. matin ('+v.matin+' × '+_eu(_tx.matin)+')',v.matin,v.supMatin,'var(--amber)');
+  vr('reel','P. réal ('+v.reel+' × '+_eu(_tx.reel)+')',v.reel,v.supReal,'var(--amber)');
+  vr('coord','P. coord ('+v.coord+' × '+_eu(_tx.coord)+')',v.coord,v.supCoord,'var(--amber)');
+  vr('absResto','Abs. restauration',v.supAbsResto,v.supAbsResto,'var(--amber)');
   if(!vl)vl='<div style="color:var(--text3);padding:3px 0">Aucune.</div>';
-  var h='';
-  // Total brut : même ligne que l'ancien onglet Paie ; avec un bulletin, colonnes bulletin | app
+  // En-tête et total brut comme l'ancien onglet Paie ; la colonne bulletin s'ajoute à gauche
+  var h='<div class="pp-r" style="font-size:10px;color:var(--text3);padding:0 0 2px"><span style="flex:1"></span>'+(c?'<span class="pp-n">bulletin</span>':'')+'<span>euros</span></div>'
+    +'<div class="pp-r" style="padding:5px 0;margin-bottom:2px"><span style="flex:1;color:var(--text3)">total brut</span>'+(c?cmp(b.brut,P.total):'')+'<b style="font-size:15px;color:var(--gold-pay)">'+fe(P.total)+'</b></div>';
   if(c){var st=_BUL_ST[c.status],d=c.diff,z=Math.abs(d)<=0.05;
-    h+='<div class="pp-r" style="font-size:10px;color:var(--text3);padding:0"><span style="flex:1"></span><span>bulletin</span><span class="pp-n">app</span></div>'
-      +'<div class="pp-r" style="padding:5px 0"><span style="flex:1;color:var(--text3)">total brut</span><b style="font-size:15px;color:var(--gold-pay)">'+fe(b.brut)+'</b>'+cmpE(b.brut,P.total)+'</div>'
-      +'<div style="font-size:11px;margin:2px 0 6px"><b style="color:'+st[1]+'">'+st[0]+' '+st[2]+'</b>'+(z?'':' · écart <b style="color:'+(d>0?'var(--green)':'var(--red)')+'">'+(d>0?'+':'−')+fe(Math.abs(d))+'</b>'+(c.lateSum?'<span style="color:var(--text3)">, dont '+fe(c.lateSum)+' de rattrapages</span>':''))+'</div>';}
-  else h+='<div class="pp-r" style="font-size:10px;color:var(--text3);padding:0 0 2px"><span style="flex:1"></span><span>euros</span></div>'
-    +'<div class="pp-r" style="padding:5px 0;margin-bottom:2px"><span style="flex:1;color:var(--text3)">total brut</span><b style="font-size:15px;color:var(--gold-pay)">'+fe(P.total)+'</b></div>';
+    h+='<div style="font-size:11px;margin:0 0 4px"><b style="color:'+st[1]+'">'+st[0]+' '+st[2]+'</b>'+(z?'':' · écart <b style="color:'+(d>0?'var(--green)':'var(--red)')+'">'+(d>0?'+':'−')+fe(Math.abs(d))+'</b>'+(c.lateSum?'<span style="color:var(--text3)">, dont '+fe(c.lateSum)+' de rattrapages</span>':''))+'</div>';}
   var pR=(v.panierRate!=null?v.panierRate:getPanierRate());
-  if(c&&c.paniers)h+=row('Paniers repas ('+b.paniers.q+' × '+b.paniers.pu.toFixed(2).replace('.',',')+' €)',b.paniers.mt,'var(--amber)',app(Math.abs(Number(c.paniers.bq)-Number(c.paniers.aq))<0.01,String(c.paniers.aq)));
-  else if(v.paniers>0)h+=c?row('Paniers repas (aucun)',0,'var(--amber)',app(false,String(v.paniers))):row('Paniers repas ('+v.paniers+' × '+pR.toFixed(2).replace('.',',')+' €)',v.supPaniers,'var(--amber)');
+  if(v.paniers>0||(c&&c.paniers))h+=row('Paniers repas ('+v.paniers+' × '+pR.toFixed(2).replace('.',',')+' €)',v.supPaniers,'var(--amber)',c?(c.paniers?bul(Math.abs(Number(c.paniers.bq)-Number(c.paniers.aq))<0.01,b.paniers.mt):bul(false,0)):null);
   h+='<div class="sep" style="margin:6px 0 4px"></div>';
-  var fv=function(lbl,av){var f=fixBy[lbl];return c&&f?f.bm:av;},fn=function(lbl,av){var f=fixBy[lbl];return c?(f?app(f.ok,fe(f.am)):app(!(av>0),fe(av))):null;};
-  var bq=fv('Qualification',P.salQ),ba=fv('Ancienneté',P.salAnc);
-  h+=tit('Salaire de base',1)+row('Qualification',bq,null,fn('Qualification',P.salQ))+row('Ancienneté',ba,null,fn('Ancienneté',P.salAnc))+sub('Sous-total',c?bq+ba:P.base,c?cmpE(bq+ba,P.base):null);
-  h+=tit('Variables <span style="font-weight:400;color:var(--text3);font-size:10px">('+MC[P.prevM]+')</span>')+vl+sub('Sous-total',c?r2(vb):v.total,c?cmpE(vb,v.total):null);
+  var fn=function(lbl,av){var f=fixBy[lbl];return c?(f?bul(f.ok,f.bm):cmp(0,av)):null;},fsum=function(ls){return ls.reduce(function(s,l){var f=fixBy[l];return s+(f?f.bm:0);},0);};
+  h+=tit('Salaire de base',1)+row('Qualification',P.salQ,null,fn('Qualification',P.salQ))+row('Ancienneté',P.salAnc,null,fn('Ancienneté',P.salAnc))+sub('Sous-total',P.base,c?cmp(fsum(['Qualification','Ancienneté']),P.base):null);
+  h+=tit('Variables <span style="font-weight:400;color:var(--text3);font-size:10px">('+MC[P.prevM]+')</span>')+vl+sub('Sous-total',v.total,c?cmp(vb,v.total):null);
   if(m===0){var cf=fixBy['Complément CP'];
-    h+=tit('Complément CP')+(P.compCP>0||cf?row(c?'Indemnité 10e EPV':P.compCPManual?'Montant du bulletin':'1/10 variables '+(y-1),c&&cf?cf.bm:P.compCP,null,c?(cf?app(cf.ok,fe(cf.am)):E):null):'<div style="color:var(--amber);display:flex;gap:5px;padding:4px 0"><span>⚠</span><span>1/10 des variables '+(y-1)+' non calculable : les données de l’année précédente sont incomplètes.</span></div>')
+    h+=tit('Complément CP')+(P.compCP>0||cf?row(P.compCPManual?'Montant du bulletin':'1/10 variables '+(y-1),P.compCP,null,fn('Complément CP',P.compCP)):'<div style="color:var(--amber);display:flex;gap:5px;padding:4px 0"><span>⚠</span><span>1/10 des variables '+(y-1)+' non calculable : les données de l’année précédente sont incomplètes.</span></div>')
       +'<div style="display:flex;gap:6px;margin-top:4px"><button onclick="editCompCP('+y+','+ym+')" style="'+btn+';color:var(--text2);padding:3px 8px">'+(P.compCPManual?'Modifier le montant':'Saisir le montant du bulletin')+'</button>'+(cf&&!cf.ok&&b.epv!=null?'<button onclick="useBulletinCompCP('+ym+')" style="'+btn+';color:var(--blue);padding:3px 8px">Reprendre le bulletin</button>':'')+'</div>';}
-  // Primes fixes : lignes NAO du bulletin s'il existe (comparées au total des NAO de l'app)
-  var naoF=fixBy['Mesures NAO'],naoK=c?Object.keys(b.nao||{}):[],fx='',fb=0;
-  if(c&&naoK.length)naoK.forEach(function(k,i){fb+=b.nao[k];fx+=row('NAO '+k.replace(/^CDI\s+/,''),b.nao[k],'var(--text2)',naoF&&naoF.ok?ok:i===naoK.length-1&&naoF?'<span class="pp-n" style="color:var(--amber)">'+fe(naoF.am)+'</span>':E);});
-  else P.primesConv.forEach(function(p){fx+=row(p.label,p.montant,'var(--text2)',c?app(false,fe(p.montant)):null);});
-  var bg=fv('Ind. GPE',P.gpe),bp=fv('PFA',P.pfa),bs=fv('Suppl. familial',P.supFamilial);fb+=bg+bp;
-  fx+=row('Ind. GPE'+(P.groupeClassif?' (Gr.'+P.groupeClassif+')':''),bg,'var(--text2)',fn('Ind. GPE',P.gpe))
-    +row('PFA'+(c?'':' ('+fmtEuro(P.pfaM)+'/mois)'+(P.pfaMensuelle?'':' (sem.)')),bp,'var(--text2)',fn('PFA',P.pfa));
-  if(P.supFamilial>0||fixBy['Suppl. familial']){fb+=bs;fx+=row('Suppl. familial',bs,'var(--text2)',fn('Suppl. familial',P.supFamilial));}
-  if(!c)fx+=P.primesCustom.map(function(p){return row(p.label,p.montant,'var(--text2)');}).join('');
-  else P.primesCustom.forEach(function(p){fx+=row(p.label,0,'var(--text2)',app(false,fe(p.montant)));});
-  var fa=P.totalFixes+P.totalPrimesCustom;
-  h+=tit('Primes fixes')+fx+sub('Sous-total',c?r2(fb):fa,c?cmpE(fb,fa):null);
-  if(c&&c.late.length)h+=tit('Rattrapages et autres lignes')+c.late.map(function(l){return '<div class="pp-r"><span class="pp-l">'+l.lbl+(l.q!=null?' ('+(_BUL_H[l.k]?fmtMin(Math.round(l.q*60)):l.q)+')':'')+'<span style="display:block;font-size:10px;font-style:italic">'+(l.info?'sans effet sur la comparaison':'rattrapage '+_deMois(l.ym)+' '+Math.floor(l.ym/12))+'</span></span><b style="color:var(--text2)">'+fe(l.mt)+'</b>'+E+'</div>';}).join('')+sub('Sous-total',c.lateSum,E);
+  // NAO : le bulletin les nomme autrement, comparées en total (sur la dernière ligne si ça diffère)
+  var naoF=fixBy['Mesures NAO'],nN=P.primesConv.length,fa=P.totalFixes+P.totalPrimesCustom;
+  h+=tit('Primes fixes')+P.primesConv.map(function(p,i){return row(p.label,p.montant,'var(--text2)',c?(naoF&&naoF.ok?OK:i===nN-1?(naoF?bul(false,naoF.bm):bul(false,0)):E):null);}).join('')
+    +row('Ind. GPE'+(P.groupeClassif?' (Gr.'+P.groupeClassif+')':''),P.gpe,'var(--text2)',fn('Ind. GPE',P.gpe))
+    +row('PFA ('+fmtEuro(P.pfaM)+'/mois)'+(P.pfaMensuelle?'':' (sem.)'),P.pfa,'var(--text2)',fn('PFA',P.pfa))
+    +(P.supFamilial>0||fixBy['Suppl. familial']?row('Suppl. familial',P.supFamilial,'var(--text2)',fn('Suppl. familial',P.supFamilial)):'')
+    +P.primesCustom.map(function(p){return row(p.label,p.montant,'var(--text2)');}).join('')
+    +sub('Sous-total',fa,c?cmp(fsum(['Mesures NAO','Ind. GPE','PFA','Suppl. familial']),fa):null);
+  if(c&&c.late.length)h+=tit('Rattrapages et autres lignes')+c.late.map(function(l){return '<div class="pp-r"><span class="pp-l">'+l.lbl+(l.q!=null?' ('+(_BUL_H[l.k]?fmtMin(Math.round(l.q*60)):l.q)+')':'')+'<span style="display:block;font-size:10px;font-style:italic">'+(l.info?'sans effet sur la comparaison':'rattrapage '+_deMois(l.ym)+' '+Math.floor(l.ym/12))+'</span></span><span class="pp-n" style="color:var(--text2)">'+fe(l.mt)+'</span><b style="color:var(--text3)">—</b></div>';}).join('');
   if(c)h+=c.alerts.map(function(a){return '<div style="font-size:11px;color:var(--amber);display:flex;gap:5px;padding:10px 0 0;line-height:1.45"><span>⚠</span><span>'+a+'</span></div>';}).join('');
   h+='<div style="font-size:10px;color:var(--text3);text-align:center;margin-top:10px">taux : '+fmtEuro(P.tauxH)+'/h · '+P.heures.toFixed(2)+'h/mois</div>';
   h+=(b?'':'<div style="font-size:11px;color:var(--text3);line-height:1.5;margin:14px 0 0">Importer le PDF du bulletin pour que l’app compare chaque ligne. Le fichier est lu sur le téléphone et n’est envoyé nulle part ; seuls les montants sont gardés.</div>')
