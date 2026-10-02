@@ -2426,9 +2426,10 @@ function openBulletinModal(ym,from){
   var y=Math.floor(ym/12),cy=TODAY_YM!=null?Math.floor(TODAY_YM/12):y,arr='font-size:18px;padding:0 10px;color:var(--text2);cursor:pointer;user-select:none';
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="sh"></div>'
     +'<div style="'+_navBackCss+'" onclick="openMergedRenduCgModal(6,2)">‹ Suivi</div>'
-    +'<div class="st" style="display:flex;align-items:center;justify-content:space-between"><span style="'+arr+'" onclick="openBulletinModal('+(ym-1)+')">‹</span><span>Paie '+_deMois(ym)+(y!==cy?' '+y:'')+'</span><span style="'+arr+'" onclick="openBulletinModal('+(ym+1)+')">›</span></div>'
+    +'<div class="st" style="display:flex;align-items:center;justify-content:space-between"><span style="'+arr+'" onclick="_swipeGo(-1,function(){openBulletinModal('+(ym-1)+')})">‹</span><span>Paie '+_deMois(ym)+(y!==cy?' '+y:'')+'</span><span style="'+arr+'" onclick="_swipeGo(1,function(){openBulletinModal('+(ym+1)+')})">›</span></div>'
     +_payPageHtml(ym)
     +'<button class="mcancel mclose" onclick="closeModal()">Fermer</button></div></div>';
+  _swipeNav(function(nd){openBulletinModal(ym+nd);});
 }
 // Page Paie d'un mois : calcul de l'app, annoté avec le bulletin s'il est importé
 function _payPageHtml(ym){
@@ -2870,8 +2871,8 @@ function getDayVacs(dw,allVK){
 
 var _lpk=null; // backup of pendingKey for avw()
 
-// Fiche du jour : glisser à gauche / à droite pour passer au jour suivant / précédent
-function _dayNavSetup(key){
+// Glisser à gauche / à droite dans une fiche : go(+1) suivant, go(-1) précédent, avec l'effet de page qui glisse
+function _swipeNav(go){
   var sh=document.querySelector('#modal-root .sheet');if(!sh)return;
   var d=window._dayNavDir||0;window._dayNavDir=0;
   if(d){
@@ -2885,10 +2886,17 @@ function _dayNavSetup(key){
     if(skip)return;
     var dx=e.changedTouches[0].clientX-sx,dy=e.changedTouches[0].clientY-sy;
     if(Math.abs(dx)<60||Math.abs(dx)<Math.abs(dy)*1.5)return;
-    var nd=dx<0?1:-1,dt=new Date(key+'T12:00:00');dt.setDate(dt.getDate()+nd);
-    sh.style.transition='transform .16s cubic-bezier(.4,0,1,1)';sh.style.transform='translateX('+(-nd*106)+'%)';
-    setTimeout(function(){window._dayNavDir=nd;openDay(dk(dt));},160);
+    _swipeGo(dx<0?1:-1,go);
   },{passive:true});
+}
+function _swipeGo(nd,go){
+  var sh=document.querySelector('#modal-root .sheet');if(!sh){go(nd);return;}
+  sh.style.transition='transform .16s cubic-bezier(.4,0,1,1)';sh.style.transform='translateX('+(-nd*106)+'%)';
+  setTimeout(function(){window._dayNavDir=nd;go(nd);},160);
+}
+// Fiche du jour : glisser pour passer au jour suivant / précédent
+function _dayNavSetup(key){
+  _swipeNav(function(nd){var dt=new Date(key+'T12:00:00');dt.setDate(dt.getDate()+nd);openDay(dk(dt));});
 }
 // Repos entre deux vacations (11 h minimum) : simple signalement, rien n'est bloqué
 function _shiftSpan(d){
