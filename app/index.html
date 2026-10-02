@@ -95,6 +95,11 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .mnav.today.hide-l{max-width:0;opacity:0;padding-left:0;padding-right:0;border-color:transparent;pointer-events:none;transform:translateX(-10px);}
 .mnav.today.hide-r{max-width:0;opacity:0;padding-left:0;padding-right:0;border-color:transparent;pointer-events:none;transform:translateX(10px);}
 .mtit{font-size:15px;font-weight:500;cursor:pointer;padding:4px 8px;border-radius:var(--r);transition:background .1s;position:absolute;left:50%;transform:translateX(-50%);white-space:nowrap;}
+/* Titre mois/année : l'ancien sort et le nouveau arrive dans le sens du défilement (--md = 1 suivant, -1 précédent) */
+.mtit .mt-o{position:absolute;left:50%;top:4px;white-space:nowrap;pointer-events:none;animation:mtOut .26s ease forwards}
+.mtit .mt-n{display:inline-block;animation:mtIn .32s cubic-bezier(.2,.8,.2,1)}
+@keyframes mtOut{from{transform:translateX(-50%);opacity:1}to{transform:translateX(calc(-50% - var(--md,1) * 30px));opacity:0}}
+@keyframes mtIn{from{transform:translateX(calc(var(--md,1) * 30px));opacity:0}to{transform:none;opacity:1}}
 
 /* Month view */
 /* Pas de fondu sur les vues : l'opacité ferait changer l'effet verre (glissements et voile à la place) */
@@ -1580,7 +1585,7 @@ function navDir(d){
   _calNavDir=d;
   if(annualOpen){
     if(window._annSlide){window._annSlide(d);return;}
-    curY+=d;renderAnnual();document.getElementById('mtit').textContent=String(curY);return;
+    window._titleDir=d;curY+=d;renderAnnual();_setTitle(document.getElementById('mtit'),String(curY));return;
   }
   let newY=curY,newM=curM+d;if(newM<0){newM=11;newY--;}if(newM>11){newM=0;newY++;}
   if(newY*12+newM===TODAY_YM)_todayBtnHide();
@@ -1591,6 +1596,17 @@ function navDir(d){
 // ================================================================
 // RENDER
 // ================================================================
+function _setTitle(el,txt){
+  var d=window._titleDir||0;window._titleDir=0;
+  var cur=el.getAttribute('data-t');
+  if(cur===txt)return;
+  el.setAttribute('data-t',txt);
+  if(!d||cur===null){el.textContent=txt;return;}
+  el.style.setProperty('--md',d);
+  el.innerHTML='<span class="mt-o"></span><span class="mt-n"></span>';
+  el.firstChild.textContent=cur;el.lastChild.textContent=txt;
+  clearTimeout(el._mtT);el._mtT=setTimeout(function(){if(el.getAttribute('data-t')===txt)el.textContent=txt;},340);
+}
 function render(){
   if(S.matelasKeys&&Object.keys(S.matelasKeys).length)recalcAllMatelas();
   autoReportEph();
@@ -1598,8 +1614,8 @@ function render(){
   const _hpn2=document.getElementById('hdr-profile-name');if(_hpn2)_hpn2.textContent=capitalize((S.profile&&S.profile.name)||'Profil');
   const el_ml=document.getElementById('mtit'),el_heads=document.getElementById('heads'),el_cal=document.getElementById('cal');
   if(!el_ml)return;
-  if(annualOpen){_fitAnnual();el_ml.textContent=String(curY);}
-  else{_fitCalendar();el_ml.textContent=ML[curM]+' '+curY;renderMonth(el_heads,el_cal);requestAnimationFrame(_checkSideBelow);}
+  if(annualOpen){_fitAnnual();_setTitle(el_ml,String(curY));}
+  else{_fitCalendar();_setTitle(el_ml,ML[curM]+' '+curY);renderMonth(el_heads,el_cal);requestAnimationFrame(_checkSideBelow);}
   var _todayBtn=document.querySelector('.mnav.today');
   if(_todayBtn){
     var _isTodayView=curM===NOW.getMonth()&&curY===NOW.getFullYear()&&!annualOpen;
@@ -6492,7 +6508,7 @@ function init(){
     wrap.style.transition=tr;wrap.style.transform='translateX('+(-d*W)+'px)';
     w2.style.transition=tr;w2.style.transform='translateX(0px)';
     setTimeout(function(){
-      _calNavDir=d;curY=y;curM=m;
+      _calNavDir=d;window._titleDir=d;curY=y;curM=m;
       wrap.style.transition='none';wrap.style.transform='';
       _swClearPeek();
       render();_syncWknNow();
@@ -6538,7 +6554,7 @@ function init(){
     });
   }
   function _annCommit(d){
-    curY+=d;renderAnnual();document.getElementById('mtit').textContent=String(curY);
+    window._titleDir=d;curY+=d;renderAnnual();_setTitle(document.getElementById('mtit'),String(curY));
     _annClear();_annBusy=false;
   }
   // Flèches : glissement vers l'année précédente / suivante
@@ -6604,7 +6620,7 @@ function init(){
         _calNavDir=d;
         let newY=curY,newM=curM+d;if(newM<0){newM=11;newY--;}if(newM>11){newM=0;newY++;}
         if(newY*12+newM===TODAY_YM)_todayBtnHide();
-        curM=newM;curY=newY;
+        curM=newM;curY=newY;window._titleDir=d;
         if(wrap){wrap.style.transition='none';wrap.style.transform='';}
         _swClearPeek();
         render();_syncWknNow();
