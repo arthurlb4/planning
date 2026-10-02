@@ -244,6 +244,125 @@ async function gcalBatchOps(ops, calId, token, refresh_token, env) {
   return { newToken: currentToken !== token ? currentToken : null, failed: failed };
 }
 
+// ============================================================
+// NOTIFICATIONS PUSH (Web Push, RFC 8291 + VAPID RFC 8292)
+// Les clés VAPID sont générées une seule fois et gardées dans KV (push:vapid).
+// L'app envoie l'abonnement du téléphone et la liste des rappels à venir ;
+// la tâche quotidienne (cron) envoie ceux dont la date est arrivée.
+// ============================================================
+function b64u(buf) {
+  var b = new Uint8Array(buf), s = '';
+  for (var i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function unb64u(str) {
+  str = str.replace(/-/g, '+').replace(/_/g, '/');
+  while (str.length % 4) str += '=';
+  var bin = atob(str), out = new Uint8Array(bin.length);
+  for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+function concatBytes() {
+  var n = 0, i; for (i = 0; i < arguments.length; i++) n += arguments[i].length;
+  var out = new Uint8Array(n), o = 0;
+  for (i = 0; i < arguments.length; i++) { out.set(arguments[i], o); o += arguments[i].length; }
+  return out;
+}
+
+async function getVapid(env) {
+  var v = await env.PLANNING_DB.get('push:vapid', { type: 'json' });
+  if (!v) {
+    var kp = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+    var pub = await crypto.subtle.exportKey('raw', kp.publicKey);
+    var jwk = await crypto.subtle.exportKey('jwk', kp.privateKey);
+    v = { pub: b64u(pub), jwk: jwk };
+    await env.PLANNING_DB.put('push:vapid', JSON.stringify(v));
+  }
+  return v;
+}
+
+async function hkdf(salt, ikm, info, len) {
+  var key = await crypto.subtle.importKey('raw', ikm, 'HKDF', false, ['deriveBits']);
+  return new Uint8Array(await crypto.subtle.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt: salt, info: info }, key, len * 8));
+}
+
+async function encryptPush(sub, payload) {
+  var uaPub = unb64u(sub.keys.p256dh), auth = unb64u(sub.keys.auth);
+  var eph = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits']);
+  var asPub = new Uint8Array(await crypto.subtle.exportKey('raw', eph.publicKey));
+  var uaKey = await crypto.subtle.importKey('raw', uaPub, { name: 'ECDH', namedCurve: 'P-256' }, false, []);
+  var secret = new Uint8Array(await crypto.subtle.deriveBits({ name: 'ECDH', public: uaKey }, eph.privateKey, 256));
+  var enc = new TextEncoder();
+  var ikm = await hkdf(auth, secret, concatBytes(enc.encode('WebPush: info\0'), uaPub, asPub), 32);
+  var salt = crypto.getRandomValues(new Uint8Array(16));
+  var cek = await hkdf(salt, ikm, enc.encode('Content-Encoding: aes128gcm\0'), 16);
+  var nonce = await hkdf(salt, ikm, enc.encode('Content-Encoding: nonce\0'), 12);
+  var aes = await crypto.subtle.importKey('raw', cek, 'AES-GCM', false, ['encrypt']);
+  var plain = concatBytes(enc.encode(payload), new Uint8Array([2]));
+  var ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, aes, plain));
+  var rs = new Uint8Array([0, 0, 16, 0]); // 4096
+  return concatBytes(salt, rs, new Uint8Array([asPub.length]), asPub, ct);
+}
+
+async function vapidAuth(env, endpoint) {
+  var v = await getVapid(env);
+  var aud = new URL(endpoint).origin;
+  var enc = new TextEncoder();
+  var head = b64u(enc.encode(JSON.stringify({ typ: 'JWT', alg: 'ES256' })));
+  var claims = b64u(enc.encode(JSON.stringify({ aud: aud, exp: Math.floor(Date.now() / 1000) + 12 * 3600, sub: 'https://arthurlb4.github.io/planning/' })));
+  var key = await crypto.subtle.importKey('jwk', v.jwk, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+  var sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, enc.encode(head + '.' + claims));
+  return 'vapid t=' + head + '.' + claims + '.' + b64u(sig) + ', k=' + v.pub;
+}
+
+// Renvoie le code HTTP du service push (201 = envoyé ; 404/410 = abonnement mort)
+async function sendPush(env, sub, msg) {
+  var body = await encryptPush(sub, JSON.stringify(msg));
+  var r = await fetch(sub.endpoint, {
+    method: 'POST',
+    headers: { 'Authorization': await vapidAuth(env, sub.endpoint), 'Content-Encoding': 'aes128gcm', 'Content-Type': 'application/octet-stream', 'TTL': '86400', 'Urgency': 'normal' },
+    body: body
+  });
+  return r.status;
+}
+
+function parisToday() {
+  return new Intl.DateTimeFormat('fr-CA', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+}
+
+async function pushSendDue(env, userId, rec, today) {
+  var due = [], changed = false;
+  Object.keys(rec.alerts || {}).forEach(function(pid) {
+    (rec.alerts[pid] || []).forEach(function(a) {
+      // Rappel du jour (ou des 2 jours précédents si une exécution a été manquée), pas encore envoyé
+      if (!a || !a.at || !a.tag || a.at > today || (rec.sent || {})[a.tag]) return;
+      var d0 = new Date(today + 'T12:00:00Z'); d0.setUTCDate(d0.getUTCDate() - 2);
+      if (a.at < d0.toISOString().slice(0, 10)) return;
+      due.push(a);
+    });
+  });
+  if (!due.length) return 0;
+  if (!rec.sent) rec.sent = {};
+  var alive = [];
+  for (var sub of (rec.subs || [])) {
+    var dead = false;
+    for (var a of due) {
+      try {
+        var st = await sendPush(env, sub, { title: a.title, body: a.body, tag: a.tag, url: './' });
+        if (st === 404 || st === 410) { dead = true; break; }
+      } catch (e) {}
+    }
+    if (!dead) alive.push(sub); else changed = true;
+  }
+  due.forEach(function(a) { rec.sent[a.tag] = a.at; });
+  // On oublie les rappels envoyés il y a plus de 90 jours
+  var lim = new Date(today + 'T12:00:00Z'); lim.setUTCDate(lim.getUTCDate() - 90); lim = lim.toISOString().slice(0, 10);
+  Object.keys(rec.sent).forEach(function(t) { if (rec.sent[t] < lim) delete rec.sent[t]; });
+  rec.subs = alive;
+  await env.PLANNING_DB.put('push:u:' + userId, JSON.stringify(rec));
+  return due.length;
+}
+
 export default {
   async fetch(request, env, ctx) {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
@@ -1387,9 +1506,64 @@ export default {
       return resp({ log: log });
     }
 
+    // ============================================================
+    // NOTIFICATIONS PUSH
+    // ============================================================
+    if (path === '/push/key') {
+      var v = await getVapid(env);
+      return resp({ key: v.pub });
+    }
+
+    if (path === '/push/subscribe' || path === '/push/alerts' || path === '/push/unsubscribe' || path === '/push/test') {
+      var session = await verifySession(request, env);
+      if (!session) return resp({ error: 'Non authentifie' }, 401);
+      var pkey = 'push:u:' + session.userId;
+      var rec = await env.PLANNING_DB.get(pkey, { type: 'json' }) || { subs: [], alerts: {}, sent: {} };
+      var sub = body.sub;
+      if (path === '/push/subscribe') {
+        if (!sub || !sub.endpoint || !sub.keys || !sub.keys.p256dh || !sub.keys.auth) return resp({ error: 'Abonnement invalide' }, 400);
+        rec.subs = (rec.subs || []).filter(function(x) { return x.endpoint !== sub.endpoint; });
+        rec.subs.push({ endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth } });
+        if (rec.subs.length > 5) rec.subs = rec.subs.slice(-5);
+      }
+      if (path === '/push/unsubscribe') {
+        rec.subs = (rec.subs || []).filter(function(x) { return !sub || x.endpoint !== sub.endpoint; });
+        if (!rec.subs.length) { await env.PLANNING_DB.delete(pkey); return resp({ ok: true }); }
+      }
+      if ((path === '/push/subscribe' || path === '/push/alerts') && body.profileId && Array.isArray(body.alerts)) {
+        if (!rec.alerts) rec.alerts = {};
+        rec.alerts[body.profileId] = body.alerts.slice(0, 20).map(function(a) {
+          return { at: String(a.at || '').slice(0, 10), tag: String(a.tag || '').slice(0, 60), title: String(a.title || '').slice(0, 80), body: String(a.body || '').slice(0, 200) };
+        });
+      }
+      if (path === '/push/test') {
+        var n = 0;
+        for (var s2 of (rec.subs || [])) { try { if (await sendPush(env, s2, { title: 'Planning', body: 'Les notifications fonctionnent.', tag: 'test', url: './' }) < 300) n++; } catch (e) {} }
+        return resp({ ok: n > 0, sent: n });
+      }
+      if (path === '/push/alerts' && !(rec.subs || []).length) return resp({ ok: true, subs: 0 });
+      await env.PLANNING_DB.put(pkey, JSON.stringify(rec));
+      return resp({ ok: true, subs: rec.subs.length });
+    }
+
     return resp({ error: 'Not found' }, 404);
     } catch(e) {
       return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: cors });
     }
+  },
+
+  // Tâche quotidienne : envoie les rappels d'expiration arrivés à échéance
+  async scheduled(event, env, ctx) {
+    var today = parisToday(), cursor;
+    do {
+      var page = await env.PLANNING_DB.list({ prefix: 'push:u:', cursor: cursor });
+      for (var k of page.keys) {
+        try {
+          var rec = await env.PLANNING_DB.get(k.name, { type: 'json' });
+          if (rec && (rec.subs || []).length) await pushSendDue(env, k.name.slice(7), rec, today);
+        } catch (e) { console.warn('push', k.name, e.message); }
+      }
+      cursor = page.list_complete ? null : page.cursor;
+    } while (cursor);
   }
 };

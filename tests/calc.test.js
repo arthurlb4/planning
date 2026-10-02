@@ -56,6 +56,14 @@ function situation(opts) {
   eq('Juin sans report expire fin septembre', a.run('getExpYm(' + YM(2026, 6) + ')'), YM(2026, 9));
   eq('Mai reporté expire fin novembre', a.run('getExpYm(' + YM(2026, 5) + ')'), YM(2026, 11));
 }
+// 4b. Rappels push : 14 j et 3 j avant la fin du mois où des heures expirent
+{
+  const a = situation({});
+  eq('Rappels : juillet (18h00) fin octobre, août (3h23) fin novembre',
+    a.run('_pushAlerts().map(function(x){return x.at+" "+x.body;})'),
+    ['2026-10-17 18h00 expirent fin octobre. Pose un rendu pour ne pas les perdre.', '2026-10-28 18h00 expirent le 31 octobre.',
+     '2026-11-16 3h23 expirent fin novembre. Pose un rendu pour ne pas les perdre.', '2026-11-27 3h23 expirent le 30 novembre.']);
+}
 // 5. Lecture du tableau RH (faux tableau, même structure que celui du gestionnaire)
 {
   const a = load('2026-10-01');

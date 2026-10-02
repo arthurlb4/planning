@@ -5534,6 +5534,11 @@ function openSettingsModal(tab){
     +'<div class="srow" '+_sr+'><div class="slbl">Matelas <span style="color:var(--text3);font-size:10px">stock initial permanent</span></div><input id="ps-matelas" '+_onb+' value="'+fmtMin(pr.profile.matelas||0)+'" onfocus="if(this.value)this.select()" style="'+_inpR+'"></div>'
     +'<div class="srow" '+_sr+'><div class="slbl">Stock éphémère <span style="color:var(--text3);font-size:10px">stock initial éphémère</span></div><input id="ps-eph" '+_onb+' value="'+fmtMin(Math.round((pr.profile.ephSolde||0)*60))+'" onfocus="if(this.value)this.select()" style="'+_inpR+'"></div>'
     +'<div class="srow" '+_sr+'><div class="slbl">CET <span style="color:var(--text3);font-size:10px">compte épargne-temps initial</span></div><input id="ps-cet-init" type="number" '+_onb+' value="'+(pr.profile.cetInit||0)+'" onfocus="if(this.value)this.select()" style="'+_inpR+'"></div>';
+  var _pOn=_pushIsOn();
+  tab2+=_sh+'Notifications</div>'
+    +'<div class="srow" '+_sr+'><div class="slbl">Rappels d’expiration <span style="color:var(--text3);font-size:10px">14 j et 3 j avant que des heures expirent</span></div>'
+    +(_pOn?'<button style="font-size:11px;padding:3px 8px;margin-right:8px;border:1px solid var(--border);border-radius:6px;background:none;color:var(--text2);cursor:pointer" onclick="pushTest(this)">Tester</button>':'')
+    +'<label class="tgl"><input type="checkbox" id="push-toggle"'+(_pOn?' checked':'')+' onchange="pushToggle(this)"><span class="tgl-s"></span></label></div>';
   var tabBtnS='flex:1;padding:8px 6px;font-size:12px;border:none;cursor:pointer;border-radius:8px;text-align:center;';
   document.getElementById('modal-root').innerHTML=
     '<div class="overlay"'+(wasOpen?' style="animation:none"':'')+' onclick="if(event.target===this)closeModal()"><div class="sheet smod"'+(wasOpen?' style="animation:none"':'')+'>'
@@ -6393,6 +6398,7 @@ function init(){
     applyTheme();
     autoReportEph();
     render();
+    setTimeout(pushSyncAlerts,3000);
     const hpn=document.getElementById('hdr-profile-name');
     if(hpn&&S&&S.profile)hpn.textContent=S.profile.name||'Profil';
     document.body.style.opacity='1';document.body.style.transition='opacity .25s';setTimeout(function(){document.body.style.transition='';},300);
@@ -6553,6 +6559,74 @@ function openGcalColorsModal(){
 // ============================================================
 function cloudHeaders(){return{'Content-Type':'application/json','Authorization':'Bearer '+(window._authToken||'')};}
 
+// ================================================================
+// NOTIFICATIONS PUSH : rappels avant expiration des heures
+// L'app calcule les rappels à venir et les confie au serveur, qui les envoie le jour venu.
+// ================================================================
+function _pushIsOn(){try{return localStorage.getItem('pl_push_on')==='1';}catch(e){return false;}}
+function _pushAlerts(){
+  var cs=calcSoldes(),byE={},out=[];
+  Object.keys(cs.realAvail).map(Number).forEach(function(ym){var av=cs.realAvail[ym],e=getExpYm(ym);if(av>0&&e>=TODAY_YM&&e<=TODAY_YM+2)byE[e]=(byE[e]||0)+av;});
+  var today=dk(NOW);
+  Object.keys(byE).map(Number).sort().forEach(function(e){
+    var last=new Date(Math.floor(e/12),e%12+1,0),mois=ML[e%12].toLowerCase(),h=fmtMin(byE[e]);
+    [[14,'Heures bientôt perdues',h+' expirent fin '+mois+'. Pose un rendu pour ne pas les perdre.'],
+     [3,'Plus que 3 jours',h+' expirent le '+last.getDate()+' '+mois+'.']].forEach(function(r){
+      var d=new Date(last);d.setDate(d.getDate()-r[0]);var at=dk(d);
+      if(at>=today)out.push({at:at,tag:'exp-'+_aid+'-'+e+'-'+r[0],title:r[1],body:r[2]});
+    });
+  });
+  return out;
+}
+async function _pushPost(path,extra){
+  var res=await fetch(CLOUD_API+path,{method:'POST',headers:cloudHeaders(),body:JSON.stringify(Object.assign({profileId:_aid},extra||{}))});
+  if(!res.ok)throw new Error('serveur '+res.status);
+  return res.json();
+}
+// Envoie au serveur la liste des rappels quand elle a changé
+async function pushSyncAlerts(){
+  if(!_pushIsOn()||!window._authToken)return;
+  try{
+    var al=_pushAlerts(),sig=JSON.stringify(al),k='pl_push_sig_'+_aid;
+    if(localStorage.getItem(k)===sig)return;
+    await _pushPost('/push/alerts',{alerts:al});
+    localStorage.setItem(k,sig);
+  }catch(e){console.warn('push sync',e);}
+}
+async function pushToggle(cb){
+  var on=cb.checked;
+  try{
+    if(on){
+      if(!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window)){
+        var ios=/iPhone|iPad|iPod/.test(navigator.userAgent),standalone=navigator.standalone||window.matchMedia('(display-mode:standalone)').matches;
+        throw new Error(ios&&!standalone?'Sur iPhone, ajoute d’abord l’app à l’écran d’accueil (Partager → Sur l’écran d’accueil), puis active les rappels depuis l’app.':'Ce navigateur ne gère pas les notifications.');
+      }
+      var perm=await Notification.requestPermission();
+      if(perm!=='granted')throw new Error('Notifications refusées. Autorise-les dans les réglages du téléphone pour Planning.');
+      var reg=await navigator.serviceWorker.ready;
+      var kr=await fetch(CLOUD_API+'/push/key');var key=(await kr.json()).key;
+      var raw=atob(key.replace(/-/g,'+').replace(/_/g,'/')+'==='.slice((key.length+3)%4)),u8=new Uint8Array(raw.length);
+      for(var i=0;i<raw.length;i++)u8[i]=raw.charCodeAt(i);
+      var sub=await reg.pushManager.getSubscription();
+      if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:u8});
+      var al=_pushAlerts();
+      await _pushPost('/push/subscribe',{sub:sub.toJSON(),alerts:al});
+      localStorage.setItem('pl_push_on','1');localStorage.setItem('pl_push_sig_'+_aid,JSON.stringify(al));
+    }else{
+      localStorage.removeItem('pl_push_on');
+      var reg2=await navigator.serviceWorker.ready,sub2=await reg2.pushManager.getSubscription();
+      if(sub2){await _pushPost('/push/unsubscribe',{sub:sub2.toJSON()}).catch(function(){});await sub2.unsubscribe();}
+    }
+    openSettingsModal(2);
+  }catch(e){cb.checked=!on;showBlockAlert('Notifications',e.message||String(e));}
+}
+async function pushTest(btn){
+  btn.disabled=true;btn.textContent='…';
+  try{var r=await _pushPost('/push/test');btn.textContent=r.ok?'Envoyée':'Échec';}
+  catch(e){btn.textContent='Échec';}
+  setTimeout(function(){btn.disabled=false;btn.textContent='Tester';},2500);
+}
+
 // Indicateur discret de synchro : pending (en attente), ok, error (cliquable pour réessayer)
 function setSyncStatus(st){
   var el=document.getElementById('sync-status');if(!el)return;
@@ -6612,7 +6686,7 @@ async function cloudSave(pid){
   if(!window._authToken||!_profs[pid])return;
   // Rien de nouveau depuis la dernière synchro réussie → pas d'écriture (quota KV)
   var sig=_syncSig(_profs[pid]),sigKey=_syncKey(pid);
-  try{if(localStorage.getItem(sigKey)===sig){setSyncStatus('ok');return;}}catch(e){}
+  try{if(localStorage.getItem(sigKey)===sig){setSyncStatus('ok');pushSyncAlerts();return;}}catch(e){}
   setSyncStatus('pending');
   try{
     var res=await fetch(CLOUD_API+'/data/save',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({profileId:pid,data:_profs[pid]})});
@@ -6625,6 +6699,7 @@ async function cloudSave(pid){
       window._syncErr='';window._sessionIsExpired=false;window._lastSyncOk=Date.now();clearTimeout(window._syncRetryTimer);
       try{localStorage.setItem(sigKey,sig);}catch(e){}
       setSyncStatus('ok');
+      pushSyncAlerts();
     }
   }catch(e){console.warn('cloud save error',e);_cloudSaveFailed(pid,navigator.onLine===false?'hors ligne':'serveur injoignable');}
 }
