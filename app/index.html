@@ -797,7 +797,9 @@ function _feriesAnnee(y){
 const FERIES=new Set();for(let _y=2020;_y<=2060;_y++)_feriesAnnee(_y).forEach(function(k){FERIES.add(k);});
 const ANCHOR=new Date(2026,4,4),ANCHOR_L=8;
 const NOW=new Date(),TODAY_YM=NOW.getFullYear()*12+NOW.getMonth(),CUR_YEAR=NOW.getFullYear();
-const MC=['janv','févr','mars','avr','mai','juin','juil','août','sept','oct','nov','déc']; // abréviations des mois, partout les mêmes
+// Mois en toutes lettres partout ; abréviations (MCs) seulement là où la place manque (colonnes étroites, tableaux)
+const MC=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+const MCs=['janv','févr','mars','avr','mai','juin','juil','août','sept','oct','nov','déc'];
 const ML=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 const JN=['dim.','lun.','mar.','mer.','jeu.','ven.','sam.'];
 
@@ -1565,7 +1567,7 @@ function updateWarnIcon(warnKeys,expNext){
   wrap.style.display='inline-flex';
   const dd=document.getElementById('warn-dropdown');
   if(!dd)return;
-  const ML=['jan','f\u00e9v','mar','avr','mai','jun','jul','ao\u00fb','sep','oct','nov','d\u00e9c'];
+  const ML=MC;
   let html='';
   if(hasWarn){
     html+='<div style="font-weight:600;margin-bottom:6px;color:var(--amber)">Rendus en d\u00e9passement</div>';
@@ -1932,7 +1934,6 @@ function updateCounters(){
   // Lignes « récupérations par mois d'acquisition » de la colonne de droite
   const _bRows=[];
   {
-    const _ML2=['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
     const _bGenPast=Object.keys(gen).map(Number).filter(ym=>ym<=TODAY_YM).sort();
     const _bFut=Object.keys(gen).map(Number).filter(ym=>ym>TODAY_YM).sort();
     const _bPrev=Object.keys(prevEph).map(Number).filter(ym=>prevEph[ym]>0).sort();
@@ -2023,7 +2024,6 @@ function _renderSideV2(d){
   var v2=document.getElementById('side-v2');
   if(!v2)return;
   v2.style.display='flex';
-  var MS=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
   // Noms de mois accentués (ML n'a pas d'accents) et élision « d’octobre », « d’avril », « d’août »
   var MF=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
   var deMois=function(i){return /^[aeiouéâ]/.test(MF[i])?'d’'+MF[i]:'de '+MF[i];};
@@ -2039,9 +2039,9 @@ function _renderSideV2(d){
   var _rMax=Math.max(1,...d.rows.map(function(r){return Math.max(r.orig,r.avail);}));
   var rows=(window.innerWidth<=720?[]:d.rows).map(function(r){
     var exp=r.isExp?(r.lostMin>0?'<span style="color:var(--red)">−'+fmtMin(r.lostMin)+'</span>':'expirées')
-      :'→ '+(r.ext>0?'<span style="color:var(--green)">'+MS[r.expM]+' '+String(r.expY).slice(2)+'</span>':MS[r.expM]+' '+String(r.expY).slice(2));
+      :'→ '+(r.ext>0?'<span style="color:var(--green)">'+MCs[r.expM]+' '+String(r.expY).slice(2)+'</span>':MCs[r.expM]+' '+String(r.expY).slice(2));
     var oP=Math.round(r.orig/_rMax*100),aP=Math.round(r.avail/_rMax*100);
-    return '<div class="sv2-row'+(r.isExp?' exp':'')+(r.isFut?' fut':'')+'"><span class="m">'+MS[r.m]+' '+String(r.y).slice(2)+'</span>'
+    return '<div class="sv2-row'+(r.isExp?' exp':'')+(r.isFut?' fut':'')+'"><span class="m">'+MCs[r.m]+' '+String(r.y).slice(2)+'</span>'
       +'<span class="sv2-rb"><span class="sv2-rf"><span style="color:var(--blue)">'+fmtMin(r.orig)+'</span><span style="color:var(--text3)"> → </span><b>'+fmtMin(r.avail)+'</b></span>'
       +'<span class="eph-bw"><span class="eph-b2" style="width:'+oP+'%;background:var(--blue);opacity:'+(r.isFut?'.2':'.4')+'"></span><span class="eph-b" style="width:'+aP+'%;background:var(--rend-text);opacity:'+(r.isExp?'.15':r.isFut?'.35':'1')+'"></span></span></span>'
       +'<span class="e">'+exp+'</span></div>';
@@ -2421,7 +2421,7 @@ function logH(detail,color,key){
 }
 function removeHistoryForKey(key){if(!S.history)return;S.history=S.history.filter(h=>h.key!==key);saveState();}
 function _rhMonthSections(keys,type){
-  const MC2=['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
+  const MC2=MC;
   const allCgKeys=type==='cg'?Object.keys(S.conges||{}).filter(k=>S.conges[k]==='cg').sort():null;
   const byMonth={};
   keys.forEach(function(k){
@@ -2794,10 +2794,23 @@ function useMatelasForDay(){
   recalcAllMatelas();
   saveState();closeModal();render();
 }
-function removeCongé(){
+function _askRemoveScope(key,type,set){
+  var ks=Array.from(set).sort(),n=ks.length;
+  var f=function(k){var d=new Date(k+'T12:00:00');return d.getDate()+' '+MC[d.getMonth()];};
+  var what=type==='cg'?'congé':type==='absent'?'absence':'rendu';
+  var col=type==='cg'?'var(--green)':type==='absent'?'var(--text2)':'var(--rend-text)';
+  var bg=type==='cg'?'var(--green-l)':type==='absent'?'var(--bg3)':'var(--rend-l)';
+  document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)openDay(\''+key+'\')"><div class="sheet">'
+    +'<div class="sh"></div><div class="st">Retirer le '+what+'</div>'
+    +'<div style="font-size:13px;color:var(--text2);margin-bottom:14px;line-height:1.45">Ce jour fait partie d’une période de '+n+' jours, du '+f(ks[0])+' au '+f(ks[n-1])+'.</div>'
+    +'<button class="mb wide" style="width:100%;padding:12px;margin-bottom:8px;background:'+bg+';color:'+col+';border:none" onclick="pendingKey=\''+key+'\';removeCongé(\'one\')">Seulement le '+f(key)+'</button>'
+    +'<button class="mb wide" style="width:100%;padding:12px;margin-bottom:4px" onclick="pendingKey=\''+key+'\';removeCongé(\'all\')">Toute la période ('+n+' jours)</button>'
+    +'<button class="mcancel" onclick="openDay(\''+key+'\')">Annuler</button>'
+    +'</div></div>';
+}
+function removeCongé(mode){
   const key=pendingKey;
   if(!S.conges||!key)return;
-  pushUndo((({cg:'Congé retiré',rend:'Rendu retiré','rend-hist':'Rendu retiré',absent:'Absence retirée'})[(S.conges||{})[pendingKey]]||'Retiré'));
   const type=S.conges[key];
   if(!type){saveState();closeModal();render();return;}
   // Find all days of the same type connected to this day (no worked-day gap)
@@ -2827,6 +2840,10 @@ function removeCongé(){
       else break;
     }
   }
+  // Jour pris dans une période (plusieurs jours d'affilée) : on demande ce qu'il faut retirer
+  if(!mode&&toRemove.size>1){_askRemoveScope(key,type,toRemove);return;}
+  if(mode==='one'){toRemove.clear();toRemove.add(key);}
+  pushUndo(({cg:'Congé retiré',rend:'Rendu retiré','rend-hist':'Rendu retiré',absent:'Absence retirée'})[type]+(toRemove.size>1?' ('+toRemove.size+' jours)':''));
   const _pid2=window._aid||'default';
   const _stored2=JSON.parse(localStorage.getItem('gcal_event_ids_'+_pid2)||'{}');
   toRemove.forEach(function(k){
@@ -3209,8 +3226,7 @@ function _rhImportPlan(rh,keepCounted){
 function rhImportPreview(rh){
   window._rhLast=rh;
   const P=_rhImportPlan(rh),pr=S.profile||{};
-  const MS=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
-  const ymL=ym=>MS[ym%12]+' '+String(Math.floor(ym/12)).slice(2);
+  const ymL=ym=>MCs[ym%12]+' '+String(Math.floor(ym/12)).slice(2);
   const row=(l,a,b)=>'<tr><td>'+l+'</td><td>'+a+'</td><td><b>'+b+'</b></td></tr>';
   const curSplit=pr.ephSoldeSplit&&Object.keys(pr.ephSoldeSplit).length?Object.keys(pr.ephSoldeSplit).map(Number).sort((a,b)=>a-b).map(ym=>ymL(ym)+' '+fmtMin(pr.ephSoldeSplit[ym])).join('<br>'):fmtMin(Math.round((pr.ephSolde||0)*60));
   const newSplit=Object.keys(P.split).map(Number).sort((a,b)=>a-b).map(ym=>ymL(ym)+' '+fmtMin(P.split[ym])+(P.reports[ym]?' <span style="opacity:.7">(report '+P.reports[ym]*3+' mois)</span>':'')).join('<br>')||'0h00';
@@ -3300,9 +3316,8 @@ function rhCompareShow(rh){
   const asOf=new Date(rh.edition.getFullYear(),rh.edition.getMonth(),rh.edition.getDate(),12);
   const asOfYM=asOf.getFullYear()*12+asOf.getMonth();
   const app=calcSoldeRH(asOf),G=buildGen(true),det=G.det,gen=G.gen;
-  const MS=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
   const MF=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-  const ymL=ym=>MS[ym%12]+' '+String(Math.floor(ym/12)).slice(2);
+  const ymL=ym=>MCs[ym%12]+' '+String(Math.floor(ym/12)).slice(2);
   const moisDe=ym=>{const m=MF[ym%12];return(/^[aeiouy]/.test(m)?'d’':'de ')+m;};
   const fmtE=d=>Math.abs(d)<2?'=':d>0?'+'+fmtMin(d):'−'+fmtMin(-d);
   const bad=d=>Math.abs(d)>=2; // tolérance d'arrondi : 2 min
@@ -3672,7 +3687,7 @@ function openAnnualSettingsModal(y,dir){
   _annualSelYear=y;
   const _wasOpen=document.body.classList.contains('modal-open');
   if(!_wasOpen)_lockBodyScroll();
-  const ML=['Janv','Févr','Mars','Avr','Mai','Juin','Juil','Août','Sept','Oct','Nov','Déc'];
+  const ML=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
   const keys=['dimRendu','rhRendu','ferRendu','hsRendu'];
   const hdrs=['Dim','RH','Fér','HS'];
   const _genYr=calcSoldes().gen;
@@ -4040,8 +4055,8 @@ function openRestantsModal(){
     const minusBtn='<button onclick="undoEph('+ym+');openRestantsModal()" style="'+btnS+'color:'+(canSub?'var(--text3)':'var(--border2)')+';pointer-events:'+(canSub?'auto':'none')+'">-3m</button>';
     const plusBtn='<button onclick="reportEph('+ym+');openRestantsModal()" style="'+btnS+'color:'+(canAdd?'var(--text3)':'var(--border2)')+';pointer-events:'+(canAdd?'auto':'none')+'">+3m</button>';
     rows+='<div style="display:flex;align-items:center;padding:5px 0;border-bottom:0.5px solid var(--border2);gap:6px'+(isExp?';opacity:.4':'')+'">'
-      +'<div style="width:52px;flex-shrink:0"><div style="font-size:11px;color:var(--text'+(isExp||isFut?'3':'2')+')">'+MC[m]+' '+String(y).slice(2)+'</div>'
-      +'<div style="font-size:9px;color:'+expColor+'">'+autoNoteR+'→'+MC[expM]+' '+String(expY).slice(2)+'</div></div>'
+      +'<div style="width:52px;flex-shrink:0"><div style="font-size:11px;color:var(--text'+(isExp||isFut?'3':'2')+')">'+MCs[m]+' '+String(y).slice(2)+'</div>'
+      +'<div style="font-size:9px;color:'+expColor+'">'+autoNoteR+'→'+MCs[expM]+' '+String(expY).slice(2)+'</div></div>'
       +'<div style="flex:1"><div style="height:6px;background:var(--bg3);border-radius:3px;overflow:hidden"><div style="width:'+pct+'%;height:100%;background:'+barColor+';opacity:'+(isFut?.5:1)+'"></div></div></div>'
       +'<div style="width:44px;text-align:right;font-size:12px;font-weight:600;color:'+(isFut?'var(--text3)':'var(--text)')+'">'+fmtMin(avail)+'</div>'
       +'<div style="display:flex;gap:2px">'+minusBtn+plusBtn+'</div>'
@@ -4061,7 +4076,7 @@ function openMergedRenduCgModal(limit,tab){
   if(!_modalWasOpen)_lockBodyScroll();
   // === Rendus éphémères ===
   const{gen,realAvail,prevEph,preExpiry,matelas:matelasVal}=calcSoldes();
-  const ML2=['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
+  const ML2=MCs;
   const genPast=Object.keys(gen).map(Number).filter(ym=>ym<=TODAY_YM).sort().slice(-24);
   const allPrev2=Object.keys(prevEph).map(Number).filter(ym=>prevEph[ym]>0).sort();
   const extM=Object.keys(S.ephExtend||{}).map(Number).filter(ym=>ym<=TODAY_YM&&getExpYm(ym)>TODAY_YM);
@@ -4189,8 +4204,8 @@ function openMergedRenduCgModal(limit,tab){
     const actif=_as1Map[e.ym]||0,consumed=e.amount-actif;
     const ey=Math.floor(e.expYm/12),em=e.expYm%12;
     return '<tr style="border-bottom:0.5px solid var(--border2)">'
-      +'<td style="padding:5px 8px;color:var(--text2);font-weight:500;white-space:nowrap">'+MC[e.ym%12]+' '+String(Math.floor(e.ym/12)).slice(2)+'</td>'
-      +'<td style="padding:5px 8px;font-size:9px;color:var(--text3);white-space:nowrap">'+MC[em]+' '+String(ey).slice(2)+'</td>'
+      +'<td style="padding:5px 8px;color:var(--text2);font-weight:500;white-space:nowrap">'+MCs[e.ym%12]+' '+String(Math.floor(e.ym/12)).slice(2)+'</td>'
+      +'<td style="padding:5px 8px;font-size:9px;color:var(--text3);white-space:nowrap">'+MCs[em]+' '+String(ey).slice(2)+'</td>'
       +'<td style="padding:5px 8px;text-align:right;white-space:nowrap">'+fmtMin(e.amount)+'</td>'
       +'<td style="padding:5px 8px;text-align:right;color:'+(consumed>0?'var(--red)':'var(--text3)')+';white-space:nowrap">'+(consumed>0?'−'+fmtMin(consumed):'—')+'</td>'
       +'<td style="padding:5px 8px;text-align:right;font-weight:'+(actif>0?'600':'400')+';color:'+(actif>0?'var(--rend-text)':'var(--text3)')+';white-space:nowrap">'+fmtMin(actif)+'</td>'
@@ -4198,7 +4213,7 @@ function openMergedRenduCgModal(limit,tab){
   }).join('')||'<tr><td colspan="5" style="font-size:10px;color:var(--text3);padding:6px 0">Aucune heure active</td></tr>';
   const _rdTableRows=Object.keys(_rdByYm).map(Number).sort().map(function(ym){
     return '<tr style="border-bottom:0.5px solid var(--border2)">'
-      +'<td style="padding:5px 8px;color:var(--text2);font-weight:500;white-space:nowrap">'+MC[ym%12]+' '+String(Math.floor(ym/12)).slice(2)+'</td>'
+      +'<td style="padding:5px 8px;color:var(--text2);font-weight:500;white-space:nowrap">'+MCs[ym%12]+' '+String(Math.floor(ym/12)).slice(2)+'</td>'
       +'<td style="padding:5px 8px;text-align:right;color:var(--red);font-weight:500;white-space:nowrap">−'+fmtMin(_rdByYm[ym])+'</td>'
       +'</tr>';
   }).join('');
@@ -4278,7 +4293,7 @@ function openMergedRenduCgModal(limit,tab){
     +'</div>';
   // ── Encadré « Comment c'est calculé ? » : le dispo en 3 lignes, avec détail dépliable ──
   const _MFd=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-  const _MSd=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
+  const _MSd=MCs;
   const _vm=_MFd[_viewedYM%12],_enVm='en '+_vm,_jusquVm='jusqu’en '+_vm;
   const _ymLbl=function(ym){return _MSd[ym%12]+' '+String(Math.floor(ym/12)).slice(2);};
   const _det=function(rows){return rows.length?'<div class="dx-det">'+rows.join('')+'</div>':'';};
@@ -4585,7 +4600,6 @@ function openMergedMoisModal(mym,tab){
   const VAC=getVAC();
   const y=Math.floor(mym/12),m=mym%12;
   const MLf=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
-  const MCf=['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
   const JOURS_L=['lundi','mardi','mercredi','jeudi','vendredi','samedi','dimanche'];
   const last=new Date(y,m+1,0).getDate();
 
@@ -4957,7 +4971,7 @@ function _wvLimits(){
 function _wvPickerHtml(){
   var curMon=dk(getMonday(NOW));
   var curDate=new Date(curMon+'T12:00:00');
-  var _MC=['jan','fév','mar','avr','mai','jun','jui','aoû','sep','oct','nov','déc'];
+  var _MC=MC;
   var _MCL=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
   var html='',lastMK=-1,pills='';
   function flush(){if(pills){html+='<div class="wv-wgrid">'+pills+'</div>';pills='';}}
