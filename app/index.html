@@ -175,6 +175,19 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 
 
 .dc{width:100%;aspect-ratio:6/5;position:relative;border-radius:var(--r);display:block;}
+/* Appui long sur un jour : menu rapide */
+.dci{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+.dci.lp-on{transform:scale(1.1);z-index:5;box-shadow:0 10px 26px rgba(0,0,0,.55)}
+#lp-veil{position:fixed;inset:0;z-index:400;background:rgba(0,0,0,.18);opacity:0;transition:opacity .15s ease}
+#lp-veil.on{opacity:1}
+#lp-menu{position:fixed;z-index:401;min-width:190px;padding:5px;border-radius:16px;background:rgba(40,40,38,.84);-webkit-backdrop-filter:blur(26px) saturate(170%);backdrop-filter:blur(26px) saturate(170%);
+  box-shadow:inset .5px .5px 0 rgba(255,250,243,.18),inset -.5px -.5px 0 rgba(255,250,243,.06),0 18px 44px rgba(0,0,0,.55);transform:scale(.88);opacity:0;transition:transform .18s cubic-bezier(.2,.9,.3,1.2),opacity .14s ease}
+#lp-menu.on{transform:scale(1);opacity:1}
+#lp-menu .lp-h{font-size:12px;color:var(--text3);padding:6px 12px 5px}
+#lp-menu button{display:flex;align-items:center;gap:10px;width:100%;padding:11px 12px;border:none;border-radius:11px;background:none;color:var(--text);font:500 15px var(--font);text-align:left;cursor:pointer}
+#lp-menu button:active{background:rgba(255,250,243,.09)}
+#lp-menu button i{font-size:18px;width:20px;text-align:center}
+#lp-menu button[disabled]{opacity:.4}
 .dci{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;border-radius:var(--r);transition:background .15s,transform .1s;cursor:pointer;}
 .dci:active{transform:scale(.88);transition:transform .07s;}
 .dn{font-size:16px;font-weight:700;line-height:1;letter-spacing:-.01em;color:rgba(255,255,255,.72);}
@@ -2743,6 +2756,51 @@ function removeCongé(){
 function showPoseSelect(){
   var w=document.getElementById('pose-select-wrap');
   if(w)w.style.display='block';
+}
+function _closeDayMenu(){
+  var m=document.getElementById('lp-menu'),v=document.getElementById('lp-veil');
+  document.querySelectorAll('.dci.lp-on').forEach(function(x){x.classList.remove('lp-on');});
+  if(m){m.classList.remove('on');setTimeout(function(){m.remove();},150);}
+  if(v){v.classList.remove('on');setTimeout(function(){v.remove();},150);}
+}
+function _openDayMenu(cell){
+  var key=cell.getAttribute('data-key');if(!key)return false;
+  var date=new Date(key+'T12:00:00'),v2=getVac(date),hasCg=(S.conges||{})[key];
+  if(!(v2.vac&&v2.vac!=='RH'&&!v2.absent))return false; // jours non travaillés : simple appui
+  var items='';
+  if(hasCg){
+    items='<button onclick="_dayMenuAct(\''+key+'\',\'del\')" style="color:var(--red)"><i class="ti ti-trash"></i>Retirer '+(hasCg==='cg'?'le congé':hasCg==='rend'||hasCg==='rend-hist'?'le rendu':'')+'</button>';
+  }else{
+    var cs=calcSoldes(),dispo=cs.totalReal+cs.totalPrev+Math.max(0,cs.matelas),dur=getDur(date);
+    var noRend=dispo<dur&&_rendStatus(key)==='rend',cR=Math.max(0,computeCongesRest(date.getFullYear()));
+    items='<button onclick="_dayMenuAct(\''+key+'\',\'rend\')"'+(noRend?' disabled':'')+'><i class="ti ti-clock" style="color:var(--rend-text)"></i>Rendu</button>'
+      +'<button onclick="_dayMenuAct(\''+key+'\',\'cg\')"'+(cR<=0?' disabled':'')+'><i class="ti ti-beach" style="color:var(--green)"></i>Congé</button>'
+      +'<button onclick="_dayMenuAct(\''+key+'\',\'ex\')"><i class="ti ti-arrows-exchange" style="color:#c98a8a"></i>Échange</button>';
+  }
+  items+='<button onclick="_dayMenuAct(\''+key+'\',\'open\')" style="color:var(--text2)"><i class="ti ti-dots"></i>Ouvrir la journée</button>';
+  try{navigator.vibrate&&navigator.vibrate(10);}catch(e){}
+  cell.classList.add('lp-on');
+  var veil=document.createElement('div');veil.id='lp-veil';
+  veil.addEventListener('click',function(e){e.stopPropagation();_closeDayMenu();});
+  veil.addEventListener('touchmove',function(e){e.preventDefault();},{passive:false});
+  var m=document.createElement('div');m.id='lp-menu';
+  m.innerHTML='<div class="lp-h">'+capitalize(fmtDate(date))+'</div>'+items;
+  document.body.appendChild(veil);document.body.appendChild(m);
+  var r=cell.getBoundingClientRect(),mw=m.offsetWidth,mh=m.offsetHeight,vw=window.innerWidth,vh=window.innerHeight;
+  var left=Math.min(Math.max(12,r.left+r.width/2-mw/2),vw-mw-12);
+  var below=r.bottom+10+mh<vh-12,top=below?r.bottom+10:Math.max(12,r.top-10-mh);
+  m.style.left=left+'px';m.style.top=top+'px';
+  m.style.transformOrigin=(r.left+r.width/2-left)+'px '+(below?'0':'100%');
+  requestAnimationFrame(function(){veil.classList.add('on');m.classList.add('on');});
+  return true;
+}
+function _dayMenuAct(key,act){
+  _closeDayMenu();
+  pendingKey=key;_lpk=key;
+  if(act==='open'){openDay(key);return;}
+  if(!document.body.classList.contains('modal-open'))_lockBodyScroll();
+  if(act==='del'){removeCongé();return;}
+  if(act==='ex')openExchange(key);else openPoseModal(act);
 }
 function openPoseModal(type){
   const key=pendingKey||_lpk;
@@ -6350,6 +6408,25 @@ function init(){
   // Sticky header: show on scroll up
   let _lastScrollY=0;
   
+
+  // Appui long sur un jour : menu rapide (rendu, congé, échange)
+  let _lpT=null,_lpX=0,_lpY=0,_lpFired=false;
+  window._lpCancel=function(){if(_lpT){clearTimeout(_lpT);_lpT=null;}};
+  document.addEventListener('touchstart',function(e){
+    _lpFired=false;window._lpCancel();
+    if(e.touches.length>1||annualOpen||document.querySelector('#modal-root .overlay')||document.getElementById('lp-menu'))return;
+    const c=e.target.closest('#cal .dci[data-key]');if(!c)return;
+    _lpX=e.touches[0].clientX;_lpY=e.touches[0].clientY;
+    _lpT=setTimeout(function(){_lpT=null;if(_openDayMenu(c)){_lpFired=true;}},450);
+  },{passive:true});
+  document.addEventListener('touchmove',function(e){
+    if(_lpT&&(Math.abs(e.touches[0].clientX-_lpX)>8||Math.abs(e.touches[0].clientY-_lpY)>8))window._lpCancel();
+  },{passive:true});
+  document.addEventListener('touchend',function(){window._lpCancel();},{passive:true});
+  document.addEventListener('touchcancel',function(){window._lpCancel();},{passive:true});
+  // Le clic qui suit l'appui long ne doit pas ouvrir la fiche du jour
+  document.addEventListener('click',function(e){if(_lpFired){_lpFired=false;e.stopPropagation();e.preventDefault();}},true);
+  document.addEventListener('contextmenu',function(e){if(e.target.closest('#cal .dci'))e.preventDefault();});
 
   // Swipe gauche/droite : le mois suit le doigt, puis le suivant arrive de l'autre côté
   let _swipeStartX=0,_swipeStartY=0,_swipeT=0,_swipeActive=false,_swipeDrag=false,_swipeLock=null;
