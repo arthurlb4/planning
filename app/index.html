@@ -6462,33 +6462,39 @@ function init(){
 
   // Swipe gauche/droite : le mois suit le doigt et le mois voisin arrive à côté
   let _swipeStartX=0,_swipeStartY=0,_swipeT=0,_swipeActive=false,_swipeDrag=false,_swipeLock=null,_swPeek={};
-  // Écart entre deux mois : assez grand pour que le mois qui sort quitte entièrement l'écran
-  function _swW(mv){return Math.max(mv.offsetWidth+40,window.innerWidth<720?window.innerWidth+40:0);}
+  // Écart entre deux mois = 2 × la marge entre le bord de l'écran et le calendrier
+  function _swW(mv){const l=mv.getBoundingClientRect().left;return mv.offsetWidth+Math.max(16,2*Math.round(l));}
+  // On déplace les .cal-wrap eux-mêmes (pas leur parent) : un parent transformé couperait l'effet verre
   function _swMv(){return document.getElementById('month-view');}
-  // Aperçu du mois précédent (d=-1) ou suivant (d=1), dessiné à côté du mois affiché
+  function _swWrap(){return document.querySelector('#month-view > .cal-wrap');}
+  // Aperçu du mois précédent (d=-1) ou suivant (d=1), posé exactement sur le calendrier puis décalé
   function _swGetPeek(d){
     if(_swPeek[d])return _swPeek[d];
     const mv=_swMv(),el=document.createElement('div');
     el.className='mv-peek';el.setAttribute('aria-hidden','true');
+    el.style.cssText='position:absolute;left:0;top:0;width:100%;pointer-events:none';
     el.innerHTML='<div class="cal-wrap"><table class="cal"><tr></tr></table><table class="cal"></table></div>';
-    el.style.cssText='position:absolute;pointer-events:none;top:'+mv.offsetTop+'px;left:'+mv.offsetLeft+'px;width:'+mv.offsetWidth+'px';
+    mv.appendChild(el);
     const sy=curY,sm=curM;
     let m=curM+d,y=curY;if(m<0){m=11;y--;}if(m>11){m=0;y++;}
-    try{curY=y;curM=m;const t=el.querySelectorAll('table');renderMonth(t[0].querySelector('tr'),t[1]);}
+    const t=el.querySelectorAll('table');
+    try{curY=y;curM=m;renderMonth(t[0].querySelector('tr'),t[1]);}
     finally{curY=sy;curM=sm;}
-    mv.parentNode.insertBefore(el,mv.nextSibling);
+    try{_renderCycBadges(t[1]);}catch(e){}
+    _syncWknNow(); // numéros et tuiles de semaines (ramenées, congés) comme sur le calendrier
     _swPeek[d]=el;return el;
   }
   function _swClearPeek(){Object.keys(_swPeek).forEach(function(k){_swPeek[k].remove();});_swPeek={};}
   function _swPlace(x,anim){
-    const mv=_swMv(),W=_swW(mv),tr=anim?'transform .28s cubic-bezier(.2,.8,.2,1)':'none';
-    mv.style.transition=tr;mv.style.transform='translateX('+x.toFixed(1)+'px)';
+    const mv=_swMv(),wrap=_swWrap(),W=_swW(mv),tr=anim?'transform .28s cubic-bezier(.2,.8,.2,1)':'none';
+    if(!wrap)return;
+    wrap.style.transition=tr;wrap.style.transform='translateX('+x.toFixed(1)+'px)';
     [-1,1].forEach(function(d){
       const want=(d===1&&x<0)||(d===-1&&x>0);
       if(!want&&!_swPeek[d])return;
-      const el=_swGetPeek(d);
-      el.style.transition=tr;el.style.transform='translateX('+(x+d*W).toFixed(1)+'px)';
-      el.style.visibility=want||anim?'':'hidden';
+      const w2=_swGetPeek(d).firstChild;
+      w2.style.transition=tr;w2.style.transform='translateX('+(x+d*W).toFixed(1)+'px)';
+      _swPeek[d].style.visibility=want||anim?'':'hidden';
     });
   }
   document.addEventListener('touchstart',function(e){
@@ -6506,7 +6512,7 @@ function init(){
     e.preventDefault();
     if(annualOpen||document.querySelector('#modal-root .overlay')||document.getElementById('lp-menu'))return;
     const mv=_swMv();if(!mv)return;
-    if(!_swipeDrag){_swipeDrag=true;window._lpCancel&&window._lpCancel();mv.classList.remove('slide-left','slide-right','slide-in-left','slide-in-right');mv.style.opacity='';_swClearPeek();}
+    if(!_swipeDrag){_swipeDrag=true;window._lpCancel&&window._lpCancel();mv.classList.remove('slide-left','slide-right','slide-in-left','slide-in-right');mv.style.opacity='';mv.style.transform='';_swClearPeek();}
     _swPlace(dx,false);
   },{passive:false});
   function _swEnd(e,cancel){
@@ -6526,16 +6532,19 @@ function init(){
     const W=_swW(mv),d=dx<0?1:-1;
     _swPlace(go?-d*W:0,true);
     setTimeout(function(){
+      const wrap=_swWrap();
       if(go){
         _calNavDir=d;
         let newY=curY,newM=curM+d;if(newM<0){newM=11;newY--;}if(newM>11){newM=0;newY++;}
         if(newY*12+newM===TODAY_YM)_todayBtnHide();
         curM=newM;curY=newY;
-        mv.style.transition='none';mv.style.transform='';
-        render();
-        requestAnimationFrame(function(){mv.style.transition='';});
-      }else{mv.style.transition='';mv.style.transform='';}
-      _swClearPeek();
+        if(wrap){wrap.style.transition='none';wrap.style.transform='';}
+        _swClearPeek();
+        render();_syncWknNow();
+      }else{
+        if(wrap){wrap.style.transition='';wrap.style.transform='';}
+        _swClearPeek();
+      }
     },290);
   }
   document.addEventListener('touchend',function(e){_swEnd(e,false);},{passive:true});
@@ -7036,8 +7045,9 @@ function _checkSideBelow(){
 }
 window.addEventListener('resize',function(){_applyBigScreenZoom();_fitCalendar();_fitSideMonth();if(annualOpen)_fitAnnual();_syncSideTop();_checkSideBelow();});
 
-function syncWknHeight(){
-  setTimeout(function(){
+function syncWknHeight(){setTimeout(_syncWknNow,0);}
+// Met en forme les numéros de semaine (tuiles ramenées / congés) sans attendre
+function _syncWknNow(){
     const dayCell=document.querySelector('.dc');
     if(!dayCell)return;
     const sampleTd=document.querySelector('.cal td:not(.wkn)');
@@ -7065,7 +7075,6 @@ function syncWknHeight(){
       td.style.background=cellBg;
       td.innerHTML='<div style="position:absolute;top:'+tdPad+'px;bottom:'+tdPad+'px;left:0;width:calc(100% - 4px);display:flex;align-items:center;justify-content:center;font-size:9px;border-radius:0 var(--r) var(--r) 0;background:'+bg+';color:'+color+';font-weight:'+fw+';z-index:1;box-sizing:border-box">'+num+'</div>';
     });
-  },0);
 }
 
 function gcalLoad(){
