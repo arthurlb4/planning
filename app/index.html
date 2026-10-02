@@ -2265,6 +2265,146 @@ function calcNetPaye(brut,paniers,ym){
   const pas=r2(ni*pas_t);
   return{net:r2(nav-pas),brut,cot,pas,pasTaux:getPasTauxForYM(ym!=null?ym:TODAY_YM)};
 }
+// ================================================================
+// BULLETIN DE PAIE : import du PDF (lu sur l'appareil) et comparaison avec le calcul de l'app
+// ================================================================
+var _BUL_LBL={hsLow:'Heures sup 125 %',hsHigh:'Heures sup 150 %',nuit:'Heures de nuit',fer:'Fériés',dim:'Dimanche',rh:'Repos hebdo',antenne:'Ind. antenne',matin:'Ind. sup. vacations',reel:'Ind. journaux inter',coord:'Ind. coordination',absResto:'Abs. restauration',cp:'Congés payés',autre:'Autre'};
+var _BUL_H={hsLow:1,hsHigh:1,nuit:1,fer:1,dim:1,rh:1};
+function _deMois(ym){var n=MC[ym%12];return(/^[aeiouy]/.test(n)?'d’':'de ')+n;}
+function _bulNum(s){return parseFloat(String(s).replace(/\s/g,'').replace(',','.'));}
+// Ligne « RAP » du bulletin → rubrique de l'app (null : cotisation, sans rapport avec le brut)
+function _bulKey(l){
+  l=l.toUpperCase();
+  if(/COMPL|EXON|COTIS|CONTRIB|CSG|CRDS|SANTE|SANTÉ|RETRAITE|CHOMAGE/.test(l))return null;
+  if(/HEURES? SUP/.test(l))return /150/.test(l)?'hsHigh':'hsLow';
+  if(/NUIT/.test(l))return'nuit';
+  if(/FERIE|FÉRIÉ/.test(l))return'fer';
+  if(/DIMANCHE/.test(l))return'dim';
+  if(/REPOS HEBDO/.test(l))return'rh';
+  if(/ANTENNE/.test(l))return'antenne';
+  if(/SUP\.? ?VACATION/.test(l))return'matin';
+  if(/JOURNAUX|INTER\b/.test(l))return'reel';
+  if(/COORD/.test(l))return'coord';
+  if(/RESTAURATION/.test(l))return'absResto';
+  if(/CONGES? PAYES?|CONGÉS? PAYÉS?/.test(l))return'cp';
+  return'autre';
+}
+// Lignes de texte du bulletin → chiffres utiles (aucune donnée personnelle conservée)
+function _bulParse(lines){
+  var b={rap:[],nao:{}},N='(-?\\d+,\\d+)',m,fx=[['salQ',/^SALAIRE DE QUALIFICATION .*?(-?\d+,\d+)$/],['anc',/^PRIME ANCIENNETE .*?(-?\d+,\d+)$/],['gpe',/^INDEMNITE MENSUELLE.*?(-?\d+,\d+)$/],['pfa',/^P\.?F\.?A\b.*?(-?\d+,\d+)$/],['epv',/^INDEMNITE 10EME EPV .*?(-?\d+,\d+)$/],['supFam',/^SUPPLEMENT FAMILIAL.*?(-?\d+,\d+)$/],['brut',/TOTAL BRUT PAYE (-?\d+,\d+)$/]];
+  var reRap=new RegExp('^RAP (\\d{4})(\\d\\d) (.+?) '+N+' '+N+' '+N+'$'),rePan=new RegExp('^RAP PRIME DE PANIERS '+N+' '+N+' '+N+'$');
+  lines.forEach(function(raw){
+    var t=String(raw).replace(/\*/g,'').replace(/\s+/g,' ').trim();if(!t)return;
+    if(b.ym==null&&(m=/PERIODE DE PAIE DU (\d\d)\/(\d\d)\/(\d{4})/.exec(t)))b.ym=+m[3]*12+(+m[2]-1);
+    if((m=reRap.exec(t))){var k=_bulKey(m[3]);if(k)b.rap.push({ym:+m[1]*12+(+m[2]-1),k:k,lbl:m[3],q:_bulNum(m[4]),pu:_bulNum(m[5]),mt:_bulNum(m[6])});return;}
+    if((m=rePan.exec(t))){if(!b.paniers)b.paniers={q:_bulNum(m[1]),pu:_bulNum(m[2]),mt:_bulNum(m[3])};return;}
+    if(/^RAP /.test(t))return;
+    if((m=/^MESURE NAO (.+?) (-?\d+,\d+)$/.exec(t))){b.nao[m[1]]=_bulNum(m[2]);return;}
+    for(var i=0;i<fx.length;i++){if(b[fx[i][0]]==null&&(m=fx[i][1].exec(t))){b[fx[i][0]]=_bulNum(m[1]);return;}}
+  });
+  return b.ym!=null&&b.brut!=null?b:null;
+}
+function _loadPdfJs(){
+  if(window.pdfjsLib)return Promise.resolve(window.pdfjsLib);
+  var V='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+  return new Promise(function(res,rej){var s=document.createElement('script');s.src=V+'pdf.min.js';s.onload=function(){window.pdfjsLib.GlobalWorkerOptions.workerSrc=V+'pdf.worker.min.js';res(window.pdfjsLib);};s.onerror=function(){rej(new Error('pdfjs'));};document.head.appendChild(s);});
+}
+// PDF → lignes de texte (regroupées par hauteur, de gauche à droite)
+async function _pdfLines(file){
+  var lib=await _loadPdfJs(),doc=await lib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise,out=[];
+  for(var p=1;p<=doc.numPages;p++){
+    var tc=await (await doc.getPage(p)).getTextContent(),rows={};
+    tc.items.forEach(function(it){if(!it.str||!it.str.trim())return;var y=Math.round(it.transform[5]/2)*2;(rows[y]=rows[y]||[]).push([it.transform[4],it.str]);});
+    Object.keys(rows).map(Number).sort(function(a,b){return b-a;}).forEach(function(y){out.push(rows[y].sort(function(a,b){return a[0]-b[0];}).map(function(r){return r[1];}).join(' '));});
+  }
+  return out;
+}
+function _infoToast(msg){
+  var t=document.getElementById('undo-toast');
+  if(!t){t=document.createElement('div');t.id='undo-toast';t.setAttribute('role','status');document.body.appendChild(t);}
+  t.innerHTML='<span></span>';t.firstChild.textContent=msg;
+  clearTimeout(window._utHide);requestAnimationFrame(function(){t.classList.add('on');});
+  window._utHide=setTimeout(_hideUndoToast,5000);
+}
+function importBulletins(){
+  var inp=document.createElement('input');inp.type='file';inp.accept='application/pdf,.pdf';inp.multiple=true;
+  inp.onchange=async function(){
+    var files=[].slice.call(inp.files||[]);if(!files.length)return;
+    _infoToast('Lecture du bulletin…');
+    var ok=[],bad=0;
+    for(var i=0;i<files.length;i++){
+      try{var b=_bulParse(await _pdfLines(files[i]));if(b){b.at=Date.now();if(!S.bulletins)S.bulletins={};S.bulletins[b.ym]=b;ok.push(b.ym);}else bad++;}
+      catch(e){console.warn('bulletin',e);bad++;}
+    }
+    if(ok.length)saveState();
+    var msg=ok.length?(ok.length===1?'Bulletin '+_deMois(ok[0])+' '+Math.floor(ok[0]/12)+' importé':ok.length+' bulletins importés'):'';
+    if(bad)msg+=(msg?' · ':'')+(bad===1?'1 fichier illisible':bad+' fichiers illisibles')+(navigator.onLine===false?' (hors ligne)':'');
+    _infoToast(msg);
+    if(ok.length){ok.sort(function(a,b){return a-b;});render();openMergedMoisModal(ok[ok.length-1],4);}
+  };
+  inp.click();
+}
+function deleteBulletin(ym){
+  if(!confirm('Retirer le bulletin '+_deMois(ym)+' '+Math.floor(ym/12)+' ?'))return;
+  if(S.bulletins)delete S.bulletins[ym];saveState();openMergedMoisModal(ym,4);
+}
+function useBulletinCompCP(ym){
+  var b=(S.bulletins||{})[ym];if(!b||b.epv==null)return;var pr=S.profile;if(!pr.compCPManual)pr.compCPManual={};
+  pr.compCPManual[Math.floor(ym/12)]=b.epv;saveState();render();openMergedMoisModal(ym,4);
+}
+// Comparaison ligne à ligne : variables du mois précédent, fixe, rattrapages, total
+function _bulCompare(b){
+  var y=Math.floor(b.ym/12),m=b.ym%12,P=calcPayeMois(y,m),v=P.vars,W=b.ym-1,r2=function(x){return Math.round(x*100)/100;};
+  var rows=[],late=[],alerts=[];
+  var app={hsLow:[v.hsLow,v.supHSlow],hsHigh:[v.hsHigh,v.supHShigh],nuit:[v.nuitMin,v.supNuit],fer:[v.ferMin,v.supFer],dim:[v.dimMin,v.supDim],rh:[v.rhMin,v.supRH],antenne:[v.antenne,v.supAntenne],matin:[v.matin,v.supMatin],reel:[v.reel,v.supReal],coord:[v.coord,v.supCoord],absResto:[v.supAbsResto>0?1:0,v.supAbsResto]};
+  var bq={},bm={};
+  b.rap.forEach(function(r){
+    if(r.k==='cp'||r.k==='autre'){late.push({lbl:r.lbl,ym:r.ym,mt:r.mt,info:1});return;}
+    if(r.ym!==W){late.push({lbl:_BUL_LBL[r.k],ym:r.ym,mt:r.mt,q:r.q,k:r.k});return;}
+    var q=_BUL_H[r.k]?Math.round(r.q*60):r.k==='absResto'?1:r.q;
+    bq[r.k]=(bq[r.k]||0)+q;bm[r.k]=r2((bm[r.k]||0)+r.mt);
+  });
+  Object.keys(app).forEach(function(k){
+    var aq=app[k][0]||0,am=r2(app[k][1]||0),q=bq[k]||0,mt=bm[k]||0;
+    if(!aq&&!q)return;
+    rows.push({k:k,lbl:_BUL_LBL[k],h:!!_BUL_H[k],eur:k==='absResto',bq:q,aq:aq,bm:mt,am:am,ok:q===aq,okEur:Math.abs(mt-am)<=0.05});
+    if((k==='hsLow'||k==='hsHigh')&&q%30)alerts.push('Heures sup payées : '+fmtMin(q)+'. Selon l’article VIII.5 de l’accord collectif, « toute demi-heure supplémentaire commencée est acquise » : le total devrait être un multiple de 30 min.');
+  });
+  var nao=0;Object.keys(b.nao||{}).forEach(function(k){nao+=b.nao[k];});
+  var fix=[['Qualification',b.salQ,P.salQ],['Ancienneté',b.anc,P.salAnc],['Ind. GPE',b.gpe,P.gpe],['PFA',b.pfa,P.pfa],['Mesures NAO',nao||null,P.primesConv.reduce(function(s,p){return s+p.montant;},0)]];
+  if(b.epv!=null||P.compCP>0)fix.push(['Complément CP',b.epv||0,r2(P.compCP),'epv']);
+  if(b.supFam!=null||P.supFamilial>0)fix.push(['Suppl. familial',b.supFam||0,P.supFamilial]);
+  var fixed=fix.filter(function(f){return f[1]!=null||f[2];}).map(function(f){var bv=f[1]||0,av=r2(f[2]||0);return{lbl:f[0],bm:bv,am:av,ok:Math.abs(bv-av)<=0.05,key:f[3]};});
+  var lateSum=r2(late.reduce(function(s,l){return s+l.mt;},0)),diff=r2(b.brut-P.total);
+  var nBad=rows.filter(function(r){return !r.ok;}).length+fixed.filter(function(f){return !f.ok;}).length;
+  var status=nBad||alerts.length?'ecart':Math.abs(diff-lateSum)>0.1?'ecart':late.some(function(l){return !l.info;})?'late':'ok';
+  return{P:P,rows:rows,fixed:fixed,late:late,lateSum:lateSum,alerts:alerts,diff:diff,status:status,nBad:nBad,paniers:b.paniers?{bq:b.paniers.q,aq:v.paniers}:null};
+}
+var _BUL_ST={ok:['✓','var(--green)','Conforme'],late:['✓','var(--green)','Conforme, avec des rattrapages'],ecart:['⚠','var(--amber)','Écarts à vérifier']};
+function _bulHtml(ym){
+  var b=(S.bulletins||{})[ym],mo=MC[ym%12];
+  var imp='<button onclick="importBulletins()" style="font-size:11px;padding:5px 10px;border:1px solid var(--border);border-radius:8px;background:none;color:var(--text2);cursor:pointer;font-family:var(--font)"><i class="ti ti-file-import" style="margin-right:4px"></i>'+(b?'Remplacer':'Importer le bulletin '+_deMois(ym))+'</button>';
+  var hist=Object.keys(S.bulletins||{}).map(Number).sort(function(a,c){return a-c;});
+  var histHtml=hist.length?'<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px">'+hist.map(function(h){var st=_BUL_ST[_bulCompare(S.bulletins[h]).status];return '<button onclick="openMergedMoisModal('+h+',4)" style="font-size:10px;padding:3px 7px;border-radius:6px;border:0.5px solid '+(h===ym?'var(--text3)':'var(--border)')+';background:none;color:var(--text2);cursor:pointer;font-family:var(--font)">'+MCs[h%12]+(Math.floor(h/12)!==Math.floor(ym/12)?' '+String(Math.floor(h/12)).slice(2):'')+' <span style="color:'+st[1]+'">'+st[0]+'</span></button>';}).join('')+'</div>':'';
+  if(!b)return '<div class="btit" style="margin-bottom:6px">Bulletin</div><div style="font-size:11px;color:var(--text3);line-height:1.5;margin-bottom:8px">Importe le PDF de ton bulletin : l’app compare chaque ligne avec son calcul. Le fichier est lu sur ton téléphone et n’est envoyé nulle part ; seuls les montants sont gardés.</div>'+imp+histHtml;
+  var c=_bulCompare(b),st=_BUL_ST[c.status],fe=function(x){return fmtEuro(x).replace(/\s*€/,'');};
+  var q=function(r,x){return r.eur?fe(x):r.h?fmtMin(x):String(x);};
+  var cell='style="text-align:right;white-space:nowrap;padding:3px 0 3px 8px"',head='<tr style="color:var(--text3);font-size:10px"><td></td><td '+cell+'>bulletin</td><td '+cell+'>app</td><td style="width:16px"></td></tr>';
+  var mark=function(ok){return '<td style="text-align:right;padding-left:6px;color:'+(ok?'var(--green)':'var(--amber)')+'">'+(ok?'✓':'⚠')+'</td>';};
+  var trs=c.rows.map(function(r){return '<tr><td style="color:var(--text3);padding:3px 0">'+r.lbl+'</td><td '+cell+'><b>'+q(r,r.bq)+'</b></td><td '+cell+'>'+q(r,r.aq)+'</td>'+mark(r.ok)+'</tr>';}).join('');
+  if(c.paniers)trs+='<tr><td style="color:var(--text3);padding:3px 0">Paniers <span style="font-size:9px">(hors brut)</span></td><td '+cell+'><b>'+c.paniers.bq+'</b></td><td '+cell+'>'+c.paniers.aq+'</td>'+mark(c.paniers.bq===c.paniers.aq)+'</tr>';
+  var ftrs=c.fixed.map(function(f){return '<tr><td style="color:var(--text3);padding:3px 0">'+f.lbl+(f.key==='epv'&&!f.ok?' <a onclick="useBulletinCompCP('+ym+')" style="color:var(--blue);cursor:pointer;font-size:10px">reprendre</a>':'')+'</td><td '+cell+'><b>'+fe(f.bm)+'</b></td><td '+cell+'>'+fe(f.am)+'</td>'+mark(f.ok)+'</tr>';}).join('');
+  var lateHtml=c.late.length?'<div class="btit" style="margin:10px 0 4px">Autres lignes</div><div style="font-size:11px">'+c.late.map(function(l){return '<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0"><span style="color:var(--text3)">'+l.lbl+(l.q!=null?' ('+(_BUL_H[l.k]?fmtMin(Math.round(l.q*60)):l.q)+')':'')+' · <i>'+(l.info?'sans effet sur la comparaison':'rattrapage de '+MC[l.ym%12]+' '+Math.floor(l.ym/12))+'</i></span><b>'+fe(l.mt)+'</b></div>';}).join('')+'</div>':'';
+  var tot='<div style="display:flex;justify-content:space-between;padding:6px 0 0;margin-top:6px;border-top:0.5px solid var(--border2);font-size:12px"><span>Total brut</span><span><b>'+fe(b.brut)+'</b> <span style="color:var(--text3);font-size:11px">· app '+fe(c.P.total)+'</span></span></div>'
+    +(Math.abs(c.diff)>0.05?'<div style="font-size:10px;color:var(--text3);text-align:right;margin-top:2px">écart '+(c.diff>0?'+':'')+fe(c.diff)+(c.lateSum&&Math.abs(c.diff-c.lateSum)<=0.1?' : entièrement dû aux rattrapages':c.lateSum?' dont '+fe(c.lateSum)+' de rattrapages':'')+'</div>':'');
+  var al=c.alerts.map(function(a){return '<div style="font-size:11px;color:var(--amber);display:flex;gap:5px;padding:6px 0 0;line-height:1.45"><span>⚠</span><span>'+a+'</span></div>';}).join('');
+  return '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><div class="btit">Bulletin '+_deMois(ym)+'</div><span style="font-size:11px;font-weight:600;color:'+st[1]+'">'+st[0]+' '+st[2]+'</span></div>'
+    +'<table style="width:100%;border-collapse:collapse;font-size:11px">'
+    +'<tr><td colspan="4" class="btit" style="padding:6px 0 0;font-size:11px">Variables <span style="font-weight:400;color:var(--text3);font-size:10px">('+MC[(ym+11)%12]+')</span></td></tr>'+head+(trs||'<tr><td colspan="4" style="color:var(--text3);padding:3px 0">Aucune.</td></tr>')
+    +'<tr><td colspan="4" class="btit" style="padding:12px 0 2px;font-size:11px">Fixe</td></tr>'+ftrs+'</table>'
+    +lateHtml+tot+al
+    +'<div style="display:flex;gap:8px;margin-top:10px">'+imp+'<button onclick="deleteBulletin('+ym+')" style="font-size:11px;padding:5px 10px;border:1px solid var(--border);border-radius:8px;background:none;color:var(--text3);cursor:pointer;font-family:var(--font)">Retirer</button></div>'+histHtml;
+}
 function calcNuitMinShift(v){
   if(!v||!v.deb||!v.fin)return 0;
   let deb=_toMinApp(v.deb),fin=_toMinApp(v.fin);
@@ -4935,6 +5075,8 @@ function openMergedMoisModal(mym,tab){
         +'</div>'
         +(v.paniers>0?'<div style="display:flex;justify-content:space-between;padding:0;font-size:11px;margin-top:-2px"><span style="color:var(--text3)">Paniers repas ('+v.paniers+' × '+(v.panierRate!=null?v.panierRate:getPanierRate()).toFixed(2).replace('.',',')+' €)</span><b style="color:var(--amber)">'+_fe(v.supPaniers)+'</b></div>':'')
         +'<div class="sep" style="margin-bottom:10px"></div>'
+        +_bulHtml(mym)
+        +'<div class="sep" style="margin:12px 0 10px"></div>'
         +'<div class="btit" style="margin-bottom:4px">Salaire de base</div>'
         +'<div style="font-size:11px">'+_rowb('Qualification',paye.salQ)+_rowb('Ancienneté',paye.salAnc)+_sub('Sous-total',paye.base)+'</div>'
         +'<div class="btit" style="margin-top:12px;margin-bottom:4px">Variables <span style="font-weight:400;color:var(--text3);font-size:10px">('+_MLp[paye.prevM]+')</span></div>'

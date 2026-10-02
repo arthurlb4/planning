@@ -91,5 +91,22 @@ function situation(opts) {
     JSON.stringify({ split: { [YM(2026, 6)]: 840 }, reports: { [YM(2026, 6)]: 1 } }));
 }
 
+// 6. Bulletin de paie : lecture des lignes du PDF (exemple fictif, au format des bulletins)
+{
+  const a = load('2026-10-01');
+  const L = ['PERIODE DE PAIE DU 01/08/2026 AU 31/08/2026', 'SALAIRE DE QUALIFICATION 2187,29 CLASSIFICATION 5B',
+    'SALAIRE DE QUALIFICATION 2187,29 100,000 2187,29', 'PRIME ANCIENNETE 2091,75 167,34', 'INDEMNITE MENSUELLE GPE 154,00',
+    'RAP 202607 HEURES SUP 125% 9,25 19,400 179,45', 'RAP 202607 HEURES MAJOREES NUIT 40% 13,50 6,208 83,81',
+    'RAP 202604 IND.VAC.JOURNAUX INTER 1,00 34,760 34,76', 'P.F.A NAC MENS 190,00', 'MESURE NAO CDI 2023 130,00',
+    'RAP 202607 Complémentaire Santé Tranche A 574,74 -1,75 2,63', '**TOTAL BRUT PAYE 3459,73', 'RAP PRIME DE PANIERS 2,00 7,500 15,00'];
+  a.run('var _b=_bulParse(' + JSON.stringify(L) + ');');
+  eq('Bulletin : mois de paie août 2026', a.run('_b.ym'), YM(2026, 8));
+  eq('Bulletin : fixe et total lus', a.run('JSON.stringify([_b.salQ,_b.anc,_b.gpe,_b.pfa,_b.nao,_b.brut])'), JSON.stringify([2187.29, 167.34, 154, 190, { 'CDI 2023': 130 }, 3459.73]));
+  eq('Bulletin : lignes RAP reconnues, cotisations ignorées', a.run('JSON.stringify(_b.rap.map(function(r){return [r.ym,r.k,r.q];}))'),
+    JSON.stringify([[YM(2026, 7), 'hsLow', 9.25], [YM(2026, 7), 'nuit', 13.5], [YM(2026, 4), 'reel', 1]]));
+  eq('Bulletin : paniers', a.run('_b.paniers.q'), 2);
+  eq('Bulletin : HS en quart d’heure signalées, rattrapage d’avril à part', a.run('(function(){var c=_bulCompare(_b);return JSON.stringify([c.alerts.length,c.late.length,c.late[0].ym]);})()'), JSON.stringify([1, 1, YM(2026, 4)]));
+}
+
 console.log('\n' + (count - fails) + '/' + count + ' contrôles réussis');
 if (fails) process.exit(1);
