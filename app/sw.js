@@ -1,4 +1,4 @@
-const SW_VERSION = '10.1';
+const SW_VERSION = '10.2';
 const PAGES = 'pl-pages-v1';   // dernière version de l'app, pour l'ouvrir hors connexion
 const ASSETS = 'pl-assets-v1'; // icônes (CDN)
 
@@ -53,8 +53,8 @@ self.addEventListener('push', function(event) {
   event.waitUntil(self.registration.showNotification(d.title || 'Planning', {
     body: d.body || '',
     tag: d.tag || undefined,
-    icon: './apple-touch-icon-v8.png',
-    badge: './favicon9.png',
+    icon: './apple-touch-icon-v9.png',
+    badge: './favicon10.png',
     data: { url: d.url || './' }
   }));
 });
