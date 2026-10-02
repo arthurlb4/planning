@@ -206,6 +206,10 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 @media (prefers-reduced-motion:reduce){#boot .bt-bar b,#boot .bt-cal i,#boot .bt-bloc{animation:none}}
 /* Pas de détection du double-tap iOS sur le calendrier et la navigation : chaque appui rapide compte */
 .cal-col,.mbar,.mnav,.ann-wrap{touch-action:manipulation}
+/* Calendrier et tuiles annuelles : pas de flou d'arrière-plan. Posés sur un fond uni, il ne se voit pas,
+   mais il est recalculé à chaque image quand ils glissent (très lourd sur iPhone). Fond, liseré et ombre restent. */
+.cal-wrap,.ann-month{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
+.pg-on .cal-wrap,.pg-on .ann-month{will-change:transform}
 /* Bandeau d'annulation après une action */
 #undo-toast{position:fixed;left:50%;bottom:28px;z-index:450;display:flex;align-items:center;gap:14px;padding:9px 9px 9px 18px;border-radius:999px;
   background:rgba(44,44,42,.96);box-shadow:inset .5px .5px 0 rgba(255,250,243,.16),0 12px 32px rgba(0,0,0,.5);color:var(--text);font:500 14px var(--font);white-space:nowrap;
@@ -1689,6 +1693,8 @@ function render(){
 
   syncWknHeight();
   setTimeout(_syncSideTop,0);
+  // Mois/années voisins redessinés à l'avance (données à jour) pour le prochain glissement
+  if(window._pgPrebuild){window._pgDropPre();window._pgPrebuild();}
 }
 
 function renderMonth(el_heads,el_cal){
@@ -6762,8 +6768,25 @@ function init(){
   // Le mois affiché n'est validé (rendu complet, sider…) qu'une fois la bande arrêtée :
   // on enchaîne donc les coups secs sans jamais attendre.
   // ================================================================
-  const PG={on:false,mode:'m',base:0,x:0,x0:0,pages:{},titleK:0,target:0,startK:0};
-  function _pgW(){return PG.mode==='y'?_annW():_swW(_swMv());}
+  const PG={on:false,mode:'m',base:0,x:0,x0:0,pages:{},titleK:0,target:0,startK:0,W:0};
+  function _pgW(){if(PG.on&&PG.W)return PG.W;return PG.mode==='y'?_annW():_swW(_swMv());} // largeur mise en cache pendant le mouvement
+  // Mois voisins préparés à l'avance (au repos), pour que le glissement démarre sans à-coup
+  let _pgPre={base:null,mode:null,pages:{}},_pgPreT=0,_pgRenderT=0;
+  function _pgDropPre(){Object.keys(_pgPre.pages).forEach(function(k){_pgPre.pages[k].remove();});_pgPre={base:null,mode:null,pages:{}};}
+  function _pgPrebuild(){
+    clearTimeout(_pgPreT);
+    _pgPreT=setTimeout(function(){
+      if(PG.on||document.querySelector('#modal-root .overlay'))return;
+      const mode=annualOpen?'y':'m',base=mode==='y'?curY:curY*12+curM;
+      if(_pgPre.base===base&&_pgPre.mode===mode)return;
+      _pgDropPre();
+      if(mode==='m'&&!_swWrap())return;
+      const sv=PG.mode,sb=PG.base;PG.mode=mode;PG.base=base;
+      [-1,1].forEach(function(k){const el=_pgBuild(k);el.style.visibility='hidden';_pgPre.pages[k]=el;});
+      PG.mode=sv;PG.base=sb;_pgPre.base=base;_pgPre.mode=mode;
+    },400);
+  }
+  window._pgPrebuild=_pgPrebuild;window._pgDropPre=_pgDropPre;
   function _pgTitle(k){if(PG.mode==='y')return String(PG.base+k);const ym=PG.base+k;return ML[ym%12]+' '+Math.floor(ym/12);}
   function _pgSetMain(x){
     if(PG.mode==='y'){_annSetX(_annGrid(),x,'none');return;}
@@ -6778,8 +6801,12 @@ function init(){
     const ym=PG.base+k;return _swBuildPeek(Math.floor(ym/12),ym%12);
   }
   function _pgBegin(mode){
-    PG.on=true;PG.mode=mode;PG.base=mode==='y'?curY:curY*12+curM;
+    clearTimeout(_pgPreT);
+    PG.mode=mode;PG.base=mode==='y'?curY:curY*12+curM;PG.on=false;PG.W=_pgW();PG.on=true;
     PG.x=0;PG.pages={};PG.titleK=0;PG.target=0;PG.startK=0;
+    // Reprend les voisins préparés à l'avance s'ils correspondent
+    if(_pgPre.base===PG.base&&_pgPre.mode===mode){PG.pages=_pgPre.pages;_pgPre={base:null,mode:null,pages:{}};}else _pgDropPre();
+    (mode==='y'?document.getElementById('ann-wrap'):_swMv()).classList.add('pg-on');
     window._lpCancel&&window._lpCancel();
     if(mode==='m'){_swClearPeek();const mv=_swMv();if(mv)mv.classList.remove('slide-left','slide-right','slide-in-left','slide-in-right');}
   }
@@ -6798,20 +6825,32 @@ function init(){
   }
   // La bande s'est arrêtée : on valide le mois / l'année atteint (un seul rendu complet)
   function _pgEnd(){
-    const k=PG.target;
-    Object.keys(PG.pages).forEach(function(kk){PG.pages[kk].remove();});PG.pages={};
+    const k=PG.target,_pages=PG.pages;
     PG.on=false;PG.x=0;
+    const _dropPages=function(){Object.keys(_pages).forEach(function(kk){_pages[kk].remove();});};
     if(PG.mode==='y'){
+      _dropPages();PG.pages={};
+      document.getElementById('ann-wrap').classList.remove('pg-on');
       _annSetX(_annGrid(),null,'');
       if(k){window._titleDir=k>0?1:-1;curY=PG.base+k;renderAnnual();_setTitle(document.getElementById('mtit'),String(curY));}
+      _pgPrebuild();
       return;
     }
-    const w=_swWrap();if(w){w.style.transition='';w.style.transform='';}
+    const w=_swWrap();
+    (document.getElementById('month-view')||{classList:{remove:function(){}}}).classList.remove('pg-on');
+    if(w){w.style.transition='';w.style.transform='';}
     if(k){
       const ym=PG.base+k;_calNavDir=k>0?1:-1;window._titleDir=_calNavDir;
       curY=Math.floor(ym/12);curM=ym%12;if(ym===TODAY_YM)_todayBtnHide();
-      render();_syncWknNow();
-    }
+      // Affichage immédiat : le calendrier du mois atteint est déjà dessiné dans la page voisine,
+      // on reprend son contenu ; la mise à jour complète (sider, label…) suit juste après.
+      const pk=_pages[k]&&_pages[k].firstChild;
+      if(pk&&w){const h=document.getElementById('heads'),c=document.getElementById('cal'),t=pk.querySelectorAll('table');
+        if(h&&c&&t.length===2){h.innerHTML=t[0].querySelector('tr').innerHTML;c.innerHTML=t[1].innerHTML;}}
+      clearTimeout(_pgRenderT);
+      _pgRenderT=setTimeout(function _r(){if(PG.on){_pgRenderT=setTimeout(_r,150);return;}render();_syncWknNow();},60);
+    }else _pgPrebuild();
+    _dropPages();PG.pages={};
   }
   // Fait glisser la bande jusqu'à la page k ; léger rebond si on revient sur la page de départ
   function _pgGo(k,v0){
