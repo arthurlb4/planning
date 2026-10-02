@@ -6351,30 +6351,67 @@ function init(){
   let _lastScrollY=0;
   
 
-  // Swipe left/right to change month on calendar
-  let _swipeStartX=0,_swipeStartY=0,_swipeActive=false;
+  // Swipe gauche/droite : le mois suit le doigt, puis le suivant arrive de l'autre côté
+  let _swipeStartX=0,_swipeStartY=0,_swipeT=0,_swipeActive=false,_swipeDrag=false,_swipeLock=null;
+  function _swMv(){return document.getElementById('month-view');}
   document.addEventListener('touchstart',function(e){
     if(e.target.closest('.sheet')||e.target.closest('.dropdown'))return; // ignore modals/dropdowns
+    if(e.touches.length>1){_swipeActive=false;return;}
     _swipeStartX=e.touches[0].clientX;
     _swipeStartY=e.touches[0].clientY;
-    _swipeActive=true;
+    _swipeT=Date.now();_swipeActive=true;_swipeDrag=false;_swipeLock=null;
   },{passive:true});
-  document.addEventListener('touchend',function(e){
+  document.addEventListener('touchmove',function(e){
+    if(!_swipeActive)return;
+    const dx=e.touches[0].clientX-_swipeStartX,dy=e.touches[0].clientY-_swipeStartY;
+    if(!_swipeLock&&(Math.abs(dx)>10||Math.abs(dy)>10))_swipeLock=Math.abs(dx)>Math.abs(dy)*1.5?'h':'v';
+    if(_swipeLock!=='h')return;
+    e.preventDefault();
+    if(annualOpen||document.querySelector('#modal-root .overlay'))return;
+    const mv=_swMv();if(!mv)return;
+    if(!_swipeDrag){_swipeDrag=true;window._lpCancel&&window._lpCancel();mv.classList.remove('slide-left','slide-right','slide-in-left','slide-in-right');mv.style.transition='none';}
+    const W=mv.offsetWidth||360,x=dx*0.9;
+    mv.style.transform='translateX('+x.toFixed(1)+'px)';
+    mv.style.opacity=String(Math.max(.25,1-Math.abs(x)/W*0.9));
+  },{passive:false});
+  function _swEnd(e,cancel){
     if(!_swipeActive)return;
     _swipeActive=false;
     const dx=e.changedTouches[0].clientX-_swipeStartX;
     const dy=e.changedTouches[0].clientY-_swipeStartY;
-    if(Math.abs(dx)>50&&Math.abs(dx)>Math.abs(dy)*1.5){
-      navDir(dx<0?1:-1); // left = next month, right = prev month
+    const v=Math.abs(dx)/Math.max(1,Date.now()-_swipeT);
+    const go=!cancel&&_swipeLock==='h'&&(Math.abs(dx)>70||(Math.abs(dx)>25&&v>0.45));
+    if(!_swipeDrag){
+      if(document.querySelector('#modal-root .overlay'))return;
+      if(go||(!cancel&&Math.abs(dx)>50&&Math.abs(dx)>Math.abs(dy)*1.5))navDir(dx<0?1:-1); // vue annuelle
+      return;
     }
-  },{passive:true});
-  document.addEventListener('touchmove',function(e){
-    if(!_swipeActive)return;
-    const dx=Math.abs(e.touches[0].clientX-_swipeStartX);
-    const dy=Math.abs(e.touches[0].clientY-_swipeStartY);
-    // If clearly horizontal swipe, prevent vertical scroll
-    if(dx>dy*1.5&&dx>20)e.preventDefault();
-  },{passive:false});
+    _swipeDrag=false;
+    const mv=_swMv();if(!mv)return;
+    const W=mv.offsetWidth||360,d=dx<0?1:-1;
+    if(!go){
+      mv.style.transition='transform .22s cubic-bezier(.2,.8,.2,1),opacity .22s ease';
+      mv.style.transform='translateX(0)';mv.style.opacity='1';
+      setTimeout(function(){mv.style.transition='';mv.style.transform='';mv.style.opacity='';},230);
+      return;
+    }
+    mv.style.transition='transform .14s ease-out,opacity .14s ease-out';
+    mv.style.transform='translateX('+(-d*W*0.55)+'px)';mv.style.opacity='0';
+    setTimeout(function(){
+      _calNavDir=d;
+      let newY=curY,newM=curM+d;if(newM<0){newM=11;newY--;}if(newM>11){newM=0;newY++;}
+      if(newY*12+newM===TODAY_YM)_todayBtnHide();
+      curM=newM;curY=newY;
+      mv.style.transition='none';mv.style.transform='translateX('+(d*W*0.3)+'px)';mv.style.opacity='0';
+      render();
+      void mv.offsetWidth;
+      mv.style.transition='transform .26s cubic-bezier(.2,.8,.2,1),opacity .2s ease';
+      mv.style.transform='translateX(0)';mv.style.opacity='1';
+      setTimeout(function(){mv.style.transition='';mv.style.transform='';mv.style.opacity='';},270);
+    },140);
+  }
+  document.addEventListener('touchend',function(e){_swEnd(e,false);},{passive:true});
+  document.addEventListener('touchcancel',function(e){_swEnd(e,true);},{passive:true});
 }
 init();
 
