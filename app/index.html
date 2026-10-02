@@ -2876,9 +2876,12 @@ function _swipeNav(go){
   var sh=document.querySelector('#modal-root .sheet');if(!sh)return;
   var d=window._dayNavDir||0;window._dayNavDir=0;
   if(d){
-    sh.style.animation='none';sh.style.transition='none';sh.style.transform='translateX('+(d*106)+'%)';void sh.offsetWidth;
-    sh.style.transition='transform .3s cubic-bezier(.2,.8,.2,1)';sh.style.transform='';
-    setTimeout(function(){sh.style.transition='';},320);
+    sh.style.animation='none';_swipeKids(sh,'none','translateX('+(d*106)+'%)');void sh.offsetWidth;
+    _swipeKids(sh,'transform .3s cubic-bezier(.2,.8,.2,1)','');
+    // la hauteur du fond passe en douceur de l'ancienne page à la nouvelle
+    var h0=window._swH,h1=sh.offsetHeight;
+    if(h0&&Math.abs(h0-h1)>1){sh.style.height=h0+'px';void sh.offsetWidth;sh.style.transition='height .3s cubic-bezier(.2,.8,.2,1)';sh.style.height=h1+'px';}
+    setTimeout(function(){_swipeKids(sh,'','');sh.style.overflowX='';sh.style.height='';sh.style.transition='';},320);
   }
   var sx=0,sy=0,skip=false;
   sh.addEventListener('touchstart',function(e){skip=!!e.target.closest('input,select,textarea')||e.touches.length>1;sx=e.touches[0].clientX;sy=e.touches[0].clientY;},{passive:true});
@@ -2889,9 +2892,15 @@ function _swipeNav(go){
     _swipeGo(dx<0?1:-1,go);
   },{passive:true});
 }
+// Seul le contenu glisse : le fond de la fiche et sa poignée restent en place
+function _swipeKids(sh,tr,tf){
+  sh.style.overflowX='hidden';
+  [].forEach.call(sh.children,function(el){if(el.classList.contains('sh'))return;el.style.transition=tr;el.style.transform=tf;});
+}
 function _swipeGo(nd,go){
   var sh=document.querySelector('#modal-root .sheet');if(!sh){go(nd);return;}
-  sh.style.transition='transform .16s cubic-bezier(.4,0,1,1)';sh.style.transform='translateX('+(-nd*106)+'%)';
+  window._swH=sh.offsetHeight;
+  _swipeKids(sh,'transform .16s cubic-bezier(.4,0,1,1)','translateX('+(-nd*106)+'%)');
   setTimeout(function(){window._dayNavDir=nd;go(nd);},160);
 }
 // Fiche du jour : glisser pour passer au jour suivant / précédent
