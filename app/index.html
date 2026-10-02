@@ -1574,19 +1574,8 @@ function openExternalUrl(url,browser){
 function navDir(d){
   _calNavDir=d;
   if(annualOpen){
-    // Changement d'année : les mois glissent hors de l'écran d'un côté, la nouvelle année arrive de l'autre.
-    // Glissement seul, sans fondu : l'opacité ferait clignoter l'effet verre des tuiles sur iPhone.
-    const g=document.getElementById('ann-grid'),W=window.innerWidth;
-    const _set=function(tr,x){Array.prototype.forEach.call(g.children,function(c){c.style.transition=tr;c.style.transform=x;});};
-    clearTimeout(window._annNavT);
-    _set('transform .17s cubic-bezier(.4,0,1,1)','translateX('+(-d*W)+'px)');
-    window._annNavT=setTimeout(function(){
-      curY+=d;renderAnnual();document.getElementById('mtit').textContent=String(curY);
-      _set('none','translateX('+(d*W)+'px)');void g.offsetWidth;
-      _set('transform .3s cubic-bezier(.2,.8,.2,1)','');
-      setTimeout(function(){_set('','');},320);
-    },170);
-    return;
+    if(window._annSlide){window._annSlide(d);return;}
+    curY+=d;renderAnnual();document.getElementById('mtit').textContent=String(curY);return;
   }
   let newY=curY,newM=curM+d;if(newM<0){newM=11;newY--;}if(newM>11){newM=0;newY++;}
   if(newY*12+newM===TODAY_YM)_todayBtnHide();
@@ -1804,20 +1793,25 @@ function toggleAnnual(){
     }
   });
 }
-function renderAnnual(){
-  const el=document.getElementById('ann-grid');if(!el)return;let html='';
+// Grille des 12 mois d'une année (vue annuelle)
+function _annHtml(y){
+  let html='';
   for(let m=0;m<12;m++){
-    const isSel=m===curM&&curY===_annSelY,first=new Date(curY,m,1),last=new Date(curY,m+1,0);
-    let sdow=first.getDay();sdow=sdow===0?6:sdow-1;const rameeSet=buildRameeSet(curY,m);
+    const isSel=m===curM&&y===_annSelY,first=new Date(y,m,1),last=new Date(y,m+1,0);
+    let sdow=first.getDay();sdow=sdow===0?6:sdow-1;const rameeSet=buildRameeSet(y,m);
     let mini='';for(let i=0;i<sdow;i++)mini+=`<div class="ann-day sv"></div>`;
-    for(let d=1;d<=last.getDate();d++){const date=new Date(curY,m,d),key=dk(date),st=getState(date);mini+=`<div class="ann-day ${st}"></div>`;}
+    for(let d=1;d<=last.getDate();d++){const date=new Date(y,m,d),key=dk(date),st=getState(date);mini+=`<div class="ann-day ${st}"></div>`;}
     // Toujours 6 lignes : la grille garde la même hauteur d'une année à l'autre (le sider ne bouge pas)
     for(let i=sdow+last.getDate();i<42;i++)mini+=`<div class="ann-day sv"></div>`;
-    const isCur=curY===NOW.getFullYear()&&m===NOW.getMonth();
+    const isCur=y===NOW.getFullYear()&&m===NOW.getMonth();
     const annCls=isSel&&isCur?'sel cur-month':isSel?'sel':isCur?'cur-month':'';
     html+=`<div class="ann-month${annCls?' '+annCls:''}" onclick="goToMonth(${m})"><div class="ann-mname">${ML[m]}</div><div class="ann-mini">${mini}</div></div>`;
   }
-  el.innerHTML=html;
+  return html;
+}
+function renderAnnual(){
+  const el=document.getElementById('ann-grid');if(!el)return;
+  el.innerHTML=_annHtml(curY);
 }
 function goToMonth(m){
   const y=curY;
@@ -6503,6 +6497,44 @@ function init(){
       _swPeek[d].style.visibility=want||anim?'':'hidden';
     });
   }
+  // ---- Vue annuelle : même principe, l'année voisine arrive à côté ----
+  // On déplace chaque tuile de mois (pas la grille) pour ne pas toucher à leur effet verre.
+  let _annPk={},_annBusy=false,_swMode='m';
+  function _annGrid(){return document.getElementById('ann-grid');}
+  function _annW(){const g=_annGrid();return g.offsetWidth+Math.max(16,2*Math.round(g.getBoundingClientRect().left));}
+  function _annSetX(el,x,tr){Array.prototype.forEach.call(el.children,function(c){c.style.transition=tr;c.style.transform=x===null?'':'translateX('+x.toFixed(1)+'px)';});}
+  function _annBuild(y){
+    const g=_annGrid(),el=document.createElement('div');
+    el.className='annual-grid ann-peek';el.setAttribute('aria-hidden','true');
+    el.style.cssText='position:absolute;pointer-events:none;margin:0;top:'+g.offsetTop+'px;left:'+g.offsetLeft+'px;width:'+g.offsetWidth+'px';
+    el.innerHTML=_annHtml(y);
+    g.parentNode.appendChild(el);return el;
+  }
+  function _annClear(){Object.keys(_annPk).forEach(function(k){_annPk[k].remove();});_annPk={};}
+  function _annPlace(x,anim){
+    const g=_annGrid(),W=_annW(),tr=anim?'transform .3s cubic-bezier(.2,.8,.2,1)':'none';
+    _annSetX(g,x,tr);
+    [-1,1].forEach(function(d){
+      const want=(d===1&&x<0)||(d===-1&&x>0);
+      if(!want&&!_annPk[d])return;
+      if(!_annPk[d])_annPk[d]=_annBuild(curY+d);
+      _annSetX(_annPk[d],x+d*W,tr);
+      _annPk[d].style.visibility=want||anim?'':'hidden';
+    });
+  }
+  function _annCommit(d){
+    curY+=d;renderAnnual();document.getElementById('mtit').textContent=String(curY);
+    _annClear();_annBusy=false;
+  }
+  // Flèches : glissement vers l'année précédente / suivante
+  window._annSlide=function(d){
+    if(_annBusy)return;_annBusy=true;_annClear();
+    const g=_annGrid(),W=_annW(),pk=_annBuild(curY+d);_annPk.go=pk;
+    _annSetX(pk,d*W,'none');void pk.offsetWidth;
+    const tr='transform .36s cubic-bezier(.25,.8,.25,1)';
+    _annSetX(g,-d*W,tr);_annSetX(pk,0,tr);
+    setTimeout(function(){_annCommit(d);},370);
+  };
   document.addEventListener('touchstart',function(e){
     if(e.target.closest('.sheet')||e.target.closest('.dropdown'))return; // ignore modals/dropdowns
     if(e.touches.length>1){_swipeActive=false;return;}
@@ -6516,9 +6548,14 @@ function init(){
     if(!_swipeLock&&(Math.abs(dx)>10||Math.abs(dy)>10))_swipeLock=Math.abs(dx)>Math.abs(dy)*1.5?'h':'v';
     if(_swipeLock!=='h')return;
     e.preventDefault();
-    if(annualOpen||document.querySelector('#modal-root .overlay')||document.getElementById('lp-menu'))return;
+    if(document.querySelector('#modal-root .overlay')||document.getElementById('lp-menu'))return;
+    if(annualOpen){
+      if(_annBusy)return;
+      if(!_swipeDrag){_swipeDrag=true;_swMode='y';_annClear();}
+      _annPlace(dx,false);return;
+    }
     const mv=_swMv();if(!mv)return;
-    if(!_swipeDrag){_swipeDrag=true;window._lpCancel&&window._lpCancel();mv.classList.remove('slide-left','slide-right','slide-in-left','slide-in-right');['--fo','--fx','--fs'].forEach(function(k){mv.style.removeProperty(k);});_swClearPeek();}
+    if(!_swipeDrag){_swipeDrag=true;_swMode='m';window._lpCancel&&window._lpCancel();mv.classList.remove('slide-left','slide-right','slide-in-left','slide-in-right');['--fo','--fx','--fs'].forEach(function(k){mv.style.removeProperty(k);});_swClearPeek();}
     _swPlace(dx,false);
   },{passive:false});
   function _swEnd(e,cancel){
@@ -6534,6 +6571,15 @@ function init(){
       return;
     }
     _swipeDrag=false;
+    if(_swMode==='y'){
+      const d=dx<0?1:-1;
+      _annBusy=true;_annPlace(go?-d*_annW():0,true);
+      setTimeout(function(){
+        if(go)_annCommit(d);
+        else{_annSetX(_annGrid(),null,'');_annClear();_annBusy=false;}
+      },310);
+      return;
+    }
     const mv=_swMv();if(!mv)return;
     const W=_swW(mv),d=dx<0?1:-1;
     _swPlace(go?-d*W:0,true);
