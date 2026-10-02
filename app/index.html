@@ -6747,6 +6747,7 @@ function init(){
     if(_swipeLock!=='h')return;
     e.preventDefault();
     if(document.querySelector('#modal-root .overlay')||document.getElementById('lp-menu'))return;
+    if(_springCommit)return; // on laisse finir le changement en cours
     if(annualOpen){
       if(_annBusy&&!_springRaf)return;
       if(!_swipeDrag){if(_springRaf){cancelAnimationFrame(_springRaf);_springRaf=0;_annBusy=false;}_swipeDrag=true;_swMode='y';_annClear();}
@@ -6758,16 +6759,17 @@ function init(){
   },{passive:false});
   // Ressort physique pour le retour en place d'un geste annulé : repart de la vitesse du doigt,
   // revient en douceur avec un très léger dépassement (amortissement 0,78), comme sur iOS
-  let _springRaf=0;
-  function _spring(x0,v0,onFrame,onDone){
+  let _springRaf=0,_springCommit=false; // _springCommit : un changement de mois/année est en train de se terminer
+  // to : position d'arrivée ; z : amortissement (0,78 = léger rebond pour un retour, 1 = arrivée nette pour un changement)
+  function _spring(x0,v0,onFrame,onDone,to,z,w){
     cancelAnimationFrame(_springRaf);
-    const w=0.0165,z=0.78,k=w*w,c=2*z*w; // pulsation (rad/ms) et amortissement
-    let x=x0,v=Math.max(-3,Math.min(3,v0||0)),t=performance.now();
+    to=to||0;z=z||0.78;w=w||0.0165;const k=w*w,c=2*z*w; // pulsation (rad/ms) et amortissement
+    let x=x0-to,v=Math.max(-3,Math.min(3,v0||0)),t=performance.now();
     const step=function(now){
       let dt=Math.min(32,now-t);t=now;
       for(let i=0;i<dt;i+=4){const h=Math.min(4,dt-i);const a=-k*x-c*v;v+=a*h;x+=v*h;} // intégration par petits pas
-      if(Math.abs(x)<0.4&&Math.abs(v)<0.02){onFrame(0);onDone();_springRaf=0;return;}
-      onFrame(x);_springRaf=requestAnimationFrame(step);
+      if(Math.abs(x)<0.6&&Math.abs(v)<0.03){onFrame(to);_springRaf=0;onDone();return;}
+      onFrame(x+to);_springRaf=requestAnimationFrame(step);
     };
     _springRaf=requestAnimationFrame(step);
   }
@@ -6794,9 +6796,8 @@ function init(){
       const d=dx<0?1:-1;
       _annBusy=true;
       if(!go){_spring(dx,vRel,function(x){_annPlace(x,false);},function(){_annSetX(_annGrid(),null,'');_annClear();_annBusy=false;});return;}
-      _annPlace(-d*_annW(),true);
       _titleTo(String(curY+d),d);
-      setTimeout(function(){_annCommit(d);},310);
+      _springCommit=true;_spring(dx,vRel,function(x){_annPlace(x,false);},function(){_springCommit=false;_annCommit(d);},-d*_annW(),1,0.02);
       return;
     }
     const mv=_swMv();if(!mv)return;
@@ -6805,9 +6806,11 @@ function init(){
       _spring(dx,vRel,function(x){_swPlace(x,false);},function(){const wrap=_swWrap();if(wrap){wrap.style.transition='';wrap.style.transform='';}_swClearPeek();});
       return;
     }
-    _swPlace(-d*W,true);
-    if(go){let ty=curY,tm=curM+d;if(tm<0){tm=11;ty--;}if(tm>11){tm=0;ty++;}_titleTo(ML[tm]+' '+ty,d);}
-    setTimeout(function(){
+    {let ty=curY,tm=curM+d;if(tm<0){tm=11;ty--;}if(tm>11){tm=0;ty++;}_titleTo(ML[tm]+' '+ty,d);}
+    // Le mois continue sur l'élan du doigt jusqu'à sa place (pas de durée fixe)
+    _springCommit=true;
+    _spring(dx,vRel,function(x){_swPlace(x,false);},function(){
+      _springCommit=false;
       const wrap=_swWrap();
       if(go){
         _calNavDir=d;
@@ -6817,11 +6820,8 @@ function init(){
         if(wrap){wrap.style.transition='none';wrap.style.transform='';}
         _swClearPeek();
         render();_syncWknNow();
-      }else{
-        if(wrap){wrap.style.transition='';wrap.style.transform='';}
-        _swClearPeek();
       }
-    },290);
+    },-d*W,1,0.02);
   }
   document.addEventListener('touchend',function(e){_swEnd(e,false);},{passive:true});
   document.addEventListener('touchcancel',function(e){_swEnd(e,true);},{passive:true});
