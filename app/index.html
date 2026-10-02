@@ -2109,11 +2109,14 @@ function _renderSideV2(d){
   // Paie versée ce mois-ci (inclut les variables du mois précédent)
   var pt=d.paye_tc,brutOk=pt&&pt.configured&&pt.salQ&&pt.heures;
   var prevMn=(curM+11)%12;
+  // Bulletin importé pour ce mois : son brut et l'état de la comparaison
+  var _bu=(S.bulletins||{})[d.mym],_bc=null,_bst=null;if(_bu){try{_bc=_bulCompare(_bu);_bst=_BUL_ST[_bc.status];}catch(e){}}
   var paie='<div class="bloc clk" onclick="openMergedMoisModal('+d.mym+',4)">'
     +'<div class="sv2-t"><span>Paie</span></div>'
-    +'<div class="sv2-pay" style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:10px"><span class="sv2-lbl" style="font-size:11px">Brut estimé</span>'
-    +'<span class="sv2-val" style="font-size:22px;color:'+(brutOk?'var(--gold-pay)':'var(--text3)')+'">'+(brutOk?fmtEuro(pt.total):'—')+'</span></div>'
-    +'<div class="sv2-sub">Inclut les variables '+deMois(prevMn)+'</div>'
+    +'<div class="sv2-pay" style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:10px"><span class="sv2-lbl" style="font-size:11px">'+(_bu?'Brut du bulletin':'Brut estimé')+'</span>'
+    +'<span class="sv2-val" style="font-size:22px;color:'+(brutOk||_bu?'var(--gold-pay)':'var(--text3)')+'">'+(_bu?fmtEuro(_bu.brut):brutOk?fmtEuro(pt.total):'—')+'</span></div>'
+    +'<div class="sv2-sub" style="display:flex;justify-content:space-between;gap:8px"><span>Inclut les variables '+deMois(prevMn)+'</span>'
+    +(_bst?'<span style="color:'+_bst[1]+'">'+_bst[0]+' '+(_bc.status==='ecart'?'écart '+(_bc.diff>0?'+':'')+fmtEuro(_bc.diff):'vérifié')+'</span>':'<span style="color:var(--text3)">pas de bulletin</span>')+'</div>'
     +'</div>';
   v2.innerHTML=soldes+heures+paie;
   // Primes sur une seule ligne : si elles débordent, on réduit leur taille juste ce qu'il faut
