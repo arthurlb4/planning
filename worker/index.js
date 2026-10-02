@@ -839,7 +839,7 @@ export default {
       await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + env.RESEND_API_KEY, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from: 'Planning France Info <onboarding@resend.dev>', to: email, subject: 'Reinitialisation mot de passe', html: '<p>Cliquez ici pour reinitialiser votre mot de passe (1h) :</p><p><a href="' + resetUrl + '">' + resetUrl + '</a></p>' }),
+        body: JSON.stringify({ from: 'Planning France Info <onboarding@resend.dev>', to: email, subject: 'Reinitialisation mot de passe', html: '<p>Lien pour réinitialiser le mot de passe (valable 1h) :</p><p><a href="' + resetUrl + '">' + resetUrl + '</a></p>' }),
       });
       return resp({ ok: true });
     }
