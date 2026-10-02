@@ -93,29 +93,13 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .mnav.today.hide-l{max-width:0;opacity:0;padding-left:0;padding-right:0;border-color:transparent;pointer-events:none;transform:translateX(-10px);}
 .mnav.today.hide-r{max-width:0;opacity:0;padding-left:0;padding-right:0;border-color:transparent;pointer-events:none;transform:translateX(10px);}
 .mtit{font-size:15px;font-weight:500;cursor:pointer;padding:4px 8px;border-radius:var(--r);transition:background .1s;position:absolute;left:50%;transform:translateX(-50%);white-space:nowrap;}
-/* Fondus et glissements : appliqués aux éléments en verre eux-mêmes via --fo/--fx/--fs.
-   Un parent en opacité < 1 couperait leur flou d'arrière-plan pendant l'animation (liseré et fond qui changent). */
-@property --fo{syntax:'<number>';inherits:true;initial-value:1}
-@property --fx{syntax:'<length>';inherits:true;initial-value:0px}
-@property --fs{syntax:'<number>';inherits:true;initial-value:1}
-#month-view>.cal-wrap{opacity:var(--fo);transform:translateX(var(--fx)) scale(var(--fs))}
-.ann-month{opacity:var(--fo)}
-#month-view{transition:--fo .18s ease,--fx .18s ease,--fs .18s ease;}
-.slide-left{animation:slideLeft .2s ease forwards;}
-.slide-right{animation:slideRight .2s ease forwards;}
-@keyframes slideLeft{from{--fo:1;--fx:0px}to{--fo:0;--fx:-28px}}
-@keyframes slideRight{from{--fo:1;--fx:0px}to{--fo:0;--fx:28px}}
-.slide-in-left{animation:slideInLeft .2s ease forwards;}
-.slide-in-right{animation:slideInRight .2s ease forwards;}
-@keyframes slideInLeft{from{--fo:0;--fx:28px}to{--fo:1;--fx:0px}}
-@keyframes slideInRight{from{--fo:0;--fx:-28px}to{--fo:1;--fx:0px}}
 
 /* Month view */
-#month-view{transition:--fo .2s ease,--fx .2s ease,--fs .2s ease;}
+/* Pas de fondu sur les vues : l'opacité ferait changer l'effet verre (glissements et voile à la place) */
 
 /* Annual view */
-.ann-wrap{overflow:hidden;pointer-events:none;--fo:0;visibility:hidden;position:absolute;top:0;left:0;right:0;transition:--fo .2s ease;width:100%;}
-.ann-wrap.open{pointer-events:all;--fo:1;display:block;visibility:visible;overflow:visible;position:relative;}
+.ann-wrap{overflow:hidden;pointer-events:none;visibility:hidden;position:absolute;top:0;left:0;right:0;width:100%;}
+.ann-wrap.open{pointer-events:all;display:block;visibility:visible;overflow:visible;position:relative;}
 .annual-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px;width:100%;box-sizing:border-box;}
 @media(max-width:600px){.annual-grid{grid-template-columns:repeat(3,1fr);}}
 .ann-month{background:var(--bg0);border:1px solid var(--border2);border-radius:var(--r);padding:6px;cursor:pointer;transition:background .1s;}
@@ -790,6 +774,7 @@ function _todayBtnHide(){
 }
 var _weekViewMon=null;
 let curY=CUR_YEAR,curM=NOW.getMonth(),pendingKey=null,annualOpen=false;
+let _annSelY=CUR_YEAR; // année du mois sélectionné (mis en évidence dans la vue annuelle)
 let _us=[],_rs=[];
 
 // ================================================================
@@ -1564,27 +1549,12 @@ function goToday(){
   const prevYm=curY*12+curM;
   _calNavDir=prevYm>TODAY_YM?-1:1;
   _todayBtnHide();
-  const mv=document.getElementById('month-view');
-  if(mv&&!annualOpen){
-    const outCls=_calNavDir<0?'slide-right':'slide-left';
-    const inCls=_calNavDir<0?'slide-in-right':'slide-in-left';
-    mv.classList.add(outCls);
-    setTimeout(function(){
-      mv.classList.remove('slide-left','slide-right');
-      mv.style.setProperty('--fo','0');
-      curM=NOW.getMonth();curY=NOW.getFullYear();
-      render();
-      mv.classList.add(inCls);
-      setTimeout(function(){mv.classList.remove('slide-in-left','slide-in-right');mv.style.setProperty('--fo','');},220);
-    },180);
-  } else {
+  if(!annualOpen&&window._calSlideTo){window._calSlideTo(NOW.getFullYear(),NOW.getMonth(),_calNavDir);return;}
+  _calVeil(function(){
     curM=NOW.getMonth();curY=NOW.getFullYear();
-    annualOpen=false;
-    const aw=document.getElementById('ann-wrap');
-    if(aw){aw.classList.remove('open');aw.style.display='none';aw.style.setProperty('--fo','0');}
-    if(mv){mv.style.display='block';mv.style.visibility='visible';mv.style.height='';mv.style.overflow='';mv.style.setProperty('--fo','1');mv.style.setProperty('--fs','1');mv.style.transition='';}
+    _showMonthView();
     render();
-  }
+  });
 }
 function openExternalUrl(url,browser){
   if(navigator.standalone||window.matchMedia('(display-mode:standalone)').matches){
@@ -1602,42 +1572,24 @@ function openExternalUrl(url,browser){
 function navDir(d){
   _calNavDir=d;
   if(annualOpen){
-    // Changement d'année : l'année sort en fondu d'un côté, la suivante arrive de l'autre.
-    // On anime chaque mois (pas la grille) : une grille transformée couperait l'effet verre des tuiles.
-    const g=document.getElementById('ann-grid');
-    const _set=function(tr,x,o){Array.prototype.forEach.call(g.children,function(c){c.style.transition=tr;c.style.transform=x;c.style.opacity=o;});};
+    // Changement d'année : les mois glissent hors de l'écran d'un côté, la nouvelle année arrive de l'autre.
+    // Glissement seul, sans fondu : l'opacité ferait clignoter l'effet verre des tuiles sur iPhone.
+    const g=document.getElementById('ann-grid'),W=window.innerWidth;
+    const _set=function(tr,x){Array.prototype.forEach.call(g.children,function(c){c.style.transition=tr;c.style.transform=x;});};
     clearTimeout(window._annNavT);
-    _set('transform .15s ease-in,opacity .15s ease-in','translateX('+(-d*48)+'px)','0');
+    _set('transform .17s cubic-bezier(.4,0,1,1)','translateX('+(-d*W)+'px)');
     window._annNavT=setTimeout(function(){
       curY+=d;renderAnnual();document.getElementById('mtit').textContent=String(curY);
-      _set('none','translateX('+(d*48)+'px)','0');void g.offsetWidth;
-      _set('transform .26s cubic-bezier(.2,.8,.2,1),opacity .2s ease','','');
-      setTimeout(function(){_set('','','');},280);
-    },150);
+      _set('none','translateX('+(d*W)+'px)');void g.offsetWidth;
+      _set('transform .3s cubic-bezier(.2,.8,.2,1)','');
+      setTimeout(function(){_set('','');},320);
+    },170);
     return;
   }
-  const mv=document.getElementById('month-view');
-  if(mv){
-    let newY=curY,newM=curM+d;if(newM<0){newM=11;newY--;}if(newM>11){newM=0;newY++;}
-    if(newY*12+newM===TODAY_YM)_todayBtnHide();
-    {
-      const outCls=d<0?'slide-right':'slide-left';
-      const inCls=d<0?'slide-in-right':'slide-in-left';
-      mv.classList.add(outCls);
-      setTimeout(function(){
-        mv.classList.remove('slide-left','slide-right');
-        mv.style.setProperty('--fo','0');
-        curM+=d;if(curM<0){curM=11;curY--;}if(curM>11){curM=0;curY++;}
-        render();
-        mv.classList.add(inCls);
-        setTimeout(function(){
-          mv.classList.remove('slide-in-left','slide-in-right');mv.style.setProperty('--fo','');
-        },220);
-      },180);
-    }
-  } else {
-    curM+=d;if(curM<0){curM=11;curY--;}if(curM>11){curM=0;curY++;}render();
-  }
+  let newY=curY,newM=curM+d;if(newM<0){newM=11;newY--;}if(newM>11){newM=0;newY++;}
+  if(newY*12+newM===TODAY_YM)_todayBtnHide();
+  if(window._calSlideTo){window._calSlideTo(newY,newM,d);return;}
+  curM=newM;curY=newY;render();
 }
 
 // ================================================================
@@ -1812,34 +1764,48 @@ function getISOWeek(date){
   const yearStart=new Date(Date.UTC(d.getUTCFullYear(),0,1));
   return Math.ceil((((d-yearStart)/86400000)+1)/7);
 }
-function toggleAnnual(){
-  annualOpen=!annualOpen;
+// Passage mois ↔ année : un voile couleur du fond couvre le calendrier, on change de vue, puis il s'efface.
+// (Faire varier l'opacité des vues elles-mêmes ferait changer l'effet verre pendant le fondu.)
+function _calVeil(cb){
+  const col=document.querySelector('.cal-col');
+  if(!col){cb();return;}
+  if(window._veilBusy)return;window._veilBusy=true;
+  const v=document.createElement('div');
+  v.style.cssText='position:absolute;inset:-14px -14px 0 -14px;z-index:60;pointer-events:none;opacity:0;transition:opacity .13s ease;background:'+getComputedStyle(document.body).backgroundColor;
+  col.appendChild(v);void v.offsetWidth;v.style.opacity='1';
+  setTimeout(function(){
+    try{cb();}finally{
+      v.style.transition='opacity .22s ease';v.style.opacity='0';
+      setTimeout(function(){v.remove();window._veilBusy=false;},240);
+    }
+  },140);
+}
+function _showMonthView(){
+  annualOpen=false;
   const aw=document.getElementById('ann-wrap'),mv=document.getElementById('month-view');
-  if(annualOpen){
-    aw.classList.add('open');
-    aw.style.display='';
-    aw.style.overflow='visible';
-    mv.style.visibility='hidden';mv.style.height='0';mv.style.overflow='hidden';
-    _fitAnnual();
-    aw.style.setProperty('--fo','0');aw.style.transition='--fo .2s ease';
-    requestAnimationFrame(()=>{aw.style.setProperty('--fo','1');});
-  }else{
-    // Restore month-view layout immediately to prevent sidebar from jumping
-    mv.style.visibility='visible';mv.style.height='';mv.style.overflow='';mv.style.setProperty('--fo','0');mv.style.transition='none';
-    aw.style.transition='--fo .12s ease';aw.style.setProperty('--fo','0');
-    setTimeout(()=>{
-      aw.classList.remove('open');
+  if(aw){aw.classList.remove('open');aw.style.display='';}
+  if(mv){mv.style.visibility='visible';mv.style.height='';mv.style.overflow='';}
+}
+function toggleAnnual(){
+  _calVeil(function(){
+    const aw=document.getElementById('ann-wrap'),mv=document.getElementById('month-view');
+    if(!annualOpen){
+      annualOpen=true;_annSelY=curY;
+      aw.classList.add('open');aw.style.display='';aw.style.overflow='visible';
+      mv.style.visibility='hidden';mv.style.height='0';mv.style.overflow='hidden';
+      _fitAnnual();
+      render();
+    }else{
+      _showMonthView();
+      render();
       _checkSideBelow();
-      mv.style.transition='--fo .2s ease';
-      requestAnimationFrame(()=>{mv.style.setProperty('--fo','1');});
-    },130);
-  }
-  render();
+    }
+  });
 }
 function renderAnnual(){
   const el=document.getElementById('ann-grid');if(!el)return;let html='';
   for(let m=0;m<12;m++){
-    const isSel=m===curM,first=new Date(curY,m,1),last=new Date(curY,m+1,0);
+    const isSel=m===curM&&curY===_annSelY,first=new Date(curY,m,1),last=new Date(curY,m+1,0);
     let sdow=first.getDay();sdow=sdow===0?6:sdow-1;const rameeSet=buildRameeSet(curY,m);
     let mini='';for(let i=0;i<sdow;i++)mini+=`<div class="ann-day sv"></div>`;
     for(let d=1;d<=last.getDate();d++){const date=new Date(curY,m,d),key=dk(date),st=getState(date);mini+=`<div class="ann-day ${st}"></div>`;}
@@ -1852,16 +1818,12 @@ function renderAnnual(){
   el.innerHTML=html;
 }
 function goToMonth(m){
-  curM=m;annualOpen=false;const aw=document.getElementById('ann-wrap'),mv=document.getElementById('month-view');
-  // Restore month-view layout immediately to prevent sidebar from jumping up
-  mv.style.visibility='visible';mv.style.height='';mv.style.overflow='';mv.style.setProperty('--fo','0');mv.style.transition='none';
-  aw.style.transition='--fo .12s ease';aw.style.setProperty('--fo','0');
-  setTimeout(()=>{
-    aw.classList.remove('open');
-    mv.style.setProperty('--fs','.98');mv.style.transition='--fo .2s ease,--fs .2s ease';
+  const y=curY;
+  _calVeil(function(){
+    curM=m;curY=y;
+    _showMonthView();
     render();
-    requestAnimationFrame(()=>{mv.style.setProperty('--fo','1');mv.style.setProperty('--fs','1');});
-  },130);
+  });
 }
 
 // ================================================================
@@ -6486,22 +6448,46 @@ function init(){
   function _swMv(){return document.getElementById('month-view');}
   function _swWrap(){return document.querySelector('#month-view > .cal-wrap');}
   // Aperçu du mois précédent (d=-1) ou suivant (d=1), posé exactement sur le calendrier puis décalé
-  function _swGetPeek(d){
-    if(_swPeek[d])return _swPeek[d];
+  // Calendrier d'un mois donné, posé exactement sur le calendrier affiché (puis décalé par translateX)
+  function _swBuildPeek(y,m){
     const mv=_swMv(),el=document.createElement('div');
     el.className='mv-peek';el.setAttribute('aria-hidden','true');
     el.style.cssText='position:absolute;left:0;top:0;width:100%;pointer-events:none';
     el.innerHTML='<div class="cal-wrap"><table class="cal"><tr></tr></table><table class="cal"></table></div>';
     mv.appendChild(el);
-    const sy=curY,sm=curM;
-    let m=curM+d,y=curY;if(m<0){m=11;y--;}if(m>11){m=0;y++;}
-    const t=el.querySelectorAll('table');
+    const sy=curY,sm=curM,t=el.querySelectorAll('table');
     try{curY=y;curM=m;renderMonth(t[0].querySelector('tr'),t[1]);}
     finally{curY=sy;curM=sm;}
     try{_renderCycBadges(t[1]);}catch(e){}
     _syncWknNow(); // numéros et tuiles de semaines (ramenées, congés) comme sur le calendrier
-    _swPeek[d]=el;return el;
+    return el;
   }
+  // Aperçu du mois précédent (d=-1) ou suivant (d=1)
+  function _swGetPeek(d){
+    if(_swPeek[d])return _swPeek[d];
+    let m=curM+d,y=curY;if(m<0){m=11;y--;}if(m>11){m=0;y++;}
+    _swPeek[d]=_swBuildPeek(y,m);return _swPeek[d];
+  }
+  // Flèches et bouton « auj. » : même glissement que le geste, vers n'importe quel mois
+  let _slideBusy=false;
+  window._calSlideTo=function(y,m,d){
+    const mv=_swMv(),wrap=_swWrap();
+    if(!mv||!wrap||_slideBusy){curY=y;curM=m;render();return;}
+    _slideBusy=true;_swClearPeek();
+    const W=_swW(mv),pk=_swBuildPeek(y,m),w2=pk.firstChild;_swPeek.go=pk;
+    w2.style.transition='none';w2.style.transform='translateX('+(d*W)+'px)';
+    void w2.offsetWidth;
+    const tr='transform .34s cubic-bezier(.25,.8,.25,1)';
+    wrap.style.transition=tr;wrap.style.transform='translateX('+(-d*W)+'px)';
+    w2.style.transition=tr;w2.style.transform='translateX(0px)';
+    setTimeout(function(){
+      _calNavDir=d;curY=y;curM=m;
+      wrap.style.transition='none';wrap.style.transform='';
+      _swClearPeek();
+      render();_syncWknNow();
+      _slideBusy=false;
+    },350);
+  };
   function _swClearPeek(){Object.keys(_swPeek).forEach(function(k){_swPeek[k].remove();});_swPeek={};}
   function _swPlace(x,anim){
     const mv=_swMv(),wrap=_swWrap(),W=_swW(mv),tr=anim?'transform .28s cubic-bezier(.2,.8,.2,1)':'none';
@@ -7068,10 +7054,10 @@ window.addEventListener('resize',function(){_applyBigScreenZoom();_fitCalendar()
 function _revealBody(){
   if(document.body.style.opacity==='1')return;
   var v=document.createElement('div');
-  v.style.cssText='position:fixed;inset:0;background:#161615;z-index:100000;pointer-events:none;transition:opacity .25s';
+  v.style.cssText='position:fixed;inset:0;background:#161615;z-index:100000;pointer-events:none;transition:opacity .6s ease';
   document.body.appendChild(v);document.body.style.opacity='1';
   requestAnimationFrame(function(){requestAnimationFrame(function(){v.style.opacity='0';});});
-  setTimeout(function(){v.remove();},320);
+  setTimeout(function(){v.remove();},680);
 }
 function syncWknHeight(){setTimeout(_syncWknNow,0);}
 // Met en forme les numéros de semaine (tuiles ramenées / congés) sans attendre
