@@ -2264,6 +2264,13 @@ function getPanierRate(ym){const pc=getPayConfig();const arr=pc.panier&&pc.panie
 // Taux des primes par vacation (€) et majorations (%) — éditables dans l'admin (onglet Convention)
 const _DEF_TAUX={debutYM:0,antenne:17.38,matin:17.38,reel:34.76,coord:17.38,dim:30,rh:30,fer:200,hsLow:125,hsHigh:150,nuit:40};
 function getTauxForYM(ym){const pc=getPayConfig();return Object.assign({},_DEF_TAUX,pc.taux&&pc.taux.length?_pcPick(pc.taux,ym):{});}
+// Prime spéciale d'un jour (formateur, prime ponctuelle…) : rattachée au mois de la semaine, comme les autres primes
+function calcDayPrimesMois(y,m){
+  var mym=y*12+m,out=[],tot=0;Object.keys(S.dayPrimes||{}).forEach(function(k){var p=S.dayPrimes[k];if(!p||!(p.amt>0))return;
+    var d=new Date(k+'T12:00:00'),sun=getMonday(d);sun.setDate(sun.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mym)return;
+    out.push({key:k,lbl:p.lbl||'Prime spéciale',amt:p.amt});tot+=p.amt;});
+  out.sort(function(a,b){return a.key<b.key?-1:1;});return{list:out,total:Math.round(tot*100)/100};
+}
 function calcVariablesMois(y,m,overrideTauxH){
   const mym_cv=y*12+m;const pr=S.profile||{};const _pn=getPalierForYM(mym_cv);const salQ=_pn>0?calcPalierSalaire(_pn):(pr.salaireQualif||0);const salAnc=getAncForYM(mym_cv);const heures=getHeuresForYM(mym_cv);const base=salQ+salAnc;const tauxH=overrideTauxH!=null?overrideTauxH:(heures>0?Math.round(base/heures*100)/100:0);
   const drf=calcDimRHFerMinsMois(y,m);const hs=calcHSMinsMois(y,m);const nuitMin=calcNuitMois(y,m);const primes=calcPrimesMois(y,m);const paniers=calcPaniersMois(y,m);
@@ -2282,8 +2289,9 @@ function calcVariablesMois(y,m,overrideTauxH){
     }
   }
   const panierRate=getPanierRate(mym_cv),supPaniers=r2(paniers*panierRate),supAntenne=r2(primes.antenne*tx.antenne),supMatin=r2(primes.matin*tx.matin),supReal=r2(primes.reel*tx.reel),supCoord=r2(primes.coord*tx.coord);
-  const total=supDim+supRH+supFer+supHSlow+supHShigh+supNuit+supAbsResto+supAntenne+supMatin+supReal+supCoord;
-  return{total,tauxH,supDim,supRH,supFer,supHSlow,supHShigh,supNuit,supPaniers,panierRate,tx,supAbsResto,absRestoRate,supAntenne,supMatin,supReal,supCoord,dimMin:drf.dim,rhMin:drf.rh,ferMin:drf.fer,hsLow:hs.low,hsHigh:hs.high,nuitMin,paniers,antenne:primes.antenne,matin:primes.matin,reel:primes.reel,coord:primes.coord};
+  const dpr=calcDayPrimesMois(y,m),supSpec=dpr.total;
+  const total=supDim+supRH+supFer+supHSlow+supHShigh+supNuit+supAbsResto+supAntenne+supMatin+supReal+supCoord+supSpec;
+  return{total,supSpec,specList:dpr.list,tauxH,supDim,supRH,supFer,supHSlow,supHShigh,supNuit,supPaniers,panierRate,tx,supAbsResto,absRestoRate,supAntenne,supMatin,supReal,supCoord,dimMin:drf.dim,rhMin:drf.rh,ferMin:drf.fer,hsLow:hs.low,hsHigh:hs.high,nuitMin,paniers,antenne:primes.antenne,matin:primes.matin,reel:primes.reel,coord:primes.coord};
 }
 function getPrimesFixesCustomForYM(ym){
   const primes=(S.profile&&S.profile.primesFixesCustom)||[];
@@ -2512,6 +2520,7 @@ function _payPageHtml(ym){
   vr('reel','P. réal ('+v.reel+' × '+_eu(_tx.reel)+')',v.reel,v.supReal,null);
   vr('coord','P. coord ('+v.coord+' × '+_eu(_tx.coord)+')',v.coord,v.supCoord,null);
   vr('absResto','Abs. restauration',v.supAbsResto,v.supAbsResto,null);
+  (v.specList||[]).forEach(function(sp){var d=new Date(sp.key+'T12:00:00');vl+=row(sp.lbl+' ('+d.getDate()+' '+MCs[d.getMonth()]+')',sp.amt,null,c?E:null);});
   if(!vl)vl='<div style="color:var(--text3);padding:3px 0">Aucune.</div>';
   // En-tête et total brut comme l'ancien onglet Paie ; la colonne bulletin s'ajoute à gauche
   var h='<div class="pp-r" style="font-size:11px;color:var(--text3);padding:0 0 2px"><span style="flex:1"></span>'+(c?'<span class="pp-n">bulletin</span>':'')+'<span class="pp-v">app</span></div>'
@@ -3179,7 +3188,19 @@ function openDay(key){
   }
   var _note=(S.notes||{})[key]||'';
   var _noteBtn=_note?'':'<button style="font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;background:none;color:var(--text2);cursor:pointer;white-space:nowrap" onclick="openNoteModal(\''+key+'\')">+ Note</button>';
-  _renduBtn='<div style="display:flex;gap:6px;align-items:center">'+_noteBtn+_renduBtn+'</div>';
+  // Note et heures en plus : ajoutées depuis « Modifier » ; ici on n'affiche que ce qui existe déjà
+  _renduBtn='<div style="display:flex;gap:6px;align-items:center">'+(_exr?_renduBtn:'')+'</div>';
+  // Options de la vacation posée : seulement quand elles changent quelque chose
+  var _optHtml='';
+  if(ov&&!echange&&!absent&&vac&&vac!=='RH'&&VAC[vac]&&!hasCg){
+    var _cvI=cycleVac&&cycleVac!=='RH'?VAC[cycleVac]:null,_mx=!!(_cvI&&_cvI.mixte),_ovd=_ovData||{},_o=[];
+    var _plus=VAC[vac].dur-(_cvI?_cvI.dur:0);
+    var _tg=function(lbl,sub,k,on){return '<div class="srow" style="padding:6px 0"><div><div class="slbl" style="font-size:12.5px">'+lbl+'</div><div style="font-size:11px;color:var(--text3)">'+sub+'</div></div><label class="tgl"><input type="checkbox"'+(on?' checked':'')+' onchange="dayOpt(\''+key+'\',\''+k+'\',this.checked)"><span class="tgl-s"></span></label></div>';};
+    if(!_mx&&_plus>0)_o.push(_tg('Compter en heures sup',(_cvI?'+'+fmtMin(_plus)+' par rapport à '+vLbl(cycleVac,VAC):'jour de repos travaillé : '+fmtMin(VAC[vac].dur)),'hs',_ovd.hs===true));
+    if(_cvI&&S.customVacs&&S.customVacs[vac])_o.push(_tg('Primes de la vacation prévue','payer comme '+vLbl(cycleVac,VAC)+' (formation, vacation écourtée…)','formation',_ovd.formation===true));
+    if(_o.length)_optHtml='<div style="margin-top:8px;padding-top:4px;border-top:0.5px solid var(--border2)">'+_o.join('')+'</div>';
+  }
+  var _dp=(S.dayPrimes||{})[key];if(_dp&&_dp.amt>0&&epvHtml)epvHtml=epvHtml.replace('</div>',' · <span style="color:var(--amber)">'+(_dp.lbl||'Prime')+' '+fmtEuro(_dp.amt)+'</span></div>');
   var _noteHtml=_note?'<div onclick="openNoteModal(\''+key+'\')" style="cursor:pointer;margin-top:8px;padding:7px 10px;border-radius:8px;background:rgba(255,250,243,.05);font-size:12.5px;color:var(--text2);line-height:1.4;display:flex;gap:7px"><i class="ti ti-note" style="font-size:14px;color:var(--text3);margin-top:1px"></i><span style="white-space:pre-wrap;word-break:break-word"></span></div>':'';
   var _dayBox='';
   if(vac&&vac!=='RH'&&!absent&&VAC[vac]){
@@ -3187,6 +3208,7 @@ function openDay(key){
       +'<div style="display:flex;align-items:center;justify-content:space-between"><div style="font-size:15px;font-weight:600;color:var(--text)">'+lbl+(tt?' — '+tt:'')+'</div>'+_renduBtn+'</div>'
       +'<div style="font-size:12px;color:var(--text2);margin-top:3px">'+VAC[vac].deb+'→'+VAC[vac].fin+' · '+fmtMin(dur)+'</div>'
       +(epvHtml?'<div style="margin-top:3px">'+epvHtml+'</div>':'')
+      +_optHtml
       +_restWarn(key)
       +_noteHtml
       +'</div>';
@@ -3204,42 +3226,20 @@ function openDay(key){
 function avw(sel){
   if(!sel)return;
   var key=pendingKey||_lpk;if(!key)return;
-  var date=new Date(key+'T12:00:00'),cv=getCycleVac(date).cycleVac;
-  // Show HS toggle before saving
-  var curOv=S.overrides&&S.overrides[key];
-  var curHs=curOv&&curOv.hs===true;
-  var curFormation=curOv&&curOv.formation===true;
-  _pendingVacSel={key,sel,date,cv,hs:curHs,formation:curFormation};
-  var durInfo='';
-  const VAC=getVAC(date);
-  const isSelSV=sel==='SV';
-  const isCvMixte=!!(cv&&VAC[cv]&&VAC[cv].mixte);
-  if(isCvMixte&&!isSelSV&&VAC[sel]){
-    const{hsBounds}=_calcMixteHsDetail(cv,sel,VAC);
-    durInfo='<div style="font-size:11px;color:var(--text3);margin-bottom:10px">Vacation mixte'
-      +(hsBounds>0?' · <span style="color:var(--amber)">+'+fmtMin(hsBounds)+' hors bornes</span>':'')+'</div>';
-  } else if(VAC[sel]&&VAC[sel].dur>0){
-    const cvDur=(cv&&cv!=='RH'&&VAC[cv])?VAC[cv].dur:0;
-    const diff=VAC[sel].dur-cvDur;
-    if(diff>0)durInfo='<div style="font-size:11px;color:var(--text3);margin-bottom:10px">+'+fmtMin(diff)+' vs cycle</div>';
-  }
-  const hsToggle=(isSelSV||isCvMixte)?'':
-    '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-top:0.5px solid var(--border)">'
-    +'<span style="font-size:13px;color:var(--text2)">Génère des HS</span>'
-    +'<label class="tgl"><input type="checkbox" id="hs-toggle"'+(curHs?' checked':'')+'><span class="tgl-s"></span></label>'
-    +'</div>';
-  const isCustomVac=!!(S.customVacs&&S.customVacs[sel]);
-  const formToggle=isCustomVac?
-    '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-top:0.5px solid var(--border)">'
-    +'<span style="font-size:13px;color:var(--text2)">Garder EPV (formation, vacation modifiée…)</span>'
-    +'<label class="tgl"><input type="checkbox" id="formation-toggle"'+(curFormation?' checked':'')+'><span class="tgl-s"></span></label>'
-    +'</div>':'';
-  document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet">'
-    +'<div class="sh"></div><div class="st">'+((VAC[sel]&&VAC[sel].label)||sel)+'</div>'
-    +durInfo+hsToggle+formToggle
-    +'<button class="mb wide" style="margin-top:8px" onclick="avwConfirm()">Confirmer</button>'
-    +'<button class="mcancel" onclick="closeModal()">Annuler</button>'
-    +'</div></div>';
+  var date=new Date(key+'T12:00:00'),cv=getCycleVac(date).cycleVac,VAC=getVAC(date);
+  pushUndo('Vacation modifiée');
+  if(!S.overrides)S.overrides={};
+  // Les options (heures sup, primes prévues) se règlent ensuite dans la fiche du jour, seulement si elles servent
+  S.overrides[key]={vac:sel==='SV'?null:sel,fromSV:!cv||cv==='RH'||sel==='SV',echange:false,hs:false,formation:false};
+  logH(fmtDate(date)+' -> '+(sel==='SV'?'sans vacation':vLbl(sel,VAC)),'#62aadc',key);
+  saveState();render();popCell(key);gcalTrigger();
+  var cvI=cv&&cv!=='RH'?VAC[cv]:null,plus=sel!=='SV'&&VAC[sel]?VAC[sel].dur-(cvI?cvI.dur:0):0;
+  if(plus>0&&!(cvI&&cvI.mixte)){pendingKey=key;openDay(key);}else closeModal();
+}
+function dayOpt(key,k,on){
+  var o=(S.overrides||{})[key];if(!o)return;pushUndo('Option modifiée');o[k]=!!on;
+  logH(fmtDate(new Date(key+'T12:00:00'))+(k==='hs'?(on?' : heures sup':' : sans heures sup'):(on?' : primes prévues':' : primes de la vacation posée')),'#62aadc',key);
+  saveState();render();openDay(key);
 }
 var _pendingVacSel=null;
 function avwConfirm(){
@@ -6822,26 +6822,28 @@ function openCustomVacModal(){
       if(_cvTotal>0&&_cvV.dur>0){var _cvP=_cvTotal-_cvV.dur;_cvPause=_cvP>=60?'60':_cvP>=45?'45':_cvP>=30?'30':'0';}
     }
   }
-  // Options du jour (auparavant sur l'écran suivant) : HS et maintien des EPV
-  var _cvOpts='';
+  // Prime spéciale du jour, note et heures en plus : réunis ici
+  var _cvDp=pendingKey?((S.dayPrimes||{})[pendingKey]||{}):{};
+  window._cvInit=pendingKey?{deb:_cvDeb,fin:_cvFin,name:_cvName,pause:_cvPause,pr:JSON.stringify(_cvPr||{})}:null;
+  var _cvAdd='';
   if(pendingKey){
-    var _cvOv=S.overrides&&S.overrides[pendingKey],_cvCyc=getCycleVac(_cvDate).cycleVac;
-    var _cvMixte=!!(_cvCyc&&_cvVAC[_cvCyc]&&_cvVAC[_cvCyc].mixte);
-    var _cvTgl=function(id,lbl,on){return '<div class="srow" style="padding:6px 0"><div class="slbl">'+lbl+'</div><label class="tgl"><input type="checkbox" id="'+id+'"'+(on?' checked':'')+'><span class="tgl-s"></span></label></div>';};
-    _cvOpts='<div style="font-size:12px;font-weight:600;color:var(--text2);margin:0 0 6px">Options</div>'
-      +(_cvMixte?'':_cvTgl('custom-hs','Génère des HS',_cvOv&&_cvOv.hs===true))
-      +_cvTgl('custom-epv','Garder les EPV de la vacation initiale',_cvOv&&_cvOv.formation===true)
-      +'<div style="height:18px"></div>';
+    var _k=pendingKey,_n=(S.notes||{})[_k],_x=(S.extraRendus||{})[_k];
+    var _ab='flex:1;padding:10px 8px;border:0.5px solid var(--border);border-radius:var(--r);background:var(--bg2);color:var(--text2);font-size:12.5px;font-family:var(--font);cursor:pointer';
+    _cvAdd='<div class="btit" style="margin:16px 0 6px">Ajouter au jour</div>'
+      +'<div style="display:flex;gap:8px;margin-bottom:18px"><button style="'+_ab+'" onclick="openNoteModal(\''+_k+'\')"><i class="ti ti-note" style="margin-right:4px"></i>'+(_n?'Modifier la note':'Note')+'</button>'
+      +'<button style="'+_ab+'" onclick="openExtraRenduModal(\''+_k+'\')"><i class="ti ti-clock-plus" style="margin-right:4px"></i>'+(_x?'Heures en plus · '+fmtMin(_x.dur):'Heures en plus')+'</button></div>';
   }
-  document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this){if(pendingKey)openDay(pendingKey);else closeModal();}"><div class="sheet"><div class="sh"></div><div class="st">Modifier la vacation</div>'
+  document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this){if(pendingKey)openDay(pendingKey);else closeModal();}"><div class="sheet"><div class="sh"></div><div class="st">Modifier le jour</div>'
+    +'<div class="btit" style="margin:4px 0 6px">Horaires</div>'
     +'<div class="mrow"><label>Nom</label><input id="custom-name" placeholder=""></div>'
     +'<div class="mr2"><div><label>Début</label><select id="custom-deb" style="padding:10px 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--bg2);color:var(--text);width:100%;-webkit-appearance:none;"><option value="00h00">00h00</option><option value="00h15">00h15</option><option value="00h30">00h30</option><option value="00h45">00h45</option><option value="01h00">01h00</option><option value="01h15">01h15</option><option value="01h30">01h30</option><option value="01h45">01h45</option><option value="02h00">02h00</option><option value="02h15">02h15</option><option value="02h30">02h30</option><option value="02h45">02h45</option><option value="03h00">03h00</option><option value="03h15">03h15</option><option value="03h30">03h30</option><option value="03h45">03h45</option><option value="04h00">04h00</option><option value="04h15">04h15</option><option value="04h30">04h30</option><option value="04h45">04h45</option><option value="05h00">05h00</option><option value="05h15">05h15</option><option value="05h30">05h30</option><option value="05h45">05h45</option><option value="06h00">06h00</option><option value="06h15">06h15</option><option value="06h30">06h30</option><option value="06h45">06h45</option><option value="07h00">07h00</option><option value="07h15">07h15</option><option value="07h30">07h30</option><option value="07h45">07h45</option><option value="08h00" selected>08h00</option><option value="08h15">08h15</option><option value="08h30">08h30</option><option value="08h45">08h45</option><option value="09h00">09h00</option><option value="09h15">09h15</option><option value="09h30">09h30</option><option value="09h45">09h45</option><option value="10h00">10h00</option><option value="10h15">10h15</option><option value="10h30">10h30</option><option value="10h45">10h45</option><option value="11h00">11h00</option><option value="11h15">11h15</option><option value="11h30">11h30</option><option value="11h45">11h45</option><option value="12h00">12h00</option><option value="12h15">12h15</option><option value="12h30">12h30</option><option value="12h45">12h45</option><option value="13h00">13h00</option><option value="13h15">13h15</option><option value="13h30">13h30</option><option value="13h45">13h45</option><option value="14h00">14h00</option><option value="14h15">14h15</option><option value="14h30">14h30</option><option value="14h45">14h45</option><option value="15h00">15h00</option><option value="15h15">15h15</option><option value="15h30">15h30</option><option value="15h45">15h45</option><option value="16h00">16h00</option><option value="16h15">16h15</option><option value="16h30">16h30</option><option value="16h45">16h45</option><option value="17h00">17h00</option><option value="17h15">17h15</option><option value="17h30">17h30</option><option value="17h45">17h45</option><option value="18h00">18h00</option><option value="18h15">18h15</option><option value="18h30">18h30</option><option value="18h45">18h45</option><option value="19h00">19h00</option><option value="19h15">19h15</option><option value="19h30">19h30</option><option value="19h45">19h45</option><option value="20h00">20h00</option><option value="20h15">20h15</option><option value="20h30">20h30</option><option value="20h45">20h45</option><option value="21h00">21h00</option><option value="21h15">21h15</option><option value="21h30">21h30</option><option value="21h45">21h45</option><option value="22h00">22h00</option><option value="22h15">22h15</option><option value="22h30">22h30</option><option value="22h45">22h45</option><option value="23h00">23h00</option><option value="23h15">23h15</option><option value="23h30">23h30</option><option value="23h45">23h45</option></select></div>'
     +'<div><label>Fin</label><select id="custom-fin" style="padding:10px 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--bg2);color:var(--text);width:100%;-webkit-appearance:none;"><option value="00h00">00h00</option><option value="00h15">00h15</option><option value="00h30">00h30</option><option value="00h45">00h45</option><option value="01h00">01h00</option><option value="01h15">01h15</option><option value="01h30">01h30</option><option value="01h45">01h45</option><option value="02h00">02h00</option><option value="02h15">02h15</option><option value="02h30">02h30</option><option value="02h45">02h45</option><option value="03h00">03h00</option><option value="03h15">03h15</option><option value="03h30">03h30</option><option value="03h45">03h45</option><option value="04h00">04h00</option><option value="04h15">04h15</option><option value="04h30">04h30</option><option value="04h45">04h45</option><option value="05h00">05h00</option><option value="05h15">05h15</option><option value="05h30">05h30</option><option value="05h45">05h45</option><option value="06h00">06h00</option><option value="06h15">06h15</option><option value="06h30">06h30</option><option value="06h45">06h45</option><option value="07h00">07h00</option><option value="07h15">07h15</option><option value="07h30">07h30</option><option value="07h45">07h45</option><option value="08h00">08h00</option><option value="08h15">08h15</option><option value="08h30">08h30</option><option value="08h45">08h45</option><option value="09h00">09h00</option><option value="09h15">09h15</option><option value="09h30">09h30</option><option value="09h45">09h45</option><option value="10h00">10h00</option><option value="10h15">10h15</option><option value="10h30">10h30</option><option value="10h45">10h45</option><option value="11h00">11h00</option><option value="11h15">11h15</option><option value="11h30">11h30</option><option value="11h45">11h45</option><option value="12h00">12h00</option><option value="12h15">12h15</option><option value="12h30">12h30</option><option value="12h45">12h45</option><option value="13h00">13h00</option><option value="13h15">13h15</option><option value="13h30">13h30</option><option value="13h45">13h45</option><option value="14h00">14h00</option><option value="14h15">14h15</option><option value="14h30">14h30</option><option value="14h45">14h45</option><option value="15h00">15h00</option><option value="15h15">15h15</option><option value="15h30">15h30</option><option value="15h45">15h45</option><option value="16h00" selected>16h00</option><option value="16h15">16h15</option><option value="16h30">16h30</option><option value="16h45">16h45</option><option value="17h00">17h00</option><option value="17h15">17h15</option><option value="17h30">17h30</option><option value="17h45">17h45</option><option value="18h00">18h00</option><option value="18h15">18h15</option><option value="18h30">18h30</option><option value="18h45">18h45</option><option value="19h00">19h00</option><option value="19h15">19h15</option><option value="19h30">19h30</option><option value="19h45">19h45</option><option value="20h00">20h00</option><option value="20h15">20h15</option><option value="20h30">20h30</option><option value="20h45">20h45</option><option value="21h00">21h00</option><option value="21h15">21h15</option><option value="21h30">21h30</option><option value="21h45">21h45</option><option value="22h00">22h00</option><option value="22h15">22h15</option><option value="22h30">22h30</option><option value="22h45">22h45</option><option value="23h00">23h00</option><option value="23h15">23h15</option><option value="23h30">23h30</option><option value="23h45">23h45</option></select></div></div>'
     +'<div class="mrow" style="margin-bottom:30px"><label>Pause</label><select id="custom-pause" style="padding:10px 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--bg2);color:var(--text);width:100%;-webkit-appearance:none;"><option value="0">Sans pause</option><option value="30" selected>30 min</option><option value="45">45 min</option><option value="60">1h00</option></select></div>'
-    +'<div style="font-size:12px;font-weight:600;color:var(--text2);margin:-14px 0 6px">Primes</div>'
+    +'<div class="btit" style="margin:-14px 0 6px">Primes</div>'
     +[['antenne','Antenne'],['reel','Réal (journaux inter)'],['coord','Coordination']].map(function(x){return '<div class="srow" style="padding:6px 0"><div class="slbl">'+x[1]+'</div><label class="tgl"><input type="checkbox" id="custom-pr-'+x[0]+'"'+(_cvPr[x[0]]?' checked':'')+'><span class="tgl-s"></span></label></div>';}).join('')
-    +'<div style="font-size:11px;color:var(--text3);margin:4px 0 18px">La prime matin et les heures de nuit se calculent d’après les horaires.</div>'
-    +_cvOpts
+    +(pendingKey?'<div class="mrow" style="margin:10px 0 4px"><label>Autre prime du jour</label><div style="display:flex;gap:8px"><input id="custom-sp-lbl" placeholder="Formateur, prime ponctuelle…" value="'+String(_cvDp.lbl||'').replace(/"/g,'&quot;')+'" style="flex:1;min-width:0"><input id="custom-sp-amt" inputmode="decimal" placeholder="€" value="'+(_cvDp.amt?String(_cvDp.amt).replace('.',','):'')+'" style="width:90px;text-align:right"></div></div>':'')
+    +'<div style="font-size:11px;color:var(--text3);margin:4px 0 0">La prime matin et les heures de nuit se calculent d’après les horaires.</div>'
+    +_cvAdd+(pendingKey?'':'<div style="height:18px"></div>')
     +'<div class="mbtns"><button class="mb" onclick="if(pendingKey)openDay(pendingKey);else closeModal()">Annuler</button><button class="mb pri" onclick="confirmCustomVac()">Valider</button></div>'
     +'</div></div>';
   document.getElementById('custom-name').value=_cvName;
@@ -6867,17 +6869,30 @@ function confirmCustomVac(){
     vacKey='_p_'+name+'_'+Date.now();
   }
   var _pr={};['antenne','reel','coord'].forEach(function(k){var c=document.getElementById('custom-pr-'+k);if(c&&c.checked)_pr[k]=true;});
+  if(pendingKey){
+    var _sl=document.getElementById('custom-sp-lbl'),_sa=document.getElementById('custom-sp-amt');
+    var _amt=_sa?parseFloat(String(_sa.value).replace(/\s/g,'').replace(',','.')):NaN;
+    if(!S.dayPrimes)S.dayPrimes={};
+    var _had=JSON.stringify(S.dayPrimes[pendingKey]||null);
+    if(_amt>0)S.dayPrimes[pendingKey]={lbl:(_sl&&_sl.value.trim())||'Prime spéciale',amt:Math.round(_amt*100)/100};else delete S.dayPrimes[pendingKey];
+    var _I=window._cvInit;
+    // Horaires et primes inchangés : on garde la vacation telle quelle (seule la prime spéciale a pu changer)
+    var _pb=function(o){return ['antenne','reel','coord'].map(function(k){return !!o[k];}).join();};
+    if(_I&&_I.deb===debStr&&_I.fin===finStr&&_I.name===name&&String(_I.pause)===String(pauseMin)&&_pb(JSON.parse(_I.pr))===_pb(_pr)){
+      if(JSON.stringify(S.dayPrimes[pendingKey]||null)!==_had){pushUndo('Prime modifiée');saveState();render();}
+      openDay(pendingKey);return;
+    }
+  }
   S.customVacs[vacKey]={deb:debStr,fin:finStr,dur,panier,hidden:true,label:name,primes:_pr};
   if(pendingKey){
     // Pose directe sur le jour avec les options choisies (plus d'écran intermédiaire)
     pushUndo('Vacation modifiée');
     var key=pendingKey,date=new Date(key+'T12:00:00'),cv=getCycleVac(date).cycleVac;
-    var _h=document.getElementById('custom-hs'),_e=document.getElementById('custom-epv');
-    var hs=!!(_h&&_h.checked),formation=!!(_e&&_e.checked);
+    var _po=(S.overrides||{})[key]||{};var hs=_po.hs===true,formation=_po.formation===true; // options réglées dans la fiche du jour
     if(!S.overrides)S.overrides={};
     S.overrides[key]={vac:vacKey,fromSV:!cv||cv==='RH',echange:false,hs:hs,formation:formation};
     logH(fmtDate(date)+' -> '+name+(hs?' (HS)':'')+(formation?' (Formation)':''),'#62aadc',key);
-    saveState();closeModal();render();popCell(key);gcalTrigger();
+    saveState();render();popCell(key);gcalTrigger();openDay(key);
     return;
   }
   saveState();render();
