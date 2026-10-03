@@ -2715,13 +2715,13 @@ function openBulletinsCal(y){
 }
 // Salaire de l'année, style de l'onglet Paie : tous les mois, brut du bulletin s'il est importé, sinon estimé
 function _svSalHtml(y){
-  var nowYM=NOW.getFullYear()*12+NOW.getMonth(),rows='',tot=0,nB=0,nE=0,nBad=0;
+  var nowYM=NOW.getFullYear()*12+NOW.getMonth(),rows='',tot=0,tB=0,tE=0,nB=0,nE=0,nBad=0;
   var fe=function(x){return fmtEuro(x).replace(/\s*€/,'');};
   for(var m=0;m<12;m++){
     var ym=y*12+m,pt;try{pt=calcPayeMois(y,m);}catch(e){continue;}
     if(!(pt&&pt.configured&&pt.salQ&&pt.heures))continue;
     var bu=(S.bulletins||{})[ym],fut=ym>nowYM,val=bu?bu.brut:pt.total,st='';
-    tot+=val;
+    tot+=val;if(bu)tB+=val;else tE+=val;
     if(bu){nB++;var cc=null;try{cc=_bulCompare(bu);}catch(e){}
       if(cc&&cc.status!=='ecart')st='<span style="color:var(--green)">✓ bulletin</span>';
       else if(_bulIgn(ym,cc))st='<span style="color:var(--text3)">ignoré</span>';
@@ -2730,8 +2730,9 @@ function _svSalHtml(y){
     rows+='<div class="sv-pr" onclick="'+'openBulletinModal('+ym+',\'recap\')'+'"><span class="l">'+ML[m]+'</span><b style="opacity:'+(bu?'1':'.6')+'">'+fe(val)+'</b><span class="s">'+st+'</span><i>›</i></div>';
   }
   return ''
-    +'<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0 2px"><span style="font-size:11px;color:var(--text3)">total brut'+(nE?' · dont '+nE+' mois estimé'+(nE>1?'s':''):'')+'</span><span style="font-size:17px;font-weight:700;color:var(--gold-pay)">'+(rows?fe(tot):'—')+'</span></div>'
-    +'<div style="font-size:10.5px;color:var(--text3);margin-bottom:6px">'+(nB?nB+' bulletin'+(nB>1?'s':'')+' importé'+(nB>1?'s':'')+(nBad?' · '+nBad+' à vérifier':' · tous conformes'):'aucun bulletin importé')+'</div>'
+    +'<div class="pp-r" style="padding:4px 0"><span style="flex:1;color:var(--text3);font-size:11px">total brut</span><b style="font-size:17px;color:var(--gold-pay)">'+(rows?fe(tot):'—')+'</b></div>'
+    +(rows?'<div class="pp-r" style="font-size:11px"><span style="flex:1;color:var(--text3)">payé · '+(nB?nB+' bulletin'+(nB>1?'s':'')+(nBad?' · '+nBad+' à vérifier':''):'aucun bulletin')+'</span><b style="color:var(--gold-pay)">'+fe(tB)+'</b></div>'
+      +'<div class="pp-r" style="font-size:11px;margin-bottom:4px"><span style="flex:1;color:var(--text3)">estimé · '+nE+' mois</span><b style="color:var(--gold-pay);opacity:.6">'+fe(tE)+'</b></div>':'')
     +'<div class="sep" style="margin:4px 0 4px"></div>'
     +(rows||'<div style="font-size:11px;color:var(--text3);padding:6px 0">Renseigner la paie dans Réglages → Paie pour voir l’estimation.</div>');
 }
