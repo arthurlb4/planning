@@ -3106,7 +3106,7 @@ function openDay(key){
       if(vn==='Autre'){
         vgHtml+=`<button class="mb" style="background:var(--bg0);color:var(--text2);font-weight:700" onclick="openAutreVacModal()">Autre</button>`;
       } else if(vn==='Vac. perso'){
-        vgHtml+=`<button class="mb" style="background:var(--bg0);color:var(--text2);font-weight:700" onclick="openCustomVacModal()">Modifier</button>`;
+        vgHtml+=`<button class="mb" style="background:var(--bg0);color:var(--text2);font-weight:700" onclick="openCustomVacModal()">${vac&&vac!=='RH'&&!absent?'Modifier':'Sur mesure'}</button>`;
       } else {
         var vi=VAC[vn];
         if(vi&&vi.mixte)return;
@@ -3194,9 +3194,10 @@ function openDay(key){
   // Jour modifié : retour au cycle (ou annulation de l'échange) en petit, en haut à droite de la fiche
   var _rst=echange?'<button style="font-size:11px;padding:3px 8px;border:1px solid rgba(192,57,43,.5);border-radius:6px;background:none;color:#d08a8a;cursor:pointer;white-space:nowrap" onclick="cancelExchange(\''+key+'\')">Annuler l’échange</button>'
     :ov?'<button style="font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;background:none;color:var(--text2);cursor:pointer;white-space:nowrap" onclick="resetVac()"><i class="ti ti-arrow-back-up" style="margin-right:3px"></i>'+(cycleVac&&cycleVac!=='RH'?vLbl(cycleVac,VAC):'Repos')+'</button>':'';
-  _renduBtn='<div style="display:flex;gap:6px;align-items:center">'+_rst+'</div>';
+  var _plusBtn=!_exr&&!absent&&!hasCg?'<button style="font-size:11px;padding:3px 8px;border:1px solid rgba(150,180,100,.45);border-radius:6px;background:rgba(150,180,100,.10);color:var(--rend-text);cursor:pointer;white-space:nowrap" onclick="openCustomVacModal(\'rendu\')"><i class="ti ti-clock-plus" style="margin-right:3px"></i>Heures</button>':'';
+  _renduBtn='<div style="display:flex;gap:6px;align-items:center">'+_plusBtn+_rst+'</div>';
   var _exrHtml=_exr?'<div onclick="pendingKey=\''+key+'\';openCustomVacModal(\'rendu\')" style="cursor:pointer;margin-top:8px;padding:7px 10px;border-radius:8px;background:rgba(150,180,100,.10);border:0.5px solid rgba(150,180,100,.25);display:flex;align-items:center;gap:8px;font-size:12.5px">'
-    +'<i class="ti ti-clock-plus" style="font-size:15px;color:var(--rend-text)"></i><span style="flex:1;color:var(--text2)">Rendu en plus'+(_exr.label?' · '+String(_exr.label).replace(/</g,'&lt;'):'')+'</span><b style="color:var(--rend-text)">+'+fmtMin(_exr.dur)+'</b></div>':'';
+    +'<i class="ti ti-clock-plus" style="font-size:15px;color:var(--rend-text)"></i><span style="flex:1;color:var(--text2)">Heures en plus'+(_exr.label?' · '+String(_exr.label).replace(/</g,'&lt;'):'')+'</span><b style="color:var(--rend-text)">+'+fmtMin(_exr.dur)+'</b></div>':'';
   // Options de la vacation posée : seulement quand elles changent quelque chose
   var _optHtml='';
   if(ov&&!echange&&!absent&&vac&&vac!=='RH'&&VAC[vac]&&!hasCg){
@@ -3286,7 +3287,7 @@ function confirmExtraRendu(key){
   saveState();render();_addBack(key);
 }
 function removeExtraRendu(key){
-  pushUndo('Rendu retiré');
+  pushUndo('Heures en plus retirées');
   if(S.extraRendus)delete S.extraRendus[key];
   saveState();render();_addBack(key);
 }
@@ -6835,8 +6836,6 @@ function coversMealSlot(debMin,finMin){
 
 function openCustomVacModal(mode){
   if(!document.body.classList.contains('modal-open'))_lockBodyScroll();
-  if(pendingKey&&!mode){var _gv=getVac(new Date(pendingKey+'T12:00:00'));
-    if(!_gv.vac||_gv.vac==='RH'||_gv.absent){_restChoice(pendingKey);return;}}
   if(mode==='rendu'){_extraOnlyModal(pendingKey);return;}
   var _cvDeb='08h00',_cvFin='16h00',_cvName='',_cvPause='30',_cvPr={};
   if(pendingKey){
@@ -6860,7 +6859,7 @@ function openCustomVacModal(mode){
     var _ab='flex:1;padding:10px 8px;border:0.5px solid var(--border);border-radius:var(--r);background:var(--bg2);color:var(--text2);font-size:12.5px;font-family:var(--font);cursor:pointer';
     var _durOpts='<option value="0">—</option>';for(var _d=15;_d<=600;_d+=15)_durOpts+='<option value="'+_d+'"'+(_x&&_x.dur===_d?' selected':'')+'>'+fmtMin(_d)+'</option>';
     var _fs='padding:10px 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--bg2);color:var(--text);font-family:var(--font)';
-    _cvAdd='<div class="btit" style="margin:16px 0 6px">Rendu en plus</div>'
+    _cvAdd='<div class="btit" style="margin:16px 0 6px">Heures en plus</div>'
       +'<div style="display:flex;gap:8px;margin-bottom:4px"><input id="cv-exr-lbl" placeholder="Réunion, formation…" value="'+String((_x&&_x.label)||'').replace(/"/g,'&quot;')+'" style="flex:1;min-width:0;'+_fs+'"><select id="cv-exr-dur" style="width:96px;-webkit-appearance:none;'+_fs+'">'+_durOpts+'</select></div>'
       +'<div style="font-size:11px;color:var(--text3);margin-bottom:12px;display:flex;justify-content:space-between;gap:8px"><span>Heures acquises en plus ce jour-là (réunion, formation…).</span>'+(_x?'<a style="color:var(--red);cursor:pointer;white-space:nowrap" onclick="document.getElementById(\'cv-exr-dur\').value=\'0\';document.getElementById(\'cv-exr-lbl\').value=\'\';this.textContent=\'retiré à la validation\'">Retirer</a>':'')+'</div>'
       +'<div class="btit" style="margin:4px 0 6px">Note</div>'
@@ -6885,23 +6884,14 @@ function openCustomVacModal(mode){
   document.getElementById('custom-pause').value=_cvPause;
 }
 
-// Jour de repos : ajouter des heures (rendu en plus) ou travailler une vacation ?
-function _restChoice(key){
-  var b='display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:14px;margin-bottom:8px;border:0.5px solid var(--border);border-radius:14px;background:var(--bg3);color:var(--text);font-family:var(--font);cursor:pointer';
-  document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)openDay(\''+key+'\')"><div class="sheet"><div class="sh"></div>'
-    +'<div class="st">'+fmtDate(new Date(key+'T12:00:00'))+'</div>'
-    +'<button class="rc-choice" style="'+b+'" onclick="openCustomVacModal(\'rendu\')"><i class="ti ti-clock-plus" style="font-size:22px;color:var(--rend-text)"></i><span><b style="display:block;font-size:14px;color:var(--text)">Ajouter des heures de rendu</b><small style="font-size:11.5px;color:var(--text3)">réunion, formation… comptées en rendus, le jour reste un repos</small></span></button>'
-    +'<button class="rc-choice" style="'+b+'" onclick="openCustomVacModal(\'vac\')"><i class="ti ti-briefcase" style="font-size:22px;color:var(--blue)"></i><span><b style="display:block;font-size:14px;color:var(--text)">Ajouter une vacation</b><small style="font-size:11.5px;color:var(--text3)">poser une vacation avec ses horaires</small></span></button>'
-    +'<button class="mcancel" onclick="openDay(\''+key+'\')">Retour</button></div></div>';
-}
 // Heures en plus et note seules (sans toucher à la vacation)
 function _extraOnlyModal(key){
   var x=(S.extraRendus||{})[key],n=(S.notes||{})[key]||'';
   var fs='padding:10px 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--bg2);color:var(--text);font-family:var(--font)';
   var o='<option value="0">—</option>';for(var d=15;d<=600;d+=15)o+='<option value="'+d+'"'+(x&&x.dur===d?' selected':(!x&&d===60?' selected':''))+'>'+fmtMin(d)+'</option>';
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)openDay(\''+key+'\')"><div class="sheet"><div class="sh"></div>'
-    +'<div class="st">'+(x?'Heures en plus':'Ajouter des heures de rendu')+'</div>'
-    +'<div style="font-size:11.5px;color:var(--text3);margin:-4px 0 12px">'+fmtDate(new Date(key+'T12:00:00'))+' · comptées dans les rendus acquis</div>'
+    +'<div class="st">'+(x?'Heures en plus':'Ajouter des heures')+'</div>'
+    +'<div style="font-size:11.5px;color:var(--text3);margin:-4px 0 12px">'+fmtDate(new Date(key+'T12:00:00'))+' · réunion, formation… comptées dans les heures acquises</div>'
     +'<div style="display:flex;gap:8px;margin-bottom:14px"><input id="cv-exr-lbl" placeholder="Réunion, formation…" value="'+String((x&&x.label)||'').replace(/"/g,'&quot;')+'" style="flex:1;min-width:0;'+fs+'"><select id="cv-exr-dur" style="width:96px;-webkit-appearance:none;'+fs+'">'+o+'</select></div>'
     +'<div class="btit" style="margin:4px 0 6px">Note</div>'
     +'<textarea id="cv-note" rows="2" maxlength="500" placeholder="Facultatif" style="width:100%;margin-bottom:18px;resize:vertical;'+fs+'">'+String(n).replace(/</g,'&lt;')+'</textarea>'
@@ -6916,7 +6906,7 @@ function _cvSaveExtras(){
     if(_ntx){var _nv=_ntx.value.trim();if(!S.notes)S.notes={};var _nOld=S.notes[pendingKey]||'';if(_nv!==_nOld){pushUndo('Note modifiée');if(_nv)S.notes[pendingKey]=_nv;else delete S.notes[pendingKey];}}
     if(_xd){var _xv=parseInt(_xd.value)||0,_xlv=(_xl&&_xl.value.trim())||'';if(!S.extraRendus)S.extraRendus={};var _xo=JSON.stringify(S.extraRendus[pendingKey]||null);
       var _xn=_xv>0?{dur:_xv,label:_xlv}:null;
-      if(JSON.stringify(_xn)!==_xo){pushUndo('Rendu en plus modifié');if(_xn)S.extraRendus[pendingKey]=_xn;else delete S.extraRendus[pendingKey];}}
+      if(JSON.stringify(_xn)!==_xo){pushUndo('Heures en plus modifiées');if(_xn)S.extraRendus[pendingKey]=_xn;else delete S.extraRendus[pendingKey];}}
 }
 function confirmCustomVac(){
   const name=(document.getElementById('custom-name')||{value:''}).value.trim();
