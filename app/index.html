@@ -458,6 +458,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .sv2-anim .sv2-row:nth-of-type(4) .eph-b,.sv2-anim .sv2-row:nth-of-type(4) .eph-b2{animation-delay:.12s}
 .sv2-anim .sv2-row:nth-of-type(5) .eph-b,.sv2-anim .sv2-row:nth-of-type(5) .eph-b2{animation-delay:.16s}
 @keyframes sv2BarIn{from{width:0}}
+.rc-anim .eph-urow .eph-b,.rc-anim .eph-urow .eph-b2{animation:sv2BarIn .7s cubic-bezier(.2,.8,.2,1) both}
 .sv2-bump{animation:sv2Bump .45s ease}
 @keyframes sv2Bump{0%{transform:scale(1)}35%{transform:scale(1.12)}100%{transform:scale(1)}}
 @media (prefers-reduced-motion:reduce){.sv2-anim .sv2-row .eph-b,.sv2-anim .sv2-row .eph-b2,.sv2-bump{animation:none}}
@@ -2445,11 +2446,11 @@ function openBulletinModal(ym,from){
   if(!document.body.classList.contains('modal-open'))_lockBodyScroll();
   var y=Math.floor(ym/12),cy=TODAY_YM!=null?Math.floor(TODAY_YM/12):y,arr='font-size:18px;padding:0 10px;color:var(--text2);cursor:pointer;user-select:none';
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet pp-sheet"><div class="sh"></div>'
-    +'<div style="'+_navBackCss+'" onclick="openBulletinsCal('+y+')">‹ Paie '+y+'</div>'
+    +'<div class="nav-back" style="'+_navBackCss+'" onclick="openBulletinsCal('+y+')">‹ Paie '+y+'</div>'
     +'<div class="st" style="display:flex;align-items:center;justify-content:space-between"><span style="'+arr+'" onclick="_swipeGo(-1,function(){openBulletinModal('+(ym-1)+')})">‹</span><span>Paie '+_deMois(ym)+(y!==cy?' '+y:'')+'</span><span style="'+arr+'" onclick="_swipeGo(1,function(){openBulletinModal('+(ym+1)+')})">›</span></div>'
     +_payPageHtml(ym)
     +'<button class="mcancel mclose" onclick="closeModal()">Fermer</button></div></div>';
-  _swipeNav(function(nd){openBulletinModal(ym+nd);});
+  _swipeNav(function(nd){openBulletinModal(ym+nd);},function(){openBulletinsCal(Math.floor(ym/12));});
 }
 // Page Paie d'un mois : calcul de l'app, annoté avec le bulletin s'il est importé
 function _payPageHtml(ym){
@@ -2706,11 +2707,11 @@ function openBulletinsCal(y){
   var arr='font-size:18px;padding:0 10px;color:var(--text2);cursor:pointer;user-select:none';
   if(!document.body.classList.contains('modal-open'))_lockBodyScroll();
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="sh"></div>'
-    +'<div style="'+_navBackCss+'" onclick="openMergedRenduCgModal(6,2)">‹ Suivi</div>'
+    +'<div class="nav-back" style="'+_navBackCss+'" onclick="openMergedRenduCgModal(6,2)">‹ Suivi</div>'
     +'<div class="st" style="display:flex;align-items:center;justify-content:space-between"><span style="'+arr+'" onclick="_svYearGo('+(y-1)+')">‹</span><span>Paie '+y+'</span><span style="'+arr+'" onclick="_svYearGo('+(y+1)+')">›</span></div><div id="sv-sal">'+_svSalHtml(y)+'</div>'
     +'<div style="display:flex;gap:8px;margin:14px 0 14px"><button onclick="window._bulFrom=\'recap\';importBulletins()" style="font-size:11px;padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:none;cursor:pointer;font-family:var(--font);color:var(--text2)"><i class="ti ti-file-import" style="margin-right:4px"></i>Importer des bulletins (PDF)</button></div>'
     +'<button class="mcancel mclose" onclick="closeModal()">Fermer</button></div></div>';
-  _swipeNav(function(nd){openBulletinsCal(y+nd);});
+  _swipeNav(null,function(){openMergedRenduCgModal(6,2);});
 }
 // Salaire de l'année, style de l'onglet Paie : tous les mois, brut du bulletin s'il est importé, sinon estimé
 function _svSalHtml(y){
@@ -2912,7 +2913,8 @@ function getDayVacs(dw,allVK){
 var _lpk=null; // backup of pendingKey for avw()
 
 // Glisser à gauche / à droite dans une fiche : go(+1) suivant, go(-1) précédent, avec l'effet de page qui glisse
-function _swipeNav(go){
+// go(+1/−1) : page suivante / précédente ; back : retour (glisser vers la droite, depuis le bord gauche si go existe)
+function _swipeNav(go,back){
   var sh=document.querySelector('#modal-root .sheet');if(!sh)return;
   var d=window._dayNavDir||0;window._dayNavDir=0;
   if(d){
@@ -2929,13 +2931,14 @@ function _swipeNav(go){
     if(skip)return;
     var dx=e.changedTouches[0].clientX-sx,dy=e.changedTouches[0].clientY-sy;
     if(Math.abs(dx)<60||Math.abs(dx)<Math.abs(dy)*1.5)return;
-    _swipeGo(dx<0?1:-1,go);
+    if(back&&dx>0&&(!go||sx<32)){_swipeGo(-1,back);return;}
+    if(go)_swipeGo(dx<0?1:-1,go);
   },{passive:true});
 }
 // Seul le contenu glisse : le fond de la fiche et sa poignée restent en place
 function _swipeKids(sh,tr,tf){
   sh.style.overflowX='hidden';
-  [].forEach.call(sh.children,function(el){if(el.classList.contains('sh'))return;el.style.transition=tr;el.style.transform=tf;});
+  [].forEach.call(sh.children,function(el){if(el.classList.contains('sh')||el.classList.contains('nav-back'))return;el.style.transition=tr;el.style.transform=tf;});
 }
 function _swipeGo(nd,go){
   var sh=document.querySelector('#modal-root .sheet');if(!sh){go(nd);return;}
@@ -3927,7 +3930,7 @@ function rhCompareShow(rh){
     +(!consOk?'<div style="font-size:11px;color:var(--text3);margin-top:6px">Écart sur le total déduit : '+fmtE(dCons)+(_rhCIgn('cons',dCons)?' · ignoré':'')+' · '+_rhIgnLink('cons',dCons)+'</div>':'')
     +(wkCmt?'<div class="rv-why" style="font-size:11px;color:var(--text3)">'+(wkCmt>1?'Ces semaines : le commentaire ne correspond pas':'Le commentaire ne correspond pas')+', mais le total déduit est le même que l’app. Rien à corriger.</div>':'');
   const html='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet rv-sheet">'
-    +'<div class="sh"></div>'+(window._rvFrom?'<div style="'+_navBackCss+'" onclick="_rvGoBack()">‹ '+(window._rvFrom==='rendus'?'Rendus':'Suivi')+'</div>':'')
+    +'<div class="sh"></div>'+(window._rvFrom?'<div class="nav-back" style="'+_navBackCss+'" onclick="_rvGoBack()">‹ '+(window._rvFrom==='rendus'?'Rendus':'Suivi')+'</div>':'')
     +'<div class="st" style="display:flex;justify-content:center;text-align:center;margin-bottom:2px">Tableau Gestion</div>'
     +'<div style="font-size:11px;color:var(--text3);text-align:center;margin:0 0 12px">édité le '+asOf.toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'})+'</div>'
     // Même présentation que la page Paie : la valeur de l'app à droite, celle du tableau à sa gauche
@@ -3953,6 +3956,7 @@ function rhCompareShow(rh){
     +'<button class="mcancel mclose" onclick="closeModal()">Fermer</button>'
     +'</div></div>';
   document.getElementById('modal-root').innerHTML=html;
+  if(window._rvFrom)_swipeNav(null,function(){_rvGoBack();});
 }
 
 function canPlaceRendu(newKeys){
@@ -5350,6 +5354,7 @@ function moisTab(idx){
 // Ordre affiché des onglets (Suivi à gauche, comme sur l'accueil) ; les numéros restent Rendus 0, Congés 1, Suivi 2
 var _RCG_ORDER=[2,0,1];
 function rcgTab(idx){
+  if(idx===0){var _w=document.getElementById('rcc-0');if(_w){_w.classList.remove('rc-anim');void _w.offsetWidth;_w.classList.add('rc-anim');[].forEach.call(_w.querySelectorAll('.eph-urow'),function(r,i){[].forEach.call(r.querySelectorAll('.eph-b,.eph-b2'),function(b){b.style.animationDelay=(i*.05)+'s';});});}}
   if(idx===2&&document.getElementById('rcc-2')&&document.getElementById('rcc-2').style.visibility==='hidden')requestAnimationFrame(function(){_cptAnim(document.getElementById('cpt-card'));});
   // En quittant le récap, ses blocs se replient
   if(idx!==2){_foldOpen={};document.querySelectorAll('#rcc-2 details.fold[open]').forEach(function(d){d.open=false;});}
