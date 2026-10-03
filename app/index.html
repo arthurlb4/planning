@@ -2438,7 +2438,7 @@ function _bulBad(ym){var c;try{c=_bulCompare(S.bulletins[ym]);}catch(e){return f
 function bulIgnore(ym,on){var pr=S.profile;if(!pr.ignBul)pr.ignBul={};if(on)pr.ignBul[ym]=_bulCompare(S.bulletins[ym]).adj;else delete pr.ignBul[ym];saveState();render();openBulletinModal(ym);}
 // Tableau Gestion : on ignore une différence précise (gardée tant que sa valeur ne change pas), pas l'écart entier
 function _rhCIgn(k,v){var i=((S.profile||{}).ignRhC||{})[k];return i!=null&&Math.abs(i-v)<2;}
-function rhIgnC(k,v,on){var pr=S.profile;if(!pr.ignRhC)pr.ignRhC={};if(on)pr.ignRhC[k]=v;else delete pr.ignRhC[k];delete pr.ignRh;saveState();render();rhOpenFrom(window._rvFrom||'recap');}
+function rhIgnC(k,v,on){var pr=S.profile;if(!pr.ignRhC)pr.ignRhC={};if(on)pr.ignRhC[k]=v;else delete pr.ignRhC[k];delete pr.ignRh;saveState();rhOpenFrom(window._rvFrom||'recap');render();}
 // Écart restant une fois les différences ignorées retirées (app − tableau, comme rhCmp.d)
 function _rhDe(c){return c?(c.de!=null?c.de:c.d):0;}
 function _rhIgnLink(k,v){var on=_rhCIgn(k,v);return '<a style="color:var(--blue);cursor:pointer;font-weight:400;white-space:nowrap" onclick="event.stopPropagation();rhIgnC(\''+k+'\','+Math.round(v)+','+(on?0:1)+')">'+(on?'Ne plus ignorer':'Ignorer')+'</a>';}
@@ -2695,8 +2695,8 @@ function _suiviSimple(y){
   // Accueil des problèmes : imports, écart avec le tableau Gestion, bulletins à vérifier
   var c=S.profile&&S.profile.rhCmp,o=S.profile&&S.profile.rhTable,g;
   if(!c||!o)g='<button class="sv-tile" onclick="rhOpenFromRecap(true)"><span class="t">Écart Gestion</span><b style="color:var(--text3)">—</b><small>aucun tableau importé</small></button>';
-  else{var e0=-c.d,e=-_rhDe(c),ok=Math.abs(e0)<2,ig=!ok&&Math.abs(e)<2,part=!ok&&!ig&&Math.abs(e-e0)>=2;if(ig)e=e0;
-    g='<button class="sv-tile" onclick="rhOpenFromRecap()"><span class="t">Écart Gestion</span><b style="color:'+(ig?'var(--text3)':ok||e>0?'var(--green)':'var(--red)')+'">'+(ok?'✓':(e>0?'+':'−')+fmtMin(Math.abs(e)))+'</b><small>'+(ok?'identique':ig?'différences ignorées':(e>0?'favorable':'à faire corriger')+(part?' · hors ignorées':''))+'<br><span style="white-space:nowrap">Tableau du '+new Date(c.ed+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long'})+'</span>'+'</small></button>';}
+  else{var e0=-c.d,e=-_rhDe(c),ok=Math.abs(e0)<2,ig=!ok&&Math.abs(e)<2,part=!ok&&!ig&&Math.abs(e-e0)>=2;
+    g='<button class="sv-tile" onclick="rhOpenFromRecap()"><span class="t">Écart Gestion</span><b style="color:'+(ok||e0>0?'var(--green)':'var(--red)')+'">'+(ok?'✓':(e0>0?'+':'−')+fmtMin(Math.abs(e0)))+'</b><small>'+(ok?'identique':(e0>0?'favorable':'à faire corriger')+(ig?' • différences ignorées':part?' • en partie ignoré':''))+'<br><span style="white-space:nowrap">Tableau du '+new Date(c.ed+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long'})+'</span>'+'</small></button>';}
   var nB=0,nBad=0;Object.keys(S.bulletins||{}).forEach(function(k){nB++;if(_bulBad(+k))nBad++;});
   var bl='<button class="sv-tile" onclick="openBulletinsCal()"><span class="t">Bulletins</span><b style="color:'+(!nB?'var(--text3)':nBad?'var(--amber)':'var(--green)')+'">'+(!nB?'—':nBad?'⚠ '+nBad:'✓')+'</b><small>'+(!nB?'aucun bulletin importé':nBad?(nBad>1?'bulletins à vérifier':'bulletin à vérifier')+' sur '+nB:nB+' bulletin'+(nB>1?'s':'')+' conforme'+(nB>1?'s':''))+'</small></button>';
   return '<div class="sv-tiles">'+g+bl+'</div>';
@@ -3921,7 +3921,7 @@ function rhCompareShow(rh){
   if(bad(rest)){if(_rhCIgn('rest',rest))ignSum+=rest;whyTxt+=(whyTxt?' ':'')+'Il reste '+fmtE(rest)+' liés aux heures expirées ou aux reports. '+_rhIgnLink('rest',rest);}
   // Écart une fois les différences ignorées retirées ; c'est lui qui déclenche les alertes
   const eEff=-dSol-ignSum;
-  if(S.profile){const _c={ed:dk(asOf),d:Math.round(dSol),de:Math.round(-eEff)};const _o=S.profile.rhCmp;if(!_o||_o.ed!==_c.ed||_o.d!==_c.d||_o.de!==_c.de){S.profile.rhCmp=_c;saveState();}}
+  if(S.profile){const _c={ed:dk(asOf),d:Math.round(dSol),de:Math.round(-eEff)};const _o=S.profile.rhCmp;if(!_o||_o.ed!==_c.ed||_o.d!==_c.d||_o.de!==_c.de){S.profile.rhCmp=_c;saveState();try{render();}catch(e){}}}
   if(bad(dSol))whyTxt+=' '+(dSol<0?'':'Le tableau laisse moins d’heures que l’app : demander au gestionnaire de corriger.');
   const acqTbl='<table class="rc-t"><tr><th></th><th>Tableau</th><th>App</th><th>Écart</th></tr>'
     +acqRows.map(r=>{const e=r.s-r.a;return '<tr'+(bad(e)?' class="rc-hl"':'')+'><td>'+MFc(r.ym)+'</td><td>'+(r.s?fmtMin(r.s):'—')+'</td><td>'+(r.a?fmtMin(r.a):'—')+'</td>'+(bad(e)?'<td class="'+(e>0?'rc-pos':'rc-neg')+'">'+fmtE(e)+'</td>':'<td><span class="rc-ok">✓</span></td>')+'</tr>';}).join('')+'</table>';
@@ -3938,9 +3938,9 @@ function rhCompareShow(rh){
     // Heures restantes en avant : tableau, app, écart (sans carte, comme les pages Paie)
     +'<div style="font-size:11px;color:var(--text3);text-align:center;margin-bottom:6px">heures restantes</div>'
     +'<div class="tg-hr"><div><b>'+fmtMin(solRh)+'</b><span>tableau</span></div><div><b style="color:var(--rend-text)">'+fmtMin(sumSolApp)+'</b><span>app</span></div>'
-    +'<div><b style="color:'+(!bad(dSol)?'var(--green)':!bad(eEff)?'var(--text3)':eEff>0?'var(--green)':'var(--red)')+'">'+(bad(dSol)?fmtE(-dSol):'✓')+'</b><span>écart</span></div></div>'
-    +'<div style="font-weight:600;margin:2px 0 4px;color:'+(!bad(dSol)?'var(--green)':!bad(eEff)?'var(--text3)':eEff>0?'var(--green)':'var(--red)')+'">'
-    +(!bad(dSol)?'✓ Identique à l’app':!bad(eEff)?'Différences ignorées':(eEff>0?'Écart favorable':'À faire corriger')+(ignSum&&bad(ignSum)?' : '+fmtE(eEff)+' hors différences ignorées':''))+'</div>'
+    +'<div><b style="color:'+(!bad(dSol)||dSol<0?'var(--green)':'var(--red)')+'">'+(bad(dSol)?fmtE(-dSol):'✓')+'</b><span>écart</span></div></div>'
+    +'<div style="font-weight:600;margin:2px 0 4px;color:'+(!bad(dSol)||dSol<0?'var(--green)':'var(--red)')+'">'
+    +(!bad(dSol)?'✓ Identique à l’app':(dSol<0?'Écart favorable':'À faire corriger')+(!bad(eEff)?' • différences ignorées':ignSum&&bad(ignSum)?' • reste '+fmtE(eEff)+' hors différences ignorées':''))+'</div>'
     +(whyTxt&&bad(dSol)?'<div class="rv-why" style="border-top:none;margin-top:0;padding-top:0">'+whyTxt+'</div>':'')
     +(lagTot>0?'<div class="rv-hn" style="border-top:none;padding-top:0;margin-top:6px"><i class="ti ti-clock"></i> <span><b>'+fmtMin(lagTot)+'</b> de rendus pas encore notés par le gestionnaire ('+lagKeys.sort().map(k=>new Date(k+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'})).join(', ')+') : mis de côté.</span></div>':'')
     +'</div><div class="sep" style="margin:10px 0 0"></div>'
