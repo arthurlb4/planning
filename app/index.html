@@ -2058,7 +2058,7 @@ function _sv2Animate(v2,mym){
 function _recapCol(col,y){
   var bad=0,n=0;
   Object.keys(S.bulletins||{}).forEach(function(k){if(Math.floor(+k/12)!==y)return;n++;if(_bulBad(+k))bad++;});
-  var c=S.profile&&S.profile.rhCmp;if(c){n++;if(c.d>=2&&!_rhIgn())bad++;} // tableau Gestion : seulement s'il laisse moins d'heures que l'app
+  var c=S.profile&&S.profile.rhCmp;if(c){n++;if(_rhDe(c)>=2)bad++;} // tableau Gestion : seulement s'il laisse moins d'heures que l'app
   var val=!n?'—':bad?'⚠ '+bad:'✓',color=bad?'var(--amber)':'var(--green)',sub=!n?'bilan':bad?'à vérifier':'conforme';
   return col('Suivi',val,color,sub,'openMergedRenduCgModal(6,2)');
 }
@@ -2434,8 +2434,12 @@ var _BUL_ST={ok:['✓','var(--green)','Conforme'],late:['✓','var(--green)','Co
 function _bulIgn(ym,c){var i=((S.profile||{}).ignBul||{})[ym];return i!=null&&!!c&&Math.abs(i-c.adj)<=0.05;}
 function _bulBad(ym){var c;try{c=_bulCompare(S.bulletins[ym]);}catch(e){return false;}return c.status==='ecart'&&!_bulIgn(ym,c);}
 function bulIgnore(ym,on){var pr=S.profile;if(!pr.ignBul)pr.ignBul={};if(on)pr.ignBul[ym]=_bulCompare(S.bulletins[ym]).adj;else delete pr.ignBul[ym];saveState();render();openBulletinModal(ym);}
-function _rhIgn(){var c=(S.profile||{}).rhCmp,i=(S.profile||{}).ignRh;return !!(c&&i&&i.ed===c.ed&&i.d===c.d);}
-function rhIgnore(on){var pr=S.profile;if(on)pr.ignRh={ed:pr.rhCmp.ed,d:pr.rhCmp.d};else delete pr.ignRh;saveState();render();rhOpenFrom(window._rvFrom||'recap');}
+// Tableau Gestion : on ignore une différence précise (gardée tant que sa valeur ne change pas), pas l'écart entier
+function _rhCIgn(k,v){var i=((S.profile||{}).ignRhC||{})[k];return i!=null&&Math.abs(i-v)<2;}
+function rhIgnC(k,v,on){var pr=S.profile;if(!pr.ignRhC)pr.ignRhC={};if(on)pr.ignRhC[k]=v;else delete pr.ignRhC[k];delete pr.ignRh;saveState();render();rhOpenFrom(window._rvFrom||'recap');}
+// Écart restant une fois les différences ignorées retirées (app − tableau, comme rhCmp.d)
+function _rhDe(c){return c?(c.de!=null?c.de:c.d):0;}
+function _rhIgnLink(k,v){var on=_rhCIgn(k,v);return '<a style="color:var(--blue);cursor:pointer;font-weight:400;white-space:nowrap" onclick="event.stopPropagation();rhIgnC(\''+k+'\','+Math.round(v)+','+(on?0:1)+')">'+(on?'Ne plus ignorer':'Ignorer')+'</a>';}
 function openBulletinModal(ym,from){
   if(!document.body.classList.contains('modal-open'))_lockBodyScroll();
   var y=Math.floor(ym/12),cy=TODAY_YM!=null?Math.floor(TODAY_YM/12):y,arr='font-size:18px;padding:0 10px;color:var(--text2);cursor:pointer;user-select:none';
@@ -2689,8 +2693,8 @@ function _suiviSimple(y){
   // Accueil des problèmes : imports, écart avec le tableau Gestion, bulletins à vérifier
   var c=S.profile&&S.profile.rhCmp,o=S.profile&&S.profile.rhTable,g;
   if(!c||!o)g='<button class="sv-tile" onclick="rhOpenFromRecap(true)"><span class="t">Écart Gestion</span><b style="color:var(--text3)">—</b><small>aucun tableau importé</small></button>';
-  else{var e=-c.d,ok=Math.abs(e)<2,ig=!ok&&_rhIgn();
-    g='<button class="sv-tile" onclick="rhOpenFromRecap()"><span class="t">Écart Gestion</span><b style="color:'+(ig?'var(--text3)':ok||e>0?'var(--green)':'var(--red)')+'">'+(ok?'✓':(e>0?'+':'−')+fmtMin(Math.abs(e)))+'</b><small>'+(ok?'identique':ig?'écart ignoré':e>0?'favorable':'à faire corriger')+'<br><span style="white-space:nowrap">Tableau du '+new Date(c.ed+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long'})+'</span>'+'</small></button>';}
+  else{var e0=-c.d,e=-_rhDe(c),ok=Math.abs(e0)<2,ig=!ok&&Math.abs(e)<2,part=!ok&&!ig&&Math.abs(e-e0)>=2;if(ig)e=e0;
+    g='<button class="sv-tile" onclick="rhOpenFromRecap()"><span class="t">Écart Gestion</span><b style="color:'+(ig?'var(--text3)':ok||e>0?'var(--green)':'var(--red)')+'">'+(ok?'✓':(e>0?'+':'−')+fmtMin(Math.abs(e)))+'</b><small>'+(ok?'identique':ig?'différences ignorées':(e>0?'favorable':'à faire corriger')+(part?' · hors ignorées':''))+'<br><span style="white-space:nowrap">Tableau du '+new Date(c.ed+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long'})+'</span>'+'</small></button>';}
   var nB=0,nBad=0;Object.keys(S.bulletins||{}).forEach(function(k){nB++;if(_bulBad(+k))nBad++;});
   var bl='<button class="sv-tile" onclick="openBulletinsCal()"><span class="t">Bulletins</span><b style="color:'+(!nB?'var(--text3)':nBad?'var(--amber)':'var(--green)')+'">'+(!nB?'—':nBad?'⚠ '+nBad:'✓')+'</b><small>'+(!nB?'aucun bulletin importé':nBad?(nBad>1?'bulletins à vérifier':'bulletin à vérifier')+' sur '+nB:nB+' bulletin'+(nB>1?'s':'')+' conforme'+(nB>1?'s':''))+'</small></button>';
   return '<div class="sv-tiles">'+g+bl+'</div>';
@@ -3822,7 +3826,7 @@ function rhCompareShow(rh){
   const edY=asOf.getFullYear();
   // Rendus posés après la dernière semaine notée par le gestionnaire : pas encore dans son tableau, mis de côté
   const isLagged=key=>{if(!rh.lastWeek)return false;const d=new Date(key+'T12:00:00');return d.getFullYear()===edY&&getISOWeek(getMonday(d))>rh.lastWeek;};
-  const items=[],detRows=[],repList=[];let sumSolApp=0,lagTot=0,acqBad=0;const lagKeys=[];
+  const items=[],detRows=[],repList=[];let sumSolApp=0,lagTot=0,acqBad=0,ignSum=0;const lagKeys=[];
   const acqIt=[],acqRows=[];let tConsS=0,tConsA=0;
   const item=(t,sub,v,body,neutral,to)=>(to||items).push('<div class="rv-it" onclick="if(event.target.tagName!==\'BUTTON\')this.classList.toggle(\'on\')"><div class="rv-ih"><span class="rv-dot"></span><div class="rv-tt">'+t+'<small>'+sub+'</small></div><b class="rv-v'+(neutral?' n':/^\+/.test(v)?' pos':/^−/.test(v)?' neg':'')+'">'+v+'</b><i class="ti ti-chevron-down rv-ch"></i></div><div class="rv-ib">'+body+'</div></div>');
   const cmp=(s,a)=>'<div class="rv-cmp"><span>Tableau <b>'+fmtMin(s)+'</b></span><span>App <b>'+fmtMin(a)+'</b></span></div>';
@@ -3849,9 +3853,9 @@ function rhCompareShow(rh){
       diffs.filter(x=>x.d>0).forEach(x=>{const y=diffs.find(z=>z.d<0&&!used.has(z)&&Math.abs(z.d+x.d)<2);if(!y||used.has(x))return;used.add(x);used.add(y);
         const dl=daysOf(x.k);
         item('Catégorie différente en '+MF[ym%12],natL(x.k)+' dans l’app, '+natL(y.k)+' dans le tableau',fmtMin(x.d),(dl.length?'Dans l’app : '+dl.join(' · ')+'<br>':'')+'Même durée des deux côtés : pas d’effet sur le solde.',true,acqIt);});
-      diffs.filter(x=>!used.has(x)).forEach(x=>{acqBad++;const dl=daysOf(x.k);
-        item((x.k.startsWith('autre:')?natL(x.k)+' ':NAT_T[x.k]+' ')+moisDe(ym),x.d<0?'Le tableau en compte plus':'L’app en compte plus',fmtE(-x.d),
-          cmp(x.s,x.a)+(dl.length?'Dans l’app : '+dl.join(' · '):''),false,acqIt);});
+      diffs.filter(x=>!used.has(x)).forEach(x=>{acqBad++;const dl=daysOf(x.k),ik='acq'+ym+x.k.replace(/[^a-z0-9]/gi,''),ig=_rhCIgn(ik,-x.d);if(ig)ignSum+=-x.d;
+        item((x.k.startsWith('autre:')?natL(x.k)+' ':NAT_T[x.k]+' ')+moisDe(ym),(x.d<0?'Le tableau en compte plus':'L’app en compte plus')+(ig?' · ignorée':''),fmtE(-x.d),
+          cmp(x.s,x.a)+(dl.length?'Dans l’app : '+dl.join(' · '):'')+'<div style="margin-top:6px">'+_rhIgnLink(ik,-x.d)+'</div>',ig,acqIt);});
     }
     // Reports
     const rhRep=Math.max(0,...(rh.lines.filter(l=>l.ym===ym).map(l=>l.rep)),0),appRep=getEphExtensions(ym);
@@ -3891,7 +3895,7 @@ function rhCompareShow(rh){
     return '<tr'+(b?(consOk?' class="rc-cmt"':' class="rc-hl"'):cited?'':' style="opacity:.55"')+'><td>S'+w+(b&&consOk?' <i class="rc-n">commentaire seulement</i>':'')+'</td><td>'+(cited?fmtMin(sh):'pas cité')+'</td><td>'+(a?fmtMin(a):'—')+'</td>'+(cited?(bad(d)?'<td'+(b&&consOk?'':' class="'+(d>0?'rc-pos':'rc-neg')+'"')+'>'+fmtE(d)+'</td>':'<td><span class="rc-ok">✓</span></td>'):'<td></td>')+'</tr>';}).join('');
   // Matelas
   const matApp=calcSoldes().matelas,hasMat=rh.tot.stockAct!==null&&rh.tot.stockAct!==undefined,matBad=hasMat&&bad(matApp-rh.tot.stockAct);
-  if(matBad)item('Matelas',matApp>rh.tot.stockAct?'L’app en compte plus':'Le tableau en compte plus',fmtE(rh.tot.stockAct-matApp),cmp(rh.tot.stockAct,matApp));
+  if(matBad){const mig=_rhCIgn('mat',rh.tot.stockAct-matApp);item('Matelas',(matApp>rh.tot.stockAct?'L’app en compte plus':'Le tableau en compte plus')+(mig?' · ignorée':''),fmtE(rh.tot.stockAct-matApp),cmp(rh.tot.stockAct,matApp)+'<div style="margin-top:6px">'+_rhIgnLink('mat',rh.tot.stockAct-matApp)+'</div>',mig);}
   // Solde de départ saisi à la main : proposer la répartition du tableau
   const _sg=_rhStartSplit(rh),_hasSplit=!!(S.profile&&S.profile.ephSoldeSplit&&Object.keys(S.profile.ephSoldeSplit).length);
   const _sgTxt=Object.keys(_sg.split).map(Number).sort((a,b)=>a-b).map(ym=>ymL(ym)+' '+fmtMin(_sg.split[ym])).join(' · ');
@@ -3900,7 +3904,6 @@ function rhCompareShow(rh){
   // Synthèse
   const solRh=rh.tot.cumSol,dSol=sumSolApp-solRh;
   // Dernier bilan, affiché sur le bouton « Comparer » du modal rendus
-  if(S.profile){const _c={ed:dk(asOf),d:Math.round(dSol)};const _o=S.profile.rhCmp;if(!_o||_o.ed!==_c.ed||_o.d!==_c.d){S.profile.rhCmp=_c;saveState();}}
   const okParts=[];if(hasMat&&!matBad)okParts.push('matelas');if(!repList.length)okParts.push('reports');
   // Explication de l'écart : seules les vraies différences (acquises par mois, total déduit), le reste est un arrondi
   const MFc=ym=>MF[ym%12].replace(/^./,c=>c.toUpperCase());
@@ -3910,12 +3913,17 @@ function rhCompareShow(rh){
   const why=[];acqBadRows.forEach(r=>why.push(sg(r.s-r.a)+'les heures acquises en '+MF[r.ym%12]+' ('+fmtE(r.s-r.a)+')</b>'));if(!consOk)why.push(sg(dCons)+'les rendus déduits ('+fmtE(dCons)+')</b>');
   const rest=-dSol-acqBadRows.reduce((t,r)=>t+r.s-r.a,0)-(consOk?0:dCons);
   let whyTxt=!bad(dSol)&&!why.length?'Tout correspond.':why.length?'L’écart vient '+(why.length===1?'d’<b>une seule</b> différence : ':'de : ')+why.join(', ')+'.':'';
-  if(bad(rest))whyTxt+=(whyTxt?' ':'')+'Il reste '+fmtE(rest)+' liés aux heures expirées ou aux reports.';
+  if(!consOk&&_rhCIgn('cons',dCons))ignSum+=dCons;
+  if(bad(rest)){if(_rhCIgn('rest',rest))ignSum+=rest;whyTxt+=(whyTxt?' ':'')+'Il reste '+fmtE(rest)+' liés aux heures expirées ou aux reports. '+_rhIgnLink('rest',rest);}
+  // Écart une fois les différences ignorées retirées ; c'est lui qui déclenche les alertes
+  const eEff=-dSol-ignSum;
+  if(S.profile){const _c={ed:dk(asOf),d:Math.round(dSol),de:Math.round(-eEff)};const _o=S.profile.rhCmp;if(!_o||_o.ed!==_c.ed||_o.d!==_c.d||_o.de!==_c.de){S.profile.rhCmp=_c;saveState();}}
   if(bad(dSol))whyTxt+=' '+(dSol<0?'':'Le tableau laisse moins d’heures que l’app : demander au gestionnaire de corriger.');
   const acqTbl='<table class="rc-t"><tr><th></th><th>Tableau</th><th>App</th><th>Écart</th></tr>'
     +acqRows.map(r=>{const e=r.s-r.a;return '<tr'+(bad(e)?' class="rc-hl"':'')+'><td>'+MFc(r.ym)+'</td><td>'+(r.s?fmtMin(r.s):'—')+'</td><td>'+(r.a?fmtMin(r.a):'—')+'</td>'+(bad(e)?'<td class="'+(e>0?'rc-pos':'rc-neg')+'">'+fmtE(e)+'</td>':'<td><span class="rc-ok">✓</span></td>')+'</tr>';}).join('')+'</table>';
   const consTbl='<table class="rc-t"><tr><th></th><th>Tableau</th><th>App</th><th>Écart</th></tr><tr class="rc-tot"><td>Total</td><td>'+fmtMin(tConsS)+'</td><td>'+fmtMin(tConsA)+'</td>'+(consOk?'<td><span class="rc-ok">✓</span></td>':'<td class="'+(dCons>0?'rc-pos':'rc-neg')+'">'+fmtE(dCons)+'</td>')+'</tr></table>'
     +(wkRows?'<div class="rv-dh" style="font-size:11px;font-weight:400;color:var(--text3)">Par semaine (commentaires du gestionnaire)</div><table class="rc-t"><tr><th></th><th></th><th></th><th></th></tr>'+wkRows+'</table>':'')
+    +(!consOk?'<div style="font-size:11px;color:var(--text3);margin-top:6px">Écart sur le total déduit : '+fmtE(dCons)+(_rhCIgn('cons',dCons)?' · ignoré':'')+' · '+_rhIgnLink('cons',dCons)+'</div>':'')
     +(wkCmt?'<div class="rv-why" style="font-size:11px;color:var(--text3)">'+(wkCmt>1?'Ces semaines : le commentaire ne correspond pas':'Le commentaire ne correspond pas')+', mais le total déduit est le même que l’app. Rien à corriger.</div>':'');
   const html='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet rv-sheet">'
     +'<div class="sh"></div>'+(window._rvFrom?'<div style="'+_navBackCss+'" onclick="_rvGoBack()">‹ '+(window._rvFrom==='rendus'?'Rendus':'Suivi')+'</div>':'')
@@ -3925,9 +3933,8 @@ function rhCompareShow(rh){
     +'<div style="font-size:11px">'
     +'<div class="pp-r" style="color:var(--text3);padding:0 0 2px"><span style="flex:1"></span><span class="pp-n">tableau</span><span class="pp-v">app</span></div>'
     +'<div class="pp-r" style="padding:5px 0"><span style="flex:1;color:var(--text3)">heures restantes</span><span class="pp-n" style="color:'+(bad(dSol)?(dSol<0?'var(--green)':'var(--red)'):'var(--green)')+'">'+(bad(dSol)?fmtMin(solRh):'✓')+'</span><b class="pp-v" style="font-size:15px;color:var(--rend-text)">'+fmtMin(sumSolApp)+'</b></div>'
-    +'<div style="font-weight:600;margin:2px 0 4px;color:'+(!bad(dSol)?'var(--green)':_rhIgn()?'var(--text3)':dSol<0?'var(--green)':'var(--red)')+'">'
-    +(!bad(dSol)?'✓ Identique à l’app':(dSol<0?'Écart favorable : ':'À faire corriger : ')+fmtE(-dSol))
-    +(bad(dSol)&&S.profile&&S.profile.rhCmp?(_rhIgn()?' · ignoré <a style="color:var(--blue);font-weight:400;cursor:pointer;margin-left:6px" onclick="rhIgnore(0)">Ne plus ignorer</a>':' <a style="color:var(--blue);font-weight:400;cursor:pointer;margin-left:6px" onclick="rhIgnore(1)">Ignorer</a>'):'')+'</div>'
+    +'<div style="font-weight:600;margin:2px 0 4px;color:'+(!bad(dSol)?'var(--green)':!bad(eEff)?'var(--text3)':eEff>0?'var(--green)':'var(--red)')+'">'
+    +(!bad(dSol)?'✓ Identique à l’app':!bad(eEff)?'Écart de '+fmtE(-dSol)+' : différences ignorées':(eEff>0?'Écart favorable : ':'À faire corriger : ')+fmtE(eEff)+(ignSum&&bad(ignSum)?' (hors différences ignorées)':''))+'</div>'
     +(whyTxt&&bad(dSol)?'<div class="rv-why" style="border-top:none;margin-top:0;padding-top:0">'+whyTxt+'</div>':'')
     +(lagTot>0?'<div class="rv-hn" style="border-top:none;padding-top:0;margin-top:6px"><i class="ti ti-clock"></i> <span><b>'+fmtMin(lagTot)+'</b> de rendus pas encore notés par le gestionnaire ('+lagKeys.sort().map(k=>new Date(k+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'})).join(', ')+') : mis de côté.</span></div>':'')
     +'</div><div class="sep" style="margin:10px 0 0"></div>'
