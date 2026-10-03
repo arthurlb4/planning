@@ -3030,12 +3030,14 @@ function _restWarn(key){
   return '<div style="font-size:12px;color:var(--amber);margin-top:5px;display:flex;gap:6px;align-items:baseline"><i class="ti ti-moon-stars" style="font-size:13px"></i><span>Moins de 11 h : '+out.join(' ; ')+'</span></div>';
 }
 // Note libre sur un jour (visible dans la fiche du jour)
+// Note / heures en plus : retour à l'écran d'où on vient (fiche du jour ou « Modifier le jour »)
+function _addBack(key){var f=window._addFrom;window._addFrom=null;pendingKey=key;if(f==='modif')openCustomVacModal();else openDay(key);}
 function openNoteModal(key){
   var cur=(S.notes||{})[key]||'',d=new Date(key+'T12:00:00');
-  document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)openDay(\''+key+'\')"><div class="sheet">'
+  document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)_addBack(\''+key+'\')"><div class="sheet">'
     +'<div class="sh"></div><div class="st">Note · '+fmtDate(d)+'</div>'
     +'<textarea id="note-txt" rows="4" maxlength="500" placeholder="Remplacement, formation, rappel…" style="width:100%;padding:10px 12px;border:0.5px solid var(--border);border-radius:var(--r);font:14px var(--font);background:var(--bg2);color:var(--text);resize:none;margin-bottom:10px"></textarea>'
-    +'<div class="mbtns">'+(cur?'<button class="mb del" style="border:none" onclick="saveNote(\''+key+'\',true)">Supprimer</button>':'<button class="mb" onclick="openDay(\''+key+'\')">Annuler</button>')
+    +'<div class="mbtns">'+(cur?'<button class="mb del" style="border:none" onclick="saveNote(\''+key+'\',true)">Supprimer</button>':'<button class="mb" onclick="_addBack(\''+key+'\')">Annuler</button>')
     +'<button class="mb pri" onclick="saveNote(\''+key+'\')">Enregistrer</button></div>'
     +'</div></div>';
   var t=document.getElementById('note-txt');t.value=cur;setTimeout(function(){t.focus();},250);
@@ -3044,7 +3046,7 @@ function saveNote(key,del){
   var v=del?'':(document.getElementById('note-txt').value||'').trim();
   if(!S.notes)S.notes={};
   if(v)S.notes[key]=v;else delete S.notes[key];
-  saveState();openDay(key);
+  saveState();_addBack(key);
 }
 // Heures sup faites un jour donné : même règle que le décompte de la semaine (calcHSWeek) —
 // dépassement sur la vacation prévue au cycle ce jour-là, arrondi à la demi-heure supérieure
@@ -3262,11 +3264,11 @@ function avwConfirm(){
 
 function openExtraRenduModal(key){
   var _ex=(S.extraRendus||{})[key];
-  document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)openDay(\''+key+'\')"><div class="sheet"><div class="sh"></div><div class="st">Ajouter un rendu</div>'
+  document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)_addBack(\''+key+'\')"><div class="sheet"><div class="sh"></div><div class="st">Ajouter un rendu</div>'
     +'<div class="mrow"><label>Label</label><input id="exr-label" placeholder="Réunion, formation…" value="'+(_ex?_ex.label:'')+'"></div>'
     +'<div class="mrow" style="margin-bottom:30px"><label>Durée</label><select id="exr-dur" style="padding:10px 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--bg2);color:var(--text);width:100%;-webkit-appearance:none;">'
     +'<option value="30">0h30</option><option value="60">1h00</option><option value="90">1h30</option><option value="120">2h00</option><option value="150">2h30</option><option value="180">3h00</option><option value="210">3h30</option><option value="240">4h00</option><option value="300">5h00</option><option value="360">6h00</option><option value="420">7h00</option><option value="480">8h00</option></select></div>'
-    +'<div class="mbtns"><button class="mb" onclick="openDay(\''+key+'\')">Annuler</button><button class="mb pri" onclick="confirmExtraRendu(\''+key+'\')">Ajouter</button></div>'
+    +'<div class="mbtns"><button class="mb" onclick="_addBack(\''+key+'\')">Annuler</button><button class="mb pri" onclick="confirmExtraRendu(\''+key+'\')">Ajouter</button></div>'
     +'</div></div>';
   if(_ex)document.getElementById('exr-dur').value=String(_ex.dur);
 }
@@ -3277,12 +3279,12 @@ function confirmExtraRendu(key){
   pushUndo('Rendu ajouté');
   if(!S.extraRendus)S.extraRendus={};
   S.extraRendus[key]={dur:dur,label:label};
-  saveState();render();openDay(key);
+  saveState();render();_addBack(key);
 }
 function removeExtraRendu(key){
   pushUndo('Rendu retiré');
   if(S.extraRendus)delete S.extraRendus[key];
-  saveState();render();openDay(key);
+  saveState();render();_addBack(key);
 }
 function resetVac(){pushUndo('Vacation remise');var _pk=pendingKey;removeHistoryForKey(_pk);if(!S.overrides)S.overrides={};delete S.overrides[_pk];if(!S.conges)S.conges={};delete S.conges[_pk];saveState();closeModal();render();popCell(_pk);gcalTrigger();}
 function setAbsent(){pushUndo('Absence posée');var date=new Date(pendingKey+'T12:00:00');if(!S.overrides)S.overrides={};S.overrides[pendingKey]={absent:true};if(!S.conges)S.conges={};S.conges[pendingKey]='absent';logH(fmtDate(date)+' -> absent','#c88048',pendingKey);saveState();closeModal();render();gcalTrigger();}
@@ -6850,8 +6852,8 @@ function openCustomVacModal(){
     var _k=pendingKey,_n=(S.notes||{})[_k],_x=(S.extraRendus||{})[_k];
     var _ab='flex:1;padding:10px 8px;border:0.5px solid var(--border);border-radius:var(--r);background:var(--bg2);color:var(--text2);font-size:12.5px;font-family:var(--font);cursor:pointer';
     _cvAdd='<div class="btit" style="margin:16px 0 6px">Ajouter au jour</div>'
-      +'<div style="display:flex;gap:8px;margin-bottom:18px"><button style="'+_ab+'" onclick="openNoteModal(\''+_k+'\')"><i class="ti ti-note" style="margin-right:4px"></i>'+(_n?'Modifier la note':'Note')+'</button>'
-      +'<button style="'+_ab+'" onclick="openExtraRenduModal(\''+_k+'\')"><i class="ti ti-clock-plus" style="margin-right:4px"></i>'+(_x?'Heures en plus · '+fmtMin(_x.dur):'Heures en plus')+'</button></div>';
+      +'<div style="display:flex;gap:8px;margin-bottom:18px"><button style="'+_ab+'" onclick="window._addFrom=\'modif\';openNoteModal(\''+_k+'\')"><i class="ti ti-note" style="margin-right:4px"></i>'+(_n?'Modifier la note':'Note')+'</button>'
+      +'<button style="'+_ab+'" onclick="window._addFrom=\'modif\';openExtraRenduModal(\''+_k+'\')"><i class="ti ti-clock-plus" style="margin-right:4px"></i>'+(_x?'Heures en plus · '+fmtMin(_x.dur):'Heures en plus')+'</button></div>';
   }
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this){if(pendingKey)openDay(pendingKey);else closeModal();}"><div class="sheet"><div class="sh"></div><div class="st">Modifier le jour</div>'
     +'<div class="btit" style="margin:4px 0 6px">Horaires</div>'
