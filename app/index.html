@@ -50,8 +50,8 @@
 /* No transitions - avoid flash on render */
 html{scrollbar-gutter:stable;}html,body{overflow-x:hidden;}body{padding-top:60px;background:var(--bg);color:var(--text);overscroll-behavior-y:none;}
 @media(max-width:720px){html,body{height:100%;overflow:hidden;}}
-/* Téléphone : la page ne défile pas (gestes du calendrier) ; c'est le contenu sous la barre qui défile quand il dépasse l'écran */
-@media(max-width:720px){#app{height:100%}.app-outer{height:100%;overflow-y:auto;overscroll-behavior-y:contain;-webkit-overflow-scrolling:touch;padding-bottom:calc(16px + env(safe-area-inset-bottom))}}
+/* Téléphone : la page ne défile pas (gestes du calendrier), sauf si son contenu dépasse l'écran (classe posée par _fitScroll) */
+@media(max-width:720px){body.can-scroll{overflow-y:auto}body.can-scroll .app-outer{padding-bottom:calc(16px + env(safe-area-inset-bottom))}}
 input,select,textarea{font-family:var(--font);user-select:text;-webkit-user-select:text;}button{font-family:var(--font);user-select:none;-webkit-user-select:none;}
 input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
 input[type=number]{-moz-appearance:textfield;appearance:textfield;}
@@ -197,7 +197,8 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .pg-on .cal-wrap,.pg-on .ann-month{will-change:transform}
 /* Écran de chargement : silhouette aux dimensions de l'accueil (barre, mois, calendrier, cases du côté) */
 #boot{position:fixed;inset:0;z-index:100000;background:#161615;overflow:hidden;transition:opacity .4s ease}
-#boot .bt-hdr{height:39px;border-bottom:.5px solid rgba(255,250,242,.06);background:#1d1d1c}
+#boot .bt-hdr{height:39px;border-bottom:.5px solid rgba(255,250,242,.06);background:#1d1d1c;display:flex;justify-content:flex-end;align-items:center;gap:6px;padding:0 10px}
+#boot .bt-hdr b{display:block;width:34px;height:28px;border-radius:9px;background:rgba(255,250,242,.06);animation:btPulse 1.3s ease-in-out infinite}#boot .bt-hdr b.g{width:22px;height:22px;border-radius:50%;margin-right:8px}
 #boot .bt-in{max-width:520px;margin:0 auto;padding:13px 20px 0}
 #boot .bt-bar{display:flex;justify-content:space-between;align-items:center;height:46px;margin-bottom:1px}
 #boot .bt-bar b{width:46px;height:34px;border-radius:12px}
@@ -721,7 +722,7 @@ body.modal-open{overflow:hidden;position:fixed;width:100%;left:0;right:0;overscr
 </head>
 <body>
 <!-- Écran de chargement : silhouette de l'app qui pulse le temps que les données arrivent -->
-<div id="boot" aria-hidden="true"><div class="bt-hdr"></div><div class="bt-in"><div class="bt-bar"><b></b><b class="w"></b><b></b></div><div class="bt-cal"><u class="n" style="visibility:hidden"></u><u></u><u></u><u></u><u></u><u></u><u></u><u></u><em></em><i></i><i></i><i></i><i></i><i></i><i></i><i></i><em></em><i></i><i></i><i></i><i></i><i></i><i></i><i></i><em></em><i></i><i></i><i></i><i></i><i></i><i></i><i></i><em></em><i></i><i></i><i></i><i></i><i></i><i></i><i></i><em></em><i></i><i></i><i></i><i></i><i></i><i></i><i></i><em></em><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="bt-side"><div class="bt-bloc a"><s></s><p><span></span><span></span><span></span></p></div><div class="bt-bloc b"><s></s><p><span></span><span></span><span></span></p></div><div class="bt-bloc c"><s></s><p><span></span><span></span></p></div></div></div></div>
+<div id="boot" aria-hidden="true"><div class="bt-hdr"><b class="g"></b><b class="g"></b><b></b><b></b><b></b><b></b><b></b></div><div class="bt-in"><div class="bt-bar"><b></b><b class="w"></b><b></b></div><div class="bt-cal"><u class="n" style="visibility:hidden"></u><u></u><u></u><u></u><u></u><u></u><u></u><u></u><em></em><i></i><i></i><i></i><i></i><i></i><i></i><i></i><em></em><i></i><i></i><i></i><i></i><i></i><i></i><i></i><em></em><i></i><i></i><i></i><i></i><i></i><i></i><i></i><em></em><i></i><i></i><i></i><i></i><i></i><i></i><i></i><em></em><i></i><i></i><i></i><i></i><i></i><i></i><i></i><em></em><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="bt-side"><div class="bt-bloc a"><s></s><p><span></span><span></span><span></span></p></div><div class="bt-bloc b"><s></s><p><span></span><span></span><span></span></p></div><div class="bt-bloc c"><s></s><p><span></span><span></span></p></div></div></div></div>
 <div id="app"><div class="app-outer">
 <div id="pwa-banner" class="pwa" style="display:none">
   <i class="ti ti-device-mobile" style="font-size:16px;flex-shrink:0"></i>
@@ -2963,6 +2964,16 @@ function _swipeKids(sh,tr,tf){
   sh.style.overflowX='hidden';
   [].forEach.call(sh.children,function(el){if(el.classList.contains('sh')||el.classList.contains('nav-back'))return;el.style.transition=tr;el.style.transform=tf;});
 }
+// Défilement de l'accueil sur téléphone : seulement quand le contenu dépasse l'écran
+function _fitScroll(){
+  var b=document.body;if(!b)return;
+  if(innerWidth>720||b.classList.contains('modal-open')){if(innerWidth>720)b.classList.remove('can-scroll');return;}
+  var a=document.getElementById('app');if(!a)return;
+  var need=a.getBoundingClientRect().height+(parseFloat(getComputedStyle(b).paddingTop)||0)>innerHeight+1;
+  b.classList.toggle('can-scroll',need);if(!need)b.scrollTop=0;
+}
+window.addEventListener('resize',_fitScroll);
+document.addEventListener('DOMContentLoaded',function(){try{new ResizeObserver(_fitScroll).observe(document.getElementById('app'));}catch(e){}_fitScroll();});
 // Retour haptique léger : vibration sur Android ; sur iPhone (iOS 18+), cliquer le libellé d'un interrupteur « switch »
 // fait jouer le retour haptique du système. Méthode de la bibliothèque ios-haptics : élément neuf à chaque fois, masqué, retiré aussitôt
 function _haptic(){
@@ -6952,7 +6963,7 @@ function init(){
     var _ptrSvg=document.getElementById('ptr-svg');
     var _ptrThreshold=70;
     var _ptrMaxDash=113.1;var _ptrIco=document.getElementById('ptr-ico');
-    var _ptrScroller=function(){var a=document.querySelector('.app-outer');return (a&&a.scrollTop>0)||window.scrollY>0;};
+    var _ptrScroller=function(){return document.body.scrollTop>0||window.scrollY>0;};
     document.addEventListener('touchstart',function(e){
       if(document.body.classList.contains('modal-open'))return;
       if(_ptrScroller())return;
