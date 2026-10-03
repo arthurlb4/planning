@@ -639,8 +639,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .pp-sheet{height:88vh}@media(min-width:700px){.pp-sheet{height:85vh}}
 .sv2-pl{display:flex;justify-content:space-between;align-items:baseline;gap:8px}.sv2-pl>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sv2-pl>span+span{white-space:nowrap;flex-shrink:0}
 .sv-cur{font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin:22px 0 6px}
-.ring circle{transition:none}.ring circle[style]{animation:ringIn 1.1s cubic-bezier(.2,.8,.2,1) both}.ring .ring-over{animation-delay:.9s;filter:drop-shadow(0 0 2px rgba(0,0,0,.6))}.ring{transform:rotate(-90deg);flex-shrink:0}
-@keyframes ringIn{from{stroke-dashoffset:var(--c)}to{stroke-dashoffset:var(--o)}}
+.ring .ring-over{filter:drop-shadow(0 0 2px rgba(0,0,0,.6))}.ring{transform:rotate(-90deg);flex-shrink:0}.cp-d{transition:opacity .4s ease .9s}.cp-anim .cp-d{opacity:0;transition:none}
 .cp-big{display:flex;align-items:center;gap:14px;margin-bottom:12px}.cp-ls{flex:1;min-width:0;display:flex;flex-direction:column;gap:9px}
 .cp-l{display:flex;flex-direction:column;min-width:0}.cp-n{font-size:11px;font-weight:600}.cp-v b{font-size:17px;font-weight:700;color:var(--text)}.cp-v small{font-size:11px;color:var(--text3)}.cp-d{font-size:10px;color:var(--text3)}
 .cp-sm{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding-top:10px;border-top:0.5px solid var(--border2)}.cp-one{display:flex;align-items:center;gap:9px;min-width:0}.cp-one .cp-v b{font-size:15px}
@@ -2662,9 +2661,22 @@ function _bilanCount(y,toMonth,toDay){
   return c;
 }
 // Bloc dépliant du récapitulatif (l'état ouvert/fermé est gardé pendant la session)
-var _foldOpen={};
+var _foldOpen={},_foldAnim={};
+// Anneaux des compteurs : ils se remplissent et les chiffres défilent à chaque ouverture
+_foldAnim['fold-cpt']=function(el){
+  var cs=el.querySelectorAll('circle[data-c]'),ns=el.querySelectorAll('b[data-n]'),D=1300;
+  el.classList.add('cp-anim');
+  cs.forEach(function(c){c.style.transition='none';c.style.strokeDashoffset=c.dataset.c;});
+  void el.offsetWidth;el.classList.remove('cp-anim');
+  requestAnimationFrame(function(){cs.forEach(function(c){var ov=c.classList.contains('ring-over');
+    c.style.transition='stroke-dashoffset '+(ov?.7:D/1000)+'s cubic-bezier(.25,.8,.25,1) '+(ov?(D-200)/1000:0)+'s';c.style.strokeDashoffset=c.dataset.o;});});
+  var t0=performance.now();
+  (function step(t){var k=Math.min(1,Math.max(0,(t-t0)/D)),e=1-Math.pow(1-k,3);
+    ns.forEach(function(n){var v=Math.round(+n.dataset.n*e),u=n.dataset.u;n.textContent=u==='h'?fmtMin(v).replace(/h00$/,'h'):v+(u==='j'?' j':'');});
+    if(k<1)requestAnimationFrame(step);})(t0);
+};
 function _fold(id,icon,color,title,sub,val,body){
-  return '<details class="fold" id="'+id+'"'+(_foldOpen[id]?' open':'')+' ontoggle="_foldOpen[this.id]=this.open"><summary>'
+  return '<details class="fold" id="'+id+'"'+(_foldOpen[id]?' open':'')+' ontoggle="_foldOpen[this.id]=this.open;if(this.open&&_foldAnim[this.id])_foldAnim[this.id](this)"><summary>'
     +'<span class="fh"><div class="ft">'+title+'</div>'+(sub?'<div class="fs">'+sub+'</div>':'')+'</span>'
     +'<span class="fv" style="color:'+color+'">'+val+'</span><i class="ti ti-chevron-down"></i></summary><div class="fb">'+body+'</div></details>';
 }
@@ -2729,7 +2741,7 @@ function _ringSvg(size,rings){
   var w=size*0.105,gap=w*0.18,h='<svg class="ring" width="'+size+'" height="'+size+'" viewBox="0 0 '+size+' '+size+'">';
   rings.forEach(function(r,i){
     var rad=size/2-w/2-i*(w+gap),C=2*Math.PI*rad,f=Math.max(0,r.f||0);
-    var arc=function(fr,extra){var o=C*(1-Math.min(1,fr));return '<circle cx="'+size/2+'" cy="'+size/2+'" r="'+rad+'" fill="none" stroke="'+r.c+'" stroke-width="'+w+'" stroke-linecap="round" stroke-dasharray="'+C+'" stroke-dashoffset="'+o+'" style="--c:'+C+';--o:'+o+'"'+(extra||'')+'/>';};
+    var arc=function(fr,extra){var o=C*(1-Math.min(1,fr));return '<circle cx="'+size/2+'" cy="'+size/2+'" r="'+rad+'" fill="none" stroke="'+r.c+'" stroke-width="'+w+'" stroke-linecap="round" stroke-dasharray="'+C+'" stroke-dashoffset="'+o+'" data-c="'+C+'" data-o="'+o+'"'+(extra||'')+'/>';};
     h+='<circle cx="'+size/2+'" cy="'+size/2+'" r="'+rad+'" fill="none" stroke="'+r.c+'" stroke-opacity=".18" stroke-width="'+w+'"/>';
     if(f>0)h+=arc(f);
     if(f>1)h+=arc(f-1,' class="ring-over"');
@@ -2742,7 +2754,7 @@ function _cptHtml(y){
   var M=[{k:'jours',l:'Jours travaillés',c:'#FA2D55',u:'j'},{k:'nuits',l:'Heures de nuit',c:'#A78BFA',u:'h'},{k:'dim',l:'Dimanches',c:'#34D399',u:''},{k:'fer',l:'Fériés',c:'#FBBF24',u:''},{k:'matins',l:'Matins',c:'#38BDF8',u:''}];
   var fmt=function(x,u){return u==='h'?fmtMin(x).replace(/h00$/,'h'):String(x)+(u==='j'?' j':'');};
   var leg=function(o){var v=a[o.k],p=b[o.k],dd=v-bt[o.k];
-    return '<div class="cp-l"><span class="cp-n" style="color:'+o.c+'">'+o.l+'</span><span class="cp-v"><b>'+fmt(v,o.u)+'</b><small> / '+fmt(p,o.u)+'</small></span>'
+    return '<div class="cp-l"><span class="cp-n" style="color:'+o.c+'">'+o.l+'</span><span class="cp-v"><b data-n="'+v+'" data-u="'+o.u+'">'+fmt(v,o.u)+'</b><small> / '+fmt(p,o.u)+'</small></span>'
       +'<span class="cp-d">'+(dd>0?'+'+fmt(dd,o.u)+' d’avance':dd<0?fmt(-dd,o.u)+' de retard':'comme en '+(y-1))+'</span></div>';};
   var fr=function(o){return b[o.k]?a[o.k]/b[o.k]:0;};
   var big='<div class="cp-big">'+_ringSvg(132,M.slice(0,3).map(function(o){return{f:fr(o),c:o.c};}))+'<div class="cp-ls">'+M.slice(0,3).map(leg).join('')+'</div></div>';
