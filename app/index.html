@@ -3645,14 +3645,14 @@ function _rhParse(cells,fileName){
   // Lignes
   const lines=[];
   for(const r of rowsN){if(r<=hdrRow)continue;const cs=byRow[r];const dv=cs[cDate];if(typeof dv!=='number')continue;
-    const d=_xlsxDate(dv),ym=d.getUTCFullYear()*12+d.getUTCMonth();const h=v=>typeof v==='number'?Math.round(v*60):0;
+    const d=_xlsxDate(dv),ym=d.getUTCFullYear()*12+d.getUTCMonth();const h=v=>typeof v==='number'?Math.round(v*60*1e4)/1e4:0; // minutes exactes (le tableau compte en heures décimales)
     const dt=c=>c&&typeof cs[c]==='number'?_xlsxDate(cs[c]):null;
     const r1=cRep1?repMonths(cs[cRep1]):0,r2=cRep2?repMonths(cs[cRep2]):0;
     lines.push({ym,nature:cNat&&cs[cNat]?String(cs[cNat]).trim():'',acq:h(cs[cAcq]),cons:h(cs[cCons]),solde:h(cs[cSol]),stock:cStock?h(cs[cStock]):0,
       valid:dt(cVal),rep:Math.round((r1+r2)/3),validRep:dt(cVal2)||dt(cVal1),com:cCom&&cs[cCom]?String(cs[cCom]):''});}
   // Dernière semaine citée dans les commentaires (« 24h posées S23 ») = jusqu'où le gestionnaire a saisi les rendus
   let lastWeek=0;lines.forEach(l=>{(l.com.match(/\bS\s?(\d{1,2})\b/gi)||[]).forEach(w=>{const n=+w.replace(/\D/g,'');if(n>=1&&n<=53&&n>lastWeek)lastWeek=n;});});
-  const m=v=>typeof v==='number'?Math.round(v*60):null;
+  const m=v=>typeof v==='number'?Math.round(v*60*1e4)/1e4:null;
   // Heures posées par semaine d'après les commentaires (« 20,5h en S32 », « 24h posées S23 », « 31h posés S2 »)
   // Séparateur décimal toléré même mal tapé (« 22?5h », « 7;5h »), et texte d'origine gardé pour l'afficher
   const weeks={},weekSrc={};lines.forEach(l=>{const re=/(\d+(?:[.,?;:']\d+)?)\s*h\b[^\d\/·]*?\bS\s?(\d{1,2})\b/gi;let mm;while((mm=re.exec(l.com))){const w=+mm[2],h=Math.round(parseFloat(mm[1].replace(/[,?;:']/,'.'))*60);if(w>=1&&w<=53&&h>0){weeks[w]=(weeks[w]||0)+h;(weekSrc[w]=weekSrc[w]||[]).push(mm[0].trim());}}});
