@@ -2943,7 +2943,16 @@ function _swipeKids(sh,tr,tf){
   sh.style.overflowX='hidden';
   [].forEach.call(sh.children,function(el){if(el.classList.contains('sh')||el.classList.contains('nav-back'))return;el.style.transition=tr;el.style.transform=tf;});
 }
+// Retour haptique léger : vibration sur Android ; sur iPhone (iOS 18+), basculer un interrupteur caché fait vibrer
+function _haptic(){
+  try{if(navigator.vibrate){navigator.vibrate(8);return;}}catch(e){}
+  try{var l=document.getElementById('hpt-l');
+    if(!l){l=document.createElement('label');l.id='hpt-l';l.style.cssText='position:fixed;left:-99px;top:0;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none';
+      var i=document.createElement('input');i.type='checkbox';i.setAttribute('switch','');l.appendChild(i);document.body.appendChild(l);}
+    l.click();}catch(e){}
+}
 function _swipeGo(nd,go){
+  _haptic();
   var sh=document.querySelector('#modal-root .sheet');if(!sh){go(nd);return;}
   window._swH=sh.offsetHeight;
   _swipeKids(sh,'transform .16s cubic-bezier(.4,0,1,1)','translateX('+(-nd*106)+'%)');
@@ -3377,7 +3386,7 @@ function _openDayMenu(cell){
       +'<button onclick="_dayMenuAct(\''+key+'\',\'ex\')"><i class="ti ti-arrows-exchange" style="color:#c98a8a"></i>Échange</button>';
   }
   items+='<button onclick="_dayMenuAct(\''+key+'\',\'open\')" style="color:var(--text2)"><i class="ti ti-dots"></i>Ouvrir la journée</button>';
-  try{navigator.vibrate&&navigator.vibrate(10);}catch(e){}
+  _haptic();
   cell.classList.add('lp-on');
   var veil=document.createElement('div');veil.id='lp-veil';
   veil.addEventListener('click',function(e){e.stopPropagation();_closeDayMenu();});
@@ -3394,6 +3403,7 @@ function _openDayMenu(cell){
   return true;
 }
 function _dayMenuAct(key,act){
+  _haptic();
   _closeDayMenu();
   pendingKey=key;_lpk=key;
   if(act==='open'){openDay(key);return;}
@@ -5345,6 +5355,7 @@ function _ptog(id){
   if(ch)ch.style.transform=open?'':'rotate(90deg)';
 }
 function moisTab(idx){
+  if(idx>3)idx=0;var _mt=document.getElementById('mtc-'+idx);if(_mt&&_mt.style.visibility==='hidden')_haptic();
   if(idx>3)idx=0; // ancien onglet Paie : remplacé par la page Paie du Suivi
   var _tx=['translateX(0)','translateX(calc(100% + 2px))','translateX(calc(200% + 4px))','translateX(calc(300% + 6px))'];
   for(let i=0;i<4;i++){
@@ -5357,6 +5368,7 @@ function moisTab(idx){
 // Ordre affiché des onglets (Suivi à gauche, comme sur l'accueil) ; les numéros restent Rendus 0, Congés 1, Suivi 2
 var _RCG_ORDER=[2,0,1];
 function rcgTab(idx){
+  if(document.getElementById('rcc-'+idx)&&document.getElementById('rcc-'+idx).style.visibility==='hidden')_haptic();
   if(idx===1){var _ns=document.querySelectorAll('#rcc-1 .cg-n'),_t0=performance.now();(function st(t){var k=Math.min(1,Math.max(0,(t-_t0)/900)),e=1-Math.pow(1-k,3);_ns.forEach(function(n){n.textContent=Math.round(+n.dataset.n*e);});if(k<1)requestAnimationFrame(st);})(_t0);}
   if(idx===0){var _w=document.getElementById('rcc-0');if(_w){_w.classList.remove('rc-anim');void _w.offsetWidth;_w.classList.add('rc-anim');[].forEach.call(_w.querySelectorAll('.eph-urow'),function(r,i){[].forEach.call(r.querySelectorAll('.eph-b,.eph-b2'),function(b){b.style.animationDelay=(i*.05)+'s';});});}}
   if(idx===2&&document.getElementById('rcc-2')&&document.getElementById('rcc-2').style.visibility==='hidden')requestAnimationFrame(function(){_cptAnim(document.getElementById('cpt-card'));});
