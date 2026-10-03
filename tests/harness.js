@@ -28,7 +28,8 @@ function fakeEl() {
 
 function load(today) {
   const html = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
-  const code = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].map(m => m[1])[0];
+  // Le script principal de l'app : le plus long des scripts en ligne (les petits scripts de démarrage sont ignorés)
+  const code = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].map(m => m[1]).sort((a, b) => b.length - a.length)[0];
   const FIXED = new Date(today + 'T12:00:00').getTime();
   const RealDate = Date;
   class FixedDate extends RealDate {
