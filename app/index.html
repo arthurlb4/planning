@@ -2404,10 +2404,16 @@ function _bulCompare(b){
     var q=_BUL_H[r.k]?Math.round(r.q*60):r.k==='absResto'?1:r.q;
     bq[r.k]=(bq[r.k]||0)+q;bm[r.k]=r2((bm[r.k]||0)+r.mt);
   });
+  // Lignes de ce mois de travail rattrapées sur un bulletin suivant : elles complètent celui-ci
+  var rq={},rm={},rFrom={},paidLater=0;
+  Object.keys(S.bulletins||{}).forEach(function(k){var o=S.bulletins[k];if(!o||o.ym<=b.ym||!o.rap)return;
+    o.rap.forEach(function(r){if(r.ym!==W||!app[r.k])return;
+      rq[r.k]=(rq[r.k]||0)+(_BUL_H[r.k]?Math.round(r.q*60):r.k==='absResto'?1:r.q);rm[r.k]=r2((rm[r.k]||0)+r.mt);paidLater=r2(paidLater+r.mt);
+      (rFrom[r.k]=rFrom[r.k]||[]).indexOf(o.ym)<0&&rFrom[r.k].push(o.ym);});});
   Object.keys(app).forEach(function(k){
-    var aq=app[k][0]||0,am=r2(app[k][1]||0),q=bq[k]||0,mt=bm[k]||0;
-    if(!aq&&!q)return;
-    rows.push({k:k,lbl:_BUL_LBL[k],h:!!_BUL_H[k],eur:k==='absResto',bq:q,aq:aq,bm:mt,am:am,ok:q===aq,okEur:Math.abs(mt-am)<=0.05});
+    var aq=app[k][0]||0,am=r2(app[k][1]||0),q=bq[k]||0,mt=bm[k]||0,lq=rq[k]||0;
+    if(!aq&&!q&&!lq)return;
+    rows.push({k:k,lbl:_BUL_LBL[k],h:!!_BUL_H[k],eur:k==='absResto',bq:q,aq:aq,bm:mt,am:am,rq:lq,rm:rm[k]||0,rFrom:rFrom[k]||[],ok:q+lq===aq,okEur:Math.abs(mt-am)<=0.05});
     if((k==='hsLow'||k==='hsHigh')&&q%30)alerts.push('Heures sup payées : '+fmtMin(q)+'. Selon l’article VIII.5 de l’accord collectif, « toute demi-heure supplémentaire commencée est acquise » : le total devrait être un multiple de 30 min.');
   });
   var nao=0;Object.keys(b.nao||{}).forEach(function(k){nao+=b.nao[k];});
@@ -2417,10 +2423,11 @@ function _bulCompare(b){
   var fixed=fix.filter(function(f){return f[1]!=null||f[2];}).map(function(f){var bv=f[1]||0,av=r2(f[2]||0);return{lbl:f[0],bm:bv,am:av,ok:Math.abs(bv-av)<=0.05,key:f[3]};});
   var lateSum=r2(late.reduce(function(s,l){return s+l.mt;},0)),diff=r2(b.brut-P.total);
   var nBad=rows.filter(function(r){return !r.ok;}).length+fixed.filter(function(f){return !f.ok;}).length;
-  var status=nBad||alerts.length?'ecart':Math.abs(diff-lateSum)>0.1?'ecart':late.some(function(l){return !l.info;})?'late':'ok';
-  return{P:P,rows:rows,fixed:fixed,late:late,lateSum:lateSum,alerts:alerts,diff:diff,status:status,nBad:nBad,paniers:b.paniers?{bq:b.paniers.q,aq:v.paniers}:null};
+  var adj=r2(diff+paidLater-lateSum),later=[];rows.forEach(function(r){r.rFrom.forEach(function(f){if(later.indexOf(f)<0)later.push(f);});});
+  var status=nBad||alerts.length?'ecart':Math.abs(adj)>0.1?'ecart':paidLater?'later':late.some(function(l){return !l.info;})?'late':'ok';
+  return{P:P,rows:rows,fixed:fixed,late:late,lateSum:lateSum,paidLater:paidLater,later:later.sort(),adj:adj,alerts:alerts,diff:diff,status:status,nBad:nBad,paniers:b.paniers?{bq:b.paniers.q,aq:v.paniers}:null};
 }
-var _BUL_ST={ok:['✓','var(--green)','Conforme'],late:['✓','var(--green)','Conforme, avec des rattrapages'],ecart:['⚠','var(--amber)','Écarts à vérifier']};
+var _BUL_ST={ok:['✓','var(--green)','Conforme'],late:['✓','var(--green)','Conforme, avec des rattrapages'],later:['✓','var(--green)','Conforme, complété plus tard'],ecart:['⚠','var(--amber)','Écarts à vérifier']};
 function openBulletinModal(ym,from){
   if(!document.body.classList.contains('modal-open'))_lockBodyScroll();
   var y=Math.floor(ym/12),cy=TODAY_YM!=null?Math.floor(TODAY_YM/12):y,arr='font-size:18px;padding:0 10px;color:var(--text2);cursor:pointer;user-select:none';
@@ -2449,8 +2456,8 @@ function _payPageHtml(ym){
   var sub=function(lbl,val,n){return '<div class="pp-r pp-s"><span>'+lbl+'</span>'+(c?(n||E):'')+'<span class="pp-v"><b class="stag">'+fe(val)+'</b></span></div>';};
   var tit=function(t,first){return '<div class="btit" style="margin:'+(first?'4px':'14px')+' 0 4px">'+t+'</div>';};
   var vl='',vb=0;
-  var vr=function(k,lbl,aq,am,col){var r=rowsBy[k];if(!(aq>0)&&!r)return;var bm=r?r.bm:0;vb+=bm;
-    vl+=row(lbl,am,col,c?(r?(r.ok?OK:bul(false,bm)):bul(false,0)):null);};
+  var vr=function(k,lbl,aq,am,col){var r=rowsBy[k];if(!(aq>0)&&!r)return;var bm=r?r.bm:0;vb+=bm+(r?r.rm:0);
+    vl+=row(lbl,am,col,c?(r?(r.ok?(r.rq?'<span class="pp-n" style="color:var(--green)">✓ en '+MCs[r.rFrom[0]%12].toLowerCase()+'</span>':OK):bul(false,bm+r.rm)):bul(false,0)):null);};
   vr('dim','Dim ('+fmtMin(v.dimMin)+' × '+_tx.dim+'%)',v.dimMin,v.supDim,'var(--text2)');
   vr('rh','RH ('+fmtMin(v.rhMin)+' × '+_tx.rh+'%)',v.rhMin,v.supRH,'var(--text2)');
   vr('fer','Fériés ('+fmtMin(v.ferMin)+' × '+_tx.fer+'%)',v.ferMin,v.supFer,'var(--text2)');
@@ -2465,9 +2472,10 @@ function _payPageHtml(ym){
   if(!vl)vl='<div style="color:var(--text3);padding:3px 0">Aucune.</div>';
   // En-tête et total brut comme l'ancien onglet Paie ; la colonne bulletin s'ajoute à gauche
   var h='<div class="pp-r" style="font-size:10px;color:var(--text3);padding:0 0 2px"><span style="flex:1"></span>'+(c?'<span class="pp-n">bulletin</span>':'')+'<span>euros</span></div>'
-    +'<div class="pp-r" style="padding:5px 0;margin-bottom:2px"><span style="flex:1;color:var(--text3)">total brut</span>'+(c?cmp(b.brut,P.total):'')+'<b style="font-size:15px;color:var(--gold-pay)">'+fe(P.total)+'</b></div>';
-  if(c){var st=_BUL_ST[c.status],d=c.diff,z=Math.abs(d)<=0.05;
-    h+='<div style="font-size:11px;margin:0 0 4px"><b style="color:'+st[1]+'">'+st[0]+' '+st[2]+'</b>'+(z?'':' · écart <b style="color:'+(d>0?'var(--green)':'var(--red)')+'">'+(d>0?'+':'−')+fe(Math.abs(d))+'</b>'+(c.lateSum?'<span style="color:var(--text3)">, dont '+fe(c.lateSum)+' de rattrapages</span>':''))+'</div>';}
+    +'<div class="pp-r" style="padding:5px 0;margin-bottom:2px"><span style="flex:1;color:var(--text3)">total brut</span>'+(c?bul(c.status!=='ecart'||Math.abs(c.diff)<=0.05,b.brut):'')+'<b style="font-size:15px;color:var(--gold-pay)">'+fe(P.total)+'</b></div>';
+  if(c){var st=_BUL_ST[c.status],d=c.diff,z=Math.abs(d)<=0.05,lt=c.later.map(function(f){return '<a onclick="_swipeGo('+(f>ym?1:-1)+',function(){openBulletinModal('+f+')})" style="color:var(--blue);cursor:pointer">'+MC[f%12]+'</a>';}).join(', ');
+    if(c.status==='later')st=[st[0],st[1],'Conforme, complété par le bulletin de '+lt];
+    h+='<div style="font-size:11px;margin:0 0 4px"><b style="color:'+st[1]+'">'+st[0]+' '+st[2]+'</b>'+(c.status!=='later'&&c.paidLater?'<span style="color:var(--text3)"> · '+fe(c.paidLater)+' rattrapés en '+lt+'</span>':'')+(z?'':' · écart <b style="color:'+(d>0?'var(--green)':'var(--red)')+'">'+(d>0?'+':'−')+fe(Math.abs(d))+'</b>'+(c.lateSum?'<span style="color:var(--text3)">, dont '+fe(c.lateSum)+' de rattrapages</span>':''))+'</div>';}
   var pR=(v.panierRate!=null?v.panierRate:getPanierRate());
   if(v.paniers>0||(c&&c.paniers))h+=row('Paniers repas ('+v.paniers+' × '+pR.toFixed(2).replace('.',',')+' €)',v.supPaniers,'var(--amber)',c?(c.paniers?bul(Math.abs(Number(c.paniers.bq)-Number(c.paniers.aq))<0.01,b.paniers.mt):bul(false,0)):null);
   h+='<div class="sep" style="margin:6px 0 4px"></div>';
@@ -2485,7 +2493,7 @@ function _payPageHtml(ym){
     +(P.supFamilial>0||fixBy['Suppl. familial']?row('Suppl. familial',P.supFamilial,'var(--text2)',fn('Suppl. familial',P.supFamilial)):'')
     +P.primesCustom.map(function(p){return row(p.label,p.montant,'var(--text2)');}).join('')
     +sub('Sous-total',fa,c?cmp(fsum(['Mesures NAO','Ind. GPE','PFA','Suppl. familial']),fa):null);
-  if(c&&c.late.length)h+=tit('Rattrapages et autres lignes')+c.late.map(function(l){return '<div class="pp-r"><span class="pp-l">'+l.lbl+(l.q!=null?' ('+(_BUL_H[l.k]?fmtMin(Math.round(l.q*60)):l.q)+')':'')+'<span style="display:block;font-size:10px;font-style:italic">'+(l.info?'sans effet sur la comparaison':'rattrapage '+_deMois(l.ym)+' '+Math.floor(l.ym/12))+'</span></span><span class="pp-n" style="color:var(--text2)">'+fe(l.mt)+'</span><b style="color:var(--text3)">—</b></div>';}).join('');
+  if(c&&c.late.length)h+=tit('Rattrapages et autres lignes')+c.late.map(function(l){return '<div class="pp-r"><span class="pp-l">'+l.lbl+(l.q!=null?' ('+(_BUL_H[l.k]?fmtMin(Math.round(l.q*60)):l.q)+')':'')+'<span style="display:block;font-size:10px;font-style:italic">'+(l.info?'sans effet sur la comparaison':'travail '+_deMois(l.ym)+' '+Math.floor(l.ym/12)+((S.bulletins||{})[l.ym+1]?', manquait sur le <a onclick="event.stopPropagation();_swipeGo(-1,function(){openBulletinModal('+(l.ym+1)+')})" style="color:var(--blue);cursor:pointer;font-style:normal">bulletin '+_deMois(l.ym+1)+'</a>':''))+'</span></span><span class="pp-n" style="color:var(--text2)">'+fe(l.mt)+'</span><b style="color:var(--text3)">—</b></div>';}).join('');
   if(c)h+=c.alerts.map(function(a){return '<div style="font-size:11px;color:var(--amber);display:flex;gap:5px;padding:10px 0 0;line-height:1.45"><span>⚠</span><span>'+a+'</span></div>';}).join('');
   h+='<div style="font-size:10px;color:var(--text3);text-align:center;margin-top:10px">taux : '+fmtEuro(P.tauxH)+'/h · '+P.heures.toFixed(2)+'h/mois</div>';
   h+=(b?'':'<div style="font-size:11px;color:var(--text3);line-height:1.5;margin:14px 0 0">Importer le PDF du bulletin pour que l’app compare chaque ligne. Le fichier est lu sur le téléphone et n’est envoyé nulle part ; seuls les montants sont gardés.</div>')
