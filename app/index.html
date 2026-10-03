@@ -597,7 +597,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 /* Éléments à l'intérieur des modals et menus : verre aussi. Les fonds pleins (gris, bleu des vacations)
    deviennent translucides via leurs variables, et les blocs reçoivent le même liseré fin. */
 .sheet,.dropdown{--bg0:rgba(255,250,243,.03);--bg2:rgba(255,250,243,.055);--bg2h:rgba(255,250,243,.08);--bg3:rgba(255,250,243,.075);--blue-l:rgba(70,116,158,.34);--sv2-tile:rgba(255,250,243,.05)}
-.sheet .mb,.sheet .dx-box,.sheet .dx-tile,.sheet .dx-mini,.sheet .sv-card,.sheet .sv-tile,.sheet .stabs-bar,.sheet .hd-card,.sheet .fold,.sheet .cg-hd,.sheet .rv-hero,.sheet .rv-it,.sheet .rv-ok,.sheet .rv-det,.sheet .rc-start,.sheet .rc-m,.sheet .rc-sum,.sheet input,.sheet select,.sheet textarea,.dropdown .mb{
+.sheet .mb,.sheet .dx-box,.sheet .dx-tile,.sheet .dx-mini,.sheet .sv-card,.sheet .sv-tile,.sheet .rc-choice,.sheet .stabs-bar,.sheet .hd-card,.sheet .fold,.sheet .cg-hd,.sheet .rv-hero,.sheet .rv-it,.sheet .rv-ok,.sheet .rv-det,.sheet .rc-start,.sheet .rc-m,.sheet .rc-sum,.sheet input,.sheet select,.sheet textarea,.dropdown .mb{
   -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);box-shadow:inset .5px .5px 0 rgba(255,250,243,.13),inset -.5px -.5px 0 rgba(255,250,243,.045)}
 .mcb{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2);margin-bottom:6px;cursor:pointer;padding:4px 0;}
 .mcb input[type=checkbox]{width:18px;height:18px;accent-color:var(--blue);cursor:pointer;}
@@ -3194,7 +3194,9 @@ function openDay(key){
   // Jour modifié : retour au cycle (ou annulation de l'échange) en petit, en haut à droite de la fiche
   var _rst=echange?'<button style="font-size:11px;padding:3px 8px;border:1px solid rgba(192,57,43,.5);border-radius:6px;background:none;color:#d08a8a;cursor:pointer;white-space:nowrap" onclick="cancelExchange(\''+key+'\')">Annuler l’échange</button>'
     :ov?'<button style="font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;background:none;color:var(--text2);cursor:pointer;white-space:nowrap" onclick="resetVac()"><i class="ti ti-arrow-back-up" style="margin-right:3px"></i>'+(cycleVac&&cycleVac!=='RH'?vLbl(cycleVac,VAC):'Repos')+'</button>':'';
-  _renduBtn='<div style="display:flex;gap:6px;align-items:center">'+(_exr?_renduBtn:'')+_rst+'</div>';
+  _renduBtn='<div style="display:flex;gap:6px;align-items:center">'+_rst+'</div>';
+  var _exrHtml=_exr?'<div onclick="pendingKey=\''+key+'\';openCustomVacModal(\'rendu\')" style="cursor:pointer;margin-top:8px;padding:7px 10px;border-radius:8px;background:rgba(150,180,100,.10);border:0.5px solid rgba(150,180,100,.25);display:flex;align-items:center;gap:8px;font-size:12.5px">'
+    +'<i class="ti ti-clock-plus" style="font-size:15px;color:var(--rend-text)"></i><span style="flex:1;color:var(--text2)">Rendu en plus'+(_exr.label?' · '+String(_exr.label).replace(/</g,'&lt;'):'')+'</span><b style="color:var(--rend-text)">+'+fmtMin(_exr.dur)+'</b></div>':'';
   // Options de la vacation posée : seulement quand elles changent quelque chose
   var _optHtml='';
   if(ov&&!echange&&!absent&&vac&&vac!=='RH'&&VAC[vac]&&!hasCg){
@@ -3215,11 +3217,13 @@ function openDay(key){
       +(epvHtml?'<div style="margin-top:3px">'+epvHtml+'</div>':'')
       +_optHtml
       +_restWarn(key)
+      +_exrHtml
       +_noteHtml
       +'</div>';
   } else {
     _dayBox='<div style="background:var(--bg3);border-radius:10px;padding:10px 14px;margin-bottom:12px">'
       +'<div style="display:flex;align-items:center;justify-content:space-between"><div style="font-size:15px;font-weight:600;color:var(--text)">'+lbl+(tt?' — '+tt:'')+'</div>'+_renduBtn+'</div>'
+      +_exrHtml
       +_noteHtml
       +'</div>';
   }
@@ -6829,8 +6833,11 @@ function coversMealSlot(debMin,finMin){
   return(debMin<=690&&finMin>=870)||(debMin<=1110&&finMin>=1290);
 }
 
-function openCustomVacModal(){
+function openCustomVacModal(mode){
   if(!document.body.classList.contains('modal-open'))_lockBodyScroll();
+  if(pendingKey&&!mode){var _gv=getVac(new Date(pendingKey+'T12:00:00'));
+    if(!_gv.vac||_gv.vac==='RH'||_gv.absent){_restChoice(pendingKey);return;}}
+  if(mode==='rendu'){_extraOnlyModal(pendingKey);return;}
   var _cvDeb='08h00',_cvFin='16h00',_cvName='',_cvPause='30',_cvPr={};
   if(pendingKey){
     var _cvDate=new Date(pendingKey+'T12:00:00'),_cvVac=getVac(_cvDate),_cvVAC=getVAC(_cvDate);
@@ -6878,6 +6885,29 @@ function openCustomVacModal(){
   document.getElementById('custom-pause').value=_cvPause;
 }
 
+// Jour de repos : ajouter des heures (rendu en plus) ou travailler une vacation ?
+function _restChoice(key){
+  var b='display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:14px;margin-bottom:8px;border:0.5px solid var(--border);border-radius:14px;background:var(--bg3);color:var(--text);font-family:var(--font);cursor:pointer';
+  document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)openDay(\''+key+'\')"><div class="sheet"><div class="sh"></div>'
+    +'<div class="st">'+fmtDate(new Date(key+'T12:00:00'))+'</div>'
+    +'<button class="rc-choice" style="'+b+'" onclick="openCustomVacModal(\'rendu\')"><i class="ti ti-clock-plus" style="font-size:22px;color:var(--rend-text)"></i><span><b style="display:block;font-size:14px;color:var(--text)">Ajouter des heures</b><small style="font-size:11.5px;color:var(--text3)">réunion, formation… comptées en rendus, le jour reste un repos</small></span></button>'
+    +'<button class="rc-choice" style="'+b+'" onclick="openCustomVacModal(\'vac\')"><i class="ti ti-briefcase" style="font-size:22px;color:var(--blue)"></i><span><b style="display:block;font-size:14px;color:var(--text)">Travailler ce jour</b><small style="font-size:11.5px;color:var(--text3)">poser une vacation avec ses horaires</small></span></button>'
+    +'<button class="mcancel" onclick="openDay(\''+key+'\')">Retour</button></div></div>';
+}
+// Heures en plus et note seules (sans toucher à la vacation)
+function _extraOnlyModal(key){
+  var x=(S.extraRendus||{})[key],n=(S.notes||{})[key]||'';
+  var fs='padding:10px 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--bg2);color:var(--text);font-family:var(--font)';
+  var o='<option value="0">—</option>';for(var d=15;d<=600;d+=15)o+='<option value="'+d+'"'+(x&&x.dur===d?' selected':(!x&&d===60?' selected':''))+'>'+fmtMin(d)+'</option>';
+  document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)openDay(\''+key+'\')"><div class="sheet"><div class="sh"></div>'
+    +'<div class="st">Ajouter des heures</div>'
+    +'<div style="font-size:11.5px;color:var(--text3);margin:-4px 0 12px">'+fmtDate(new Date(key+'T12:00:00'))+' · comptées dans les rendus acquis</div>'
+    +'<div style="display:flex;gap:8px;margin-bottom:14px"><input id="cv-exr-lbl" placeholder="Réunion, formation…" value="'+String((x&&x.label)||'').replace(/"/g,'&quot;')+'" style="flex:1;min-width:0;'+fs+'"><select id="cv-exr-dur" style="width:96px;-webkit-appearance:none;'+fs+'">'+o+'</select></div>'
+    +'<div class="btit" style="margin:4px 0 6px">Note</div>'
+    +'<textarea id="cv-note" rows="2" maxlength="500" placeholder="Facultatif" style="width:100%;margin-bottom:18px;resize:vertical;'+fs+'">'+String(n).replace(/</g,'&lt;')+'</textarea>'
+    +'<div class="mbtns"><button class="mb" onclick="openDay(\''+key+'\')">Annuler</button><button class="mb pri" onclick="pendingKey=\''+key+'\';_cvSaveExtras();saveState();render();popCell(\''+key+'\');openDay(\''+key+'\')">Valider</button></div>'
+    +'</div></div>';
+}
 // Note et rendu en plus de l'écran « Modifier le jour »
 function _cvSaveExtras(){
     // Note et rendu en plus saisis directement dans l'écran
