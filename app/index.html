@@ -2123,7 +2123,7 @@ function _renderSideV2(d){
     +'<div class="sv2-pay" style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:10px"><span class="sv2-lbl" style="font-size:11px">'+(_bu?'Brut du bulletin':'Brut estimé')+'</span>'
     +'<span class="sv2-val" style="font-size:22px;color:'+(brutOk||_bu?'var(--gold-pay)':'var(--text3)')+'">'+(_bu?fmtEuro(_bu.brut):brutOk?fmtEuro(pt.total):'—')+'</span></div>'
     +'<div class="sv2-sub" style="display:flex;justify-content:space-between;gap:8px"><span>Inclut les variables '+deMois(prevMn)+'</span>'
-    +(_bst?'<span style="color:'+_bst[1]+'">'+_bst[0]+' '+(_bc.status==='ecart'?'écart '+(_bc.diff>0?'+':'')+fmtEuro(_bc.diff):'vérifié')+'</span>':'<span style="color:var(--text3)">pas de bulletin</span>')+'</div>'
+    +(_bst?'<span style="color:'+_bst[1]+'">'+_bst[0]+' '+(_bc.status==='ecart'?'écart '+(_bc.adj>0?'+':'')+fmtEuro(_bc.adj):'vérifié')+'</span>':'<span style="color:var(--text3)">pas de bulletin</span>')+'</div>'
     +'</div>';
   v2.innerHTML=soldes+heures+paie;
   // Primes sur une seule ligne : si elles débordent, on réduit leur taille juste ce qu'il faut
@@ -2422,6 +2422,9 @@ function _bulCompare(b){
   if(b.supFam!=null||P.supFamilial>0)fix.push(['Suppl. familial',b.supFam||0,P.supFamilial]);
   var fixed=fix.filter(function(f){return f[1]!=null||f[2];}).map(function(f){var bv=f[1]||0,av=r2(f[2]||0);return{lbl:f[0],bm:bv,am:av,ok:Math.abs(bv-av)<=0.05,key:f[3]};});
   var lateSum=r2(late.reduce(function(s,l){return s+l.mt;},0)),diff=r2(b.brut-P.total);
+  // Coordination payée comme antenne (même taux) : le total des deux suffit
+  var rA=rows.filter(function(r){return r.k==='antenne';})[0],rC=rows.filter(function(r){return r.k==='coord';})[0];
+  if(rA&&rC&&!(rA.ok&&rC.ok)&&rA.bq+rA.rq+rC.bq+rC.rq===rA.aq+rC.aq){rA.ok=rC.ok=true;rA.mix=rC.mix=1;}
   var nBad=rows.filter(function(r){return !r.ok;}).length+fixed.filter(function(f){return !f.ok;}).length;
   var adj=r2(diff+paidLater-lateSum),later=[];rows.forEach(function(r){r.rFrom.forEach(function(f){if(later.indexOf(f)<0)later.push(f);});});
   var status=nBad||alerts.length?'ecart':Math.abs(adj)>0.1?'ecart':paidLater?'later':late.some(function(l){return !l.info;})?'late':'ok';
@@ -2457,7 +2460,7 @@ function _payPageHtml(ym){
   var tit=function(t,first){return '<div class="btit" style="margin:'+(first?'4px':'14px')+' 0 4px">'+t+'</div>';};
   var vl='',vb=0;
   var vr=function(k,lbl,aq,am,col){var r=rowsBy[k];if(!(aq>0)&&!r)return;var bm=r?r.bm:0;vb+=bm+(r?r.rm:0);
-    vl+=row(lbl,am,col,c?(r?(r.ok?(r.rq?'<span class="pp-n" style="color:var(--green)">✓ en '+MCs[r.rFrom[0]%12].toLowerCase()+'</span>':OK):bul(false,bm+r.rm)):bul(false,0)):null);};
+    vl+=row(lbl,am,col,c?(r?(r.ok?(r.mix?'<span class="pp-n" style="color:var(--green)">'+(k==='coord'?'✓ en antenne':'✓ avec coord')+'</span>':r.rq?'<span class="pp-n" style="color:var(--green)">✓ en '+MCs[r.rFrom[0]%12].toLowerCase()+'</span>':OK):bul(false,bm+r.rm)):bul(false,0)):null);};
   vr('dim','Dim ('+fmtMin(v.dimMin)+' × '+_tx.dim+'%)',v.dimMin,v.supDim,'var(--text2)');
   vr('rh','RH ('+fmtMin(v.rhMin)+' × '+_tx.rh+'%)',v.rhMin,v.supRH,'var(--text2)');
   vr('fer','Fériés ('+fmtMin(v.ferMin)+' × '+_tx.fer+'%)',v.ferMin,v.supFer,'var(--text2)');
@@ -2473,9 +2476,13 @@ function _payPageHtml(ym){
   // En-tête et total brut comme l'ancien onglet Paie ; la colonne bulletin s'ajoute à gauche
   var h='<div class="pp-r" style="font-size:10px;color:var(--text3);padding:0 0 2px"><span style="flex:1"></span>'+(c?'<span class="pp-n">bulletin</span>':'')+'<span>euros</span></div>'
     +'<div class="pp-r" style="padding:5px 0;margin-bottom:2px"><span style="flex:1;color:var(--text3)">total brut</span>'+(c?bul(c.status!=='ecart'||Math.abs(c.diff)<=0.05,b.brut):'')+'<b style="font-size:15px;color:var(--gold-pay)">'+fe(P.total)+'</b></div>';
-  if(c){var st=_BUL_ST[c.status],d=c.diff,z=Math.abs(d)<=0.05,lt=c.later.map(function(f){return '<a onclick="_swipeGo('+(f>ym?1:-1)+',function(){openBulletinModal('+f+')})" style="color:var(--blue);cursor:pointer">'+MC[f%12]+'</a>';}).join(', ');
-    if(c.status==='later')st=[st[0],st[1],'Conforme, complété par le bulletin de '+lt];
-    h+='<div style="font-size:11px;margin:0 0 4px"><b style="color:'+st[1]+'">'+st[0]+' '+st[2]+'</b>'+(c.status!=='later'&&c.paidLater?'<span style="color:var(--text3)"> · '+fe(c.paidLater)+' rattrapés en '+lt+'</span>':'')+(z?'':' · écart <b style="color:'+(d>0?'var(--green)':'var(--red)')+'">'+(d>0?'+':'−')+fe(Math.abs(d))+'</b>'+(c.lateSum?'<span style="color:var(--text3)">, dont '+fe(c.lateSum)+' de rattrapages</span>':''))+'</div>';}
+  if(c){var lt=c.later.map(function(f){return '<a onclick="_swipeGo('+(f>ym?1:-1)+',function(){openBulletinModal('+f+')})" style="color:inherit;text-decoration:underline;cursor:pointer">'+MC[f%12]+'</a>';}).join(', '),A=Math.abs(c.adj),msg;
+    if(c.status==='ok')msg='✓ Conforme au calcul';
+    else if(c.status==='later')msg='✓ Conforme, avec un rattrapage payé en '+lt;
+    else if(c.status==='late')msg='✓ Conforme, avec des rattrapages d’anciens mois';
+    else if(A>0.1)msg='⚠ '+(c.adj<0?'Il manque '+fmtEuro(A)+' sur le bulletin':'Le bulletin paie '+fmtEuro(A)+' de plus')+(c.paidLater?', après le rattrapage de '+lt:'');
+    else msg='⚠ Le total correspond, mais des lignes diffèrent';
+    h+='<div style="font-size:11px;font-weight:600;margin:0 0 4px;color:'+(c.status==='ecart'?'var(--amber)':'var(--green)')+'">'+msg+'</div>';}
   var pR=(v.panierRate!=null?v.panierRate:getPanierRate());
   if(v.paniers>0||(c&&c.paniers))h+=row('Paniers repas ('+v.paniers+' × '+pR.toFixed(2).replace('.',',')+' €)',v.supPaniers,'var(--amber)',c?(c.paniers?bul(Math.abs(Number(c.paniers.bq)-Number(c.paniers.aq))<0.01,b.paniers.mt):bul(false,0)):null);
   h+='<div class="sep" style="margin:6px 0 4px"></div>';
@@ -2684,7 +2691,7 @@ function _svSalHtml(y){
     tot+=val;
     if(bu){nB++;var cc=null;try{cc=_bulCompare(bu);}catch(e){}
       if(cc&&cc.status!=='ecart')st='<span style="color:var(--green)">✓ bulletin</span>';
-      else{nBad++;var d=cc?cc.diff:0;st=Math.abs(d)<0.05?'<span style="color:var(--amber)">⚠ lignes</span>':'<span style="color:'+(d>0?'var(--green)':'var(--red)')+'">'+(d>0?'+':'−')+fe(Math.abs(d))+'</span>';}}
+      else{nBad++;var d=cc?cc.adj:0;st=Math.abs(d)<0.05?'<span style="color:var(--amber)">⚠ lignes</span>':'<span style="color:'+(d>0?'var(--green)':'var(--red)')+'">'+(d>0?'+':'−')+fe(Math.abs(d))+'</span>';}}
     else{nE++;st='<span style="color:var(--text3)">'+(fut?'prévu':'estimé')+'</span>';}
     rows+='<div class="sv-pr" onclick="'+'openBulletinModal('+ym+',\'recap\')'+'"><span class="l">'+ML[m]+'</span><b style="opacity:'+(bu?'1':'.6')+'">'+fe(val)+'</b><span class="s">'+st+'</span><i>›</i></div>';
   }
