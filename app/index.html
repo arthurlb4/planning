@@ -639,6 +639,11 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .pp-sheet{height:88vh}@media(min-width:700px){.pp-sheet{height:85vh}}
 .sv2-pl{display:flex;justify-content:space-between;align-items:baseline;gap:8px}.sv2-pl>span:first-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sv2-pl>span+span{white-space:nowrap;flex-shrink:0}
 .sv-cur{font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin:22px 0 6px}
+.ring circle{transition:none}.ring circle[style]{animation:ringIn 1.1s cubic-bezier(.2,.8,.2,1) both}.ring .ring-over{animation-delay:.9s;filter:drop-shadow(0 0 2px rgba(0,0,0,.6))}.ring{transform:rotate(-90deg);flex-shrink:0}
+@keyframes ringIn{from{stroke-dashoffset:var(--c)}to{stroke-dashoffset:var(--o)}}
+.cp-big{display:flex;align-items:center;gap:14px;margin-bottom:12px}.cp-ls{flex:1;min-width:0;display:flex;flex-direction:column;gap:9px}
+.cp-l{display:flex;flex-direction:column;min-width:0}.cp-n{font-size:11px;font-weight:600}.cp-v b{font-size:17px;font-weight:700;color:var(--text)}.cp-v small{font-size:11px;color:var(--text3)}.cp-d{font-size:10px;color:var(--text3)}
+.cp-sm{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding-top:10px;border-top:0.5px solid var(--border2)}.cp-one{display:flex;align-items:center;gap:9px;min-width:0}.cp-one .cp-v b{font-size:15px}
 .sv-tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px}.sv-tile{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:14px 12px;border:0.5px solid var(--border);border-radius:14px;background:var(--bg3);font-family:var(--font);cursor:pointer;text-align:left}.sv-tile .t{font-size:12px;color:var(--text2);font-weight:600}.sv-tile b{font-size:24px;font-weight:700;line-height:1.1}.sv-tile small{font-size:10.5px;color:var(--text3);line-height:1.35}
 .sv-btns{display:flex;gap:8px;margin-bottom:10px}.sv-btns button{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:14px 8px;border:0.5px solid var(--border);border-radius:14px;background:var(--bg3);color:var(--blue);font-size:12.5px;font-weight:600;font-family:var(--font);cursor:pointer}.sv-btns i{font-size:22px}
 .sv-card{background:var(--bg3);border:0.5px solid var(--border);border-radius:14px;padding:12px;margin-bottom:8px}.sv-h{font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px}.sv-h small{font-weight:400;font-size:10.5px;color:var(--text3);margin-left:4px}
@@ -2718,14 +2723,32 @@ function _svSalHtml(y){
     +(rows||'<div style="font-size:11px;color:var(--text3);padding:6px 0">Renseigner la paie dans Réglages → Paie pour voir l’estimation.</div>');
 }
 function _svYearGo(y){var cur=window._svYear||NOW.getFullYear();_swipeGo(y>cur?1:-1,function(){openBulletinsCal(y);});}
-// Compteurs de l'année (pour les curieux) : comparés à l'année précédente entière
+// Compteurs de l'année (pour les curieux), façon anneaux d'activité : à ce jour, par rapport à toute l'année précédente
+function _ringSvg(size,rings){
+  // rings : [{f:fraction (peut dépasser 1),c:couleur}], du plus grand au plus petit
+  var w=size*0.105,gap=w*0.18,h='<svg class="ring" width="'+size+'" height="'+size+'" viewBox="0 0 '+size+' '+size+'">';
+  rings.forEach(function(r,i){
+    var rad=size/2-w/2-i*(w+gap),C=2*Math.PI*rad,f=Math.max(0,r.f||0);
+    var arc=function(fr,extra){var o=C*(1-Math.min(1,fr));return '<circle cx="'+size/2+'" cy="'+size/2+'" r="'+rad+'" fill="none" stroke="'+r.c+'" stroke-width="'+w+'" stroke-linecap="round" stroke-dasharray="'+C+'" stroke-dashoffset="'+o+'" style="--c:'+C+';--o:'+o+'"'+(extra||'')+'/>';};
+    h+='<circle cx="'+size/2+'" cy="'+size/2+'" r="'+rad+'" fill="none" stroke="'+r.c+'" stroke-opacity=".18" stroke-width="'+w+'"/>';
+    if(f>0)h+=arc(f);
+    if(f>1)h+=arc(f-1,' class="ring-over"');
+  });
+  return h+'</svg>';
+}
 function _cptHtml(y){
-  var a=_bilanCount(y,11,31),b=_bilanCount(y-1,11,31); // année entière : les jours à venir sont pris dans le planning
-  var row=function(lbl,v,p,h){var df=v-p,dc=df>0?'var(--amber)':'var(--text3)',f=function(x){return h?fmtMin(x):String(x);};
-    return '<div class="recap-row" style="padding:4px 0"><span style="color:var(--text2)">'+lbl+'</span><span><b>'+f(v)+'</b><span style="display:inline-block;min-width:60px;text-align:right;font-size:11px;color:'+dc+'">'+(df>0?'+'+f(df):df<0?'−'+f(-df):'=')+'</span></span></div>';};
-  var h='<div style="font-size:11px;color:var(--text3);margin:8px 0 6px">Écart avec l’année '+(y-1)+' entière</div>'
-    +row('Jours travaillés',a.jours,b.jours)+row('Heures de nuit',a.nuits,b.nuits,true)+row('Dimanches',a.dim,b.dim)+row('Fériés',a.fer,b.fer)+row('Matins (avant 4h)',a.matins,b.matins);
-  return _fold('fold-cpt','','var(--blue)','Compteurs '+y,'année entière, planning compris',a.jours+' j',h);
+  var t=new Date(),cy=t.getFullYear(),m=y<cy?11:t.getMonth(),d=y<cy?31:t.getDate();
+  var a=_bilanCount(y,m,d),b=_bilanCount(y-1,11,31),bt=_bilanCount(y-1,m,d); // à ce jour, année précédente entière, et à la même date
+  var M=[{k:'jours',l:'Jours travaillés',c:'#FA2D55',u:'j'},{k:'nuits',l:'Heures de nuit',c:'#A78BFA',u:'h'},{k:'dim',l:'Dimanches',c:'#34D399',u:''},{k:'fer',l:'Fériés',c:'#FBBF24',u:''},{k:'matins',l:'Matins',c:'#38BDF8',u:''}];
+  var fmt=function(x,u){return u==='h'?fmtMin(x).replace(/h00$/,'h'):String(x)+(u==='j'?' j':'');};
+  var leg=function(o){var v=a[o.k],p=b[o.k],dd=v-bt[o.k];
+    return '<div class="cp-l"><span class="cp-n" style="color:'+o.c+'">'+o.l+'</span><span class="cp-v"><b>'+fmt(v,o.u)+'</b><small> / '+fmt(p,o.u)+'</small></span>'
+      +'<span class="cp-d">'+(dd>0?'+'+fmt(dd,o.u)+' d’avance':dd<0?fmt(-dd,o.u)+' de retard':'comme en '+(y-1))+'</span></div>';};
+  var fr=function(o){return b[o.k]?a[o.k]/b[o.k]:0;};
+  var big='<div class="cp-big">'+_ringSvg(132,M.slice(0,3).map(function(o){return{f:fr(o),c:o.c};}))+'<div class="cp-ls">'+M.slice(0,3).map(leg).join('')+'</div></div>';
+  var small='<div class="cp-sm">'+M.slice(3).map(function(o){return '<div class="cp-one">'+_ringSvg(54,[{f:fr(o),c:o.c}])+leg(o)+'</div>';}).join('')+'</div>';
+  var h='<div style="font-size:10.5px;color:var(--text3);margin:8px 0 10px">Anneau plein : autant que toute l’année '+(y-1)+'. Avance ou retard : par rapport à la même date en '+(y-1)+'.</div>'+big+small;
+  return _fold('fold-cpt','','#FA2D55','Par rapport à '+(y-1),'compteurs '+y+' à ce jour',Math.round(fr(M[0])*100)+' %',h);
 }
 function openRecapModal(){
   document.querySelectorAll('[onclick*="openRecapModal"]').forEach(el=>el.classList.add('active'));_lockBodyScroll();
