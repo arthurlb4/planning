@@ -3070,7 +3070,7 @@ function openDay(key){
     var _scheduledSet=_cycleGridScheduledVacs(date);
     var _scheduledVacs=cycleVacNames.filter(function(n){return _scheduledSet.has(n);});
     var _accessibleVacs=cycleVacNames.filter(function(n){return !_scheduledSet.has(n);});
-    window._autreVacsForDay=_accessibleVacs;
+    window._autreVacsForDay=_accessibleVacs;window._cycleVacsShown=_scheduledVacs;
     var _rowSz=(dw===0||dw===6)?3:4;
     for(var _i=0;_i<_scheduledVacs.length;_i+=_rowSz)rows.push(_scheduledVacs.slice(_i,_i+_rowSz));
     var _lc=Object.keys(S.customVacs||{}).filter(function(v){return !(S.customVacs[v].hidden)&&!cycleVacNames.includes(v);});
@@ -5868,7 +5868,7 @@ function renderExchangeModal(){
       var _exSchSet=_cycleGridScheduledVacs(tDate);
       var _exSched=_exCvn.filter(function(n){return _exSchSet.has(n);});
       var _exAccess=_exCvn.filter(function(n){return !_exSchSet.has(n);});
-      window._autreVacsForDay=_exAccess;
+      window._autreVacsForDay=_exAccess;window._cycleVacsShown=_exSched;
       var _exRsz=(dw===0||dw===6)?3:4;
       for(var _ei=0;_ei<_exSched.length;_ei+=_exRsz)exRows.push(_exSched.slice(_ei,_ei+_exRsz));
       var _exLc=Object.keys(S.customVacs||{}).filter(function(v){return !(S.customVacs[v].hidden)&&!_exCvn.includes(v);});
@@ -6901,8 +6901,10 @@ function openAutreVacModal(){
     MR:'Vidéo',SR:'Vidéo','Ms-R':'Vidéo','Md-R':'Vidéo',
     B2V:'Cadre',C3V:'Cadre',P422V:'Cadre',BsV:'Cadre',Ds:'Cadre',BdV:'Cadre',Dd:'Cadre',
   };
+  const _VCU={};Object.keys(VAC_CAT).forEach(function(k){_VCU[k.toUpperCase()]=VAC_CAT[k];});
   function vacCat(n){
     if(VAC_CAT[n])return VAC_CAT[n];
+    if(_VCU[String(n).toUpperCase()])return _VCU[String(n).toUpperCase()];
     var b=n;
     while(b.length>1&&b[b.length-1]>='a'&&b[b.length-1]<='z'){b=b.slice(0,-1);if(VAC_CAT[b])return VAC_CAT[b];}
     return'Autre';
@@ -6910,6 +6912,17 @@ function openAutreVacModal(){
 
   var html='';
   // Cycle mode: show accessible (non-scheduled) cycle vacs split by category
+  // Toutes les vacations définies dans l'admin pour ce type de jour, même si elles ne sont rattachées à aucun cycle,
+  // sauf celles déjà proposées dans la grille du jour
+  if(_globalCycles.length&&Object.keys(_globalVacs).length){
+    const dt=dw===6?'sat':dw===0?'sun':'week',inGrid=new Set((window._cycleVacsShown||[]));
+    const seen=new Set();
+    window._autreVacsForDay=Object.keys(_globalVacs).filter(function(n){
+      const v=_globalVacs[n];if(n==='RH'||n==='SV'||!v||inGrid.has(n))return false;
+      const ts=String(v.type||'week').split(',');if(!(ts.includes('all')||ts.includes(dt)))return false;
+      const l=(v.label||n).toLowerCase();if(seen.has(l))return false;seen.add(l);return true;
+    });
+  }
   if(window._autreVacsForDay&&window._autreVacsForDay.length){
     const dayFiltered=window._autreVacsForDay.filter(function(n){
       const v=VAC[n];if(!v||!v.days||!v.days.length)return true;
