@@ -51,7 +51,7 @@
 html{scrollbar-gutter:stable;}html,body{overflow-x:hidden;}body{padding-top:60px;background:var(--bg);color:var(--text);overscroll-behavior-y:none;}
 @media(max-width:720px){html,body{height:100%;overflow:hidden;}}
 /* Téléphone : la page ne défile pas (gestes du calendrier), sauf si son contenu dépasse l'écran (classe posée par _fitScroll) */
-@media(max-width:720px){body.can-scroll{overflow-y:auto}.app-outer{padding-bottom:env(safe-area-inset-bottom)}.side-col{padding-bottom:12px!important}}
+@media(max-width:720px){body.can-scroll{overflow-y:auto}.app-outer{padding-bottom:env(safe-area-inset-bottom)}.side-col{padding-bottom:30px!important}}
 input,select,textarea{font-family:var(--font);user-select:text;-webkit-user-select:text;}button{font-family:var(--font);user-select:none;-webkit-user-select:none;}
 input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
 input[type=number]{-moz-appearance:textfield;appearance:textfield;}
@@ -196,6 +196,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .cal-wrap,.ann-month{-webkit-backdrop-filter:none!important;backdrop-filter:none!important}
 .pg-on .cal-wrap,.pg-on .ann-month{will-change:transform}
 /* Écran de chargement : silhouette aux dimensions de l'accueil (barre, mois, calendrier, cases du côté) */
+@media(min-width:721px){#boot{display:none!important}}
 #boot{position:fixed;inset:0;z-index:100000;background:#161615;overflow:hidden;transition:opacity .4s ease}
 #boot .bt-hdr{height:39px;border-bottom:.5px solid rgba(255,250,242,.06);background:#1d1d1c;display:flex;justify-content:flex-end;align-items:center;gap:6px;padding:0 10px}
 #boot .bt-hdr b{display:block;width:34px;height:28px;border-radius:9px;background:rgba(255,250,242,.06);animation:btPulse 1.3s ease-in-out infinite}#boot .bt-hdr b.g{width:22px;height:22px;border-radius:50%;margin-right:8px}
@@ -723,6 +724,11 @@ body.modal-open{overflow:hidden;position:fixed;width:100%;left:0;right:0;overscr
 <body>
 <!-- Écran de chargement : silhouette de l'app qui pulse le temps que les données arrivent -->
 <div id="boot" aria-hidden="true"><div class="bt-hdr"><b class="g"></b><b class="g"></b><b></b><b></b><b></b><b></b><b></b></div><div class="bt-in"><div class="bt-bar"><b></b><b class="w"></b><b></b></div><div class="bt-cal"><u class="n" style="visibility:hidden"></u><u></u><u></u><u></u><u></u><u></u><u></u><u></u><em></em><i></i><i></i><i></i><i></i><i></i><i></i><i></i><em></em><i></i><i></i><i></i><i></i><i></i><i></i><i></i><em></em><i></i><i></i><i></i><i></i><i></i><i></i><i></i><em></em><i></i><i></i><i></i><i></i><i></i><i></i><i></i><em></em><i></i><i></i><i></i><i></i><i></i><i></i><i></i><em></em><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="bt-side"><div class="bt-bloc a"><s></s><p><span></span><span></span><span></span></p></div><div class="bt-bloc b"><s></s><p><span></span><span></span><span></span></p></div><div class="bt-bloc c"><s></s><p><span></span><span></span></p></div></div></div></div>
+<script>/* Écran de chargement : cases du côté placées comme au dernier affichage de l'accueil */
+try{(function(){var g=JSON.parse(localStorage.getItem('pl_boot_geo')||'null');if(!g||innerWidth>720||Math.abs(g.w-innerWidth)>2)return;
+var bl=document.querySelectorAll('#boot .bt-bloc'),sd=document.querySelector('#boot .bt-side');if(!sd||bl.length!==g.b.length)return;
+var t0=bl[0].getBoundingClientRect().top;sd.style.top=(g.b[0][0]-t0)+'px';
+for(var i=0;i<bl.length;i++){bl[i].style.height=g.b[i][1]+'px';bl[i].style.marginBottom=(i<bl.length-1?g.b[i+1][0]-g.b[i][0]-g.b[i][1]:0)+'px';}})();}catch(e){}</script>
 <div id="app"><div class="app-outer">
 <div id="pwa-banner" class="pwa" style="display:none">
   <i class="ti ti-device-mobile" style="font-size:16px;flex-shrink:0"></i>
@@ -7847,7 +7853,11 @@ function _checkSideBelow(){
 window.addEventListener('resize',function(){_applyBigScreenZoom();_fitCalendar();_fitSideMonth();if(annualOpen)_fitAnnual();_syncSideTop();_checkSideBelow();});
 
 // Affichage de l'app une fois les données chargées : l'écran de chargement s'efface
+// Mémorise la position des cases du côté (téléphone) pour que l'écran de chargement suivant les reproduise
+function _saveBootGeo(){try{if(innerWidth>720||document.body.scrollTop>0||scrollY>0)return;var bl=document.querySelectorAll('#side-v2 > .bloc');if(!bl.length)return;
+  localStorage.setItem('pl_boot_geo',JSON.stringify({w:innerWidth,b:[].map.call(bl,function(e){var r=e.getBoundingClientRect();return[Math.round(r.top),Math.round(r.height)];})}));}catch(e){}}
 function _revealBody(){
+  setTimeout(_saveBootGeo,1600);
   var b=document.getElementById('boot');if(!b)return;
   // Durée minimale d'affichage (~1 pulsation) même si les données arrivent tout de suite
   var wait=Math.max(0,1200-performance.now());
