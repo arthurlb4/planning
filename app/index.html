@@ -2485,8 +2485,8 @@ function _bulCompare(b){
   // Coordination payée comme antenne (même taux) : le total des deux suffit
   var rA=rows.filter(function(r){return r.k==='antenne';})[0],rC=rows.filter(function(r){return r.k==='coord';})[0];
   if(rA&&rC&&!(rA.ok&&rC.ok)&&rA.bq+rA.rq+rC.bq+rC.rq===rA.aq+rC.aq){rA.ok=rC.ok=true;rA.mix=rC.mix=1;}
-  // Paniers : souvent payés en « RAP » sans mois (rappels groupés, parfois de l'année d'avant) → information, pas d'alerte
-  var nBad=rows.filter(function(r){return !r.ok&&r.k!=='panier';}).length+fixed.filter(function(f){return !f.ok;}).length;
+  // Paniers : « RAP » sans mois = mois de travail ; un écart compte comme une ligne qui diffère (le brut n'en dépend pas)
+  var nBad=rows.filter(function(r){return !r.ok;}).length+fixed.filter(function(f){return !f.ok;}).length;
   var adj=r2(diff+paidLater-lateSum),later=[];rows.forEach(function(r){r.rFrom.forEach(function(f){if(later.indexOf(f)<0)later.push(f);});});
   var status=nBad||alerts.length?'ecart':Math.abs(adj)>0.1?'ecart':paidLater?'later':late.some(function(l){return !l.info;})?'late':'ok';
   return{P:P,rows:rows,fixed:fixed,late:late,lateSum:lateSum,paidLater:paidLater,later:later.sort(),adj:adj,alerts:alerts,diff:diff,status:status,nBad:nBad,paniers:(bq.panier||rq.panier||v.paniers)?{bq:(bq.panier||0)+(rq.panier||0),aq:v.paniers||0,bm:r2((bm.panier||0)+(rm.panier||0))}:null};
@@ -2557,7 +2557,7 @@ function _payPageHtml(ym){
     var ig=c.status==='ecart'&&_bulIgn(ym,c),lk='color:var(--blue);font-weight:400;cursor:pointer;margin-left:6px;white-space:nowrap';
     h+='<div style="font-size:11px;font-weight:600;margin:0 0 4px;color:'+(ig?'var(--text3)':c.status==='ecart'?'var(--amber)':'var(--green)')+'">'+(ig?msg.replace(/^⚠ /,''):msg)+(ig?' · ignoré <a style="'+lk+'" onclick="bulIgnore('+ym+',0)">Ne plus ignorer</a>':c.status==='ecart'?' <a style="'+lk+'" onclick="bulIgnore('+ym+',1)">Ignorer</a>':'')+'</div>';}
   var pR=(v.panierRate!=null?v.panierRate:getPanierRate());
-  if(v.paniers>0||(c&&c.paniers))h+=row('Paniers ('+v.paniers+' × '+pR.toFixed(2).replace('.',',')+' €)',v.supPaniers,null,c?(c.paniers&&Math.abs(Number(c.paniers.bq)-Number(c.paniers.aq))<0.01?OK:'<span class="pp-n" style="color:var(--text3)" title="Paniers souvent payés en rappel sans mois : information seulement">'+fe(c.paniers?c.paniers.bm:0)+'</span>'):null);
+  if(v.paniers>0||(c&&c.paniers))h+=row('Paniers ('+v.paniers+' × '+pR.toFixed(2).replace('.',',')+' €)',v.supPaniers,null,c?(c.paniers?bul(Math.abs(Number(c.paniers.bq)-Number(c.paniers.aq))<0.01,c.paniers.bm):bul(false,0)):null);
   // Cumul depuis janvier : brut des bulletins importés, sinon estimation
   (function(){var cum=0,est=0;for(var mm=0;mm<=m;mm++){var bb=(S.bulletins||{})[y*12+mm];if(bb){cum+=bb.brut;}else{var pp=calcPayeMois(y,mm);if(pp&&pp.configured){cum+=pp.total;est+=pp.total;}}}
     h+='<div class="pp-r" style="padding:3px 0"><span class="pp-l">Depuis janvier'+(est>0.05?' <span style="font-size:10px">· dont '+fe(est)+' estimé</span>':'')+'</span>'+(c?E:'')+'<b style="color:var(--gold-pay)">'+fe(cum)+'</b></div>';})();
