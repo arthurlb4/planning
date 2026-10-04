@@ -199,7 +199,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 @media(min-width:721px){#boot{display:none!important}}
 #boot{position:fixed;inset:0;z-index:100000;background:#161615;overflow:hidden;transition:opacity .4s ease}
 #boot .bt-hdr{height:39px;border-bottom:.5px solid rgba(255,250,242,.06);background:#1d1d1c;display:flex;justify-content:flex-end;align-items:center;gap:6px;padding:0 10px}
-#boot .bt-hdr b{display:block;width:34px;height:28px;border-radius:9px;background:rgba(255,250,242,.06);animation:btPulse 1.3s ease-in-out infinite}#boot .bt-hdr b.g{width:22px;height:22px;border-radius:50%;margin-right:8px}
+#boot .bt-hdr b{display:block;width:34px;height:28px;border-radius:9px;background:rgba(255,250,242,.06);animation:btPulse 1.3s ease-in-out infinite;animation-delay:var(--btd,0s)}#boot .bt-hdr b.g{width:22px;height:22px;border-radius:50%;margin-right:8px}
 #boot .bt-in{max-width:520px;margin:0 auto;padding:13px 20px 0}
 #boot.ptr .bt-in{transform:translateY(52px)}
 .bt-ptr{position:absolute;left:50%;margin-left:-15px;width:30px;height:30px}.bt-ptr svg{display:block}.bt-ptr line{stroke:#9d9ca1;stroke-width:3.2;stroke-linecap:round}
@@ -211,11 +211,13 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 #boot .bt-cal u.n{margin:0}
 #boot .bt-cal em{width:12px;height:10px;border-radius:5px;align-self:center;justify-self:center}
 #boot .bt-cal i{aspect-ratio:39/41;border-radius:10px}
+#boot .bt-cal.fix{box-sizing:border-box;grid-template-rows:10px repeat(6,1fr)}#boot .bt-cal.fix i{aspect-ratio:auto}
+#boot .bt-side[style*="--rh"]:before{bottom:auto;height:var(--rh)}
 #boot .bt-side{position:relative;padding-left:43px}
-#boot .bt-side:before{content:'';position:absolute;left:0;top:16px;bottom:24px;width:23px;border-radius:10px;background:rgba(255,250,242,.04)}
+#boot .bt-side:before{content:'';position:absolute;left:0;top:var(--rt,16px);bottom:24px;width:var(--rw,23px);border-radius:10px;background:rgba(255,250,242,.04)}
 #boot .bt-bloc{border-radius:16px;margin-bottom:8px;padding:14px 14px 12px}
 #boot .bt-bloc.a{height:95px}#boot .bt-bloc.b{height:118px}#boot .bt-bloc.c{height:77px}
-#boot .bt-bar b,#boot .bt-cal u,#boot .bt-cal em,#boot .bt-cal i,#boot .bt-bloc{display:block;background:rgba(255,250,242,.06);animation:btPulse 1.3s ease-in-out infinite}
+#boot .bt-bar b,#boot .bt-cal u,#boot .bt-cal em,#boot .bt-cal i,#boot .bt-bloc{display:block;background:rgba(255,250,242,.06);animation:btPulse 1.3s ease-in-out infinite;animation-delay:var(--btd,0s)}
 #boot .bt-cal u,#boot .bt-cal em{background:rgba(255,250,242,.045)}
 #boot .bt-bloc{background:rgba(255,250,242,.045);border:.5px solid rgba(255,250,242,.05)}
 #boot .bt-bloc>s{display:block;width:70px;height:10px;border-radius:5px;background:rgba(255,250,242,.07);text-decoration:none}
@@ -777,6 +779,8 @@ body.modal-open{overflow:hidden;position:fixed;width:100%;left:0;right:0;overscr
 <body>
 <!-- Écran de chargement : silhouette de l'app qui pulse le temps que les données arrivent -->
 <div id="boot" aria-hidden="true"><div class="bt-hdr"><b class="g"></b><b class="g"></b><b></b><b></b><b></b><b></b><b></b></div><div class="bt-in"><div class="bt-bar"><b></b><b class="w"></b><b></b></div><div class="bt-cal"><u class="n" style="visibility:hidden"></u><u></u><u></u><u></u><u></u><u></u><u></u><u></u><em></em><i></i><i></i><i></i><i></i><i></i><i></i><i></i><em></em><i></i><i></i><i></i><i></i><i></i><i></i><i></i><em></em><i></i><i></i><i></i><i></i><i></i><i></i><i></i><em></em><i></i><i></i><i></i><i></i><i></i><i></i><i></i><em></em><i></i><i></i><i></i><i></i><i></i><i></i><i></i><em></em><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="bt-side"><div class="bt-bloc a"><s></s><p><span></span><span></span><span></span></p></div><div class="bt-bloc b"><s></s><p><span></span><span></span><span></span></p></div><div class="bt-bloc c"><s></s><p><span></span><span></span></p></div></div></div></div>
+<script>/* Pulsation de l'écran de chargement calée sur l'horloge (même phase avant et après un rechargement) */
+try{document.getElementById('boot').style.setProperty('--btd',(-(Date.now()%1300)/1000)+'s');}catch(e){}</script>
 <script>/* Retour d'un « tirer pour actualiser » : l'écran de chargement garde le calendrier abaissé (52 px, comme l'app qui
    attend dessous) et la roue continue de tourner dans l'espace libéré ; à l'ouverture normale, rien ne change */
 (function(){try{if(!sessionStorage.getItem('ptr-ok'))return;}catch(e){return;}
@@ -789,9 +793,15 @@ body.modal-open{overflow:hidden;position:fixed;width:100%;left:0;right:0;overscr
 <script>/* Écran de chargement : cases du côté placées comme au dernier affichage de l'accueil */
 try{(function(){var g=JSON.parse(localStorage.getItem('pl_boot_geo')||'null');if(!g||innerWidth>720||Math.abs(g.w-innerWidth)>2)return;
 var bh=document.querySelector('#boot .bt-hdr');if(bh&&g.h>20)bh.style.height=g.h+'px'; // même hauteur que la vraie barre (icônes comprises)
+// barre du mois et calendrier aux mêmes positions et tailles que dans l'app
+var bi=document.querySelector('#boot .bt-in'),bb=document.querySelector('#boot .bt-bar'),bc=document.querySelector('#boot .bt-cal');
+if(g.bar&&g.cal&&bi&&bb&&bc){bi.style.paddingTop=(g.bar[0]-(g.h||39))+'px';bb.style.height=g.bar[1]+'px';bb.style.marginBottom=(g.cal[0]-g.bar[0]-g.bar[1])+'px';
+  bc.classList.add('fix');bc.style.height=g.cal[1]+'px';bc.style.marginBottom='0';}
 var bl=document.querySelectorAll('#boot .bt-bloc'),sd=document.querySelector('#boot .bt-side');if(!sd||bl.length!==g.b.length)return;
 var t0=bl[0].getBoundingClientRect().top;if(document.getElementById('boot').classList.contains('ptr'))t0-=52; // retour d'actualisation : tout l'écran est déjà abaissé de 52 px
 sd.style.top=(g.b[0][0]-t0)+'px';
+if(g.bl!=null)sd.style.paddingLeft=g.bl+'px'; // cases du côté décalées comme dans l'app (rail du mois à gauche)
+if(g.sm){sd.style.setProperty('--rt',(g.sm[0]-g.b[0][0])+'px');sd.style.setProperty('--rw',g.sm[3]+'px');sd.style.setProperty('--rh',g.sm[1]+'px');}
 for(var i=0;i<bl.length;i++){bl[i].style.height=g.b[i][1]+'px';bl[i].style.marginBottom=(i<bl.length-1?g.b[i+1][0]-g.b[i][0]-g.b[i][1]:0)+'px';}})();}catch(e){}</script>
 <div id="app"><div class="app-outer">
 <div id="pwa-banner" class="pwa" style="display:none">
@@ -7322,7 +7332,7 @@ function init(){
     var ind=document.getElementById('ptr-indicator'),spin=document.getElementById('ptr-spin'),svg=spin.querySelector('svg'),msg=document.getElementById('ptr-msg'),lines=[].slice.call(spin.querySelectorAll('line'));
     var content=function(){return document.querySelector('.layout');};
     var hdrB=function(){var h=document.querySelector('.hdr');return h?h.getBoundingClientRect().bottom:0;};
-    var place=function(d){ind.style.top=(hdrB()+Math.max(4,d/2-15))+'px';};
+    var place=function(){ind.style.top=(hdrB()+11)+'px';}; // position fixe, la même que dans l'écran de chargement
     var EASE='cubic-bezier(.2,.9,.25,1)';
     var setContent=function(d,ms){var c=content();if(!c)return;c.classList.add('ptr-pull');c.style.transition=ms?'transform '+ms+'ms '+EASE:'none';c.style.transform=d?'translateY('+d+'px)':'';
       ind.style.transition=ms?'top '+ms+'ms '+EASE:'none';place(d);};
@@ -7349,15 +7359,18 @@ function init(){
       // chargement : la roue tourne, le contenu se cale juste sous elle
       lines.forEach(function(l){l.style.opacity='';});ind.classList.add('load');
       spin.style.transition='transform .18s ease-out';spin.style.transform='scale(1.12)';setTimeout(function(){spin.style.transition='transform .25s ease-in-out';spin.style.transform='scale(1)';},180);
-      setContent(REST,400);
+      setContent(REST,300);
       try{sessionStorage.setItem('ptr-ok',navigator.onLine?'1':'off');}catch(e){}
       // aussitôt le doigt levé : l'écran de chargement apparaît en fondu (calendrier abaissé, roue qui tourne), puis on recharge ;
       // la page rechargée affiche le même écran, sans rupture
       var bc=window._bootCopy&&window._bootCopy.cloneNode(true);
-      if(bc){bc.classList.add('ptr');bc.style.opacity='0';bc.style.transition='opacity .25s ease';
-        var w=document.createElement('div');w.className='bt-ptr';w.style.top=(hdrB()+11)+'px';w.innerHTML=svg.outerHTML;bc.appendChild(w);
-        document.body.appendChild(bc);requestAnimationFrame(function(){requestAnimationFrame(function(){bc.style.opacity='1';});});}
-      setTimeout(function(){location.reload();},bc?280:60);
+      if(!bc){setTimeout(function(){location.reload();},300);return;}
+      bc.classList.add('ptr');bc.style.opacity='0';bc.style.transition='opacity .22s ease';
+      var w=document.createElement('div');w.className='bt-ptr';w.style.top=(hdrB()+11)+'px';w.innerHTML=svg.outerHTML;bc.appendChild(w);
+      // le calendrier finit de se caler (300 ms), puis fondu de l'écran de chargement, puis rechargement
+      setTimeout(function(){bc.style.setProperty('--btd',(-(Date.now()%1300)/1000)+'s');document.body.appendChild(bc);
+        requestAnimationFrame(function(){requestAnimationFrame(function(){bc.style.opacity='1';});});
+        setTimeout(function(){location.reload();},240);},300);
     },{passive:true});
     // Retour après rechargement : le contenu reste abaissé, le message apparaît, puis le calendrier remonte
     var ok=null;try{ok=sessionStorage.getItem('ptr-ok');sessionStorage.removeItem('ptr-ok');}catch(e){}
@@ -8228,7 +8241,10 @@ window.addEventListener('resize',function(){_applyBigScreenZoom();_fitCalendar()
 // Mémorise la position des cases du côté (téléphone) pour que l'écran de chargement suivant les reproduise
 function _saveBootGeo(){try{if(innerWidth>720||document.body.scrollTop>0||scrollY>0)return;var bl=document.querySelectorAll('#side-v2 > .bloc');if(!bl.length)return;
   var ly=document.querySelector('.layout');if(ly&&ly.style.transform)return;var hd=document.querySelector('.hdr');
-  localStorage.setItem('pl_boot_geo',JSON.stringify({w:innerWidth,h:hd?Math.round(hd.getBoundingClientRect().height):0,b:[].map.call(bl,function(e){var r=e.getBoundingClientRect();return[Math.round(r.top),Math.round(r.height)];})}));}catch(e){}}
+  var R=function(e){if(!e)return null;var r=e.getBoundingClientRect();return [Math.round(r.top),Math.round(r.height),Math.round(r.left),Math.round(r.width)];};
+  var lyL=ly?ly.getBoundingClientRect().left:0;
+  localStorage.setItem('pl_boot_geo',JSON.stringify({w:innerWidth,h:hd?Math.round(hd.getBoundingClientRect().height):0,
+    bar:R(document.querySelector('.mbar')),cal:R(document.querySelector('.cal-wrap')),sm:R(document.getElementById('side-month')),bl:Math.round(bl[0].getBoundingClientRect().left-lyL),b:[].map.call(bl,function(e){var r=e.getBoundingClientRect();return[Math.round(r.top),Math.round(r.height)];})}));}catch(e){}}
 function _revealBody(){
   setTimeout(_saveBootGeo,1600);
   var b=document.getElementById('boot');if(!b)return;
