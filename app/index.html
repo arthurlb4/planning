@@ -502,7 +502,12 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .eph-u-flow{flex:1;display:flex;align-items:center;gap:2px;min-width:0;}
 .eph-u-cre{font-size:9px;color:var(--text3);}
 .eph-u-dispo{font-weight:500;}
-.eph-u-exp{min-width:52px;text-align:right;flex-shrink:0;white-space:nowrap;font-size:11px;color:var(--text3);padding-top:1px;}
+.eph-u-exp{min-width:52px;text-align:right;flex-shrink:0;white-space:nowrap;font-size:11px;color:var(--text3);padding-top:1px;display:flex;flex-direction:column;align-items:flex-end;gap:1px}
+.rep-pill{display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border:none;border-radius:999px;background:rgba(255,250,243,.09);color:var(--text);font:500 12px var(--font);cursor:pointer;white-space:nowrap;margin-top:-3px}
+.rep-pill i{font-size:11px;color:var(--text3)}.rep-pill:active{background:rgba(255,250,243,.16)}
+.rep-pill.on{background:rgba(224,140,60,.2);color:var(--orange)}.rep-pill.warn{box-shadow:inset 0 0 0 1px rgba(224,160,48,.55)}
+.rep-sub{display:block;font-size:10px;color:var(--text3);line-height:1.2}
+#lp-menu .rep-tag{margin-left:auto;font-size:11px;color:var(--text3);font-weight:400}
 .eph-urow.expired{opacity:.45;}
 .eph-urow.fut .eph-u-mc,.eph-urow.fut .eph-u-dispo{color:var(--text3);}
 .eph-rep-btns{display:flex;gap:2px;justify-content:flex-end;align-items:center;}
@@ -1592,9 +1597,13 @@ function toggleFractForfait(year){
 // - un arc très court reçoit un peu plus de place (prise sur le plus grand) et devient un point, qui rétrécit jusqu'à 0 ;
 // - l'espace entre les bouts arrondis s'ouvre progressivement dès qu'il y a plus d'un arc (un seul arc = cercle complet).
 function _cgGeo(fg,fc,fu){var C=2*Math.PI*27,w=8,gp=3,D=w+gp,Sm=16,fs={g:fg,c:fc,u:fu},K=['g','c','u'],S={},o={},big='g',def=0;
-  var lg=0;K.forEach(function(k){var x=Math.max(0,fs[k]||0)*C;if(x>0&&x<Sm){var y=x*(2-x/Sm);def+=y-x;x=y;}else lg+=x;S[k]=x;if(x>S[big])big=k;});
-  // la place donnée aux petits arcs est prise sur les grands, au prorata (pas de saut quand deux grands se croisent)
-  K.forEach(function(k){if(S[k]>=Sm&&lg>0)S[k]=Math.max(0,S[k]-def*S[k]/lg);});
+  var lg=0;K.forEach(function(k){var x=Math.max(0,fs[k]||0)*C;if(x>0&&x<Sm){var y=x*(2-x/Sm);def+=y-x;x=y;}else if(k!=='g')lg+=x;S[k]=x;if(x>S[big])big=k;});
+  // la place donnée aux petits arcs est prise sur le vert (restants) tant qu'il est assez grand, pour que posés et CET gardent leur taille ;
+  // quand le vert devient petit, le relais passe en douceur aux autres grands arcs, au prorata
+  var pg=S.g>=Sm?Math.min(1,(S.g-Sm)/Sm):0;if(!lg)pg=S.g>=Sm?1:0;
+  // ordre : d'abord le vert, puis le CET, en dernier les posés (chaque relais en douceur)
+  var r1=def*(1-pg),pc=S.c>=Sm?Math.min(1,(S.c-Sm)/Sm):0;if(S.u<Sm)pc=S.c>=Sm?1:0;
+  S.g=Math.max(0,S.g-def*pg);if(S.c>=Sm)S.c=Math.max(0,S.c-r1*pc);if(S.u>=Sm)S.u=Math.max(0,S.u-r1*(1-pc));
   var q=Math.min(1,(C-S[big])/D),a=0;
   K.forEach(function(k){var x=S[k];
     if(x<=0.001)o[k]={L:0,r:a/C*360,w:0,o:0};
@@ -3541,6 +3550,30 @@ function _openDayMenu(cell){
   requestAnimationFrame(function(){veil.classList.add('on');m.classList.add('on');});
   return true;
 }
+// Menu des reports d'un mois de rendus : sans report, +3, +6, +9 mois (dates d'expiration), le choix du tableau Gestion signalé
+function _openRepMenu(btn,ym,limit,rr){
+  var ext=getEphExtensions(ym),auto=(S.autoExtend&&S.autoExtend[ym])||0,dl=function(e){return MCs[e%12]+' '+String(Math.floor(e/12)).slice(2);};
+  var items=[0,1,2,3].map(function(n){var e=ym+3+n*3,dis=n<auto,cur=n===ext;
+    return '<button onclick="_repMenuAct('+ym+','+n+','+limit+')"'+(dis?' disabled':'')+'><i class="ti '+(cur?'ti-check':'ti-point')+'" style="color:'+(cur?'var(--orange)':'var(--text3)')+'"></i>'
+      +(n?'Jusqu’à fin '+dl(e):'Sans report · fin '+dl(e))+'<span class="rep-tag">'+(n===rr?'<span style="color:var(--amber)">tableau</span>':n?'+'+n*3+' mois':'')+(dis?' · auto':'')+'</span></button>';}).join('');
+  _haptic();
+  var veil=document.createElement('div');veil.id='lp-veil';veil.style.zIndex=450;
+  veil.addEventListener('click',function(e){e.stopPropagation();_closeDayMenu();});
+  veil.addEventListener('touchmove',function(e){e.preventDefault();},{passive:false});
+  var m=document.createElement('div');m.id='lp-menu';m.style.zIndex=451;
+  m.innerHTML='<div class="lp-h">Heures acquises en '+MC[ym%12]+' '+Math.floor(ym/12)+'</div>'+items+(auto?'<div class="lp-h" style="padding-top:2px">Report automatique (moins de 7h restantes) : ne peut pas être retiré.</div>':'');
+  document.body.appendChild(veil);document.body.appendChild(m);
+  var r=btn.getBoundingClientRect(),mw=m.offsetWidth,mh=m.offsetHeight,vw=window.innerWidth,vh=window.innerHeight;
+  var left=Math.min(Math.max(12,r.right-mw),vw-mw-12),below=r.bottom+8+mh<vh-12,top=below?r.bottom+8:Math.max(12,r.top-8-mh);
+  m.style.left=left+'px';m.style.top=top+'px';m.style.transformOrigin=(r.left+r.width/2-left)+'px '+(below?'0':'100%');
+  requestAnimationFrame(function(){veil.classList.add('on');m.classList.add('on');});
+}
+function _repMenuAct(ym,n,limit){
+  _haptic();_closeDayMenu();
+  if(n===getEphExtensions(ym))return;
+  pushUndo('Report modifié');if(!S.ephExtend)S.ephExtend={};if(n>0)S.ephExtend[ym]=n;else delete S.ephExtend[ym];
+  saveState();render();openMergedRenduCgModal(limit,0);
+}
 function _dayMenuAct(key,act){
   _haptic();
   _closeDayMenu();
@@ -4805,30 +4838,24 @@ function openMergedRenduCgModal(limit,tab){
     const availColor=isExp?'var(--text3)':isFut?'var(--text3)':(isWarnM)?'var(--rend-text)':'var(--text2)';
     const lostMinM=isExp?(preExpiry[ym]||0):0;
     const isExtendedM=ext>0;
-    const extSpanM=isExtendedM?'<span style="background:rgba(99,153,34,.35);border-radius:3px;padding:0 2px;color:var(--text)">'+ML2[expM]+' '+String(expY).slice(2)+'</span>':ML2[expM]+' '+String(expY).slice(2);
-    let expLblM=isExp?(lostMinM>0?'<span style="color:var(--red);font-size:10px">-'+fmtMin(lostMinM)+'</span>':'<span style="color:var(--text3);font-size:10px">00h00</span>'):extSpanM;
-    // Report du tableau : ✓ s'il est le même, sinon ⚠ et la date du tableau (toucher pour la reprendre)
-    if(_rhRep[ym]!==undefined&&!isExp){const rr=_rhRep[ym];
-      if(rr===ext)expLblM='<span style="color:var(--green);margin-right:3px">✓</span>'+expLblM;
-      else{const te=ym+3+rr*3;expLblM='<span onclick="event.stopPropagation();rendusTakeRep('+ym+','+rr+','+limit+')" style="cursor:pointer;color:var(--amber);white-space:nowrap" title="Tableau Gestion">⚠ '+ML2[te%12]+' '+String(Math.floor(te/12)).slice(2)+'</span><span style="display:block;font-size:10px;color:var(--text3);text-decoration:line-through">'+ML2[expM]+' '+String(expY).slice(2)+'</span>';}}
-    // Report buttons
-    let repBtns='';
-    if(!isFut&&(!isExp||lostMinM>0||ext>0)){
-      const activeLevel=ext;
-      const nextAuto=(avail>0&&avail<=420&&activeLevel<3)?activeLevel+1:0;
-      const bCls=(L)=>L===activeLevel?'rep-on':L===nextAuto?'rep-1m':'';
-      repBtns='<div class="eph-rep-btns">'
-        +'<button class="eph-rep-btn '+bCls(1)+'" onclick="setEphExt('+ym+',1);openMergedRenduCgModal('+limit+')">3m</button>'
-        +'<button class="eph-rep-btn '+bCls(2)+'" onclick="setEphExt('+ym+',2);openMergedRenduCgModal('+limit+')">6m</button>'
-        +'<button class="eph-rep-btn '+bCls(3)+'" onclick="setEphExt('+ym+',3);openMergedRenduCgModal('+limit+')">9m</button>'
-        +'</div>';
-    }else{
-      repBtns='<div class="eph-rep-btns" style="visibility:hidden"><button class="eph-rep-btn">3m</button><button class="eph-rep-btn">6m</button><button class="eph-rep-btn">9m</button></div>';
+    const _dl=function(e){return ML2[e%12]+' '+String(Math.floor(e/12)).slice(2);};
+    // Expiration : simple date, ou pastille « date › » qui ouvre le menu des reports quand un report a un sens
+    // (heures restantes ou report déjà posé, mois pas encore expiré). Le tableau Gestion : ✓ s'il donne la même date, ⚠ sinon.
+    const rr=_rhRep[ym]!==undefined&&!isExp?_rhRep[ym]:-1;
+    let expLblM;
+    if(isExp)expLblM=lostMinM>0?'<span style="color:var(--red)">-'+fmtMin(lostMinM)+'</span><span class="rep-sub">perdues</span>':'<span style="color:var(--text3)">'+_dl(expYm)+'</span>';
+    else if(isFut||(avail<=0&&!ext))expLblM='<span style="color:var(--text3)">'+_dl(expYm)+'</span>';
+    else{
+      const sub=ext>0?(isAutoRepM&&autoLevelM>=ext&&!(S.ephExtend&&S.ephExtend[ym])?'report auto':'+'+ext*3+' mois'):(isWarnM?'expire ce mois':'');
+      expLblM='<button class="rep-pill'+(ext>0?' on':'')+(rr>=0&&rr!==ext?' warn':'')+'" onclick="event.stopPropagation();_openRepMenu(this,'+ym+','+limit+','+rr+')">'
+        +(rr>=0?(rr===ext?'<span style="color:var(--green)">✓</span> ':'<span style="color:var(--amber)">⚠</span> '):'')
+        +_dl(expYm)+' <i class="ti ti-chevron-down"></i></button>'
+        +(rr>=0&&rr!==ext?'<span class="rep-sub" style="color:var(--amber)">tableau : '+_dl(ym+3+rr*3)+'</span>':sub?'<span class="rep-sub"'+(ext>0?' style="color:var(--orange)"':isWarnM?' style="color:var(--rend-text)"':'')+'>'+sub+'</span>':'');
     }
     rendRows+='<div class="eph-urow'+(isExp?' expired':'')+(isFut?' fut':'')+'">'
       +'<div class="eph-u-mc">'+ML2[m]+' '+String(y).slice(2)+'</div>'
       +'<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">'
-      +'<div class="eph-u-flow" style="display:flex;align-items:center;justify-content:space-between"><div><span style="color:var(--blue);font-size:11px">'+fmtMin(orig)+'</span><span style="color:var(--text3);font-size:11px;margin:0 2px">→</span><span style="font-weight:500;color:'+availColor+'">'+fmtMin(avail)+'</span></div>'+repBtns+'</div>'
+      +'<div class="eph-u-flow" style="display:flex;align-items:center;justify-content:space-between"><div><span style="color:var(--blue);font-size:11px">'+fmtMin(orig)+'</span><span style="color:var(--text3);font-size:11px;margin:0 2px">→</span><span style="font-weight:500;color:'+availColor+'">'+fmtMin(avail)+'</span></div></div>'
       +'<div class="eph-bw"><div class="eph-b2" style="width:'+origPct+'%;background:var(--blue);opacity:'+blueOpacity+'"></div><div class="eph-b" style="width:'+barPct+'%;background:var(--rend-text);opacity:'+greenOpacity+'"></div></div>'
       +'</div>'
       +'<div class="eph-u-exp">'+expLblM+'</div>'
