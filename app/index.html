@@ -707,6 +707,8 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 @media(max-width:360px){.pp-n{width:64px}.pp-r{gap:6px}.pp-r>b,.pp-v{min-width:58px}}
 /* Safari avec ses barres : vh dépasse l'écran visible, dvh suit la hauteur réellement affichée */
 @supports(height:1dvh){.sheet{max-height:90dvh}.pp-sheet{height:88dvh}@media(min-width:721px){.sheet{max-height:85dvh}.pp-sheet{height:85dvh}}}
+/* Taille standard des fenêtres à onglets (Suivi/Rendus/Congés, Variables, Paie) : même hauteur fixe, quel que soit l'onglet */
+.sheet.smod,.sheet.tabmod,.sheet.pp-sheet{height:85vh}@supports(height:1dvh){.sheet.smod,.sheet.tabmod,.sheet.pp-sheet{height:85dvh}}
 .sv-tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px}.sv-tile{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:14px 12px;border:0.5px solid var(--border);border-radius:14px;background:var(--bg3);font-family:var(--font);cursor:pointer;text-align:left}.sv-tile .t{font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.07em}.sv-tile b{font-size:17px;font-weight:600;font-family:var(--font-num);line-height:1.2}.sv-tile small{font-size:11px;color:var(--text3);line-height:1.35}
 .sv-card{background:var(--bg3);border:0.5px solid var(--border);border-radius:14px;padding:12px;margin-bottom:8px}.sv-h{font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px}.sv-h small{font-weight:400;font-size:10.5px;color:var(--text3);margin-left:4px}
 .sv-line{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;font-size:12.5px;color:var(--text2);border-top:0.5px solid var(--border2)}.sv-line:first-of-type{border-top:none}.sv-tap{cursor:pointer}.sv-r{display:flex;align-items:baseline;gap:6px}.sv-r b{font-size:13.5px}.sv-r small{font-size:10.5px;color:var(--text3)}.sv-r i{font-style:normal;color:var(--text3);margin-left:2px}
@@ -5543,7 +5545,7 @@ function openMergedMoisModal(mym,tab){
     +_moCfgBtn;
 
   document.getElementById('modal-root').innerHTML=
-    '<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet">'
+    '<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet tabmod">'
     +'<div class="sh"></div>'
     +(window._mmFrom?'<div style="display:flex;justify-content:space-between;align-items:baseline"><div class="nav-back" style="'+_navBackCss+'" onclick="_mmGoBack()">‹ Rendus</div><span style="font-size:13px;font-weight:600;color:var(--text2)">'+MLf[m]+' '+y+'</span></div>':'')
     +'<div class="stabs-row">'
@@ -5622,6 +5624,29 @@ function rcgTab(idx){
   }
   var _p=document.getElementById('rcp-pill');if(_p){if(_same){_p.style.transition='none';_p.style.transform=_tx[_RCG_ORDER.indexOf(idx)]||_tx[0];void _p.offsetWidth;_p.style.transition='';}else _p.style.transform=_tx[_RCG_ORDER.indexOf(idx)]||_tx[0];}
 }
+// Hauteur des fenêtres animée : quand le contenu d'une fenêtre change de taille, ou quand une fenêtre en remplace une autre
+// (fiche du jour → Rendu…), la hauteur glisse de l'ancienne à la nouvelle au lieu de sauter
+(function(){
+  var root=null,ro=null,cur=null,lastH=0,anim=false,EASE='cubic-bezier(.32,.72,0,1)';
+  var slide=function(sh,from,to){if(Math.abs(from-to)<3)return;anim=true;
+    sh.style.transition='none';sh.style.height=from+'px';void sh.offsetHeight;
+    sh.style.transition='height .3s '+EASE;sh.style.height=to+'px';
+    setTimeout(function(){sh.style.transition='';sh.style.height='';anim=false;lastH=sh.offsetHeight;},320);};
+  var watch=function(sh){if(ro)ro.disconnect();cur=sh;if(!sh)return;ro=new ResizeObserver(function(){if(anim||cur!==sh)return;var h=sh.offsetHeight;if(lastH&&h)slide(sh,lastH,h);lastH=h;});ro.observe(sh);};
+  var init=function(){root=document.getElementById('modal-root');if(!root||!window.ResizeObserver)return;
+    new MutationObserver(function(recs){
+      var sh=root.querySelector('.sheet');
+      if(!sh){watch(null);lastH=0;return;}
+      if(sh===cur)return;
+      // fenêtre remplacée par une autre dans le même geste : pas de nouvelle montée, la hauteur glisse
+      var replaced=recs.some(function(r){return r.removedNodes.length&&r.addedNodes.length;})&&lastH>0;
+      var from=lastH;watch(null);
+      if(replaced){var ov=root.querySelector('.overlay');if(ov)ov.style.animation='none';sh.style.animation='none';var to=sh.offsetHeight;lastH=to;slide(sh,from,to);}
+      else lastH=0;
+      watch(sh);
+    }).observe(root,{childList:true});};
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+})();
 // Flou dégradé en haut des fenêtres : affiché dès qu'on a fait défiler leur contenu
 document.addEventListener('scroll',function(e){var t=e.target;if(t&&t.classList&&(t.classList.contains('sheet')||t.classList.contains('stabs-body')))t.classList.toggle('scrolled',t.scrollTop>2);},true);
 function _lockBodyScroll(){var sy=window.scrollY;document.body.style.top='-'+sy+'px';document.body.classList.add('modal-open');}
