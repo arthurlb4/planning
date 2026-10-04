@@ -74,6 +74,15 @@ textarea{width:100%;padding:9px 12px;background:var(--bg);border:0.5px solid var
 .pdf-grid-preview tr:hover td{background:var(--bg3);}
 .table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;}
 .btn-bar{display:flex;gap:6px;flex-wrap:wrap;align-items:center;}
+/* Onglet Vacations sur mobile : une liste par type de jour, en lignes */
+.vseg{display:flex;background:var(--bg3);border:0.5px solid var(--border);border-radius:10px;padding:3px;gap:2px;margin:4px 0 10px}
+.vseg button{flex:1;border:none;background:none;color:var(--text2);font:inherit;font-size:12.5px;padding:7px 4px;border-radius:8px;cursor:pointer}
+.vseg button.on{background:var(--bg);color:var(--text);font-weight:600}
+.vrow{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:0.5px solid var(--border);cursor:pointer}
+.vrow .vm{flex:1;min-width:0}.vrow .vn{font-size:14px;font-weight:600}.vrow .vn small{font-size:10px;color:var(--text3);font-weight:400;margin-left:4px}
+.vrow .vt{font-size:12px;color:var(--text2);margin-top:2px}
+.vbdg{display:inline-block;font-size:10px;font-weight:600;padding:1px 5px;border-radius:5px;margin:3px 3px 0 0;background:var(--bg3);color:var(--text2)}
+.vbdg.p{color:#7ec85a}.vbdg.a{color:var(--orange)}.vbdg.w{color:var(--orange);background:rgba(240,160,48,.12)}
 @media(max-width:600px){
   body{padding:12px;}
   .hdr{flex-wrap:wrap;gap:8px;margin-bottom:16px;padding-bottom:12px;}
@@ -204,8 +213,8 @@ textarea{width:100%;padding:9px 12px;background:var(--bg);border:0.5px solid var
     <div id="vf-fields">
       <!-- Row 1 : identité -->
       <div class="row">
-        <div class="flex1 field"><label>Code système</label><input type="text" id="vf-name" placeholder="ex : A1b"></div>
-        <div class="flex1 field"><label>Label affiché</label><input type="text" id="vf-label" placeholder="ex : A1 (vide = code)"></div>
+        <div class="flex1 field"><label>Nom affiché</label><input type="text" id="vf-label" placeholder="ex : A1"></div>
+        <div class="flex1 field"><label>Code (unique)</label><input type="text" id="vf-name" placeholder="vide = nom affiché"></div>
         <div class="flex1 field"><label>Catégorie</label><select id="vf-cat"><option value="">Auto</option><option>Général</option><option>Coordination</option><option>Vidéo</option><option>Cadre</option></select></div>
         <div class="flex1 field"><label>Début</label><input type="time" id="vf-deb" step="900" oninput="onVfTimeChange()"></div>
         <div class="flex1 field"><label>Fin</label><input type="time" id="vf-fin" step="900" oninput="onVfTimeChange()"></div>
@@ -462,6 +471,9 @@ var _editingVac = null;
 var _allCycles = [];
 var _allVacs = {};
 var _vacActiveTab = null; // cycle id or 'none'
+var _vacDayTab = 'week'; // mobile : type de jour affiché
+function _vacMobile(){return window.innerWidth<720;}
+window.addEventListener('resize',function(){var m=_vacMobile();if(m!==window._vacWasMobile){window._vacWasMobile=m;if(document.getElementById('vac-list'))renderVacList();}});
 
 async function loadVacations() {
   const el = document.getElementById('vac-list');
@@ -520,6 +532,10 @@ function vacCat(name){
   return'Général';
 }
 
+// Badges d'une vacation : panier, primes (A/R/C), matin (début avant 4h, calculé), mixte
+function _vacBadges(v){var b='',pr=v.primes||{};if(v.panier)b+='<span class="vbdg p" title="Panier repas">Panier</span>';
+  if(pr.antenne)b+='<span class="vbdg a" title="Prime Antenne">Antenne</span>';if(pr.reel)b+='<span class="vbdg a" title="Prime Réal">Réal</span>';if(pr.coord)b+='<span class="vbdg a" title="Prime Coordination">Coord</span>';
+  var d=_toMinAdmin(v.deb);if(d!=null&&d<240)b+='<span class="vbdg a" title="Prime matin (début avant 4h)">Matin</span>';if(v.mixte)b+='<span class="vbdg">Mixte</span>';return b;}
 function renderVacList() {
   const _detailsOpen = document.querySelector('#vac-list details')?.open ?? false;
   const el = document.getElementById('vac-list');
@@ -568,7 +584,7 @@ function renderVacList() {
       const chk = _selectedVacs.has(name) ? 'checked' : '';
       const lblAttr = (v.label||name).replace(/&/g,'&amp;').replace(/"/g,'&quot;');
       const unlinkBtn = (inCycle && _vacActiveTab && _vacActiveTab !== 'none')
-        ? `<button class="btn btn-sm btn-ghost" title="Retirer du cycle" onclick="event.stopPropagation();unlinkFromCycle('${name}')">−</button>`
+        ? `<button class="btn btn-sm btn-ghost" style="padding:4px 8px" title="Retirer du cycle" onclick="event.stopPropagation();unlinkFromCycle('${name}')">−</button>`
         : '';
       return `<tr data-vac="${name}" style="cursor:pointer" onmousedown="if(event.shiftKey||event.ctrlKey||event.metaKey)event.preventDefault()" onclick="rowClick(event,'${name}')">
         <td onclick="event.stopPropagation()"><input type="checkbox" class="vac-chk" data-vac="${name}" data-lbl="${lblAttr}" ${chk} onchange="toggleVacSelect('${name}',this)"></td>
@@ -579,19 +595,20 @@ function renderVacList() {
         <td style="font-size:11px">${pause}</td>
         <td style="text-align:center;font-weight:700">${v.panier?'P':'—'}</td>
         <td style="text-align:center">${v.mixte?'✓':'—'}</td>
-        <td style="display:flex;gap:4px">${unlinkBtn}<button class="btn btn-sm btn-red" onclick="event.stopPropagation();deleteVac('${name}')">🗑</button></td>
+        <td style="font-size:10px;white-space:nowrap;color:var(--orange)" title="Primes : A Antenne, R Réal, C Coordination, M matin">${[(v.primes||{}).antenne?'A':'',(v.primes||{}).reel?'R':'',(v.primes||{}).coord?'C':'',(_toMinAdmin(v.deb)!=null&&_toMinAdmin(v.deb)<240)?'M':''].join('')||'—'}</td>
+        <td style="display:flex;gap:3px;justify-content:flex-end">${unlinkBtn}<button class="btn btn-sm btn-red" style="padding:4px 7px" onclick="event.stopPropagation();deleteVac('${name}')">🗑</button></td>
       </tr>`;
     }).join('');
   }
   // Fixed column widths — nom gets explicit 70px so other columns don't get squeezed
-  const COLS = `<colgroup><col style="width:30px"><col style="width:70px"><col style="width:38px"><col style="width:38px"><col style="width:34px"><col style="width:30px"><col style="width:18px"><col style="width:18px"><col style="width:52px"></colgroup>`;
+  const COLS = `<colgroup><col style="width:30px"><col style="width:60px"><col style="width:38px"><col style="width:38px"><col style="width:34px"><col style="width:30px"><col style="width:18px"><col style="width:18px"><col style="width:28px"><col style="width:70px"></colgroup>`;
   function makeTable(rows, inCycle) {
     if (!rows.length) return '<p style="color:var(--text3);font-size:11px">—</p>';
     const names = rows.map(([n]) => n);
     const namesJson = JSON.stringify(names);
     const allChk = names.every(n => _selectedVacs.has(n)) ? 'checked' : '';
     const namesEsc = namesJson.replace(/"/g, '&quot;');
-    const TH = `<thead><tr><th style="white-space:nowrap"><input type="checkbox" class="vac-sec-all" ${allChk} onchange="toggleAllVacsInSection(this,${namesEsc})"></th><th>Nom</th><th>Deb</th><th>Fin</th><th>Dur</th><th>Pau</th><th style="text-align:center">P</th><th style="text-align:center">M</th><th></th></tr></thead>`;
+    const TH = `<thead><tr><th style="white-space:nowrap"><input type="checkbox" class="vac-sec-all" ${allChk} onchange="toggleAllVacsInSection(this,${namesEsc})"></th><th>Nom</th><th>Deb</th><th>Fin</th><th>Dur</th><th>Pau</th><th style="text-align:center" title="Panier repas">P</th><th style="text-align:center" title="Mixte">Mx</th><th title="Primes">Pr</th><th></th></tr></thead>`;
     return `<div class="table-scroll"><table style="width:100%;table-layout:fixed">${COLS}${TH}<tbody>${makeRows(rows, inCycle)}</tbody></table></div>`;
   }
 
@@ -673,11 +690,12 @@ function renderVacList() {
   sections.forEach(s => { out += `<div style="${SEC_LBL};${CELL}">${s.label}</div>`; });
 
   if (gridCodes.size) {
-    out += `<div style="${SPAN};font-size:10px;color:var(--text3);margin-top:4px">Dans le cycle</div>`;
+    out += `<div style="${SPAN};font-size:10px;color:var(--text3);margin-top:4px">Dans la grille du cycle</div>`;
     sections.forEach(s => { out += `<div style="${CELL}">${makeTable(s.rows.filter(([n])=>gridCodes.has(n)))}</div>`; });
 
     const outsideSections = sections.map(s => ({ ...s, rows: s.rows.filter(([n])=>!gridCodes.has(n)) }));
     if (outsideSections.some(s => s.rows.length)) {
+      out += `<div style="${SPAN};font-size:10px;color:var(--text3);margin-top:14px">Hors grille · proposées dans « Autres vacations »</div>`;
       ['Coordination','Vidéo','Cadre','Général'].forEach(cat => {
         const catSec = outsideSections.map(s => ({ ...s, rows: s.rows.filter(([n]) => vacCat(n) === cat) }));
         if (!catSec.some(s => s.rows.length)) return;
@@ -695,7 +713,39 @@ function renderVacList() {
   }
 
   out += '</div>';
-  el.innerHTML = swapHtml + out + availHtml;
+  // Alertes : vacations sans cycle (invisibles dans l'app) ; vacations incomplètes du cycle
+  let warn = '';
+  if (_vacActiveTab === 'none') warn += `<div class="alert alert-orange" style="font-size:12px">Ces vacations ne sont rattachées à aucun cycle : <b>elles n'apparaissent nulle part dans l'app</b>. Rattachez-les à un cycle (en les ouvrant) ou supprimez-les.</div>`;
+  else {
+    const bad = filtered.filter(([n,v]) => !v.mixte && (!(v.dur>0) || !v.deb || !v.fin));
+    const unused = gridCodes.size ? filtered.filter(([n,v]) => /[a-z]$/.test(n) && !gridCodes.has(n) && swaps.every(([o,c]) => c!==n) && !(v.dur>0)) : [];
+    if (bad.length) warn += `<div class="alert alert-orange" style="font-size:12px">Vacation${bad.length>1?'s':''} incomplète${bad.length>1?'s':''} (sans horaires ou à 0h00, non proposée${bad.length>1?'s':''} dans l'app) : <b>${bad.map(([n,v])=>_esc(v.label||n)+(v.label&&v.label!==n?' ('+_esc(n)+')':'')).join(', ')}</b>.</div>`;
+  }
+  if (_vacMobile()) {
+    // Mobile : un type de jour à la fois, en lignes lisibles (plus de colonnes côte à côte)
+    const sec = sections.find(x => x.label === ({week:'Semaine',sat:'Samedi',sun:'Dimanche'})[_vacDayTab]) || sections[0];
+    const seg = `<div class="vseg">${[['week','Semaine',week.length],['sat','Samedi',sat.length],['sun','Dimanche',sun.length]].map(([k,l,c])=>`<button class="${_vacDayTab===k?'on':''}" onclick="_vacDayTab='${k}';renderVacList()">${l} <span style="color:var(--text3);font-weight:400">${c}</span></button>`).join('')}</div>`;
+    const list = (rows, inCycle) => rows.map(([name, v]) => {
+      const total = calcDur(fmtTimeToHHMM(v.deb||''), fmtTimeToHHMM(v.fin||''));
+      const pause = v.dur && total > v.dur ? ' · pause '+fmtVacDur(total - v.dur) : '';
+      const unlink = (inCycle && _vacActiveTab && _vacActiveTab !== 'none') ? `<button class="btn btn-sm btn-ghost" title="Retirer du cycle" onclick="event.stopPropagation();unlinkFromCycle('${name}')">−</button>` : '';
+      const inc = !v.mixte && (!(v.dur>0) || !v.deb || !v.fin) ? '<span class="vbdg w">incomplète</span>' : '';
+      return `<div class="vrow" data-vac="${name}" onclick="rowClick(event,'${name}')"><input type="checkbox" class="vac-chk" data-vac="${name}" ${_selectedVacs.has(name)?'checked':''} onclick="event.stopPropagation()" onchange="toggleVacSelect('${name}',this)">`
+        +`<div class="vm"><div class="vn">${_esc(v.label||name)}${v.label&&v.label!==name?`<small>${_esc(name)}</small>`:''}</div><div class="vt">${v.deb||'—'} → ${v.fin||'—'} · ${fmtVacDur(v.dur||0)}${pause}</div><div>${_vacBadges(v)}${inc}</div></div>`
+        +`<div style="display:flex;gap:4px">${unlink}<button class="btn btn-sm btn-red" onclick="event.stopPropagation();deleteVac('${name}')">🗑</button></div></div>`;
+    }).join('') || '<p style="color:var(--text3);font-size:12px;padding:8px 0">—</p>';
+    const H = t => `<div style="${SEC_LBL};margin:14px 0 4px">${t}</div>`;
+    let m = seg;
+    if (gridCodes.size) {
+      m += H('Dans la grille du cycle') + list(sec.rows.filter(([n])=>gridCodes.has(n)));
+      const out2 = sec.rows.filter(([n])=>!gridCodes.has(n));
+      if (out2.length) m += H('Hors grille · proposées dans « Autres vacations »') + list(out2, true);
+    } else m += list(sec.rows);
+    if (hasAll) m += H('Tous jours') + list(all);
+    el.innerHTML = warn + swapHtml + m + availHtml;
+    return;
+  }
+  el.innerHTML = warn + swapHtml + out + availHtml;
 }
 function _toMinAdmin(t) {
   const m = /^(\d{1,2})h(\d{2})$/.exec((t||'').trim());
@@ -1143,7 +1193,8 @@ async function offerCycleGridSwap(oldName, newName, cycleId) {
 }
 
 async function saveVac() {
-  const name = document.getElementById('vf-name').value.trim();
+  // Code vide : on reprend le nom affiché
+  const name = document.getElementById('vf-name').value.trim() || document.getElementById('vf-label').value.trim();
   const deb = document.getElementById('vf-deb').value;
   const fin = document.getElementById('vf-fin').value;
   const label = document.getElementById('vf-label').value.trim();
