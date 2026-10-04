@@ -504,10 +504,10 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .eph-u-flow{flex:1;display:flex;align-items:center;gap:2px;min-width:0;}
 .eph-u-cre{font-size:9px;color:var(--text3);}
 .eph-u-dispo{font-weight:500;}
-.eph-u-exp{width:96px;min-width:96px;box-sizing:border-box;text-align:right;flex-shrink:0;white-space:nowrap;font-size:11px;color:var(--text3);padding-top:1px;display:flex;flex-direction:column;align-items:flex-end;gap:1px}
-.rep-pill{display:flex;width:100%;box-sizing:border-box;justify-content:flex-end;align-items:center;gap:3px;padding:3px 8px;border:none;border-radius:999px;background:rgba(255,250,243,.09);color:var(--text);font:500 12px var(--font);cursor:pointer;white-space:nowrap;margin-top:-3px}
+.eph-u-exp{width:84px;min-width:84px;box-sizing:border-box;text-align:right;flex-shrink:0;white-space:nowrap;font-size:11px;color:var(--text3);padding-top:1px;display:flex;flex-direction:column;align-items:flex-end;gap:1px}
+.rep-pill{display:flex;width:100%;box-sizing:border-box;justify-content:flex-end;align-items:center;gap:3px;padding:3px 7px;border:none;border-radius:999px;background:rgba(255,250,243,.09);color:var(--text);font:500 12px var(--font);cursor:pointer;white-space:nowrap;margin-top:-3px}
 .rep-pill i{font-size:11px;color:var(--text3)}.rep-pill:active{background:rgba(255,250,243,.16)}
-.rep-pill.on{background:rgba(224,140,60,.2);color:var(--orange)}.rep-pill.warn{box-shadow:inset 0 0 0 1px rgba(224,160,48,.55)}
+.rep-pill.lost{background:rgba(192,57,43,.18);color:#e07a6e}.rep-pill.on{background:rgba(224,140,60,.2);color:var(--orange)}.rep-pill.warn{box-shadow:inset 0 0 0 1px rgba(224,160,48,.55)}
 .rep-sub{display:block;font-size:10px;color:var(--text3);line-height:1.2}
 #lp-menu .rep-tag{margin-left:auto;font-size:11px;color:var(--text3);font-weight:400}
 .eph-urow.expired{opacity:.45;}
@@ -3563,7 +3563,8 @@ function _openRepMenu(btn,ym,limit,rr){
   veil.addEventListener('click',function(e){e.stopPropagation();_closeDayMenu();});
   veil.addEventListener('touchmove',function(e){e.preventDefault();},{passive:false});
   var m=document.createElement('div');m.id='lp-menu';m.style.zIndex=451;
-  m.innerHTML='<div class="lp-h">Heures acquises en '+MC[ym%12]+' '+Math.floor(ym/12)+'</div>'+items+(auto?'<div class="lp-h" style="padding-top:2px">Report automatique (moins de 7h restantes) : ne peut pas être retiré.</div>':'');
+  var lost=getExpYm(ym)<TODAY_YM?(calcSoldes().preExpiry[ym]||0):0;
+  m.innerHTML='<div class="lp-h">Heures acquises en '+MC[ym%12]+' '+Math.floor(ym/12)+(lost?'<br><span style="color:#e07a6e">'+fmtMin(lost)+' perdues</span> · un report accordé après coup les rend':'')+'</div>'+items+(auto?'<div class="lp-h" style="padding-top:2px">Report automatique (moins de 7h restantes) : ne peut pas être retiré.</div>':'');
   document.body.appendChild(veil);document.body.appendChild(m);
   var r=btn.getBoundingClientRect(),mw=m.offsetWidth,mh=m.offsetHeight,vw=window.innerWidth,vh=window.innerHeight;
   var left=Math.min(Math.max(12,r.right-mw),vw-mw-12),below=r.bottom+8+mh<vh-12,top=below?r.bottom+8:Math.max(12,r.top-8-mh);
@@ -4845,7 +4846,8 @@ function openMergedRenduCgModal(limit,tab){
     // (heures restantes ou report déjà posé, mois pas encore expiré). Le tableau Gestion : ✓ s'il donne la même date, ⚠ sinon.
     const rr=_rhRep[ym]!==undefined&&!isExp?_rhRep[ym]:-1;
     let expLblM;
-    if(isExp)expLblM=lostMinM>0?'<span style="color:var(--red)">-'+fmtMin(lostMinM)+'</span><span class="rep-sub">perdues</span>':'<span style="color:var(--text3)">'+_dl(expYm)+'</span>';
+    // Heures perdues : le montant ouvre aussi le menu des reports (un report accordé après coup par le gestionnaire les rend)
+    if(isExp)expLblM=lostMinM>0?'<button class="rep-pill lost" onclick="event.stopPropagation();_openRepMenu(this,'+ym+','+limit+',-1)">−'+fmtMin(lostMinM)+' <i class="ti ti-chevron-down"></i></button>':'<span style="color:var(--text3)">'+_dl(expYm)+'</span>';
     else if(isFut||(avail<=0&&!ext))expLblM='<span style="color:var(--text3)">'+_dl(expYm)+'</span>';
     else{
       const sub=ext>0?(isAutoRepM&&autoLevelM>=ext&&!(S.ephExtend&&S.ephExtend[ym])?'report auto':'+'+ext*3+' mois'):(isWarnM?'expire ce mois':'');
@@ -5125,7 +5127,7 @@ function openMergedRenduCgModal(limit,tab){
     +'<div id="rcc-wrap" style="display:grid">'
     +'<div id="rcc-0" style="grid-area:1/1">'
     +dispoBoxHtml
-    +(rendRows?'<div class="ucard"><div class="ucard-t">Heures par mois d’acquisition</div><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-bottom:4px"><span style="padding-left:54px">acquises → restantes</span><span>expirent'+(Object.keys(_rhRep).length?' <span style="font-size:10px">(✓ = tableau)</span>':'')+'</span></div>'+rendRows+moreBtn+'</div>':'<div class="ucard" style="font-size:12px;color:var(--text3)">Aucun rendu disponible.</div>')
+    +(rendRows?'<div class="ucard"><div class="ucard-t">Heures par mois d’acquisition</div><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-bottom:4px"><span style="padding-left:54px">acquises → restantes</span><span>expirent</span></div>'+rendRows+moreBtn+'</div>':'<div class="ucard" style="font-size:12px;color:var(--text3)">Aucun rendu disponible.</div>')
     +'</div>'
     +'<div id="rcc-1" style="grid-area:1/1;visibility:hidden;pointer-events:none">'
     +cgSoldeHeader
