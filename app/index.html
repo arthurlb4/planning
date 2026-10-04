@@ -6847,7 +6847,7 @@ function openCustomVacModal(){
   // Motif du changement : formé (garde les primes prévues), formateur (les perd, prime de formateur), autre
   var motif=ov.motif||(ov.formation?'forme':'autre');window._cvMotif=motif;
   var cP=[];if(cI){var cp=cI.primes||{};if(cp.antenne)cP.push('Antenne');if(cp.reel)cP.push('Réal');if(cp.coord)cP.push('Coordination');if(cI.deb&&_toMinApp(cI.deb)<240)cP.push('matin');}
-  window._cvHints={forme:(cP.length?'Vous suivez une formation : vous gardez les primes de '+cN+' ('+cP.join(', ')+').':'Vous suivez une formation : '+cN+' n’a pas de prime à garder.'),formateur:'Les primes de '+cN+' ne sont pas dues. Votre prime de formateur se saisit plus haut.',autre:'Primes de la vacation faite.'};
+  window._cvHints={forme:(cP.length?'Vous suivez une formation : vous gardez les primes de '+cN+' ('+cP.join(', ')+').':'Vous suivez une formation : '+cN+' n’a pas de prime à garder.'),formateur:'Les primes de '+cN+' ne sont pas dues. Votre prime de formateur se saisit plus haut.',autre:'Primes : celle choisie dans « Prime de la vacation ».'};
   var mB=function(k,l){return '<button type="button" data-m="'+k+'" class="'+(motif===k?'on':'')+'" onclick="_cvSetMotif(\''+k+'\')">'+l+'</button>';};
   var opts=(cI?'<div style="margin:4px 0 8px"><label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Motif</label><div class="cv-seg" id="cv-motif">'+mB('forme','Formé')+mB('formateur','Formateur')+mB('autre','Autre')+'</div><div class="cv-hint" id="cv-motif-hint">'+window._cvHints[motif]+'</div></div>':'')
     +(cI&&cI.mixte?'':tg('custom-hs',cI?'Vacation rallongée':'Heures sup (jour de repos)',ov.hs===true)+(cI?'<div class="cv-hint" style="margin-top:-2px">Cochez si on vous a demandé de faire plus que '+cN+' : le surplus est payé en heures sup.</div>':''));
@@ -6860,7 +6860,7 @@ function openCustomVacModal(){
     +'<div class="mrow"><label>Nom</label><input id="custom-name" placeholder="Formation, renfort…" style="width:100%;'+fs+'"></div>'
     +'<div class="mr2"><div><label>Début</label><select id="custom-deb" style="width:100%;'+fs+'">'+T+'</select></div><div><label>Fin</label><select id="custom-fin" style="width:100%;'+fs+'">'+T+'</select></div></div>'
     +'<div class="mr2" style="margin-bottom:6px"><div><label>Pause</label><select id="custom-pause" style="width:100%;'+fs+'"><option value="0">Sans</option><option value="45">45 min</option><option value="60">1h00</option></select></div>'
-    +'<div><label>Prime</label><select id="custom-prime" onchange="_cvPrimeSync(this)" style="width:100%;'+fs+'"><option value="">Aucune</option><option value="antenne">Antenne</option><option value="reel">Réal</option><option value="coord">Coordination</option>'+(key?'<option value="autre">Autre</option>':'')+'</select></div></div>'
+    +'<div><label>Prime de la vacation</label><select id="custom-prime" onchange="_cvPrimeSync(this)" style="width:100%;'+fs+'"><option value="">Aucune</option><option value="antenne">Antenne</option><option value="reel">Réal</option><option value="coord">Coordination</option>'+(key?'<option value="autre">Autre</option>':'')+'</select></div></div>'
     +(key?'<div id="cv-autre" class="mr2" style="grid-template-columns:1fr;margin:8px 0 6px;display:'+(prSel==='autre'?'grid':'none')+'"><div><label id="cv-autre-lbl">'+(motif==='formateur'?'Prime de formateur (€)':'Montant de la prime (€)')+'</label><input id="cv-autre-amt" inputmode="decimal" placeholder="0,00" value="'+(dp&&dp.amt>0?String(dp.amt).replace('.',','):'')+'" style="width:100%;'+fs+'"></div></div>':'')
     +(key?opts:'')
     +'</div>'
@@ -6874,10 +6874,16 @@ function openCustomVacModal(){
   document.getElementById('custom-fin').value=fin;
   document.getElementById('custom-pause').value=pause;
   document.getElementById('custom-prime').value=prSel;
+  // Déjà « Formé » : la liste verrouillée n'est pas un changement de la vacation
+  if(document.getElementById('cv-motif')&&_cvPrimeLock(motif)){window._cvInit.prime='';window._cvInit.sel='';}
 }
 // Motif : formateur ouvre directement la prime de formateur
 function _cvSetMotif(k){window._cvMotif=k;document.querySelectorAll('#cv-motif button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-m')===k);});var h=document.getElementById('cv-motif-hint');if(h)h.textContent=(window._cvHints||{})[k]||'';var al=document.getElementById('cv-autre-lbl');if(al)al.textContent=k==='formateur'?'Prime de formateur (€)':'Montant de la prime (€)';
-  var sel=document.getElementById('custom-prime');if(k==='formateur'&&sel&&sel.value!=='autre'){sel.value='autre';_cvPrimeSync(sel);}}
+  var sel=document.getElementById('custom-prime');if(k==='formateur'&&sel&&sel.value!=='autre'){sel.value='autre';_cvPrimeSync(sel);}_cvPrimeLock(k);}
+// Formé : les primes sont celles de la vacation prévue, la liste ne propose plus qu'« Aucune » ou « Autre »
+function _cvPrimeLock(k){var sel=document.getElementById('custom-prime');if(!sel)return false;var lk=k==='forme',ch=false;
+  ['antenne','reel','coord'].forEach(function(v){var o=sel.querySelector('option[value="'+v+'"]');if(o)o.disabled=lk;});
+  if(lk&&['antenne','reel','coord'].indexOf(sel.value)>=0){sel.value='';_cvPrimeSync(sel);ch=true;}return ch;}
 // Prime « Autre » : montant saisi à la main (prime du jour)
 function _cvPrimeSync(sel){var a=document.getElementById('cv-autre');if(!a)return;var on=sel.value==='autre';a.style.display=on?'grid':'none';if(on)document.getElementById('cv-autre-amt').focus();}
 // Bouton corbeille des heures acquises : visible dès qu'une durée est choisie, vide la case au clic
