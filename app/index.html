@@ -2782,27 +2782,28 @@ function openBulletinsCal(y){
 }
 // Salaire de l'année, style de l'onglet Paie : tous les mois, brut du bulletin s'il est importé, sinon estimé
 function _svSalHtml(y){
-  var nowYM=NOW.getFullYear()*12+NOW.getMonth(),rows='',tot=0,tB=0,tE=0,nB=0,nE=0,nBad=0;
+  // Comme la paie du mois : brut estimé à droite, écart avec le payé (bulletin) dans la colonne à sa gauche
+  var nowYM=NOW.getFullYear()*12+NOW.getMonth(),rows='',tot=0,tB=0,tBe=0,nB=0,nBad=0;
   var fe=function(x){return fmtEuro(x).replace(/\s*€/,'');};
   for(var m=0;m<12;m++){
     var ym=y*12+m,pt;try{pt=calcPayeMois(y,m);}catch(e){continue;}
     if(!(pt&&pt.configured&&pt.salQ&&pt.heures))continue;
-    var bu=(S.bulletins||{})[ym],fut=ym>nowYM,val=bu?bu.brut:pt.total,st='';
-    tot+=val;if(bu)tB+=val;else tE+=val;
-    if(bu){nB++;var cc=null;try{cc=_bulCompare(bu);}catch(e){}
-      if(cc&&cc.status!=='ecart')st='<span style="color:var(--green)">✓</span>';
-      else if(_bulIgn(ym,cc))st='<span style="color:var(--text3)">ignoré</span>';
-      else{nBad++;var d=cc?cc.adj:0;st=Math.abs(d)<0.05?'<span style="color:var(--amber)">⚠ lignes</span>':'<span style="color:'+(d>0?'var(--green)':'var(--red)')+'">'+(d>0?'+':'−')+fe(Math.abs(d))+'</span>';}}
-    else{nE++;st='<span style="color:var(--text3)">'+(fut?'prévu':'estimé')+'</span>';}
-    rows+='<div class="sv-pr" onclick="'+'openBulletinModal('+ym+',\'recap\')'+'"><span class="l">'+ML[m]+'</span><span class="s">'+st+'</span><b style="opacity:'+(bu?'1':'.6')+'">'+fe(val)+'</b><i>›</i></div>';
+    var bu=(S.bulletins||{})[ym],fut=ym>nowYM,est=pt.total,st='';
+    tot+=est;
+    if(bu){nB++;tB+=bu.brut||0;tBe+=est;var cc=null;try{cc=_bulCompare(bu);}catch(e){}
+      var d=Math.round(((bu.brut||0)-est)*100)/100,ig=cc&&cc.status==='ecart'&&_bulIgn(ym,cc),bad=cc&&cc.status==='ecart'&&!ig;if(bad)nBad++;
+      st=Math.abs(d)<=0.05?'<span style="color:'+(bad?'var(--amber)':'var(--green)')+'">'+(bad?'⚠ lignes':'✓')+'</span>'
+        :'<span style="color:'+(ig?'var(--text3)':d>0?'var(--green)':'var(--red)')+'">'+(d>0?'+':'−')+fe(Math.abs(d))+(ig?' · ignoré':'')+'</span>';}
+    else st='<span style="color:var(--text3)">'+(fut?'prévu':'—')+'</span>';
+    rows+='<div class="sv-pr" onclick="'+'openBulletinModal('+ym+',\'recap\')'+'"><span class="l">'+ML[m]+'</span><span class="s">'+st+'</span><b>'+fe(est)+'</b><i>›</i></div>';
   }
+  var dT=Math.round((tB-tBe)*100)/100,dS=!nB?'':Math.abs(dT)<=0.05?'<span style="color:var(--green)">✓</span>':'<span style="color:'+(dT>0?'var(--green)':'var(--red)')+'">'+(dT>0?'+':'−')+fe(Math.abs(dT))+'</span>';
   return ''
-    // Totaux alignés sur la colonne des montants des mois
-    +'<div class="hd-card out"><div class="sv-pr" style="cursor:default;padding:2px 0 4px"><span class="l" style="font-size:11px">total brut</span><b style="width:auto;min-width:78px;font-size:17px;font-weight:700">'+(rows?fe(tot):'—')+'</b><i></i></div>'
-    +(rows?'<div class="sv-pr" style="cursor:default;padding:2px 0;font-size:11px"><span class="l">payé · '+(nB?nB+' bulletin'+(nB>1?'s':'')+(nBad?' · '+nBad+' à vérifier':''):'aucun bulletin')+'</span><b style="width:auto;min-width:78px">'+fe(tB)+'</b><i></i></div>'
-      +'<div class="sv-pr" style="cursor:default;padding:2px 0 4px;font-size:11px"><span class="l">estimé · '+nE+' mois</span><b style="width:auto;min-width:78px;opacity:.6">'+fe(tE)+'</b><i></i></div>':'')
+    // Totaux alignés sur les colonnes des mois
+    +'<div class="hd-card out"><div class="sv-pr" style="cursor:default;padding:2px 0 4px"><span class="l" style="font-size:11px">total brut estimé</span><b style="width:auto;min-width:78px;font-size:17px;font-weight:700">'+(rows?fe(tot):'—')+'</b><i></i></div>'
+    +(rows?'<div class="sv-pr" style="cursor:default;padding:2px 0 4px;font-size:11px"><span class="l">payé · '+(nB?nB+' bulletin'+(nB>1?'s':'')+' : '+fe(tB)+(nBad?' · '+nBad+' à vérifier':''):'aucun bulletin')+'</span><span class="s">'+dS+'</span><b style="width:auto;min-width:78px;opacity:.6">'+(nB?fe(tBe):'')+'</b><i></i></div>':'')
     +'</div>'
-    +(rows?'<div class="sv-pr" style="cursor:default;color:var(--text3);font-size:11px;padding:2px 0"><span class="l"></span><span class="s" style="color:var(--text3)">bulletin</span><b style="color:var(--text3);font-weight:400">brut</b><i></i></div>':'')
+    +(rows?'<div class="sv-pr" style="cursor:default;color:var(--text3);font-size:11px;padding:2px 0"><span class="l"></span><span class="s" style="color:var(--text3)">écart payé</span><b style="color:var(--text3);font-weight:400">estimé</b><i></i></div>':'')
     +(rows||'<div style="font-size:11px;color:var(--text3);padding:6px 0">Renseigner la paie dans Réglages → Paie pour voir l’estimation.</div>');
 }
 function _svYearGo(y){var cur=window._svYear||NOW.getFullYear();_swipeGo(y>cur?1:-1,function(){openBulletinsCal(y);});}
