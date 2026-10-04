@@ -120,6 +120,7 @@ function situation(opts) {
   // Dimanche 4 octobre 2026 : majoration sur la vacation faite (accord VIII.3.2 « heures accomplies »)
   a.run('_k="2026-10-04";isRHDay=function(){return false;};settingsForYM=function(){return {};};');
   eq('Garder les primes : majoration dimanche sur la durée de C1, pas de A1', a.run('[getVAC().A1.dur!==getVAC().C1.dur,calcDimRHFerMinsMois(2026,9).dim===getVAC().C1.dur]'), [true, true]);
+  eq('Garder les primes : panier selon la vacation faite', a.run('(function(){S.customVacs={X1:{deb:"11h00",fin:"18h00",dur:420,panier:true}};var d=new Date(2026,9,4,12);getVac=function(){return {vac:"X1",absent:false};};S.overrides={"2026-10-04":{vac:"X1",formation:true}};return isPanier(d);})()'), true);
 }
 
 console.log('\n' + (count - fails) + '/' + count + ' contrôles réussis');
