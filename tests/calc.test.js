@@ -121,6 +121,7 @@ function situation(opts) {
   a.run('_k="2026-10-04";isRHDay=function(){return false;};settingsForYM=function(){return {};};');
   eq('Garder les primes : majoration dimanche sur la durée de C1, pas de A1', a.run('[getVAC().A1.dur!==getVAC().C1.dur,calcDimRHFerMinsMois(2026,9).dim===getVAC().C1.dur]'), [true, true]);
   eq('Garder les primes : panier selon la vacation faite', a.run('(function(){S.customVacs={X1:{deb:"11h00",fin:"18h00",dur:420,panier:true}};var d=new Date(2026,9,4,12);getVac=function(){return {vac:"X1",absent:false};};S.overrides={"2026-10-04":{vac:"X1",formation:true}};return isPanier(d);})()'), true);
+  eq('Garder les primes : restauration du 1er mai selon la vacation faite', a.run('(function(){S.customVacs={X2:{deb:"09h00",fin:"17h00",dur:420}};S.conges={};getVac=function(d){return dk(d)==="2026-05-01"?{vac:"X2",absent:false}:{vac:"",absent:false};};getPayVac=function(d){return dk(d)==="2026-05-01"?"A1":"";};var v=calcVariablesMois(2026,4);return v.supAbsResto===v.absRestoRate&&v.absRestoRate>0;})()'), true);
 }
 
 console.log('\n' + (count - fails) + '/' + count + ' contrôles réussis');
