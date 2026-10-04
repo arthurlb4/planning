@@ -937,7 +937,9 @@ function getProfiles(){
 // ================================================================
 // UNDO / REDO
 // ================================================================
-function snap(){return JSON.stringify({ov:S.overrides,co:S.conges,hi:S.history,mat:(S.profile&&S.profile.matelas)||0,mk:JSON.parse(JSON.stringify(S.matelasKeys||{}))});}
+// Instantané pour Annuler / Rétablir : tout ce que la fiche du jour et ses écrans modifient
+function snap(){return JSON.stringify({ov:S.overrides,co:S.conges,hi:S.history,mat:(S.profile&&S.profile.matelas)||0,mk:JSON.parse(JSON.stringify(S.matelasKeys||{})),wl:S.weekLines||{},xr:S.extraRendus||{},dp:S.dayPrimes||{},no:S.notes||{}});}
+function _snapApply(p){S.overrides=p.ov;S.conges=p.co;S.history=p.hi;if(S.profile)S.profile.matelas=p.mat||0;S.matelasKeys=p.mk||{};if(p.wl)S.weekLines=p.wl;if(p.xr)S.extraRendus=p.xr;if(p.dp)S.dayPrimes=p.dp;if(p.no)S.notes=p.no;}
 function pushUndo(label){var sn=snap();_us.push(sn);if(_us.length>30)_us.shift();_rs=[];updateUrBtns();
   // Bandeau « … · Annuler » si l'action a réellement modifié quelque chose
   if(label){clearTimeout(window._utT);window._utT=setTimeout(function(){if(snap()!==sn&&_us[_us.length-1]===sn)_undoToast(label);},60);}
@@ -953,8 +955,8 @@ function _undoToast(label){
   window._utHide=setTimeout(_hideUndoToast,4500);
 }
 function _hideUndoToast(){var t=document.getElementById('undo-toast');if(t)t.classList.remove('on');}
-function undoAction(){if(!_us.length)return;_rs.push(snap());const p=JSON.parse(_us.pop());S.overrides=p.ov;S.conges=p.co;S.history=p.hi;if(S.profile)S.profile.matelas=p.mat||0;S.matelasKeys=p.mk||{};saveState();render();updateUrBtns();gcalTrigger();}
-function redoAction(){if(!_rs.length)return;_us.push(snap());const n=JSON.parse(_rs.pop());S.overrides=n.ov;S.conges=n.co;S.history=n.hi;if(S.profile)S.profile.matelas=n.mat||0;S.matelasKeys=n.mk||{};saveState();render();updateUrBtns();gcalTrigger();}
+function undoAction(){if(!_us.length)return;_rs.push(snap());_snapApply(JSON.parse(_us.pop()));saveState();render();updateUrBtns();gcalTrigger();}
+function redoAction(){if(!_rs.length)return;_us.push(snap());_snapApply(JSON.parse(_rs.pop()));saveState();render();updateUrBtns();gcalTrigger();}
 function updateUrBtns(){const u=document.getElementById('undo-btn'),r=document.getElementById('redo-btn');if(u)u.disabled=!_us.length;if(r)r.disabled=!_rs.length;}
 
 // ================================================================
