@@ -2757,8 +2757,15 @@ function _suiviSimple(y){
   if(!c||!o)g='<button class="sv-tile" onclick="rhOpenFromRecap(true)"><span class="t">Écart Gestion</span><b style="color:var(--text3)">—</b><small>aucun tableau importé</small></button>';
   else{var e0=-c.d,e=-_rhDe(c),ok=Math.abs(e0)<2,ig=!ok&&Math.abs(e)<2,part=!ok&&!ig&&Math.abs(e-e0)>=2;
     g='<button class="sv-tile" onclick="rhOpenFromRecap()"><span class="t">Écart Gestion</span><b style="color:'+(ok||e0>0?'var(--green)':'var(--red)')+'">'+(ok?'✓':(e0>0?'+':'−')+fmtMin(Math.abs(e0)))+'</b><small>'+(ok?'identique':(e0>0?'favorable':'à faire corriger')+(ig?'<br>différences ignorées':part?'<br>en partie ignoré':''))+'<br><span style="white-space:nowrap">Tableau du '+new Date(c.ed+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long'})+'</span>'+'</small></button>';}
-  var nB=0,nBad=0;Object.keys(S.bulletins||{}).forEach(function(k){nB++;if(_bulBad(+k))nBad++;});
-  var bl='<button class="sv-tile" onclick="openBulletinsCal()"><span class="t">Bulletins</span><b style="color:'+(!nB?'var(--text3)':nBad?'var(--amber)':'var(--green)')+'">'+(!nB?'—':nBad?'⚠ '+nBad:'✓')+'</b><small>'+(!nB?'aucun bulletin importé':nBad?(nBad>1?'bulletins à vérifier':'bulletin à vérifier')+' sur '+nB:nB+' bulletin'+(nB>1?'s':'')+' conforme'+(nB>1?'s':''))+'</small></button>';
+  // Bulletins : comme la tuile Gestion, écart total, nombre de problèmes, écarts ignorés, dernier bulletin
+  var nB=0,nBad=0,nPb=0,nIg=0,neg=0,pos=0,last=null;Object.keys(S.bulletins||{}).forEach(function(k){var ym=+k,c;nB++;if(last==null||ym>last)last=ym;
+    try{c=_bulCompare(S.bulletins[k]);}catch(e){return;}if(c.status!=='ecart')return;if(_bulIgn(ym,c)){nIg++;return;}
+    nBad++;nPb+=(c.nBad||0)+(c.alerts?c.alerts.length:0)||1;if((c.adj||0)<0)neg+=c.adj;else pos+=c.adj||0;});
+  // Écarts défavorables et favorables séparés : l'un ne doit pas masquer l'autre
+  neg=Math.round(neg*100)/100;pos=Math.round(pos*100)/100;var fav=neg>-0.05,adjT=fav?pos:neg,_fv=!fav&&pos>0.05?'<br>+'+fmtEuro(pos)+' favorable':'',_bk=nIg?'<br>'+nIg+' écart'+(nIg>1?'s':'')+' ignoré'+(nIg>1?'s':''):'',_bl=last!=null?'<br><span style="white-space:nowrap">Dernier : '+_deMois(last).replace(/^d[e’']\s?/,'')+' '+Math.floor(last/12)+'</span>':'';
+  var bl='<button class="sv-tile" onclick="openBulletinsCal()"><span class="t">Écart Bulletins</span><b style="color:'+(!nB?'var(--text3)':!nBad?'var(--green)':fav?'var(--green)':'var(--red)')+'">'+(!nB?'—':!nBad?'✓':Math.abs(adjT)>0.05?(fav?'+':'−')+fmtEuro(Math.abs(adjT)):'⚠ '+nPb)+'</b><small>'
+    +(!nB?'aucun bulletin importé':!nBad?(nB+' bulletin'+(nB>1?'s':'')+' conforme'+(nB>1?'s':''))+_bk+_bl
+      :(Math.abs(adjT)>0.05?(fav?'favorable':'à faire corriger')+_fv+'<br>':'')+nPb+' problème'+(nPb>1?'s':'')+' sur '+nBad+' bulletin'+(nBad>1?'s':'')+_bk+_bl)+'</small></button>';
   return '<div class="sv-tiles">'+g+bl+'</div>';
 }
 // Paie de l'année (calendrier des bulletins) : tous les mois de l'année, toucher un mois ouvre sa page Paie
