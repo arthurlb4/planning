@@ -529,6 +529,8 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .hdesc{color:var(--text);flex:1;}
 
 /* Entrance animations */
+@keyframes cvRmIn{from{transform:scale(.4) rotate(-30deg);opacity:0}}@keyframes cvRmOut{to{transform:scale(.3) rotate(30deg);opacity:0}}
+.cv-rm{flex:none;width:40px;border:none;border-radius:var(--r);background:rgba(192,57,43,.14);color:var(--red);font-size:17px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;animation:cvRmIn .22s ease-out}.cv-rm.out{animation:cvRmOut .2s ease-in forwards}
 @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 @keyframes cellPop{0%{transform:scale(1)}40%{transform:scale(1.12)}75%{transform:scale(.96)}100%{transform:scale(1)}}
 .dci.pop{animation:cellPop .38s cubic-bezier(.34,1.56,.64,1);}
@@ -3089,11 +3091,11 @@ function openDay(key){
     for(var _i=0;_i<_scheduledVacs.length;_i+=_rowSz)rows.push(_scheduledVacs.slice(_i,_i+_rowSz));
     var _lc=Object.keys(S.customVacs||{}).filter(function(v){return !(S.customVacs[v].hidden)&&!cycleVacNames.includes(v);});
     if(_lc.length)rows.push(_lc);
-    rows.push(['SV','Vac. perso','Autre']);
+    rows.push(['SV','Autre']);
   } else {
-    if(dw===6){rows=[['As1','As2','As3'],['Cs','Es','Fs'],['SV','Vac. perso','Autre']];}
-    else if(dw===0){rows=[['Ad1','Ad2','Ad3'],['Cd','Ed','Fd'],['SV','Vac. perso','Autre']];}
-    else{rows=[['A1','A2','A3','B1'],['C1','C2','D1','D2'],['P423'],['SV','Vac. perso','Autre']];}
+    if(dw===6){rows=[['As1','As2','As3'],['Cs','Es','Fs'],['SV','Autre']];}
+    else if(dw===0){rows=[['Ad1','Ad2','Ad3'],['Cd','Ed','Fd'],['SV','Autre']];}
+    else{rows=[['A1','A2','A3','B1'],['C1','C2','D1','D2'],['P423'],['SV','Autre']];}
     var customVacs=Object.keys(VAC).filter(v=>!VAC_STD[v]&&v!=='SV'&&!(S.customVacs&&S.customVacs[v]&&S.customVacs[v].hidden));
     customVacs.forEach(function(cv){var found=false;rows.forEach(function(r){if(r.includes(cv))found=true;});if(!found)rows[rows.length-1].unshift(cv);});
   }
@@ -3105,8 +3107,6 @@ function openDay(key){
   allVns.forEach(function(vn){
       if(vn==='Autre'){
         vgHtml+=`<button class="mb" style="background:var(--bg0);color:var(--text2);font-weight:700" onclick="openAutreVacModal()">Autre</button>`;
-      } else if(vn==='Vac. perso'){
-        vgHtml+=`<button class="mb" style="background:var(--bg0);color:var(--text2);font-weight:700" onclick="openCustomVacModal()">Ajouter</button>`;
       } else {
         var vi=VAC[vn];
         if(vi&&vi.mixte)return;
@@ -3191,18 +3191,19 @@ function openDay(key){
   var _note=(S.notes||{})[key]||'';
   var _noteBtn=_note?'':'<button style="font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;background:none;color:var(--text2);cursor:pointer;white-space:nowrap" onclick="openNoteModal(\''+key+'\')">+ Note</button>';
   // Note et heures en plus : ajoutées depuis « Modifier » ; ici on n'affiche que ce qui existe déjà
-  // Jour modifié : retour au cycle (ou annulation de l'échange) en petit, en haut à droite de la fiche
-  var _rst=echange?'<button style="font-size:11px;padding:3px 8px;border:1px solid rgba(192,57,43,.5);border-radius:6px;background:none;color:#d08a8a;cursor:pointer;white-space:nowrap" onclick="cancelExchange(\''+key+'\')">Annuler l’échange</button>'
-    :ov?'<button style="font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;background:none;color:var(--text2);cursor:pointer;white-space:nowrap" onclick="resetVac()"><i class="ti ti-arrow-back-up" style="margin-right:3px"></i>'+(cycleVac&&cycleVac!=='RH'?vLbl(cycleVac,VAC):'Repos')+'</button>':'';
+  var _dpOn=!!((S.dayPrimes||{})[key]&&S.dayPrimes[key].amt>0);
+  // Jour modifié (vacation, heures acquises ou prime) : retour au cycle (ou annulation de l'échange) en petit, en haut à droite de la fiche
+  var _rst=echange?'<button style="font-size:11px;padding:3px 8px;border:1px solid rgba(192,57,43,.5);border-radius:6px;background:none;color:#d08a8a;cursor:pointer;white-space:nowrap" onclick="event.stopPropagation();cancelExchange(\''+key+'\')">Annuler l’échange</button>'
+    :(ov||_exr||_dpOn)?'<button style="font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:6px;background:none;color:var(--text2);cursor:pointer;white-space:nowrap" onclick="event.stopPropagation();resetVac()"><i class="ti ti-arrow-back-up" style="margin-right:3px"></i>'+(cycleVac&&cycleVac!=='RH'?vLbl(cycleVac,VAC):'Repos')+'</button>':'';
   var _plusBtn='';
-  _renduBtn='<div style="display:flex;gap:6px;align-items:center">'+_plusBtn+_rst+'</div>';
-  var _exrHtml=_exr?'<div onclick="pendingKey=\''+key+'\';openCustomVacModal()" style="cursor:pointer;margin-top:8px;padding:7px 10px;border-radius:8px;background:rgba(150,180,100,.10);border:0.5px solid rgba(150,180,100,.25);display:flex;align-items:center;gap:8px;font-size:12.5px">'
+  _renduBtn='<div style="display:flex;gap:8px;align-items:center">'+_plusBtn+_rst+'<span style="font-size:11.5px;color:var(--text3);white-space:nowrap;display:flex;align-items:center">Modifier<i class="ti ti-chevron-right" style="font-size:13px"></i></span></div>';
+  var _exrHtml=_exr?'<div style="margin-top:8px;padding:7px 10px;border-radius:8px;background:rgba(150,180,100,.10);border:0.5px solid rgba(150,180,100,.25);display:flex;align-items:center;gap:8px;font-size:12.5px">'
     +'<i class="ti ti-clock-plus" style="font-size:15px;color:var(--rend-text)"></i><span style="flex:1;color:var(--text2)">Heures acquises'+(_exr.label?' · '+String(_exr.label).replace(/</g,'&lt;'):'')+'</span><b style="color:var(--rend-text)">+'+fmtMin(_exr.dur)+'</b></div>':'';
   var _dp=(S.dayPrimes||{})[key];if(_dp&&_dp.amt>0&&epvHtml)epvHtml=epvHtml.replace('</div>',' · <span style="color:var(--amber)">'+(_dp.lbl||'Prime')+' '+fmtEuro(_dp.amt)+'</span></div>');
-  var _noteHtml=_note?'<div onclick="openNoteModal(\''+key+'\')" style="cursor:pointer;margin-top:8px;padding:7px 10px;border-radius:8px;background:rgba(255,250,243,.05);font-size:12.5px;color:var(--text2);line-height:1.4;display:flex;gap:7px"><i class="ti ti-note" style="font-size:14px;color:var(--text3);margin-top:1px"></i><span style="white-space:pre-wrap;word-break:break-word"></span></div>':'';
+  var _noteHtml=_note?'<div onclick="event.stopPropagation();openNoteModal(\''+key+'\')" style="cursor:pointer;margin-top:8px;padding:7px 10px;border-radius:8px;background:rgba(255,250,243,.05);font-size:12.5px;color:var(--text2);line-height:1.4;display:flex;gap:7px"><i class="ti ti-note" style="font-size:14px;color:var(--text3);margin-top:1px"></i><span style="white-space:pre-wrap;word-break:break-word"></span></div>':'';
   var _dayBox='';
   if(vac&&vac!=='RH'&&!absent&&VAC[vac]){
-    _dayBox='<div style="background:var(--bg3);border-radius:10px;padding:10px 14px;margin-bottom:12px">'
+    _dayBox='<div onclick="openCustomVacModal()" style="cursor:pointer;background:var(--bg3);border-radius:10px;padding:10px 14px;margin-bottom:12px">'
       +'<div style="display:flex;align-items:center;justify-content:space-between"><div style="font-size:15px;font-weight:600;color:var(--text)">'+lbl+(tt?' — '+tt:'')+'</div>'+_renduBtn+'</div>'
       +'<div style="font-size:12px;color:var(--text2);margin-top:3px">'+VAC[vac].deb+'→'+VAC[vac].fin+' · '+fmtMin(dur)+'</div>'
       +(epvHtml?'<div style="margin-top:3px">'+epvHtml+'</div>':'')
@@ -3211,7 +3212,7 @@ function openDay(key){
       +_noteHtml
       +'</div>';
   } else {
-    _dayBox='<div style="background:var(--bg3);border-radius:10px;padding:10px 14px;margin-bottom:12px">'
+    _dayBox='<div onclick="openCustomVacModal()" style="cursor:pointer;background:var(--bg3);border-radius:10px;padding:10px 14px;margin-bottom:12px">'
       +'<div style="display:flex;align-items:center;justify-content:space-between"><div style="font-size:15px;font-weight:600;color:var(--text)">'+lbl+(tt?' — '+tt:'')+'</div>'+_renduBtn+'</div>'
       +_exrHtml
       +_noteHtml
@@ -3280,7 +3281,7 @@ function removeExtraRendu(key){
   if(S.extraRendus)delete S.extraRendus[key];
   saveState();render();_addBack(key);
 }
-function resetVac(){pushUndo('Vacation remise');var _pk=pendingKey;removeHistoryForKey(_pk);if(!S.overrides)S.overrides={};delete S.overrides[_pk];if(!S.conges)S.conges={};delete S.conges[_pk];saveState();closeModal();render();popCell(_pk);gcalTrigger();}
+function resetVac(){pushUndo('Jour remis');var _pk=pendingKey;removeHistoryForKey(_pk);if(S.extraRendus)delete S.extraRendus[_pk];if(S.dayPrimes)delete S.dayPrimes[_pk];if(!S.overrides)S.overrides={};delete S.overrides[_pk];if(!S.conges)S.conges={};delete S.conges[_pk];saveState();closeModal();render();popCell(_pk);gcalTrigger();}
 function setAbsent(){pushUndo('Absence posée');var date=new Date(pendingKey+'T12:00:00');if(!S.overrides)S.overrides={};S.overrides[pendingKey]={absent:true};if(!S.conges)S.conges={};S.conges[pendingKey]='absent';logH(fmtDate(date)+' -> absent','#c88048',pendingKey);saveState();closeModal();render();gcalTrigger();}
 function resetAbsent(){pushUndo('Absence retirée');removeHistoryForKey(pendingKey);if(!S.overrides)S.overrides={};delete S.overrides[pendingKey];if(!S.conges)S.conges={};delete S.conges[pendingKey];saveState();closeModal();render();gcalTrigger();}
 function popCell(key){var el=document.querySelector('.dci[data-key="'+key+'"]');if(el){el.classList.add('pop');el.addEventListener('animationend',function(){el.classList.remove('pop');},{once:true});}}
@@ -6827,10 +6828,11 @@ function openCustomVacModal(){
   if(!document.body.classList.contains('modal-open'))_lockBodyScroll();
   var key=pendingKey,date=key?new Date(key+'T12:00:00'):new Date(),VAC=getVAC(date),g=key?getVac(date):{},cyc=key?getCycleVac(date).cycleVac:null;
   var cur=g.vac&&g.vac!=='RH'&&!g.absent&&VAC[g.vac]?VAC[g.vac]:null,ov=key?((S.overrides||{})[key]||{}):{};
-  var deb='',fin='',name='',pause='30',pr=cur&&cur.primes||{};
-  if(cur){deb=cur.deb||'';fin=cur.fin||'';name=cur.label||g.vac;var tot=parseHM(cur.fin)-parseHM(cur.deb);if(tot<0)tot+=1440;var pz=tot-(cur.dur||0);pause=pz>=60?'60':pz>=45?'45':pz>=30?'30':'0';}
-  var prSel=pr.antenne?'antenne':pr.reel?'reel':pr.coord?'coord':'';
+  var deb='',fin='',name='',pause='0',pr=cur&&cur.primes||{};
+  if(cur){deb=cur.deb||'';fin=cur.fin||'';name=cur.label||g.vac;var tot=parseHM(cur.fin)-parseHM(cur.deb);if(tot<0)tot+=1440;var pz=tot-(cur.dur||0);pause=pz>=60?'60':pz>=45?'45':'0';}
+  var prSel=pr.antenne?'antenne':pr.reel?'reel':pr.coord?'coord':'',dp=key?(S.dayPrimes||{})[key]:null;
   window._cvInit={deb:deb,fin:fin,name:name,pause:pause,prime:prSel,had:!!cur};
+  if(dp&&dp.amt>0)prSel='autre';
   var x=key?(S.extraRendus||{})[key]:null,n=key?((S.notes||{})[key]||''):'';
   var fs='padding:10px 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--bg2);color:var(--text);font-family:var(--font);-webkit-appearance:none';
   var T='<option value="">—</option><option value="00h00">00h00</option><option value="00h15">00h15</option><option value="00h30">00h30</option><option value="00h45">00h45</option><option value="01h00">01h00</option><option value="01h15">01h15</option><option value="01h30">01h30</option><option value="01h45">01h45</option><option value="02h00">02h00</option><option value="02h15">02h15</option><option value="02h30">02h30</option><option value="02h45">02h45</option><option value="03h00">03h00</option><option value="03h15">03h15</option><option value="03h30">03h30</option><option value="03h45">03h45</option><option value="04h00">04h00</option><option value="04h15">04h15</option><option value="04h30">04h30</option><option value="04h45">04h45</option><option value="05h00">05h00</option><option value="05h15">05h15</option><option value="05h30">05h30</option><option value="05h45">05h45</option><option value="06h00">06h00</option><option value="06h15">06h15</option><option value="06h30">06h30</option><option value="06h45">06h45</option><option value="07h00">07h00</option><option value="07h15">07h15</option><option value="07h30">07h30</option><option value="07h45">07h45</option><option value="08h00">08h00</option><option value="08h15">08h15</option><option value="08h30">08h30</option><option value="08h45">08h45</option><option value="09h00">09h00</option><option value="09h15">09h15</option><option value="09h30">09h30</option><option value="09h45">09h45</option><option value="10h00">10h00</option><option value="10h15">10h15</option><option value="10h30">10h30</option><option value="10h45">10h45</option><option value="11h00">11h00</option><option value="11h15">11h15</option><option value="11h30">11h30</option><option value="11h45">11h45</option><option value="12h00">12h00</option><option value="12h15">12h15</option><option value="12h30">12h30</option><option value="12h45">12h45</option><option value="13h00">13h00</option><option value="13h15">13h15</option><option value="13h30">13h30</option><option value="13h45">13h45</option><option value="14h00">14h00</option><option value="14h15">14h15</option><option value="14h30">14h30</option><option value="14h45">14h45</option><option value="15h00">15h00</option><option value="15h15">15h15</option><option value="15h30">15h30</option><option value="15h45">15h45</option><option value="16h00">16h00</option><option value="16h15">16h15</option><option value="16h30">16h30</option><option value="16h45">16h45</option><option value="17h00">17h00</option><option value="17h15">17h15</option><option value="17h30">17h30</option><option value="17h45">17h45</option><option value="18h00">18h00</option><option value="18h15">18h15</option><option value="18h30">18h30</option><option value="18h45">18h45</option><option value="19h00">19h00</option><option value="19h15">19h15</option><option value="19h30">19h30</option><option value="19h45">19h45</option><option value="20h00">20h00</option><option value="20h15">20h15</option><option value="20h30">20h30</option><option value="20h45">20h45</option><option value="21h00">21h00</option><option value="21h15">21h15</option><option value="21h30">21h30</option><option value="21h45">21h45</option><option value="22h00">22h00</option><option value="22h15">22h15</option><option value="22h30">22h30</option><option value="22h45">22h45</option><option value="23h00">23h00</option><option value="23h15">23h15</option><option value="23h30">23h30</option><option value="23h45">23h45</option>';
@@ -6840,17 +6842,18 @@ function openCustomVacModal(){
   var dO='<option value="0">—</option>';for(var d=15;d<=600;d+=15)dO+='<option value="'+d+'"'+(x&&x.dur===d?' selected':'')+'>'+fmtMin(d)+'</option>';
   var card='margin:0 0 10px;padding:12px';
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this){if(pendingKey)openDay(pendingKey);else closeModal();}"><div class="sheet"><div class="sh"></div>'
-    +'<div class="st" style="margin-bottom:2px">Ajouter</div>'
+    +'<div class="st" style="margin-bottom:2px">'+(key?'Modifier':'Ajouter')+'</div>'
     +(key?'<div style="font-size:11.5px;color:var(--text3);margin-bottom:12px">'+fmtDate(date)+'</div>':'')
     +'<div class="hd-card" style="'+card+'"><div class="btit" style="margin:0 0 8px">Vacation</div>'
     +'<div class="mrow"><label>Nom</label><input id="custom-name" placeholder="Formation, renfort…" style="width:100%;'+fs+'"></div>'
     +'<div class="mr2"><div><label>Début</label><select id="custom-deb" style="width:100%;'+fs+'">'+T+'</select></div><div><label>Fin</label><select id="custom-fin" style="width:100%;'+fs+'">'+T+'</select></div></div>'
-    +'<div class="mr2" style="margin-bottom:6px"><div><label>Pause</label><select id="custom-pause" style="width:100%;'+fs+'"><option value="0">Sans</option><option value="30">30 min</option><option value="45">45 min</option><option value="60">1h00</option></select></div>'
-    +'<div><label>Prime</label><select id="custom-prime" style="width:100%;'+fs+'"><option value="">Aucune</option><option value="antenne">Antenne</option><option value="reel">Réal</option><option value="coord">Coordination</option></select></div></div>'
+    +'<div class="mr2" style="margin-bottom:6px"><div><label>Pause</label><select id="custom-pause" style="width:100%;'+fs+'"><option value="0">Sans</option><option value="45">45 min</option><option value="60">1h00</option></select></div>'
+    +'<div><label>Prime</label><select id="custom-prime" onchange="_cvPrimeSync(this)" style="width:100%;'+fs+'"><option value="">Aucune</option><option value="antenne">Antenne</option><option value="reel">Réal</option><option value="coord">Coordination</option>'+(key?'<option value="autre">Autre</option>':'')+'</select></div></div>'
+    +(key?'<div id="cv-autre" class="mrow" style="margin-bottom:6px;display:'+(prSel==='autre'?'block':'none')+'"><label>Montant de la prime (€)</label><input id="cv-autre-amt" inputmode="decimal" placeholder="0,00" value="'+(dp&&dp.amt>0?String(dp.amt).replace('.',','):'')+'" style="width:100%;'+fs+'"></div>':'')
     +(key?opts:'')
     +'</div>'
-    +(key?'<div class="hd-card" style="'+card+'"><div class="btit" style="margin:0 0 8px;display:flex;justify-content:space-between">Heures acquises'+(x?'<a style="color:var(--red);cursor:pointer;font-weight:400;text-transform:none;letter-spacing:0" onclick="document.getElementById(\'cv-exr-dur\').value=\'0\';document.getElementById(\'cv-exr-lbl\').value=\'\';this.textContent=\'retirées à la validation\'">Retirer</a>':'')+'</div>'
-      +'<div style="display:flex;gap:8px"><input id="cv-exr-lbl" placeholder="Réunion, formation…" value="'+String((x&&x.label)||'').replace(/"/g,'&quot;')+'" style="flex:1;min-width:0;'+fs+'"><select id="cv-exr-dur" style="width:96px;'+fs+'">'+dO+'</select></div></div>'
+    +(key?'<div class="hd-card" style="'+card+'"><div class="btit" style="margin:0 0 8px">Heures acquises</div>'
+      +'<div style="display:flex;gap:8px"><input id="cv-exr-lbl" placeholder="Réunion, formation…" value="'+String((x&&x.label)||'').replace(/"/g,'&quot;')+'" style="flex:1;min-width:0;'+fs+'"><select id="cv-exr-dur" onchange="_cvRmSync()" style="width:96px;'+fs+'">'+dO+'</select><button id="cv-exr-rm" class="cv-rm" type="button" aria-label="Retirer les heures acquises" onclick="_cvRmClick(this)" style="display:'+(x&&x.dur>0?'flex':'none')+'"><i class="ti ti-trash"></i></button></div></div>'
       +'<div class="mrow" style="margin-bottom:16px"><label>Note</label><textarea id="cv-note" rows="2" maxlength="500" placeholder="Facultatif" style="width:100%;resize:vertical;'+fs+'">'+String(n).replace(/</g,'&lt;')+'</textarea></div>':'')
     +'<div class="mbtns"><button class="mb" onclick="if(pendingKey)openDay(pendingKey);else closeModal()">Annuler</button><button class="mb pri" onclick="confirmCustomVac()">Valider</button></div>'
     +'</div></div>';
@@ -6860,6 +6863,11 @@ function openCustomVacModal(){
   document.getElementById('custom-pause').value=pause;
   document.getElementById('custom-prime').value=prSel;
 }
+// Prime « Autre » : montant saisi à la main (prime du jour)
+function _cvPrimeSync(sel){var a=document.getElementById('cv-autre');if(!a)return;var on=sel.value==='autre';a.style.display=on?'block':'none';if(on)document.getElementById('cv-autre-amt').focus();}
+// Bouton corbeille des heures acquises : visible dès qu'une durée est choisie, vide la case au clic
+function _cvRmSync(){var d=document.getElementById('cv-exr-dur'),b=document.getElementById('cv-exr-rm');if(!d||!b)return;var on=(parseInt(d.value)||0)>0;if(on&&b.style.display==='none'){b.classList.remove('out');b.style.display='flex';}else if(!on&&b.style.display!=='none')b.style.display='none';}
+function _cvRmClick(b){document.getElementById('cv-exr-dur').value='0';document.getElementById('cv-exr-lbl').value='';b.classList.add('out');setTimeout(function(){if(b.classList.contains('out')){b.style.display='none';b.classList.remove('out');}},200);}
 // Note et rendu en plus de l'écran « Modifier le jour »
 function _cvSaveExtras(){
     // Note et rendu en plus saisis directement dans l'écran
@@ -6876,6 +6884,9 @@ function confirmCustomVac(){
   var hsE=document.getElementById('custom-hs'),epE=document.getElementById('custom-epv');
   var hs=!!(hsE&&hsE.checked),formation=!!(epE&&epE.checked);
   var vacEmpty=!debStr||!finStr;
+  var autreAmt=prime==='autre'?parseFloat(val('cv-autre-amt').replace(/\s/g,'').replace(',','.')):NaN;
+  if(prime==='autre')prime='';
+  // Pause de moins de 45 min = sans pause (même calcul)
   var vacSame=debStr===I.deb&&finStr===I.fin&&name===I.name&&String(pauseMin)===String(I.pause)&&prime===I.prime;
   var dur=0,panier=false;
   if(!vacEmpty&&!vacSame){
@@ -6886,7 +6897,9 @@ function confirmCustomVac(){
     if(!name)name=debStr+'–'+finStr;
   }
   if(!key&&(vacEmpty||!name)){alert('Nom et horaires requis');return;}
-  if(key)_cvSaveExtras();
+  if(key){_cvSaveExtras();
+    if(!S.dayPrimes)S.dayPrimes={};var _dpO=JSON.stringify(S.dayPrimes[key]||null),_dpN=autreAmt>0?{lbl:((S.dayPrimes[key]||{}).lbl)||'Prime',amt:Math.round(autreAmt*100)/100}:null;
+    if(JSON.stringify(_dpN)!==_dpO){pushUndo('Prime modifiée');if(_dpN)S.dayPrimes[key]=_dpN;else delete S.dayPrimes[key];}}
   if(!vacEmpty&&!vacSame){
     if(!S.customVacs)S.customVacs={};
     var vacKey=key&&(VAC_STD[name]||_globalVacs[name])?'_p_'+name+'_'+Date.now():name;
