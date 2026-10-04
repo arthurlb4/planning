@@ -5894,7 +5894,9 @@ function renderExchangeModal(){
   const myKey=pendingKey||_lpk;
   const date=new Date(myKey+'T12:00:00');
   const mon=getMonday(date);
-  const weekDays=[];for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);weekDays.push(d);}
+  // Semaine affichée pour choisir le jour pris : la vôtre par défaut, ‹ › pour un autre semaine (cas rares)
+  const _wo=_exState.wOff||0,mon2=new Date(mon);mon2.setDate(mon.getDate()+7*_wo);
+  const weekDays=[];for(let i=0;i<7;i++){const d=new Date(mon2);d.setDate(mon2.getDate()+i);weekDays.push(d);}
 
   // Étape 1: grille des jours
   const dayBtns=weekDays.map(d=>{
@@ -5961,7 +5963,11 @@ function renderExchangeModal(){
     +'<div class="sh"></div>'
     +'<div class="st">Échange collègue</div>'
     +_modeSeg
-    +(_wk?_exWeekHtml(mon):'<div style="font-size:12px;color:var(--text3);margin-bottom:8px">Jour que vous prenez (le vôtre pour échanger la vacation du même jour) :</div><div class="exchange-days" id="ex-day-grid">'+dayBtns+'</div>'+vacGrid)
+    +(_wk?_exWeekHtml(mon):'<div style="font-size:12px;color:var(--text3);margin-bottom:8px">Jour que vous prenez (le vôtre pour échanger la vacation du même jour) :</div>'
+      +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><button type="button" class="ibtn" style="flex:none;width:30px;height:30px;border:none;border-radius:8px;background:var(--bg2);color:var(--text2);cursor:pointer" onclick="_exState.wOff=(_exState.wOff||0)-1;_exState.step=1;_exState.targetKey=null;renderExchangeModal()">‹</button>'
+      +'<span style="flex:1;text-align:center;font-size:12.5px;color:'+(_wo?'var(--amber)':'var(--text2)')+'">'+(_wo?'Semaine du '+fmtDate(mon2):'Cette semaine')+'</span>'
+      +'<button type="button" class="ibtn" style="flex:none;width:30px;height:30px;border:none;border-radius:8px;background:var(--bg2);color:var(--text2);cursor:pointer" onclick="_exState.wOff=(_exState.wOff||0)+1;_exState.step=1;_exState.targetKey=null;renderExchangeModal()">›</button></div>'
+      +'<div class="exchange-days" id="ex-day-grid">'+dayBtns+'</div>'+vacGrid)
     +'<button class="mcancel" onclick="closeModal()">Annuler</button>'
     +'</div></div>';
 
@@ -5981,7 +5987,7 @@ function _exWeekHtml(mon){
   var sun=new Date(mon);sun.setDate(mon.getDate()+6);
   var h='<div style="font-size:12px;color:var(--text3);margin-bottom:10px;line-height:1.45">Semaine du '+mon.getDate()+' au '+fmtDate(sun)+'. Choisissez la ligne que vous faites à la place de la vôtre : pas d\u2019heures sup, primes des vacations faites.</div>';
   if(sw)h+='<div style="display:flex;align-items:center;gap:8px;padding:9px 12px;margin-bottom:10px;border-radius:10px;background:rgba(200,128,72,.14);font-size:12.5px"><span style="flex:1">Semaine échangée : vous faites <b>S'+(cur+1)+'</b> au lieu de S'+(base+1)+'.</span><button class="mb" style="min-height:0;padding:5px 10px;font-size:12px" onclick="_exWeekSet(null)">Annuler</button></div>';
-  h+='<div style="display:flex;flex-direction:column;gap:6px;max-height:52vh;overflow-y:auto">';
+  h+='<div style="display:flex;flex-direction:column;gap:6px">';
   for(var i=0;i<N;i++){
     var row=grid[i]||[],nm=(users['S'+(i+1)]||[]).filter(function(u){return u.userId!==me;}).map(function(u){return u.profileName||'?';}).join(', ');
     var isBase=i===base,isCur=i===cur;
