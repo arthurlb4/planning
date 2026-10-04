@@ -7346,8 +7346,12 @@ function init(){
     var y0=0,active=false,trig=false,TH=64,H=420,P=800;
     var ind=document.getElementById('ptr-indicator'),spin=document.getElementById('ptr-spin'),msg=document.getElementById('ptr-msg'),tit=document.getElementById('mtit'),lines=[].slice.call(spin.querySelectorAll('line'));
     var rubber=function(x){return (1-1/(x*.55/H+1))*H;};
-    var ticks=function(n){lines.forEach(function(l,k){l.style.opacity=k<n?.8:0;});};
+    var ticks=function(n){lines.forEach(function(l,k){l.style.transition='';l.style.opacity=k<n?.8:0;});};
     var startSpin=function(t0){ind.style.setProperty('--ph',(-((Date.now()-t0)%P)/1000)+'s');lines.forEach(function(l){l.style.opacity='';});ind.classList.add('load');};
+    // Arrêt façon iOS : la roue ne relance plus de tour, chaque rayon finit de s'éteindre à son rythme (les plus pâles partent d'abord)
+    var stopSpin=function(){var ops=lines.map(function(l){return parseFloat(getComputedStyle(l).opacity)||0;});
+      lines.forEach(function(l,k){l.style.transition='none';l.style.opacity=ops[k];});ind.classList.remove('load');void spin.offsetWidth;
+      lines.forEach(function(l,k){var d=ops[k]/.75*.8;l.style.transition='opacity '+d.toFixed(3)+'s linear';l.style.opacity=0;});};
     var hideSpin=function(ms){spin.style.transition='opacity '+ms+'ms ease,transform '+ms+'ms ease';spin.style.opacity=0;spin.style.transform='scale(.5)';};
     document.addEventListener('touchstart',function(e){
       if(window.scrollY>0||document.body.scrollTop>0||document.body.classList.contains('modal-open')||ind.classList.contains('load'))return;
@@ -7378,12 +7382,12 @@ function init(){
       tit.style.transition='none';tit.style.opacity=0;spin.style.transition='none';spin.style.opacity=1;spin.style.transform='scale(1)';if(!ind.classList.contains('load'))startSpin(t0);
       var faded=false;
       // l'écran de chargement s'estompe : la roue s'arrête et disparaît en même temps
-      window._ptrFade=function(){window._ptrFade=null;faded=true;hideSpin(380);setTimeout(function(){ind.classList.remove('load');},380);};
+      window._ptrFade=function(){window._ptrFade=null;faded=true;stopSpin();};
       // écran parti : « Actualisé » (ou « Hors ligne »), puis le nom du mois revient
       window._ptrDone=function(){window._ptrDone=null;
         var show=function(){ind.classList.remove('load');msg.textContent=off?'Hors ligne':'Actualisé';msg.classList.add('on');
           setTimeout(function(){msg.classList.remove('on');setTimeout(function(){tit.style.transition='';tit.style.opacity='';},250);},off?1400:900);};
-        if(faded)show();else{hideSpin(220);setTimeout(show,220);}};
+        if(faded)setTimeout(show,500);else{stopSpin();setTimeout(show,700);}};
       setTimeout(function(){if(window._ptrFade)window._ptrFade();if(window._ptrDone)window._ptrDone();},4000); // filet de sécurité si l'app tarde
     }
   })();
