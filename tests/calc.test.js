@@ -133,6 +133,8 @@ function situation(opts) {
     + 'var _v="Court";getVac=function(d){return dk(d)==="2026-10-06"?{vac:_v,absent:false,echange:false,cycleVac:"A1"}:{vac:"",absent:false};};');
   eq('Modifier : plus courte → heures prévues, pas d’heure sup', a.run('S.overrides={"2026-10-06":{vac:"Court",motif:"autre"}};_v="Court";_dayHSMin(new Date(2026,9,6,12))'), 0);
   eq('Modifier : plus longue → surplus en heures sup (2h30)', a.run('S.overrides={"2026-10-06":{vac:"Long",motif:"forme"}};_v="Long";_dayHSMin(new Date(2026,9,6,12))'), 150);
+  eq('Grille : vacation plus longue → surplus en heures sup', a.run('S.overrides={"2026-10-06":{vac:"Long",hs:false}};_v="Long";_dayHSMin(new Date(2026,9,6,12))'), 150);
+  eq('Échange même jour : pas d’heure sup', a.run('S.overrides={"2026-10-06":{vac:"Long",echange:true,ecSelf:true,pair:"2026-10-06"}};getVac=function(d){return dk(d)==="2026-10-06"?{vac:"Long",absent:false,echange:true,ecSelf:true,cycleVac:"A1"}:{vac:"",absent:false};};_dayHSMin(new Date(2026,9,6,12))'), 0);
 }
 
 // Échange de semaine : la semaine prend une autre ligne du cycle, sans toucher aux autres semaines

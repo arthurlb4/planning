@@ -1149,8 +1149,8 @@ function calcHSWeek(monday){
       const _ov=(S.overrides||{})[key];
       if(_ov&&_ov.vac&&!_ov.echange&&cycleVac&&VAC[cycleVac]&&VAC[cycleVac].mixte){
         _dayWorked=(VAC[cycleVac].dur||0)+_calcMixteHsMin(cycleVac,_ov.vac,VAC);
-      } else if(_ov&&_ov.vac&&!_ov.echange&&(_ov.motif||_ov.hs)&&cycleVac&&cycleVac!=='RH'&&VAC[cycleVac]){
-        // Jour modifié (écran « Modifier ») : la plus grande des deux, prévue ou faite ; le surplus part en heures sup
+      } else if(_ov&&_ov.vac&&!_ov.echange&&cycleVac&&cycleVac!=='RH'&&VAC[cycleVac]){
+        // Jour travaillé changé (grille ou « Modifier ») : la plus grande des deux, prévue ou faite ; le surplus part en heures sup
         _dayWorked=Math.max(VAC[cycleVac].dur||0,VAC[vac]?VAC[vac].dur:0);
       } else if(_ov&&_ov.vac&&!_ov.echange&&!_ov.hs){
         _dayWorked=cycleVac==='RH'?(VAC[vac]?VAC[vac].dur:0):(cycleVac&&VAC[cycleVac]?VAC[cycleVac].dur:0);
@@ -3079,7 +3079,7 @@ function _dayHSMin(date){
   }else{
     if(!vac||vac==='RH')return 0;
     if(_ov&&_ov.vac&&!_ov.echange&&cycleVac&&VAC[cycleVac]&&VAC[cycleVac].mixte)w=(VAC[cycleVac].dur||0)+_calcMixteHsMin(cycleVac,_ov.vac,VAC);
-    else if(_ov&&_ov.vac&&!_ov.echange&&(_ov.motif||_ov.hs)&&cycleVac&&cycleVac!=='RH'&&VAC[cycleVac])w=Math.max(VAC[cycleVac].dur||0,VAC[vac]?VAC[vac].dur:0);
+    else if(_ov&&_ov.vac&&!_ov.echange&&cycleVac&&cycleVac!=='RH'&&VAC[cycleVac])w=Math.max(VAC[cycleVac].dur||0,VAC[vac]?VAC[vac].dur:0);
     else if(_ov&&_ov.vac&&!_ov.echange&&!_ov.hs)w=cycleVac==='RH'?(VAC[vac]?VAC[vac].dur:0):(cycleVac&&VAC[cycleVac]?VAC[cycleVac].dur:0);
     else w=VAC[vac]?VAC[vac].dur:0;
   }
@@ -4205,10 +4205,10 @@ function cancelExchange(key){
   const ov1=S.overrides[key];
   if(!ov1||!ov1.echange)return;
   delete S.overrides[key];
-  // Also remove the partner if it references this exchange
-  // Since we don't store a link, search all overrides for echange pairs in the same week
+  // Partenaire de l'échange : lien enregistré (pair) ; anciens échanges sans lien : tous ceux de la semaine
+  if(ov1.pair){const p=S.overrides[ov1.pair];if(p&&p.echange&&ov1.pair!==key){gcalClearDateId(ov1.pair);delete S.overrides[ov1.pair];}}
   const date=new Date(key+'T12:00:00'),mon=getMonday(date);
-  for(let i=0;i<7;i++){
+  if(!ov1.pair)for(let i=0;i<7;i++){
     const d=new Date(mon);d.setDate(mon.getDate()+i);const dk2=dk(d);
     const ov2=(S.overrides||{})[dk2];
     if(ov2&&ov2.echange){gcalClearDateId(dk2);if(dk2!==key)delete S.overrides[dk2];}
@@ -5898,7 +5898,7 @@ function renderExchangeModal(){
 
   // Étape 1: grille des jours
   const dayBtns=weekDays.map(d=>{
-    const dk2=dk(d),isCurrent=dk2===myKey,isSel=dk2===_exState.targetKey;
+    const dk2=dk(d),isSel=dk2===_exState.targetKey,isCurrent=dk2===myKey&&!isSel;
     const dw=d.getDay();
     const dayName=['D','L','Ma','Me','J','V','S'][dw];
     const{vac:cv2}=getVac(d);
@@ -5961,7 +5961,7 @@ function renderExchangeModal(){
     +'<div class="sh"></div>'
     +'<div class="st">Échange collègue</div>'
     +_modeSeg
-    +(_wk?_exWeekHtml(mon):'<div class="exchange-days" id="ex-day-grid">'+dayBtns+'</div>'+vacGrid)
+    +(_wk?_exWeekHtml(mon):'<div style="font-size:12px;color:var(--text3);margin-bottom:8px">Jour que vous prenez (le vôtre pour échanger la vacation du même jour) :</div><div class="exchange-days" id="ex-day-grid">'+dayBtns+'</div>'+vacGrid)
     +'<button class="mcancel" onclick="closeModal()">Annuler</button>'
     +'</div></div>';
 
@@ -6006,7 +6006,7 @@ function _exWeekSet(i){var key=pendingKey||_lpk,mon=getMonday(new Date(key+'T12:
   logH('Semaine du '+fmtDate(mon)+(i==null||i===base?' : ligne d\u2019origine':' : échangée avec S'+(i+1)),'#c88048',key);
   saveState();closeModal();render();gcalTrigger();}
 function exSelectDay(dk2){
-  if(dk2===(pendingKey||_lpk))return;
+  // Le même jour est permis : « ce jour-là je fais la vacation de mon collègue »
   _exState.targetKey=dk2;
   _exState.step=2;
   _exState.targetVac=null;
@@ -6028,18 +6028,15 @@ function exSelectVac(vn){
     var myDur=VAC[getVac(myDate).vac]?VAC[getVac(myDate).vac].dur:0;
     var newDur=VAC[vn]?VAC[vn].dur:0;
     var diff=newDur-myDur;
-    if(diff>0)durInfo='<div style="font-size:11px;color:var(--text3);margin-bottom:10px">Jour pris\u00a0: '+vn+' (+'+fmtMin(diff)+' vs jour donn\u00e9)</div>';
+    var _same=_exState.targetKey===myKey;
+    durInfo='<div style="font-size:12.5px;color:var(--text2);margin-bottom:6px">'+(_same?'Ce jour-là, vous faites <b>'+vLbl(vn,VAC)+'</b> au lieu de '+vLbl(getVac(myDate).vac||myCv,VAC)+'.':'Vous donnez le '+fmtDate(myDate)+' et prenez <b>'+vLbl(vn,VAC)+'</b> le '+fmtDate(new Date(_exState.targetKey+'T12:00:00'))+'.')+'</div>';
   }
-  const exHsToggle=isExSelSV?'':
-    '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-top:0.5px solid var(--border)">'
-    +'<span style="font-size:13px;color:var(--text2)">Génère des HS</span>'
-    +'<label class="tgl"><input type="checkbox" id="hs-toggle-ex"><span class="tgl-s"></span></label>'
-    +'</div>';
+  // Échange entre collègues : à votre initiative, donc jamais d'heures sup (accord VIII.5)
+  const exHsToggle='<div style="font-size:11.5px;color:var(--text3);line-height:1.45;margin-bottom:6px">Pas d\u2019heures sup : un échange entre collègues compte vos heures prévues. Primes de la vacation faite.</div>';
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet">'
     +'<div class="sh"></div><div class="st">\u00c9change — '+vn+'</div>'
     +durInfo+exHsToggle
-    +'<button class="mb wide" style="margin-top:8px" onclick="confirmExchange()">Confirmer</button>'
-    +'<button class="mcancel" onclick="closeModal()">Annuler</button>'
+    +'<div class="mbtns" style="margin-top:12px"><button class="mb" onclick="renderExchangeModal()">Retour</button><button class="mb pri" onclick="confirmExchange()">Confirmer</button></div>'
     +'</div></div>';
 }
 function confirmExchange(){
@@ -6056,9 +6053,9 @@ function confirmExchange(){
   pushUndo('Échange enregistré');
   if(!S.overrides)S.overrides={};
   // myKey: mon jour original que je DONNE au collègue → je suis absent (gris)
-  S.overrides[myKey]={vac:myOrigVacName,fromSV:false,echange:true,ecSelf:false,hs:hsEx};
-  // targetKey: le jour que je PRENDS → je travaille la nouvelle vacation (orange)
-  S.overrides[_exState.targetKey]={vac:_exState.targetVac,fromSV:!theirCycle||theirCycle==='RH',echange:true,ecSelf:true,hs:hsEx};
+  if(_exState.targetKey!==myKey)S.overrides[myKey]={vac:myOrigVacName,fromSV:false,echange:true,ecSelf:false,hs:hsEx,pair:_exState.targetKey};
+  // targetKey: le jour que je PRENDS → je travaille la nouvelle vacation (orange) ; même jour : la vacation change seulement
+  S.overrides[_exState.targetKey]={vac:_exState.targetVac,fromSV:!theirCycle||theirCycle==='RH',echange:true,ecSelf:true,hs:hsEx,pair:myKey};
   logH('Échange: '+fmtDate(date)+' <-> '+fmtDate(targetDate)+' ('+_exState.targetVac+(hsEx?' HS':'')+')', '#c88048', myKey);
   saveState();closeModal();render();
   gcalTrigger();
