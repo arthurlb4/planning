@@ -1575,6 +1575,12 @@ function toggleFractForfait(year){
   saveState();updateCounters();openMergedRenduCgModal(6,1);
 }
 
+// Anneau des congés : longueur visible et rotation de chaque arc (vert, CET, posés), avec un petit écart entre les bouts arrondis
+function _cgGeo(fg,fc,fu){var C=2*Math.PI*27,w=8,gp=2.5,fs={g:fg,c:fc,u:fu},n=[fg,fc,fu].filter(function(f){return f>0.0001;}).length,a=0,o={};
+  ['g','c','u'].forEach(function(k){var f=fs[k];if(f<=0.0001){o[k]={L:0,r:a*360,o:0};return;}
+    if(n===1){o[k]={L:C,r:0,o:1};return;}
+    var L=Math.max(0.01,f*C-w-gp);o[k]={L:L,r:(a+(w/2+gp/2)/C)*360,o:1};a+=f;});
+  return o;}
 function adjCET(delta,year){
   if(!S.profile)return;
   if(delta>0&&computeCongesRest(year)<=0)return;
@@ -4818,11 +4824,12 @@ function openMergedRenduCgModal(limit,tab){
     +_rr('Mis en CET',cet+' j','var(--amber)',_adjBtn('adjCET','-1,'+nowY,'−')+_adjBtn('adjCET','1,'+nowY,'+'))
     +(cetTotal!==cet?_rr('CET total',cetTotal+' j','var(--text2)'):''));
   // En-tête : anneau des droits de l'année (posés, mis en CET, restants) et chiffres en grand, comme les autres onglets
-  // Anneau : restants en vert depuis le haut (sens horaire), puis CET, puis posés ; à l'ouverture, le vert part du solde total et se réduit
-  const _cgRing=(function(){var T=Math.max(1,soldeEffectif),R=27,C=2*Math.PI*R,fu=Math.min(1,usedNow/T),fc=Math.min(1-fu,cet/T),fg=Math.max(0,1-fu-fc);
-    var arc=function(k,f,off,col){return '<circle cx="34" cy="34" r="'+R+'" fill="none" stroke="'+col+'" stroke-width="8" stroke-linecap="butt" stroke-dasharray="'+(f*C).toFixed(2)+' '+C.toFixed(2)+'" stroke-dashoffset="'+(-off*C).toFixed(2)+'" class="cg-arc" data-k="'+k+'"/>';};
-    return '<svg class="cg-ring" data-g="'+fg+'" data-c="'+fc+'" data-u="'+fu+'" data-cc="'+C+'" width="68" height="68" viewBox="0 0 68 68" style="transform:rotate(-90deg);flex-shrink:0"><circle cx="34" cy="34" r="'+R+'" fill="none" stroke="var(--border2)" stroke-width="8"/>'
-      +arc('g',fg,0,'var(--green)')+arc('c',fc,fg,'var(--amber)')+arc('u',fu,fg+fc,'var(--red)')+'</svg>';})();
+  // Anneau : restants en vert depuis le haut (sens horaire), puis CET, puis posés, bouts arrondis comme dans le Suivi ;
+  // à l'ouverture, le vert part du solde total et se réduit (animation CSS, comme les anneaux du Suivi)
+  const _cgRing=(function(){var T=Math.max(1,soldeEffectif),fu=Math.min(1,usedNow/T),fc=Math.min(1-fu,cet/T),fg=Math.max(0,1-fu-fc),C=2*Math.PI*27,G=_cgGeo(fg,fc,fu);
+    var arc=function(k,col){var g=G[k];return '<circle cx="34" cy="34" r="27" fill="none" stroke="'+col+'" stroke-width="8" stroke-linecap="round" stroke-dasharray="'+C.toFixed(2)+' '+C.toFixed(2)+'" class="cg-arc" data-k="'+k+'" style="transform-origin:34px 34px;transform:rotate('+g.r.toFixed(2)+'deg);stroke-dashoffset:'+(C-g.L).toFixed(2)+'px;opacity:'+g.o+'"/>';};
+    return '<svg class="cg-ring" data-g="'+fg+'" data-c="'+fc+'" data-u="'+fu+'" width="68" height="68" viewBox="0 0 68 68" style="transform:rotate(-90deg);flex-shrink:0"><circle cx="34" cy="34" r="27" fill="none" stroke="var(--border2)" stroke-width="8"/>'
+      +arc('g','var(--green)')+arc('c','var(--amber)')+arc('u','var(--red)')+'</svg>';})();
   const _cgCell=(lbl,val,col,from)=>'<div class="hd3-c"><span>'+lbl+'</span><b style="color:'+col+'"><span class="cg-n" data-n="'+val+'" data-f="'+(from||0)+'">'+val+'</span> j</b></div>';
   const cgSoldeHeader=''
     +'<div class="cg-hd hd3">'
@@ -5492,11 +5499,15 @@ function rcgTab(idx){
   if(document.getElementById('rcc-'+idx)&&document.getElementById('rcc-'+idx).style.visibility==='hidden')_haptic();
   var _same=window._rcgShown===idx&&document.body.classList.contains('modal-open')&&window._rcgRedraw;window._rcgShown=idx;window._rcgRedraw=false;
   if(idx===1&&!_same){var _ns=document.querySelectorAll('#rcc-1 .cg-n'),_rg=document.querySelector('#rcc-1 .cg-ring'),_t0=performance.now();
-    // Chiffres et anneau : restants partent du solde total, posés et CET de zéro
-    (function st(t){var k=Math.min(1,Math.max(0,(t-_t0)/900)),e=1-Math.pow(1-k,3);_ns.forEach(function(n){var f=+n.dataset.f||0;n.textContent=Math.round(f+(+n.dataset.n-f)*e);});
-      if(_rg){var C=+_rg.dataset.cc,g=1-(1-_rg.dataset.g)*e,c=_rg.dataset.c*e,u=_rg.dataset.u*e,o={g:[g,0],c:[c,g],u:[u,g+c]};
-        _rg.querySelectorAll('.cg-arc').forEach(function(a){var v=o[a.dataset.k];a.setAttribute('stroke-dasharray',(v[0]*C).toFixed(2)+' '+C.toFixed(2));a.setAttribute('stroke-dashoffset',(-v[1]*C).toFixed(2));});}
-      if(k<1)requestAnimationFrame(st);})(_t0);}
+    // Chiffres : restants partent du solde total, posés et CET de zéro
+    (function st(t){var k=Math.min(1,Math.max(0,(t-_t0)/900)),e=1-Math.pow(1-k,3);_ns.forEach(function(n){var f=+n.dataset.f||0;n.textContent=Math.round(f+(+n.dataset.n-f)*e);});if(k<1)requestAnimationFrame(st);})(_t0);
+    // Anneau : tout vert au départ, puis transition CSS vers les vraies proportions (fluide, calculée par le navigateur)
+    if(_rg){var C=2*Math.PI*27,G0=_cgGeo(1,0,0),G1=_cgGeo(+_rg.dataset.g,+_rg.dataset.c,+_rg.dataset.u),arcs=_rg.querySelectorAll('.cg-arc');
+      arcs.forEach(function(c){var k=c.dataset.k,g=k==='g'?G0.g:{L:0,r:G1[k].r,o:0};c.style.transition='none';c.style.transform='rotate('+g.r+'deg)';c.style.strokeDashoffset=(C-g.L)+'px';c.style.opacity=g.o;});
+      void _rg.getBoundingClientRect();
+      requestAnimationFrame(function(){arcs.forEach(function(c){var g=G1[c.dataset.k];
+        c.style.transition='stroke-dashoffset .9s cubic-bezier(.25,.8,.25,1),transform .9s cubic-bezier(.25,.8,.25,1),opacity .2s ease';
+        c.style.transform='rotate('+g.r+'deg)';c.style.strokeDashoffset=(C-g.L)+'px';c.style.opacity=g.o;});});}}
   if(idx===0&&!_same){var _w=document.getElementById('rcc-0');if(_w){_w.classList.remove('rc-anim');void _w.offsetWidth;_w.classList.add('rc-anim');[].forEach.call(_w.querySelectorAll('.eph-urow'),function(r,i){[].forEach.call(r.querySelectorAll('.eph-b,.eph-b2'),function(b){b.style.animationDelay=(i*.05)+'s';});});}}
   if(idx===2&&document.getElementById('rcc-2')&&document.getElementById('rcc-2').style.visibility==='hidden')requestAnimationFrame(function(){_cptAnim(document.getElementById('cpt-card'));});
   // En quittant le récap, ses blocs se replient
