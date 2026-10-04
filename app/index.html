@@ -6003,8 +6003,34 @@ function _exWeekHtml(mon){
       +'<span style="width:56px;flex:none"><b>S'+(i+1)+'</b>'+(isBase?'<span style="display:block;font-size:9.5px;color:var(--blue)">votre ligne</span>':nm?'<span style="display:block;font-size:9.5px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+String(nm).replace(/</g,'&lt;')+'</span>':'')+'</span>'
       +'<span style="flex:1;display:flex;gap:2px;font-size:11px">'+cells+'</span></button>';
   }
-  return h+'</div>';
+  h+='</div><button type="button" class="mb" style="width:100%;margin-top:10px;background:none;color:var(--text2)" onclick="_exOtherWeek()">Autre planning (pool, hors cycle)…</button>';
+  return h;
 }
+// Semaine échangée avec un collègue hors cycle (pool cadre…) : vacation ou repos choisi jour par jour, enregistré en échanges d'un jour
+function _exOtherWeek(){var key=pendingKey||_lpk,mon=getMonday(new Date(key+'T12:00:00')),sun=new Date(mon);sun.setDate(mon.getDate()+6);
+  var JS=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'],rows='';
+  for(var i=0;i<7;i++){var d=new Date(mon);d.setDate(mon.getDate()+i);var k=dk(d),VAC=getVAC(d),g=getVac(d),cur=g.absent?null:(g.vac&&g.vac!=='RH'&&!(g.echange&&!g.ecSelf)?g.vac:'');
+    var ns=_cycleVacList(d)||Object.keys(VAC).filter(function(n){return VAC_STD[n]||_globalVacs[n];});
+    if(cur&&ns.indexOf(cur)<0)ns=[cur].concat(ns);
+    var opts='<option value="">Repos</option>'+ns.filter(function(n){var v=VAC[n];return v&&!v.mixte&&v.dur>0&&n!=='RH'&&n!=='SV';}).map(function(n){return '<option value="'+n+'"'+(n===cur?' selected':'')+'>'+vLbl(n,VAC)+' · '+(VAC[n].deb||'')+'–'+(VAC[n].fin||'')+'</option>';}).join('');
+    var mine=g.cycleVac&&g.cycleVac!=='RH'?vLbl(g.cycleVac,VAC):'repos';
+    rows+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="width:62px;flex:none;font-size:12.5px"><b>'+JS[i]+' '+d.getDate()+'</b><span style="display:block;font-size:10px;color:var(--text3)">prévu : '+mine+'</span></span>'
+      +'<select data-exo="'+k+'"'+(g.absent||(S.conges||{})[k]?' disabled':'')+' style="flex:1;min-width:0;padding:9px 10px;border:0.5px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--bg2);color:var(--text);-webkit-appearance:none">'+opts+'</select></div>';}
+  document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)renderExchangeModal()"><div class="sheet"><div class="sh"></div>'
+    +'<div class="st">Autre planning</div>'
+    +'<div style="font-size:12px;color:var(--text3);line-height:1.45;margin:2px 0 12px">Semaine du '+mon.getDate()+' au '+fmtDate(sun)+'. Indiquez ce que vous faites chaque jour à la place de votre ligne (planning de votre collègue). Pas d\u2019heures sup, primes des vacations faites.</div>'
+    +rows
+    +'<div class="mbtns" style="margin-top:12px"><button class="mb" onclick="renderExchangeModal()">Retour</button><button class="mb pri" onclick="_exOtherWeekSave()">Enregistrer</button></div></div></div>';}
+function _exOtherWeekSave(){var sels=document.querySelectorAll('[data-exo]'),ch=[];
+  sels.forEach(function(el){if(el.disabled)return;var k=el.getAttribute('data-exo'),d=new Date(k+'T12:00:00'),g=getVac(d),cur=g.vac&&g.vac!=='RH'&&!(g.echange&&!g.ecSelf)?g.vac:'',v=el.value;if(v!==cur)ch.push([k,v,g]);});
+  if(!ch.length){renderExchangeModal();return;}
+  pushUndo('Semaine échangée (autre planning)');if(!S.overrides)S.overrides={};
+  ch.forEach(function(c){var k=c[0],v=c[1],g=c[2],cyc=g.cycleVac;
+    if(v===(cyc&&cyc!=='RH'?cyc:'')){delete S.overrides[k];return;} // retour à la vacation prévue
+    if(!v)S.overrides[k]={vac:cyc,fromSV:false,echange:true,ecSelf:false,hs:false,pair:k}; // je donne ce jour
+    else S.overrides[k]={vac:v,fromSV:!cyc||cyc==='RH',echange:true,ecSelf:true,hs:false,pair:k};}); // je fais sa vacation
+  logH('Semaine du '+fmtDate(getMonday(new Date(ch[0][0]+'T12:00:00')))+' : autre planning ('+ch.length+' jour'+(ch.length>1?'s':'')+')','#c88048',ch[0][0]);
+  saveState();closeModal();render();gcalTrigger();}
 function _exLoadWeekUsers(mk){if(!window._authToken)return;window._exWeekData={mk:mk,data:null};
   fetch(CLOUD_API+'/lines/week',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({monday:mk})}).then(function(r){return r.json();})
     .then(function(d){if(window._exWeekData&&window._exWeekData.mk===mk){window._exWeekData.data=d;if(_exState&&_exState.mode==='week'&&document.querySelector('#modal-root .cv-seg'))renderExchangeModal();}}).catch(function(){});}
