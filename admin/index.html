@@ -546,6 +546,8 @@ function vacCat(name){
 function _vacBadges(v){var b='',pr=v.primes||{};if(v.panier)b+='<span class="vbdg p" title="Panier repas">Panier</span>';
   if(pr.antenne)b+='<span class="vbdg a" title="Prime Antenne">Antenne</span>';if(pr.reel)b+='<span class="vbdg a" title="Prime Réal">Réal</span>';if(pr.coord)b+='<span class="vbdg a" title="Prime Coordination">Coord</span>';
   var d=_toMinAdmin(v.deb);if(d!=null&&d<240)b+='<span class="vbdg a" title="Prime matin (début avant 4h)">Matin</span>';if(v.mixte)b+='<span class="vbdg">Mixte</span>';return b;}
+// Vacations hors grille : par type (Cadre, Vidéo · Réal, Coordination, autres), puis par heure de début (liste déjà triée)
+var _HG_CATS=[['Cadre','Cadre'],['Vidéo','Vidéo · Réal'],['Coordination','Coordination'],['Général','Autres']];
 function renderVacList() {
   const _detailsOpen = document.querySelector('#vac-list details')?.open ?? false;
   const el = document.getElementById('vac-list');
@@ -706,10 +708,10 @@ function renderVacList() {
     const outsideSections = sections.map(s => ({ ...s, rows: s.rows.filter(([n])=>!gridCodes.has(n)) }));
     if (outsideSections.some(s => s.rows.length)) {
       out += `<div style="${SPAN};font-size:10px;color:var(--text3);margin-top:14px">Hors grille · proposées dans « Autres vacations »</div>`;
-      ['Coordination','Vidéo','Cadre','Général'].forEach(cat => {
+      _HG_CATS.forEach(([cat,lbl]) => {
         const catSec = outsideSections.map(s => ({ ...s, rows: s.rows.filter(([n]) => vacCat(n) === cat) }));
         if (!catSec.some(s => s.rows.length)) return;
-        out += `<div style="${SPAN};font-size:10px;font-style:italic;color:var(--text3);margin-top:8px">${cat}</div>`;
+        out += `<div style="${SPAN};font-size:10px;font-style:italic;color:var(--text3);margin-top:8px">${lbl}</div>`;
         catSec.forEach(s => { out += `<div style="${CELL}">${makeTable(s.rows, true)}</div>`; });
       });
     }
@@ -749,7 +751,10 @@ function renderVacList() {
     if (gridCodes.size) {
       m += H('Dans la grille du cycle') + list(sec.rows.filter(([n])=>gridCodes.has(n)));
       const out2 = sec.rows.filter(([n])=>!gridCodes.has(n));
-      if (out2.length) m += H('Hors grille · proposées dans « Autres vacations »') + list(out2, true);
+      if (out2.length) {
+        m += H('Hors grille · proposées dans « Autres vacations »');
+        _HG_CATS.forEach(([cat,lbl]) => { const g = out2.filter(([n]) => vacCat(n) === cat); if (g.length) m += `<div style="font-size:11px;font-style:italic;color:var(--text3);margin:10px 0 2px">${lbl}</div>` + list(g, true); });
+      }
     } else m += list(sec.rows);
     if (hasAll) m += H('Tous jours') + list(all);
     el.innerHTML = warn + swapHtml + m + availHtml;
