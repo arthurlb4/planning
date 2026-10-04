@@ -550,12 +550,14 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 
 /* Modal */
 @keyframes sheetUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
-#ptr-bubble{position:relative;width:40px;height:40px;margin-top:8px;border-radius:50%;background:rgba(40,40,38,.72);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border:.5px solid var(--border);box-shadow:inset .5px .5px 0 rgba(255,250,243,.14),0 6px 18px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;transform:scale(0);transition:transform .2s cubic-bezier(.4,0,.2,1)}
-#ptr-ico{position:absolute;font-size:14px;color:var(--text2);transition:transform .2s ease,color .2s,opacity .2s}
-#ptr-bubble.on #ptr-ico{transform:rotate(180deg);color:var(--blue)}
-#ptr-bubble.load #ptr-ico{opacity:0}
-@keyframes ptr-spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
-@keyframes ptr-dash{0%{stroke-dashoffset:100}50%{stroke-dashoffset:25}100%{stroke-dashoffset:100}}
+/* Tirer pour actualiser, façon iOS : roue à 12 rayons qui apparaissent un à un pendant qu'on tire, le contenu suit le doigt */
+#ptr-indicator{position:fixed;left:0;right:0;z-index:150;display:flex;flex-direction:column;align-items:center;pointer-events:none;opacity:0;transition:opacity .2s ease}
+#ptr-spin{width:28px;height:28px}#ptr-spin line{stroke:var(--text2);stroke-width:2.6;stroke-linecap:round;opacity:0;transition:opacity .08s}
+#ptr-indicator.load #ptr-spin line{opacity:.25;animation:ptr-tick 1s linear infinite}
+@keyframes ptr-tick{0%{opacity:1}100%{opacity:.25}}
+#ptr-msg{margin-top:6px;font-size:12px;color:var(--text2);opacity:0;transform:translateY(-4px);transition:opacity .25s ease,transform .25s ease;white-space:nowrap}
+#ptr-msg.on{opacity:1;transform:none}
+.ptr-pull{will-change:transform}
 @keyframes overlayIn{from{opacity:0}to{opacity:1}}
 @keyframes dialogIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);z-index:200;display:flex;align-items:flex-end;justify-content:center;}
@@ -780,7 +782,7 @@ for(var i=0;i<bl.length;i++){bl[i].style.height=g.b[i][1]+'px';bl[i].style.margi
   <button onclick="this.parentElement.style.display='none'">x</button>
 </div>
 
-<div id="ptr-indicator" style="position:fixed;top:0;left:0;right:0;z-index:9999;display:flex;justify-content:center;pointer-events:none;transition:transform .3s cubic-bezier(.4,0,.2,1);transform:translateY(-60px)"><div id="ptr-bubble"><svg id="ptr-svg" width="24" height="24" viewBox="0 0 44 44" style="transform:rotate(-90deg)"><circle cx="22" cy="22" r="18" fill="none" stroke="rgba(255,250,242,.12)" stroke-width="4"></circle><circle id="ptr-arc" cx="22" cy="22" r="18" fill="none" stroke="var(--text3)" stroke-width="4" stroke-linecap="round" stroke-dasharray="113.1" stroke-dashoffset="113.1"></circle></svg><i id="ptr-ico" class="ti ti-arrow-down"></i></div></div>
+<div id="ptr-indicator"><svg id="ptr-spin" viewBox="0 0 28 28"><line x1="14" y1="3.5" x2="14" y2="8.5" transform="rotate(0 14 14)" style="animation-delay:-1.000s"/><line x1="14" y1="3.5" x2="14" y2="8.5" transform="rotate(30 14 14)" style="animation-delay:-0.917s"/><line x1="14" y1="3.5" x2="14" y2="8.5" transform="rotate(60 14 14)" style="animation-delay:-0.833s"/><line x1="14" y1="3.5" x2="14" y2="8.5" transform="rotate(90 14 14)" style="animation-delay:-0.750s"/><line x1="14" y1="3.5" x2="14" y2="8.5" transform="rotate(120 14 14)" style="animation-delay:-0.667s"/><line x1="14" y1="3.5" x2="14" y2="8.5" transform="rotate(150 14 14)" style="animation-delay:-0.583s"/><line x1="14" y1="3.5" x2="14" y2="8.5" transform="rotate(180 14 14)" style="animation-delay:-0.500s"/><line x1="14" y1="3.5" x2="14" y2="8.5" transform="rotate(210 14 14)" style="animation-delay:-0.417s"/><line x1="14" y1="3.5" x2="14" y2="8.5" transform="rotate(240 14 14)" style="animation-delay:-0.333s"/><line x1="14" y1="3.5" x2="14" y2="8.5" transform="rotate(270 14 14)" style="animation-delay:-0.250s"/><line x1="14" y1="3.5" x2="14" y2="8.5" transform="rotate(300 14 14)" style="animation-delay:-0.167s"/><line x1="14" y1="3.5" x2="14" y2="8.5" transform="rotate(330 14 14)" style="animation-delay:-0.083s"/></svg><div id="ptr-msg"></div></div>
 <!-- HEADER -->
 <div class="hdr">
   <span class="hdr-ver" style="display:flex;align-items:baseline;gap:4px;padding-left:4px;white-space:nowrap"><span id="hdr-profile-name" style="font-size:16px;font-weight:600;color:var(--text)">Profil</span><span style="font-size:15px;color:var(--text3);font-weight:400">| franceinfo:</span></span>
@@ -7294,62 +7296,48 @@ function init(){
       }, 100);
     }, {passive:true});
   }
-  // Pull-to-refresh (Google Material style)
+  // Tirer pour actualiser, façon iOS : le contenu descend avec le doigt (élastique), une roue à 12 rayons se remplit,
+  // vibration au seuil, puis rechargement ; « Actualisé ✓ » s'affiche au retour. Hors ligne : on ne recharge pas.
   (function(){
-    var _ptrY0=0,_ptrActive=false,_ptrDist=0,_ptrTriggered=false;
-    var _ptrEl=document.getElementById('ptr-indicator');
-    var _ptrBubble=document.getElementById('ptr-bubble');
-    var _ptrArc=document.getElementById('ptr-arc');
-    var _ptrSvg=document.getElementById('ptr-svg');
-    var _ptrThreshold=70;
-    var _ptrMaxDash=113.1;var _ptrIco=document.getElementById('ptr-ico');
-    var _ptrScroller=function(){return document.body.scrollTop>0||window.scrollY>0;};
+    var y0=0,active=false,dist=0,trig=false,TH=70;
+    var ind=document.getElementById('ptr-indicator'),msg=document.getElementById('ptr-msg'),lines=[].slice.call(document.querySelectorAll('#ptr-spin line'));
+    var content=function(){return document.querySelector('.layout');};
+    var hdrB=function(){var h=document.querySelector('.hdr');return h?h.getBoundingClientRect().bottom:0;};
+    var place=function(d){ind.style.top=(hdrB()+Math.max(6,d/2-14))+'px';};
+    var setContent=function(d,anim){var c=content();if(!c)return;c.classList.add('ptr-pull');c.style.transition=anim?'transform .35s cubic-bezier(.32,.72,0,1)':'none';c.style.transform=d?'translateY('+d+'px)':'';};
+    var showMsg=function(t,ms){msg.textContent=t;ind.style.transition='opacity .2s ease';ind.style.opacity=1;place(0);requestAnimationFrame(function(){msg.classList.add('on');});
+      lines.forEach(function(l){l.style.opacity=0;});
+      setTimeout(function(){msg.classList.remove('on');ind.style.opacity=0;},ms||1600);};
+    var reset=function(){active=false;ind.classList.remove('load');ind.style.opacity=0;setContent(0,true);};
     document.addEventListener('touchstart',function(e){
-      if(document.body.classList.contains('modal-open'))return;
-      if(_ptrScroller())return;
-      _ptrBubble.classList.remove('on','load');
-      _ptrY0=e.touches[0].clientY;_ptrActive=true;_ptrDist=0;_ptrTriggered=false;
-      _ptrArc.style.animation='none';
-      _ptrSvg.style.animation='none';
+      if(window.scrollY>0||document.body.scrollTop>0||document.body.classList.contains('modal-open'))return;
+      y0=e.touches[0].clientY;active=true;dist=0;trig=false;ind.classList.remove('load');msg.classList.remove('on');
     },{passive:true});
     document.addEventListener('touchmove',function(e){
-      if(!_ptrActive)return;
-      var dy=e.touches[0].clientY-_ptrY0;
-      if(dy<0){_ptrDist=0;_ptrEl.style.transition='transform .2s ease';_ptrEl.style.transform='translateY(-60px)';_ptrBubble.style.transform='scale(0)';return;}
-      if(_ptrScroller()){_ptrActive=false;return;}
-      _ptrDist=Math.min(dy*.45,110);
-      var progress=Math.min(_ptrDist/_ptrThreshold,1);
-      _ptrEl.style.transition='none';
-      _ptrEl.style.transform='translateY('+(_ptrDist-20)+'px)';
-      var sc=Math.min(progress*1.2,1);
-      _ptrBubble.style.transform='scale('+sc+')';
-      var dashOff=_ptrMaxDash-(progress*_ptrMaxDash*0.8);
-      _ptrArc.style.strokeDashoffset=dashOff;
-      _ptrSvg.style.transform='rotate('+((-90)+progress*270)+'deg)';
-      var was=_ptrTriggered;
-      if(progress>=0.85){_ptrTriggered=true;_ptrArc.style.stroke='var(--blue)';_ptrBubble.classList.add('on');if(!was)_haptic();}
-      else{_ptrTriggered=false;_ptrArc.style.stroke='var(--text3)';_ptrBubble.classList.remove('on');}
+      if(!active)return;
+      var dy=e.touches[0].clientY-y0;
+      if(dy<=0||window.scrollY>0){if(dist){dist=0;setContent(0,false);ind.style.opacity=0;}return;}
+      // élastique : plus on tire, moins ça descend
+      dist=Math.min(120,dy*.5/(1+dy/600));
+      var p=Math.min(1,dist/TH);
+      setContent(dist,false);place(dist);
+      ind.style.transition='none';ind.style.opacity=Math.min(1,p*1.6);
+      var n=Math.round(p*12);lines.forEach(function(l,k){l.style.opacity=k<n?.9:0;});
+      var was=trig;trig=p>=1;if(trig&&!was)_haptic();
     },{passive:true});
     document.addEventListener('touchend',function(){
-      if(!_ptrActive)return;
-      _ptrActive=false;
-      _ptrEl.style.transition='transform .3s cubic-bezier(.4,0,.2,1)';
-      if(_ptrTriggered){
-        _ptrEl.style.transform='translateY(44px)';_ptrBubble.classList.add('load');
-        _ptrBubble.style.transform='scale(1)';
-        _ptrArc.style.stroke='var(--blue)';
-        _ptrSvg.style.transform='';
-        _ptrArc.style.strokeDashoffset='';
-        _ptrArc.style.animation='ptr-dash 1.2s ease-in-out infinite';
-        _ptrSvg.style.animation='ptr-spin 1s linear infinite';
-        setTimeout(function(){location.reload();},800);
-      }else{
-        _ptrEl.style.transform='translateY(-60px)';
-        _ptrBubble.style.transform='scale(0)';
-        _ptrArc.style.strokeDashoffset=_ptrMaxDash;
-        _ptrSvg.style.transform='rotate(-90deg)';
-      }
+      if(!active)return;active=false;
+      if(!trig){reset();return;}
+      if(!navigator.onLine){reset();showMsg('Hors ligne · données locales',2000);return;}
+      // chargement : la roue tourne, le contenu reste un peu abaissé
+      ind.classList.add('load');lines.forEach(function(l){l.style.opacity='';});
+      setContent(44,true);place(44);
+      try{sessionStorage.setItem('ptr-ok','1');}catch(e){}
+      setTimeout(function(){location.reload();},700);
     },{passive:true});
+    // Retour après rechargement : petit « Actualisé ✓ »
+    var ok=false;try{ok=sessionStorage.getItem('ptr-ok')==='1';sessionStorage.removeItem('ptr-ok');}catch(e){}
+    if(ok)setTimeout(function(){showMsg('Actualisé ✓',1500);},600);
   })();
   // Auth check
   const authToken=localStorage.getItem('auth_token');
