@@ -6018,13 +6018,22 @@ function _exWeekHtml(mon){
   h+='</div><button type="button" class="mb" style="width:100%;margin-top:10px;background:none;color:var(--text2)" onclick="_exOtherWeek()">Autre planning (pool, hors cycle)…</button>';
   return h;
 }
+// Catégorie d'une vacation pour « Autre planning » : celle de l'admin si renseignée, sinon d'après le code
+var _EX_CATS=['Son','Cadre','Coord','Réal'];
+function _exCat(n,v){var c=v&&v.cat;if(c==='Cadre')return 'Cadre';if(c==='Coordination')return 'Coord';if(c==='Vidéo')return 'Réal';if(c==='Général')return 'Son';
+  var M={M:'Coord',S:'Coord',Pj:'Coord',Pv:'Coord',MR:'Réal',SR:'Réal','MS-R':'Réal','MD-R':'Réal',B2V:'Cadre',C3V:'Cadre',P422V:'Cadre',BSV:'Cadre',DS:'Cadre',BDV:'Cadre',DD:'Cadre'};
+  var b=String(n).toUpperCase();if(M[n]||M[b])return M[n]||M[b];var l=String((v&&v.label)||'').toUpperCase();if(M[l])return M[l];
+  while(b.length>1&&/[a-z]$/.test(n.slice(0,b.length))){b=b.slice(0,-1);if(M[b])return M[b];}return 'Son';}
 // Semaine échangée avec un collègue hors cycle (pool cadre…) : vacation ou repos choisi jour par jour, enregistré en échanges d'un jour
 function _exOtherWeek(){var key=pendingKey||_lpk,mon=getMonday(new Date(key+'T12:00:00')),sun=new Date(mon);sun.setDate(mon.getDate()+6);
   var JS=['Lun','Mar','Mer','Jeu','Ven','Sam','Dim'],rows='';
   for(var i=0;i<7;i++){var d=new Date(mon);d.setDate(mon.getDate()+i);var k=dk(d),VAC=getVAC(d),g=getVac(d),cur=g.absent?null:(g.vac&&g.vac!=='RH'&&!(g.echange&&!g.ecSelf)?g.vac:'');
     var ns=_cycleVacList(d)||Object.keys(VAC).filter(function(n){return VAC_STD[n]||_globalVacs[n];});
     if(cur&&ns.indexOf(cur)<0)ns=[cur].concat(ns);
-    var opts='<option value="">Repos</option>'+ns.filter(function(n){var v=VAC[n];return v&&!v.mixte&&v.dur>0&&n!=='RH'&&n!=='SV';}).map(function(n){return '<option value="'+n+'"'+(n===cur?' selected':'')+'>'+vLbl(n,VAC)+' · '+(VAC[n].deb||'')+'–'+(VAC[n].fin||'')+'</option>';}).join('');
+    // Rangées par catégorie (Son, Cadre, Coord, Réal), puis par heure de début, avec un séparateur par catégorie
+    var _ok=ns.filter(function(n){var v=VAC[n];return v&&!v.mixte&&v.dur>0&&n!=='RH'&&n!=='SV';}),opts='<option value="">Repos</option>';
+    _EX_CATS.forEach(function(ct){var g=_ok.filter(function(n){return _exCat(n,VAC[n])===ct;}).sort(function(a,b){return (_toMinApp(VAC[a].deb)||0)-(_toMinApp(VAC[b].deb)||0);});
+      if(g.length)opts+='<optgroup label="'+ct+'">'+g.map(function(n){return '<option value="'+n+'"'+(n===cur?' selected':'')+'>'+vLbl(n,VAC)+' · '+(VAC[n].deb||'')+'–'+(VAC[n].fin||'')+'</option>';}).join('')+'</optgroup>';});
     var mine=g.cycleVac&&g.cycleVac!=='RH'?vLbl(g.cycleVac,VAC):'repos';
     rows+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="width:62px;flex:none;font-size:12.5px"><b>'+JS[i]+' '+d.getDate()+'</b><span style="display:block;font-size:10px;color:var(--text3)">prévu : '+mine+'</span></span>'
       +'<select data-exo="'+k+'"'+(g.absent||(S.conges||{})[k]?' disabled':'')+' style="flex:1;min-width:0;padding:9px 10px;border:0.5px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--bg2);color:var(--text);-webkit-appearance:none">'+opts+'</select></div>';}
