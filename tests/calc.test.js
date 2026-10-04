@@ -111,5 +111,13 @@ function situation(opts) {
     JSON.stringify([34.76, [YM(2026, 8)], 1, [YM(2026, 8)]]));
 }
 
+// Vacation modifiée avec « Garder les primes de A1 » : les heures de nuit payées sont celles réellement faites
+{
+  const a = load('2026-10-01');
+  a.run('S.conges={};var _k="2026-10-06";getVac=function(d){return dk(d)===_k?{vac:"C1",absent:false}:{vac:"",absent:false};};'
+    + 'getPayVac=function(d){return dk(d)===_k?"A1":"";};');
+  eq('Garder les primes : nuit de A1 non payée si on fait C1', a.run('[calcNuitMinShift(getVAC().A1)>0,calcNuitWeek(getMonday(new Date(2026,9,6,12)))===calcNuitMinShift(getVAC().C1)]'), [true, true]);
+}
+
 console.log('\n' + (count - fails) + '/' + count + ' contrôles réussis');
 if (fails) process.exit(1);
