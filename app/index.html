@@ -1586,6 +1586,22 @@ function _cgGeo(fg,fc,fu,keep){var C=2*Math.PI*27,w=8,gp=3,Smin=w+gp+1.5,fs={g:f
   vis.forEach(function(k){if(S[k]>S[big])big=k;});S[big]-=def;
   var a=0;vis.forEach(function(k){o[k]={L:Math.max(0.01,S[k]-w-gp),r:(a+w/2+gp/2)/C*360,o:1};a+=S[k];});
   return o;}
+// Animation de l'en-tête Congés (anneau + chiffres), en un seul mouvement.
+// from = null : ouverture (tout vert, restants depuis le solde total) ; sinon l'état d'avant un +/− (anneau et chiffres précédents)
+function _cgAnim(from){
+  var rg=document.querySelector('#rcc-1 .cg-ring'),ns=[].slice.call(document.querySelectorAll('#rcc-1 .cg-n'));if(!rg)return;
+  var C=2*Math.PI*27,to={g:+rg.dataset.g,c:+rg.dataset.c,u:+rg.dataset.u},fr=from||{g:1,c:0,u:0},arcs=rg.querySelectorAll('.cg-arc');
+  var n0=ns.map(function(n,i){return from&&from.n&&from.n[i]!=null?from.n[i]:(+n.dataset.f||0);}),n1=ns.map(function(n){return +n.dataset.n;});
+  var keep={};['g','c','u'].forEach(function(k){keep[k]=fr[k]>0.0001||to[k]>0.0001;});
+  var set=function(G){arcs.forEach(function(c){var g=G[c.dataset.k];c.style.transition='none';c.style.transform='rotate('+g.r+'deg)';c.style.strokeDashoffset=(C-g.L)+'px';c.style.opacity=g.o;});};
+  var id=(_cgAnim.id=(_cgAnim.id||0)+1),t0=performance.now(),D=from?600:900;
+  (function st(t){if(id!==_cgAnim.id)return; // une nouvelle animation (clic suivant) remplace celle-ci
+    var k=Math.min(1,Math.max(0,(t-t0)/D)),e=1-Math.pow(1-k,3),L=function(a,b){return a+(b-a)*e;};
+    ns.forEach(function(n,i){n.textContent=Math.round(L(n0[i],n1[i]));});
+    _cgAnim.cur=k<1?{g:L(fr.g,to.g),c:L(fr.c,to.c),u:L(fr.u,to.u)}:to; // état affiché, repris si on reclique pendant l'animation
+    set(k<1?_cgGeo(_cgAnim.cur.g,_cgAnim.cur.c,_cgAnim.cur.u,keep):_cgGeo(to.g,to.c,to.u));
+    if(k<1)requestAnimationFrame(st);})(t0);
+}
 function adjCET(delta,year){
   if(!S.profile)return;
   if(delta>0&&computeCongesRest(year)<=0)return;
@@ -4733,6 +4749,11 @@ function openMergedRenduCgModal(limit,tab){
   const _modalWasOpen=document.body.classList.contains('modal-open');
   if(!_modalWasOpen){_lockBodyScroll();_foldOpen={};}
   window._rcgRedraw=!!document.getElementById('rcc-wrap'); // même fenêtre redessinée (+/−, réglage) : pas de nouvelle animation
+  // … sauf l'en-tête Congés, qui glisse de l'ancien état au nouveau (+/− CET, congés principaux)
+  var _cgPrev=null;(function(){var rg=window._rcgRedraw&&window._rcgShown===1&&document.querySelector('#rcc-1 .cg-ring');if(!rg)return;
+    var cu=_cgAnim.cur||{g:+rg.dataset.g,c:+rg.dataset.c,u:+rg.dataset.u};
+    _cgPrev={g:cu.g,c:cu.c,u:cu.u,n:[].map.call(document.querySelectorAll('#rcc-1 .cg-n'),function(n){return +n.textContent||0;})};
+  })();
   // === Rendus éphémères ===
   const{gen,realAvail,prevEph,preExpiry,matelas:matelasVal}=calcSoldes();
   const ML2=MCs;
@@ -5071,7 +5092,7 @@ function openMergedRenduCgModal(limit,tab){
     +'</div>'
     +'<button class="mcancel mclose" onclick="closeModal()">Fermer</button>'
     +'</div></div>';
-  var _rd=window._rcgRedraw&&window._rcgShown===(tab||0);rcgTab(tab||0);if((tab||0)===2&&!_rd)_cptAnim(document.getElementById('cpt-card'));
+  var _rd=window._rcgRedraw&&window._rcgShown===(tab||0);rcgTab(tab||0);if(_rd&&_cgPrev&&(tab||0)===1)_cgAnim(_cgPrev);if((tab||0)===2&&!_rd)_cptAnim(document.getElementById('cpt-card'));
   var _sh=document.querySelector('#modal-root .sheet');
   if(_sh){
     var _sx=0,_sy=0;
@@ -5503,15 +5524,7 @@ function rcgTab(idx){
   var _rw=document.getElementById('rcc-wrap');if(_rw){var _h=_rw.offsetHeight,_m=parseFloat(_rw.style.minHeight)||0;if(_h>_m)_rw.style.minHeight=_h+'px';}
   if(document.getElementById('rcc-'+idx)&&document.getElementById('rcc-'+idx).style.visibility==='hidden')_haptic();
   var _same=window._rcgShown===idx&&document.body.classList.contains('modal-open')&&window._rcgRedraw;window._rcgShown=idx;window._rcgRedraw=false;
-  if(idx===1&&!_same){var _ns=document.querySelectorAll('#rcc-1 .cg-n'),_rg=document.querySelector('#rcc-1 .cg-ring'),_t0=performance.now();
-    // Un seul mouvement : chiffres et anneau suivent la même courbe. Restants partent du solde total ;
-    // posés et CET grandissent depuis le haut en sens inverse et « mangent » le vert
-    var _C=2*Math.PI*27,_fc=_rg?+_rg.dataset.c:0,_fu=_rg?+_rg.dataset.u:0,_fg=_rg?+_rg.dataset.g:0,_arcs=_rg?_rg.querySelectorAll('.cg-arc'):[],_keep={g:true,c:_fc>0.0001,u:_fu>0.0001};
-    var _set=function(G){_arcs.forEach(function(c){var g=G[c.dataset.k];c.style.transition='none';c.style.transform='rotate('+g.r+'deg)';c.style.strokeDashoffset=(_C-g.L)+'px';c.style.opacity=g.o;});};
-    (function st(t){var k=Math.min(1,Math.max(0,(t-_t0)/900)),e=1-Math.pow(1-k,3);
-      _ns.forEach(function(n){var f=+n.dataset.f||0;n.textContent=Math.round(f+(+n.dataset.n-f)*e);});
-      if(_rg)_set(k<1?_cgGeo(1-(_fc+_fu)*e,_fc*e,_fu*e,_keep):_cgGeo(_fg,_fc,_fu));
-      if(k<1)requestAnimationFrame(st);})(_t0);}
+  if(idx===1&&!_same)_cgAnim(null);
   if(idx===0&&!_same){var _w=document.getElementById('rcc-0');if(_w){_w.classList.remove('rc-anim');void _w.offsetWidth;_w.classList.add('rc-anim');[].forEach.call(_w.querySelectorAll('.eph-urow'),function(r,i){[].forEach.call(r.querySelectorAll('.eph-b,.eph-b2'),function(b){b.style.animationDelay=(i*.05)+'s';});});}}
   if(idx===2&&document.getElementById('rcc-2')&&document.getElementById('rcc-2').style.visibility==='hidden')requestAnimationFrame(function(){_cptAnim(document.getElementById('cpt-card'));});
   // En quittant le récap, ses blocs se replient
