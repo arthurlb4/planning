@@ -7350,7 +7350,13 @@ function init(){
       spin.style.transition='transform .18s ease-out';spin.style.transform='scale(1.12)';setTimeout(function(){spin.style.transition='transform .25s ease-in-out';spin.style.transform='scale(1)';},180);
       setContent(REST,400);
       try{sessionStorage.setItem('ptr-ok',navigator.onLine?'1':'off');}catch(e){}
-      setTimeout(function(){location.reload();},60); // rechargement aussitôt le doigt levé : l'écran de chargement prend le relais, la roue y continue
+      // aussitôt le doigt levé : l'écran de chargement apparaît en fondu (calendrier abaissé, roue qui tourne), puis on recharge ;
+      // la page rechargée affiche le même écran, sans rupture
+      var bc=window._bootCopy&&window._bootCopy.cloneNode(true);
+      if(bc){bc.classList.add('ptr');bc.style.opacity='0';bc.style.transition='opacity .25s ease';
+        var w=document.createElement('div');w.className='bt-ptr';w.style.top=(hdrB()+11)+'px';w.innerHTML=svg.outerHTML;bc.appendChild(w);
+        document.body.appendChild(bc);requestAnimationFrame(function(){requestAnimationFrame(function(){bc.style.opacity='1';});});}
+      setTimeout(function(){location.reload();},bc?280:60);
     },{passive:true});
     // Retour après rechargement : le contenu reste abaissé, le message apparaît, puis le calendrier remonte
     var ok=null;try{ok=sessionStorage.getItem('ptr-ok');sessionStorage.removeItem('ptr-ok');}catch(e){}
@@ -8225,6 +8231,8 @@ function _saveBootGeo(){try{if(innerWidth>720||document.body.scrollTop>0||scroll
 function _revealBody(){
   setTimeout(_saveBootGeo,1600);
   var b=document.getElementById('boot');if(!b)return;
+  // copie de l'écran de chargement (sans la roue d'actualisation) : réaffichée en fondu au prochain « tirer pour actualiser »
+  try{var cl=b.cloneNode(true);cl.classList.remove('ptr');cl.style.opacity='';cl.style.pointerEvents='';var bp=cl.querySelector('.bt-ptr');if(bp)bp.remove();window._bootCopy=cl;}catch(e){}
   // Durée minimale d'affichage (~1 pulsation) même si les données arrivent tout de suite
   var wait=Math.max(0,1200-performance.now());
   setTimeout(function(){
