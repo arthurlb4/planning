@@ -1143,6 +1143,9 @@ function calcHSWeek(monday){
       const _ov=(S.overrides||{})[key];
       if(_ov&&_ov.vac&&!_ov.echange&&cycleVac&&VAC[cycleVac]&&VAC[cycleVac].mixte){
         _dayWorked=(VAC[cycleVac].dur||0)+_calcMixteHsMin(cycleVac,_ov.vac,VAC);
+      } else if(_ov&&_ov.vac&&!_ov.echange&&(_ov.motif||_ov.hs)&&cycleVac&&cycleVac!=='RH'&&VAC[cycleVac]){
+        // Jour modifié (écran « Modifier ») : la plus grande des deux, prévue ou faite ; le surplus part en heures sup
+        _dayWorked=Math.max(VAC[cycleVac].dur||0,VAC[vac]?VAC[vac].dur:0);
       } else if(_ov&&_ov.vac&&!_ov.echange&&!_ov.hs){
         _dayWorked=cycleVac==='RH'?(VAC[vac]?VAC[vac].dur:0):(cycleVac&&VAC[cycleVac]?VAC[cycleVac].dur:0);
       } else {
@@ -3070,6 +3073,7 @@ function _dayHSMin(date){
   }else{
     if(!vac||vac==='RH')return 0;
     if(_ov&&_ov.vac&&!_ov.echange&&cycleVac&&VAC[cycleVac]&&VAC[cycleVac].mixte)w=(VAC[cycleVac].dur||0)+_calcMixteHsMin(cycleVac,_ov.vac,VAC);
+    else if(_ov&&_ov.vac&&!_ov.echange&&(_ov.motif||_ov.hs)&&cycleVac&&cycleVac!=='RH'&&VAC[cycleVac])w=Math.max(VAC[cycleVac].dur||0,VAC[vac]?VAC[vac].dur:0);
     else if(_ov&&_ov.vac&&!_ov.echange&&!_ov.hs)w=cycleVac==='RH'?(VAC[vac]?VAC[vac].dur:0):(cycleVac&&VAC[cycleVac]?VAC[cycleVac].dur:0);
     else w=VAC[vac]?VAC[vac].dur:0;
   }
@@ -6850,7 +6854,8 @@ function openCustomVacModal(){
   window._cvHints={forme:'Vous suivez une formation : vous gardez '+(cP.length?'les primes ('+cP.join(', ')+') et ':'')+'les heures de nuit de '+cN+'.',formateur:'Les primes de '+cN+' ne sont pas dues. Votre prime de formateur se saisit plus haut.',autre:'Primes : celle choisie dans « Prime de la vacation ».'};
   var mB=function(k,l){return '<button type="button" data-m="'+k+'" class="'+(motif===k?'on':'')+'" onclick="_cvSetMotif(\''+k+'\')">'+l+'</button>';};
   var opts=(cI?'<div style="margin:4px 0 8px"><label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Motif</label><div class="cv-seg" id="cv-motif">'+mB('forme','Formé')+mB('formateur','Formateur')+mB('autre','Autre')+'</div><div class="cv-hint" id="cv-motif-hint">'+window._cvHints[motif]+'</div></div>':'')
-    +(cI&&cI.mixte?'':tg('custom-hs',cI?'Vacation rallongée':'Heures sup (jour de repos)',ov.hs===true)+(cI?'<div class="cv-hint" style="margin-top:-2px">Cochez si on vous a demandé de faire plus que '+cN+' : le surplus est payé en heures sup.</div>':''));
+    ;
+  window._cvCalcRef=cI&&!cI.mixte?{n:cN,dur:cI.dur||0}:(cI?null:{n:'',dur:0});
   var dO='<option value="0">—</option>';for(var d=15;d<=600;d+=15)dO+='<option value="'+d+'"'+(x&&x.dur===d?' selected':'')+'>'+fmtMin(d)+'</option>';
   var card='margin:0 0 10px;padding:12px';
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this){if(pendingKey)openDay(pendingKey);else closeModal();}"><div class="sheet"><div class="sh"></div>'
@@ -6861,6 +6866,7 @@ function openCustomVacModal(){
     +'<div class="mr2"><div><label>Début</label><select id="custom-deb" style="width:100%;'+fs+'">'+T+'</select></div><div><label>Fin</label><select id="custom-fin" style="width:100%;'+fs+'">'+T+'</select></div></div>'
     +'<div class="mr2" style="margin-bottom:6px"><div><label>Pause</label><select id="custom-pause" style="width:100%;'+fs+'"><option value="0">Sans</option><option value="45">45 min</option><option value="60">1h00</option></select></div>'
     +'<div><label>Prime de la vacation</label><select id="custom-prime" onchange="_cvPrimeSync(this)" style="width:100%;'+fs+'"><option value="">Aucune</option><option value="antenne">Antenne</option><option value="reel">Réal</option><option value="coord">Coordination</option>'+(key?'<option value="autre">Autre</option>':'')+'</select></div></div>'
+    +(key?'<div class="cv-hint" id="cv-calc" style="margin:-2px 2px 8px"></div>':'')
     +(key?'<div id="cv-autre" class="mr2" style="grid-template-columns:1fr;margin:8px 0 6px;display:'+(prSel==='autre'?'grid':'none')+'"><div><label id="cv-autre-lbl">'+(motif==='formateur'?'Prime de formateur (€)':'Montant de la prime (€)')+'</label><input id="cv-autre-amt" inputmode="decimal" placeholder="0,00" value="'+(dp&&dp.amt>0?String(dp.amt).replace('.',','):'')+'" style="width:100%;'+fs+'"></div></div>':'')
     +(key?opts:'')
     +'</div>'
@@ -6874,9 +6880,16 @@ function openCustomVacModal(){
   document.getElementById('custom-fin').value=fin;
   document.getElementById('custom-pause').value=pause;
   document.getElementById('custom-prime').value=prSel;
+  ['custom-deb','custom-fin','custom-pause'].forEach(function(id){var e=document.getElementById(id);if(e)e.addEventListener('change',_cvCalc);});_cvCalc();
   // Déjà « Formé » : la liste verrouillée n'est pas un changement de la vacation
   if(document.getElementById('cv-motif')&&_cvPrimeLock(motif)){window._cvInit.prime='';window._cvInit.sel='';}
 }
+// Ligne de calcul sous les horaires : heures faites, heures comptées, heures sup
+function _cvCalc(){var el=document.getElementById('cv-calc'),R=window._cvCalcRef;if(!el)return;if(!R){el.textContent='';return;}
+  var g=function(id){var e=document.getElementById(id);return e?e.value:'';},d=g('custom-deb'),f=g('custom-fin');if(!d||!f){el.textContent='';return;}
+  var a=parseHM(d),b=parseHM(f),t=b-a;if(t<=0)t+=1440;var pz=parseInt(g('custom-pause'))||0;if(pz>=45)t-=pz;if(t<=0){el.textContent='';return;}
+  if(!R.dur){el.innerHTML='<b style="color:var(--text2)">'+fmtMin(t)+'</b> faites, en heures sup (jour de repos).';return;}
+  var x=t-R.dur;el.innerHTML='<b style="color:var(--text2)">'+fmtMin(t)+'</b> faites · '+R.n+' prévue '+fmtMin(R.dur)+(x>0?' → <b style="color:var(--blue)">+'+fmtMin(x)+' en heures sup</b>':x<0?' → '+fmtMin(R.dur)+' comptées (horaires prévus)':'');}
 // Motif : formateur ouvre directement la prime de formateur
 function _cvSetMotif(k){window._cvMotif=k;document.querySelectorAll('#cv-motif button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-m')===k);});var h=document.getElementById('cv-motif-hint');if(h)h.textContent=(window._cvHints||{})[k]||'';var al=document.getElementById('cv-autre-lbl');if(al)al.textContent=k==='formateur'?'Prime de formateur (€)':'Montant de la prime (€)';
   var sel=document.getElementById('custom-prime');if(k==='formateur'&&sel&&sel.value!=='autre'){sel.value='autre';_cvPrimeSync(sel);}_cvPrimeLock(k);}
@@ -6902,7 +6915,7 @@ function confirmCustomVac(){
   var val=function(id){var e=document.getElementById(id);return e?String(e.value).trim():'';};
   var name=val('custom-name'),debStr=val('custom-deb'),finStr=val('custom-fin'),pauseMin=parseInt(val('custom-pause'))||0,prime=val('custom-prime');
   var I=window._cvInit||{},key=pendingKey;
-  var hsE=document.getElementById('custom-hs'),hs=!!(hsE&&hsE.checked);
+  var hs=false; // heures sup : calculées d'après les horaires (la plus grande, prévue ou faite)
   var motif=document.getElementById('cv-motif')?(window._cvMotif||'autre'):'autre',formation=motif==='forme';
   var vacEmpty=!debStr||!finStr;
   var autreAmt=prime==='autre'?parseFloat(val('cv-autre-amt').replace(/\s/g,'').replace(',','.')):NaN;
@@ -6932,12 +6945,12 @@ function confirmCustomVac(){
       var date=new Date(key+'T12:00:00'),cv=getCycleVac(date).cycleVac;
       if(!S.overrides)S.overrides={};
       S.overrides[key]={vac:vacKey,fromSV:!cv||cv==='RH',echange:false,hs:hs,formation:formation,motif:motif};
-      logH(fmtDate(date)+' -> '+name+(hs?' (vacation rallongée)':'')+(motif==='forme'?' (formation suivie)':motif==='formateur'?' (formateur)':''),'#62aadc',key);
+      logH(fmtDate(date)+' -> '+name+(motif==='forme'?' (formation suivie)':motif==='formateur'?' (formateur)':''),'#62aadc',key);
     }
   } else if(key&&I.had){
     // Vacation inchangée : seules les options changent (jour déjà modifié)
     var o=(S.overrides||{})[key];
-    if(o&&(!!o.hs!==hs||!!o.formation!==formation||(o.motif||'autre')!==motif)){pushUndo('Option modifiée');o.hs=hs;o.formation=formation;o.motif=motif;}
+    if(o&&(!!o.formation!==formation||(o.motif||'autre')!==motif)){pushUndo('Option modifiée');o.formation=formation;o.motif=motif;}
   }
   saveState();render();gcalTrigger();
   if(key){popCell(key);openDay(key);}else closeModal();

@@ -125,5 +125,15 @@ function situation(opts) {
   eq('Formé : restauration du 1er mai selon la vacation faite', a.run('(function(){S.customVacs={X2:{deb:"09h00",fin:"17h00",dur:420}};S.conges={};getVac=function(d){return dk(d)==="2026-05-01"?{vac:"X2",absent:false}:{vac:"",absent:false};};getPayVac=function(d){return dk(d)==="2026-05-01"?"A1":"";};var v=calcVariablesMois(2026,4);return v.supAbsResto===v.absRestoRate&&v.absRestoRate>0;})()'), true);
 }
 
+// Jour modifié dans l'écran « Modifier » : heures comptées = la plus grande, prévue ou faite (surplus en heures sup)
+{
+  const a = load('2026-10-01');
+  a.run('S.conges={};S.customVacs={Court:{deb:"03h45",fin:"09h45",dur:360},Long:{deb:"03h45",fin:"13h15",dur:570}};'
+    + 'getActiveCycleGrid=function(){return [["A1","A1","A1","A1","A1","RH","RH"]];};lineIdx=function(){return 0;};'
+    + 'var _v="Court";getVac=function(d){return dk(d)==="2026-10-06"?{vac:_v,absent:false,echange:false,cycleVac:"A1"}:{vac:"",absent:false};};');
+  eq('Modifier : plus courte → heures prévues, pas d’heure sup', a.run('S.overrides={"2026-10-06":{vac:"Court",motif:"autre"}};_v="Court";_dayHSMin(new Date(2026,9,6,12))'), 0);
+  eq('Modifier : plus longue → surplus en heures sup (2h30)', a.run('S.overrides={"2026-10-06":{vac:"Long",motif:"forme"}};_v="Long";_dayHSMin(new Date(2026,9,6,12))'), 150);
+}
+
 console.log('\n' + (count - fails) + '/' + count + ' contrôles réussis');
 if (fails) process.exit(1);
