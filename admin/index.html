@@ -86,6 +86,7 @@ textarea{width:100%;padding:9px 12px;background:var(--bg);border:0.5px solid var
 .vchips{display:flex;flex-wrap:wrap;gap:6px}
 .vchip{position:relative;display:inline-flex;align-items:center;padding:7px 13px;border-radius:999px;border:0.5px solid var(--border);background:var(--bg);font-size:13px;cursor:pointer;user-select:none;-webkit-user-select:none;color:var(--text2);text-transform:none;letter-spacing:0;font-weight:400;margin:0}
 .vchip.sm{padding:6px 11px;font-size:12px}
+.vchips.fill .vchip{flex:1;justify-content:center}
 .vchip input{position:absolute;opacity:0;pointer-events:none;width:0;height:0}
 .vchip:has(input:checked){background:rgba(78,160,247,.16);border-color:rgba(78,160,247,.55);color:var(--text)}
 .field label.vchip{text-transform:none;letter-spacing:0;font-size:13px;font-weight:400;color:var(--text2);margin:0}.field label.vchip:has(input:checked){color:var(--text)}
@@ -239,8 +240,8 @@ textarea{width:100%;padding:9px 12px;background:var(--bg);border:0.5px solid var
       <!-- Horaires -->
       <div class="vf-sec">
         <div class="vf-g4">
-          <div class="field"><label>Début</label><input type="time" id="vf-deb" step="900" oninput="onVfTimeChange()"></div>
-          <div class="field"><label>Fin</label><input type="time" id="vf-fin" step="900" oninput="onVfTimeChange()"></div>
+          <div class="field"><label>Début</label><input type="time" id="vf-deb" step="900" oninput="onVfTimeChange()" onchange="onVfTimeChange()"></div>
+          <div class="field"><label>Fin</label><input type="time" id="vf-fin" step="900" oninput="onVfTimeChange()" onchange="onVfTimeChange()"></div>
           <div class="field"><label>Durée</label><input type="text" id="vf-dur" placeholder="7h30" oninput="onVfDurChange()"></div>
           <div class="field"><label>Pause</label><input type="text" id="vf-pause" placeholder="0h00" oninput="onVfPauseChange()"></div>
         </div>
@@ -248,12 +249,12 @@ textarea{width:100%;padding:9px 12px;background:var(--bg);border:0.5px solid var
 
       <!-- Jours -->
       <div class="vf-sec"><div class="vf-h">Jours</div>
-        <div class="vchips">
+        <div class="vchips fill">
           <label class="vchip"><input type="checkbox" id="vf-type-week" onchange="updateVfDaysVisibility()">Semaine</label>
           <label class="vchip"><input type="checkbox" id="vf-type-sat">Samedi</label>
           <label class="vchip"><input type="checkbox" id="vf-type-sun">Dimanche</label>
         </div>
-        <div id="vf-days-wrap" class="vchips" style="display:none;margin-top:6px">
+        <div id="vf-days-wrap" class="vchips fill" style="display:none;margin-top:6px">
           <label class="vchip sm"><input type="checkbox" id="vf-day-1">Lun</label>
           <label class="vchip sm"><input type="checkbox" id="vf-day-2">Mar</label>
           <label class="vchip sm"><input type="checkbox" id="vf-day-3">Mer</label>
@@ -1069,17 +1070,11 @@ function onVfPauseChange() {
   _updatePanierFromForm();
 }
 function onVfTimeChange() {
+  // Horaires changés : la pause reste, la durée suit (pause vide = sans pause)
   const total = _vfTotal(); if (total === null) return;
-  const dur = parseVacDur(document.getElementById('vf-dur').value);
-  const pause = parseVacDur(document.getElementById('vf-pause').value);
-  if (pause !== null) {
-    document.getElementById('vf-dur').value = fmtVacDur(Math.max(0, total - pause));
-  } else if (dur !== null) {
-    document.getElementById('vf-pause').value = fmtVacDur(Math.max(0, total - dur));
-  } else {
-    document.getElementById('vf-dur').value = fmtVacDur(total);
-    document.getElementById('vf-pause').value = '0h00';
-  }
+  const pause = parseVacDur(document.getElementById('vf-pause').value) || 0;
+  document.getElementById('vf-dur').value = fmtVacDur(Math.max(0, total - pause));
+  if (!document.getElementById('vf-pause').value) document.getElementById('vf-pause').value = '0h00';
   _updatePanierFromForm();
 }
 
@@ -1099,7 +1094,7 @@ function showVacForm(name, v) {
   document.getElementById('vf-fin').value = v ? fmtTimeToHHMM(v.fin) : '';
   document.getElementById('vf-dur').value = v && v.dur ? fmtVacDur(v.dur) : '';
   const _total = v ? calcDur(fmtTimeToHHMM(v.deb||''), fmtTimeToHHMM(v.fin||'')) : 0;
-  document.getElementById('vf-pause').value = v && v.dur && _total > v.dur ? fmtVacDur(_total - v.dur) : '';
+  document.getElementById('vf-pause').value = v && v.dur && _total > v.dur ? fmtVacDur(_total - v.dur) : (v ? '0h00' : '');
   document.getElementById('vf-panier').checked = v ? !!v.panier : false;
   document.getElementById('vf-mixte').checked = v ? !!v.mixte : false;
   document.getElementById('vf-prime-antenne').checked = v ? !!(v.primes && v.primes.antenne) : false;
