@@ -231,8 +231,8 @@ textarea{width:100%;padding:9px 12px;background:var(--bg);border:0.5px solid var
       <!-- Vacation : nom, catégorie, code -->
       <div class="vf-sec" style="margin-top:4px">
         <div class="vf-g3">
-          <div class="field"><label>Nom affiché</label><input type="text" id="vf-label" placeholder="A1"></div>
-          <div class="field"><label>Code</label><input type="text" id="vf-name" placeholder="= nom"></div>
+          <div class="field"><label>Nom affiché</label><input type="text" id="vf-label" placeholder="A1" oninput="_vfSyncCode()"></div>
+          <div class="field"><label>Code</label><input type="text" id="vf-name" placeholder="= nom" oninput="window._vfCodeTouched=true"></div>
           <div class="field"><label>Catégorie</label><select id="vf-cat"><option value="">Auto</option><option>Général</option><option>Coordination</option><option>Réal</option><option>Cadre</option></select></div>
         </div>
       </div>
@@ -984,6 +984,13 @@ async function quickAddToCycle(name) {
   } catch(e) { alert('Erreur réseau'); }
 }
 
+// Nouvelle vacation ou copie : le code suit le nom affiché, tel quel s'il est libre, sinon avec une lettre (A1 → A1b)
+function _vfSyncCode() {
+  const el = document.getElementById('vf-name');
+  if (el.disabled || window._vfCodeTouched) return;
+  const l = document.getElementById('vf-label').value.trim();
+  el.value = !l ? '' : (_allVacs && _allVacs[l] ? incrementVacCode(l) : l);
+}
 function incrementVacCode(code) {
   if (!code) return code;
   // If it's a known vacation, it's a base name — append 'b' and find first unused code
@@ -1084,6 +1091,7 @@ function closeVacForm() {
 
 function showVacForm(name, v) {
   _editingVac = name || null;
+  window._vfCodeTouched = false;
   document.getElementById('vac-modal-bg').style.display = 'flex';
   document.getElementById('vac-form-title').textContent = name ? `Modifier ${name}` : 'Nouvelle vacation';
   document.getElementById('vf-name').value = name || '';
@@ -1171,6 +1179,7 @@ function setVacScope(scope) {
   fieldsWrap.style.display = '';
   saveBtn.style.display = '';
   saveBtn.disabled = false;
+  window._vfCodeTouched = false;
   if (scope === 'copy') {
     document.getElementById('vf-name').value = window._vacScopeCopyCode;
     document.getElementById('vf-name').disabled = false;
@@ -1264,6 +1273,8 @@ async function saveVac() {
     _editingVac = null;
   }
   window._vacSaveScope = null;
+  // Nouvelle vacation : ne jamais écraser une vacation existante portant le même code
+  if (!_editingVac && _allVacs[name]) { errEl.textContent = `Le code « ${name} » existe déjà : choisissez-en un autre (ex. ${incrementVacCode(name)}).`; if (window._duplicateUnlinkOld) { _editingVac = window._duplicateUnlinkOld; window._vacSaveScope = 'copy'; window._duplicateUnlinkOld = null; } return; }
 
   try {
     const res = await fetch(API + '/admin/vacation/save', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ vacation }) });
