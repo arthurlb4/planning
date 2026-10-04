@@ -201,8 +201,6 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 #boot .bt-hdr{height:39px;border-bottom:.5px solid rgba(255,250,242,.06);background:#1d1d1c;display:flex;justify-content:flex-end;align-items:center;gap:6px;padding:0 10px}
 #boot .bt-hdr b{display:block;width:34px;height:28px;border-radius:9px;background:rgba(255,250,242,.06);animation:btPulse 1.3s ease-in-out infinite;animation-delay:var(--btd,0s)}#boot .bt-hdr b.g{width:22px;height:22px;border-radius:50%;margin-right:8px}
 #boot .bt-in{max-width:520px;margin:0 auto;padding:13px 20px 0}
-#boot.ptr .bt-in{transform:translateY(52px)}
-.bt-ptr{position:absolute;left:50%;margin-left:-15px;width:30px;height:30px}.bt-ptr svg{display:block}.bt-ptr line{stroke:#9d9ca1;stroke-width:3.2;stroke-linecap:round}
 #boot .bt-bar{display:flex;justify-content:space-between;align-items:center;height:46px;margin-bottom:1px}
 #boot .bt-bar b{width:46px;height:34px;border-radius:12px}
 #boot .bt-bar b.w{width:132px;height:18px;border-radius:9px}
@@ -554,19 +552,17 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 
 /* Modal */
 @keyframes sheetUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
-/* Tirer pour actualiser, façon iOS : roue à 8 rayons (traînée dégradée) qui apparaissent un à un pendant qu'on tire, le contenu suit le doigt */
-#ptr-indicator{position:fixed;left:0;right:0;z-index:150;height:0;pointer-events:none}
-#ptr-spin,#ptr-msg{position:absolute;left:50%;top:0;transform:translate(-50%,0)}
-#ptr-spin{width:30px;height:30px;margin-left:-15px;transform:scale(.5);opacity:0;transition:opacity .2s ease}
-#ptr-spin svg{display:block;width:30px;height:30px}
+/* Tirer pour actualiser, façon iOS : la roue prend la place du nom du mois (rien ne bouge) ; ses rayons apparaissent un à un
+   pendant la traction, puis tournent. Le cycle reprend au même point après le rechargement (--ph, calé sur le début de la rotation). */
+#ptr-indicator{position:absolute;left:50%;top:50%;width:0;height:0;pointer-events:none;z-index:2}
+#ptr-spin{position:absolute;left:-14px;top:-14px;width:28px;height:28px;opacity:0;transform:scale(.5)}
+#ptr-spin svg{display:block;width:28px;height:28px}
 #ptr-spin line{stroke:#9d9ca1;stroke-width:3.2;stroke-linecap:round;opacity:0;transition:opacity .1s ease}
-/* chargement : chaque rayon s'éteint doucement à tour de rôle (traînée fluide, sans rotation par crans) */
-#ptr-indicator.load #ptr-spin line,.bt-ptr line{transition:none;animation:ptr-fade .8s linear infinite}
+#ptr-indicator.load #ptr-spin line{transition:none;animation:ptr-fade .8s linear infinite}
 @keyframes ptr-fade{0%{opacity:1}100%{opacity:.25}}
-@keyframes ptr-rot{to{transform:rotate(360deg)}}
-#ptr-msg{top:6px;font-size:13px;font-weight:500;color:var(--text2);opacity:0;transform:translate(-50%,-4px);transition:opacity .25s ease,transform .25s ease;white-space:nowrap}
-#ptr-msg.on{opacity:1;transform:translate(-50%,0)}
-.ptr-pull{will-change:transform}
+#ptr-msg{position:absolute;left:0;top:0;transform:translate(-50%,-50%);font-size:15px;font-weight:600;color:var(--text2);opacity:0;transition:opacity .25s ease;white-space:nowrap}
+#ptr-msg.on{opacity:1}
+#mtit{transition:opacity .25s ease}
 @keyframes overlayIn{from{opacity:0}to{opacity:1}}
 @keyframes dialogIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);z-index:200;display:flex;align-items:flex-end;justify-content:center;}
@@ -781,14 +777,8 @@ body.modal-open{overflow:hidden;position:fixed;width:100%;left:0;right:0;overscr
 <div id="boot" aria-hidden="true"><div class="bt-hdr"><b class="g"></b><b class="g"></b><b></b><b></b><b></b><b></b><b></b></div><div class="bt-in"><div class="bt-bar"><b></b><b class="w"></b><b></b></div><div class="bt-cal"><u class="n" style="visibility:hidden"></u><u></u><u></u><u></u><u></u><u></u><u></u><u></u><em></em><i></i><i></i><i></i><i></i><i></i><i></i><i></i><em></em><i></i><i></i><i></i><i></i><i></i><i></i><i></i><em></em><i></i><i></i><i></i><i></i><i></i><i></i><i></i><em></em><i></i><i></i><i></i><i></i><i></i><i></i><i></i><em></em><i></i><i></i><i></i><i></i><i></i><i></i><i></i><em></em><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="bt-side"><div class="bt-bloc a"><s></s><p><span></span><span></span><span></span></p></div><div class="bt-bloc b"><s></s><p><span></span><span></span><span></span></p></div><div class="bt-bloc c"><s></s><p><span></span><span></span></p></div></div></div></div>
 <script>/* Pulsation de l'écran de chargement calée sur l'horloge (même phase avant et après un rechargement) */
 try{document.getElementById('boot').style.setProperty('--btd',(-(Date.now()%1300)/1000)+'s');}catch(e){}</script>
-<script>/* Retour d'un « tirer pour actualiser » : l'écran de chargement garde le calendrier abaissé (52 px, comme l'app qui
-   attend dessous) et la roue continue de tourner dans l'espace libéré ; à l'ouverture normale, rien ne change */
-(function(){try{if(!sessionStorage.getItem('ptr-ok'))return;}catch(e){return;}
-  var b=document.getElementById('boot');if(!b)return;b.classList.add('ptr');
-  var h=b.querySelector('.bt-hdr'),w=document.createElement('div');w.className='bt-ptr';
-  var gh=0;try{var g=JSON.parse(localStorage.getItem('pl_boot_geo')||'null');if(g&&g.h>20&&Math.abs(g.w-innerWidth)<=2)gh=g.h;}catch(e){}
-  w.style.top=((gh||(h?h.getBoundingClientRect().bottom:39))+11)+'px';
-  w.innerHTML='<svg viewBox="0 0 30 30" width="30" height="30"><line x1="15" y1="2.5" x2="15" y2="9.5" transform="rotate(0 15 15)" style="animation-delay:0.000s"/><line x1="15" y1="2.5" x2="15" y2="9.5" transform="rotate(45 15 15)" style="animation-delay:-0.700s"/><line x1="15" y1="2.5" x2="15" y2="9.5" transform="rotate(90 15 15)" style="animation-delay:-0.600s"/><line x1="15" y1="2.5" x2="15" y2="9.5" transform="rotate(135 15 15)" style="animation-delay:-0.500s"/><line x1="15" y1="2.5" x2="15" y2="9.5" transform="rotate(180 15 15)" style="animation-delay:-0.400s"/><line x1="15" y1="2.5" x2="15" y2="9.5" transform="rotate(225 15 15)" style="animation-delay:-0.300s"/><line x1="15" y1="2.5" x2="15" y2="9.5" transform="rotate(270 15 15)" style="animation-delay:-0.200s"/><line x1="15" y1="2.5" x2="15" y2="9.5" transform="rotate(315 15 15)" style="animation-delay:-0.100s"/></svg>';b.appendChild(w);})();
+<script>/* Retour d'un « tirer pour actualiser » : pas d'écran de chargement, la roue tourne à la place du nom du mois */
+(function(){try{if(!sessionStorage.getItem('ptr-ok'))return;}catch(e){return;}var b=document.getElementById('boot');if(b)b.remove();})();
 </script>
 <script>/* Écran de chargement : cases du côté placées comme au dernier affichage de l'accueil */
 try{(function(){var g=JSON.parse(localStorage.getItem('pl_boot_geo')||'null');if(!g||innerWidth>720||Math.abs(g.w-innerWidth)>2)return;
@@ -798,8 +788,7 @@ var bi=document.querySelector('#boot .bt-in'),bb=document.querySelector('#boot .
 if(g.bar&&g.cal&&bi&&bb&&bc){bi.style.paddingTop=(g.bar[0]-(g.h||39))+'px';bb.style.height=g.bar[1]+'px';bb.style.marginBottom=(g.cal[0]-g.bar[0]-g.bar[1])+'px';
   bc.classList.add('fix');bc.style.height=g.cal[1]+'px';bc.style.marginBottom='0';}
 var bl=document.querySelectorAll('#boot .bt-bloc'),sd=document.querySelector('#boot .bt-side');if(!sd||bl.length!==g.b.length)return;
-var t0=bl[0].getBoundingClientRect().top;if(document.getElementById('boot').classList.contains('ptr'))t0-=52; // retour d'actualisation : tout l'écran est déjà abaissé de 52 px
-sd.style.top=(g.b[0][0]-t0)+'px';
+var t0=bl[0].getBoundingClientRect().top;sd.style.top=(g.b[0][0]-t0)+'px';
 if(g.bl!=null)sd.style.paddingLeft=g.bl+'px'; // cases du côté décalées comme dans l'app (rail du mois à gauche)
 if(g.sm){sd.style.setProperty('--rt',(g.sm[0]-g.b[0][0])+'px');sd.style.setProperty('--rw',g.sm[3]+'px');sd.style.setProperty('--rh',g.sm[1]+'px');}
 for(var i=0;i<bl.length;i++){bl[i].style.height=g.b[i][1]+'px';bl[i].style.marginBottom=(i<bl.length-1?g.b[i+1][0]-g.b[i][0]-g.b[i][1]:0)+'px';}})();}catch(e){}</script>
@@ -810,7 +799,7 @@ for(var i=0;i<bl.length;i++){bl[i].style.height=g.b[i][1]+'px';bl[i].style.margi
   <button onclick="this.parentElement.style.display='none'">x</button>
 </div>
 
-<div id="ptr-indicator"><div id="ptr-spin"><svg viewBox="0 0 30 30"><line x1="15" y1="2.5" x2="15" y2="9.5" transform="rotate(0 15 15)" data-o="1.00" style="animation-delay:0.000s"/><line x1="15" y1="2.5" x2="15" y2="9.5" transform="rotate(45 15 15)" data-o="0.89" style="animation-delay:0.100s"/><line x1="15" y1="2.5" x2="15" y2="9.5" transform="rotate(90 15 15)" data-o="0.78" style="animation-delay:0.200s"/><line x1="15" y1="2.5" x2="15" y2="9.5" transform="rotate(135 15 15)" data-o="0.67" style="animation-delay:0.300s"/><line x1="15" y1="2.5" x2="15" y2="9.5" transform="rotate(180 15 15)" data-o="0.56" style="animation-delay:0.400s"/><line x1="15" y1="2.5" x2="15" y2="9.5" transform="rotate(225 15 15)" data-o="0.45" style="animation-delay:0.500s"/><line x1="15" y1="2.5" x2="15" y2="9.5" transform="rotate(270 15 15)" data-o="0.34" style="animation-delay:0.600s"/><line x1="15" y1="2.5" x2="15" y2="9.5" transform="rotate(315 15 15)" data-o="0.23" style="animation-delay:0.700s"/></svg></div><div id="ptr-msg"></div></div>
+
 <!-- HEADER -->
 <div class="hdr">
   <span class="hdr-ver" style="display:flex;align-items:baseline;gap:4px;padding-left:4px;white-space:nowrap"><span id="hdr-profile-name" style="font-size:16px;font-weight:600;color:var(--text)">Profil</span><span style="font-size:15px;color:var(--text3);font-weight:400">| franceinfo:</span></span>
@@ -850,8 +839,16 @@ for(var i=0;i<bl.length;i++){bl[i].style.height=g.b[i][1]+'px';bl[i].style.margi
   <div class="mbar">
     <div style="display:flex;gap:4px"><button class="mnav" onclick="navDir(-1)"><i class="ti ti-chevron-left"></i></button><button class="mnav today" onclick="goToday()">auj.</button></div>
     <span class="mtit" id="mtit" onclick="toggleAnnual()"></span>
+    <div id="ptr-indicator"><div id="ptr-spin"><svg viewBox="0 0 30 30"><line x1="15" y1="2.5" x2="15" y2="9.5" transform="rotate(0 15 15)" data-o="1.00" style="animation-delay:calc(var(--ph,0s) - 0.000s)"/><line x1="15" y1="2.5" x2="15" y2="9.5" transform="rotate(45 15 15)" data-o="0.89" style="animation-delay:calc(var(--ph,0s) - 0.700s)"/><line x1="15" y1="2.5" x2="15" y2="9.5" transform="rotate(90 15 15)" data-o="0.78" style="animation-delay:calc(var(--ph,0s) - 0.600s)"/><line x1="15" y1="2.5" x2="15" y2="9.5" transform="rotate(135 15 15)" data-o="0.67" style="animation-delay:calc(var(--ph,0s) - 0.500s)"/><line x1="15" y1="2.5" x2="15" y2="9.5" transform="rotate(180 15 15)" data-o="0.56" style="animation-delay:calc(var(--ph,0s) - 0.400s)"/><line x1="15" y1="2.5" x2="15" y2="9.5" transform="rotate(225 15 15)" data-o="0.45" style="animation-delay:calc(var(--ph,0s) - 0.300s)"/><line x1="15" y1="2.5" x2="15" y2="9.5" transform="rotate(270 15 15)" data-o="0.34" style="animation-delay:calc(var(--ph,0s) - 0.200s)"/><line x1="15" y1="2.5" x2="15" y2="9.5" transform="rotate(315 15 15)" data-o="0.23" style="animation-delay:calc(var(--ph,0s) - 0.100s)"/></svg></div><div id="ptr-msg"></div></div>
     <button class="mnav" onclick="navDir(1)"><i class="ti ti-chevron-right"></i></button>
   </div>
+  <script>/* Retour d'un « tirer pour actualiser » : dès le premier affichage, la roue tourne à la place du nom du mois,
+     au même point de son cycle qu'avant le rechargement */
+  (function(){try{var ok=sessionStorage.getItem('ptr-ok');if(!ok)return;var t0=+ok.split(':')[1]||Date.now();
+    var ind=document.getElementById('ptr-indicator'),sp=document.getElementById('ptr-spin'),t=document.getElementById('mtit');
+    t.style.transition='none';t.style.opacity=0;sp.style.opacity=1;sp.style.transform='scale(1)';
+    ind.style.setProperty('--ph',(-((Date.now()-t0)%800)/1000)+'s');ind.classList.add('load');}catch(e){}})();
+  </script>
   <div class="ann-wrap" id="ann-wrap"><div class="annual-grid" id="ann-grid"></div></div>
   <div id="month-view" style="width:100%;position:relative;">
     <div class="cal-wrap">
@@ -7324,68 +7321,48 @@ function init(){
       }, 100);
     }, {passive:true});
   }
-  // Tirer pour actualiser, façon iOS : le contenu descend avec le doigt (élastique type iOS), une roue à 8 rayons se remplit
-  // et tourne avec le geste, vibration au seuil, puis rechargement (écran de chargement). Au retour, le contenu est encore abaissé,
-  // le message (« Actualisé ✓ » ou « Hors ligne ») s'affiche, puis le calendrier remonte. Hors ligne, l'app se recharge depuis le cache.
+  // Tirer pour actualiser, façon iOS : rien ne bouge ; la roue remplace le nom du mois, ses rayons apparaissent avec la traction,
+  // vibration au seuil, puis elle tourne et l'app se recharge (sans écran de chargement). Le cycle de la roue continue au même point
+  // après le rechargement. Puis la roue s'efface, « Actualisé ✓ » (ou « Hors ligne ») s'affiche, et le nom du mois revient.
   (function(){
-    var y0=0,active=false,dist=0,trig=false,TH=64,REST=52,H=420;
-    var ind=document.getElementById('ptr-indicator'),spin=document.getElementById('ptr-spin'),svg=spin.querySelector('svg'),msg=document.getElementById('ptr-msg'),lines=[].slice.call(spin.querySelectorAll('line'));
-    var content=function(){return document.querySelector('.layout');};
-    var hdrB=function(){var h=document.querySelector('.hdr');return h?h.getBoundingClientRect().bottom:0;};
-    var place=function(){ind.style.top=(hdrB()+11)+'px';}; // position fixe, la même que dans l'écran de chargement
-    var EASE='cubic-bezier(.2,.9,.25,1)';
-    var setContent=function(d,ms){var c=content();if(!c)return;c.classList.add('ptr-pull');c.style.transition=ms?'transform '+ms+'ms '+EASE:'none';c.style.transform=d?'translateY('+d+'px)':'';
-      ind.style.transition=ms?'top '+ms+'ms '+EASE:'none';place(d);};
-    var ticks=function(n){lines.forEach(function(l,k){l.style.opacity=k<n?.8:0;});};
-    // élastique iOS : la résistance augmente en continu avec la distance
+    var y0=0,active=false,trig=false,TH=64,H=420,P=800;
+    var ind=document.getElementById('ptr-indicator'),spin=document.getElementById('ptr-spin'),msg=document.getElementById('ptr-msg'),tit=document.getElementById('mtit'),lines=[].slice.call(spin.querySelectorAll('line'));
     var rubber=function(x){return (1-1/(x*.55/H+1))*H;};
+    var ticks=function(n){lines.forEach(function(l,k){l.style.opacity=k<n?.8:0;});};
+    var startSpin=function(t0){ind.style.setProperty('--ph',(-((Date.now()-t0)%P)/1000)+'s');lines.forEach(function(l){l.style.opacity='';});ind.classList.add('load');};
+    var hideSpin=function(ms){spin.style.transition='opacity '+ms+'ms ease,transform '+ms+'ms ease';spin.style.opacity=0;spin.style.transform='scale(.5)';};
     document.addEventListener('touchstart',function(e){
       if(window.scrollY>0||document.body.scrollTop>0||document.body.classList.contains('modal-open')||ind.classList.contains('load'))return;
-      y0=e.touches[0].clientY;active=true;dist=0;trig=false;
+      y0=e.touches[0].clientY;active=true;trig=false;
     },{passive:true});
     document.addEventListener('touchmove',function(e){
       if(!active)return;
       var dy=e.touches[0].clientY-y0;
-      if(dy<=0||window.scrollY>0){if(dist){dist=0;setContent(0,0);spin.style.opacity=0;}return;}
-      dist=rubber(dy);var p=Math.min(1,dist/TH);
-      setContent(dist,0);
-      spin.style.transition='none';spin.style.opacity=Math.min(1,p*1.5);spin.style.transform='scale('+(.45+.55*p)+')';
+      if(dy<=0||window.scrollY>0){spin.style.opacity=0;tit.style.opacity='';return;}
+      var p=Math.min(1,rubber(dy)/TH);
+      tit.style.opacity=Math.max(0,1-p*2.2);
+      spin.style.transition='none';spin.style.opacity=Math.min(1,p*1.5);spin.style.transform='scale('+(.5+.5*p)+')';
       ticks(Math.ceil(p*8));
       var was=trig;trig=p>=1;if(trig&&!was)_haptic();
     },{passive:true});
     document.addEventListener('touchend',function(){
       if(!active)return;active=false;
-      if(!trig){setContent(0,450);spin.style.transition='opacity .3s ease,transform .45s cubic-bezier(.2,.9,.25,1)';spin.style.opacity=0;spin.style.transform='scale(.4)';return;}
-      // chargement : la roue tourne, le contenu se cale juste sous elle
-      lines.forEach(function(l){l.style.opacity='';});ind.classList.add('load');
-      spin.style.transition='transform .18s ease-out';spin.style.transform='scale(1.12)';setTimeout(function(){spin.style.transition='transform .25s ease-in-out';spin.style.transform='scale(1)';},180);
-      setContent(REST,300);
-      try{sessionStorage.setItem('ptr-ok',navigator.onLine?'1':'off');}catch(e){}
-      // aussitôt le doigt levé : l'écran de chargement apparaît en fondu (calendrier abaissé, roue qui tourne), puis on recharge ;
-      // la page rechargée affiche le même écran, sans rupture
-      var bc=window._bootCopy&&window._bootCopy.cloneNode(true);
-      if(!bc){setTimeout(function(){location.reload();},300);return;}
-      bc.classList.add('ptr');bc.style.opacity='0';bc.style.transition='opacity .22s ease';
-      var w=document.createElement('div');w.className='bt-ptr';w.style.top=(hdrB()+11)+'px';w.innerHTML=svg.outerHTML;bc.appendChild(w);
-      // le calendrier finit de se caler (300 ms), puis fondu de l'écran de chargement, puis rechargement
-      setTimeout(function(){bc.style.setProperty('--btd',(-(Date.now()%1300)/1000)+'s');document.body.appendChild(bc);
-        requestAnimationFrame(function(){requestAnimationFrame(function(){bc.style.opacity='1';});});
-        setTimeout(function(){location.reload();},240);},300);
+      if(!trig){hideSpin(250);tit.style.opacity='';return;}
+      var t0=Date.now();startSpin(t0);
+      try{sessionStorage.setItem('ptr-ok',(navigator.onLine?'1':'off')+':'+t0);}catch(e){}
+      setTimeout(function(){location.reload();},350);
     },{passive:true});
-    // Retour après rechargement : le contenu reste abaissé, le message apparaît, puis le calendrier remonte
+    // Après le rechargement : la roue continue son cycle, puis laisse place au message, puis au nom du mois
     var ok=null;try{ok=sessionStorage.getItem('ptr-ok');sessionStorage.removeItem('ptr-ok');}catch(e){}
     if(ok){
-      var off=ok==='off'||!navigator.onLine;
-      setContent(REST,0); // dès le départ : le calendrier attend abaissé sous l'écran de chargement
-      var go=function(){place(REST);ind.classList.add('load');spin.style.transition='none';spin.style.opacity=1;spin.style.transform='scale(1)';
-        var up=function(){spin.style.transition='opacity .3s ease,transform .4s cubic-bezier(.2,.9,.25,1)';spin.style.opacity=0;spin.style.transform='scale(.4)';setContent(0,420);
-          setTimeout(function(){ind.classList.remove('load');},450);};
-        if(!off){setTimeout(up,250);return;}
-        // hors ligne seulement : un message à la place de la roue avant de remonter
-        spin.style.opacity=0;msg.textContent='Hors ligne · données locales';requestAnimationFrame(function(){msg.classList.add('on');});
-        setTimeout(function(){msg.classList.remove('on');up();},1300);};
-      // attendre que l'écran de chargement soit parti
-      (function wait(){var bt=document.getElementById('boot');if(bt&&getComputedStyle(bt).display!=='none'&&bt.style.opacity!=='0')setTimeout(wait,50);else go();})();
+      var parts=ok.split(':'),off=parts[0]==='off'||!navigator.onLine,t0=+parts[1]||Date.now();
+      // (roue déjà lancée au premier affichage par le petit script sous la barre du mois)
+      tit.style.transition='none';tit.style.opacity=0;spin.style.transition='none';spin.style.opacity=1;spin.style.transform='scale(1)';if(!ind.classList.contains('load'))startSpin(t0);
+      window._ptrDone=function(){window._ptrDone=null;
+        setTimeout(function(){hideSpin(220);
+          setTimeout(function(){ind.classList.remove('load');msg.textContent=off?'Hors ligne':'Actualisé ✓';msg.classList.add('on');
+            setTimeout(function(){msg.classList.remove('on');setTimeout(function(){tit.style.transition='';tit.style.opacity='';},250);},off?1400:900);},220);},350);};
+      setTimeout(function(){if(window._ptrDone)window._ptrDone();},4000); // filet de sécurité si l'app tarde
     }
   })();
   // Auth check
@@ -8247,9 +8224,8 @@ function _saveBootGeo(){try{if(innerWidth>720||document.body.scrollTop>0||scroll
     bar:R(document.querySelector('.mbar')),cal:R(document.querySelector('.cal-wrap')),sm:R(document.getElementById('side-month')),bl:Math.round(bl[0].getBoundingClientRect().left-lyL),b:[].map.call(bl,function(e){var r=e.getBoundingClientRect();return[Math.round(r.top),Math.round(r.height)];})}));}catch(e){}}
 function _revealBody(){
   setTimeout(_saveBootGeo,1600);
+  if(window._ptrDone)window._ptrDone();
   var b=document.getElementById('boot');if(!b)return;
-  // copie de l'écran de chargement (sans la roue d'actualisation) : réaffichée en fondu au prochain « tirer pour actualiser »
-  try{var cl=b.cloneNode(true);cl.classList.remove('ptr');cl.style.opacity='';cl.style.pointerEvents='';var bp=cl.querySelector('.bt-ptr');if(bp)bp.remove();window._bootCopy=cl;}catch(e){}
   // Durée minimale d'affichage (~1 pulsation) même si les données arrivent tout de suite
   var wait=Math.max(0,1200-performance.now());
   setTimeout(function(){
