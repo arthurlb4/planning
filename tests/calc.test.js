@@ -103,11 +103,12 @@ function situation(opts) {
   eq('Bulletin : mois de paie août 2026', a.run('_b.ym'), YM(2026, 8));
   eq('Bulletin : fixe et total lus', a.run('JSON.stringify([_b.salQ,_b.anc,_b.gpe,_b.pfa,_b.nao,_b.brut])'), JSON.stringify([2187.29, 167.34, 154, 190, { 'CDI 2023': 130 }, 3459.73]));
   eq('Bulletin : lignes RAP reconnues, cotisations ignorées', a.run('JSON.stringify(_b.rap.map(function(r){return [r.ym,r.k,r.q];}))'),
-    JSON.stringify([[YM(2026, 7), 'hsLow', 9.25], [YM(2026, 7), 'nuit', 13.5], [YM(2026, 4), 'reel', 1]]));
+    JSON.stringify([[YM(2026, 7), 'hsLow', 9.25], [YM(2026, 7), 'nuit', 13.5], [YM(2026, 4), 'reel', 1], [YM(2026, 7), 'panier', 2]]));
   eq('Bulletin : paniers', a.run('_b.paniers.q'), 2);
   eq('Bulletin : HS en quart d’heure signalées, rattrapage d’avril à part', a.run('(function(){var c=_bulCompare(_b);return JSON.stringify([c.alerts.filter(function(x){return /Heures sup/.test(x);}).length,c.late.length,c.late[0].ym]);})()'), JSON.stringify([1, 1, YM(2026, 4)]));
   // Le rattrapage d'avril (payé en août) complète le bulletin de mai, qui comptait les variables d'avril
-  eq('Bulletin : paniers payés différents de l’app signalés', a.run('(function(){var c=_bulCompare(_b);return c.status==="ecart"&&c.alerts.some(function(x){return /Paniers payés : 2, l.app en compte [^2]/.test(x);});})()'), true);
+  eq('Bulletin : paniers payés différents de l’app signalés', a.run('(function(){var c=_bulCompare(_b),r=c.rows.filter(function(x){return x.k==="panier";})[0];return c.status==="ecart"&&!!r&&!r.ok&&r.bq===2;})()'), true);
+  eq('Bulletin : panier rattrapé (RAP aaaamm) rattaché à son mois', a.run('(function(){var b2=_bulParse(["PERIODE DE PAIE DU 01/09/2026 AU 30/09/2026","RAP 202607 PRIME DE PANIERS 2,00 7,500 15,00","RAP PRIME DE PANIERS 3,00 7,500 22,50","**TOTAL BRUT PAYE 3000,00"]);var c=_bulCompare(b2),late=c.late.filter(function(l){return l.k==="panier";});S.bulletins={};S.bulletins[_b.ym]=_b;S.bulletins[b2.ym]=b2;var c1=_bulCompare(_b),r=c1.rows.filter(function(x){return x.k==="panier";})[0];return JSON.stringify([b2.rap.filter(function(x){return x.k==="panier";}).map(function(x){return x.ym%12;}),late.length,r.bq,r.rq]);})()'), JSON.stringify([[6,7],1,2,2]));
   eq('Bulletin : rattrapage relié au mois où il manquait', a.run('(function(){S.bulletins={};S.bulletins[_b.ym]=_b;var m={ym:' + YM(2026, 5) + ',rap:[],nao:{},brut:3000};var c=_bulCompare(m),r=c.rows.filter(function(x){return x.k==="reel";})[0];return JSON.stringify([c.paidLater,c.later,r.rq,r.rFrom]);})()'),
     JSON.stringify([34.76, [YM(2026, 8)], 1, [YM(2026, 8)]]));
 }

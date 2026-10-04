@@ -2364,7 +2364,7 @@ function calcNetPaye(brut,paniers,ym){
 // ================================================================
 // BULLETIN DE PAIE : import du PDF (lu sur l'appareil) et comparaison avec le calcul de l'app
 // ================================================================
-var _BUL_LBL={hsLow:'Heures sup 125 %',hsHigh:'Heures sup 150 %',nuit:'Heures de nuit',fer:'Fériés',dim:'Dimanche',rh:'Repos hebdo',antenne:'Ind. antenne',matin:'Ind. sup. vacations',reel:'Ind. journaux inter',coord:'Ind. coordination',absResto:'Abs. restauration',cp:'Congés payés',autre:'Autre'};
+var _BUL_LBL={panier:'Paniers',hsLow:'Heures sup 125 %',hsHigh:'Heures sup 150 %',nuit:'Heures de nuit',fer:'Fériés',dim:'Dimanche',rh:'Repos hebdo',antenne:'Ind. antenne',matin:'Ind. sup. vacations',reel:'Ind. journaux inter',coord:'Ind. coordination',absResto:'Abs. restauration',cp:'Congés payés',autre:'Autre'};
 var _BUL_H={hsLow:1,hsHigh:1,nuit:1,fer:1,dim:1,rh:1};
 function _deMois(ym){var n=MC[ym%12];return(/^[aeiouy]/.test(n)?'d’':'de ')+n;}
 function _bulNum(s){return parseFloat(String(s).replace(/\s/g,'').replace(',','.'));}
@@ -2392,12 +2392,14 @@ function _bulParse(lines){
   lines.forEach(function(raw){
     var t=String(raw).replace(/\*/g,'').replace(/\s+/g,' ').trim();if(!t)return;
     if(b.ym==null&&(m=/PERIODE DE PAIE DU (\d\d)\/(\d\d)\/(\d{4})/.exec(t)))b.ym=+m[3]*12+(+m[2]-1);
-    if((m=reRap.exec(t))){var k=_bulKey(m[3]);if(k)b.rap.push({ym:+m[1]*12+(+m[2]-1),k:k,lbl:m[3],q:_bulNum(m[4]),pu:_bulNum(m[5]),mt:_bulNum(m[6])});return;}
-    if((m=rePan.exec(t))){if(!b.paniers)b.paniers={q:_bulNum(m[1]),pu:_bulNum(m[2]),mt:_bulNum(m[3])};return;}
+    if((m=reRap.exec(t))){var k=/PANIER/i.test(m[3])?'panier':_bulKey(m[3]);if(k)b.rap.push({ym:+m[1]*12+(+m[2]-1),k:k,lbl:m[3],q:_bulNum(m[4]),pu:_bulNum(m[5]),mt:_bulNum(m[6])});return;}
+    // Paniers sans mois : ceux du mois de travail (mois précédent), comme les primes
+    if((m=rePan.exec(t))){var pq=_bulNum(m[1]),pm=_bulNum(m[3]);if(!b.paniers)b.paniers={q:pq,pu:_bulNum(m[2]),mt:pm};else{b.paniers.q+=pq;b.paniers.mt=Math.round((b.paniers.mt+pm)*100)/100;}b.rap.push({ym:null,k:'panier',lbl:'PRIME DE PANIERS',q:pq,pu:_bulNum(m[2]),mt:pm});return;}
     if(/^RAP /.test(t))return;
     if((m=/^MESURE NAO (.+?) (-?\d+,\d+)$/.exec(t))){b.nao[m[1]]=_bulNum(m[2]);return;}
     for(var i=0;i<fx.length;i++){if(b[fx[i][0]]==null&&(m=fx[i][1].exec(t))){b[fx[i][0]]=_bulNum(m[1]);return;}}
   });
+  if(b.ym!=null)b.rap.forEach(function(r){if(r.ym==null)r.ym=b.ym-1;});
   return b.ym!=null&&b.brut!=null?b:null;
 }
 function _loadPdfJs(){
@@ -2452,9 +2454,11 @@ function useBulletinCompCP(ym){
 function _bulCompare(b){
   var y=Math.floor(b.ym/12),m=b.ym%12,P=calcPayeMois(y,m),v=P.vars,W=b.ym-1,r2=function(x){return Math.round(x*100)/100;};
   var rows=[],late=[],alerts=[];
-  var app={hsLow:[v.hsLow,v.supHSlow],hsHigh:[v.hsHigh,v.supHShigh],nuit:[v.nuitMin,v.supNuit],fer:[v.ferMin,v.supFer],dim:[v.dimMin,v.supDim],rh:[v.rhMin,v.supRH],antenne:[v.antenne,v.supAntenne],matin:[v.matin,v.supMatin],reel:[v.reel,v.supReal],coord:[v.coord,v.supCoord],absResto:[v.supAbsResto>0?1:0,v.supAbsResto]};
+  var app={hsLow:[v.hsLow,v.supHSlow],hsHigh:[v.hsHigh,v.supHShigh],nuit:[v.nuitMin,v.supNuit],fer:[v.ferMin,v.supFer],dim:[v.dimMin,v.supDim],rh:[v.rhMin,v.supRH],antenne:[v.antenne,v.supAntenne],matin:[v.matin,v.supMatin],reel:[v.reel,v.supReal],coord:[v.coord,v.supCoord],absResto:[v.supAbsResto>0?1:0,v.supAbsResto],panier:[v.paniers||0,v.supPaniers||0]};
   var bq={},bm={};
-  b.rap.forEach(function(r){
+  // Bulletins importés avant : paniers sans ligne « rap », ils sont ceux du mois de travail
+  var _rap=(b.rap||[]).slice();if(b.paniers&&!_rap.some(function(r){return r.k==='panier';}))_rap.push({ym:W,k:'panier',lbl:'PRIME DE PANIERS',q:b.paniers.q,mt:b.paniers.mt});
+  _rap.forEach(function(r){
     if(r.k==='cp'||r.k==='autre'){late.push({lbl:r.lbl,ym:r.ym,mt:r.mt,info:1});return;}
     if(r.ym!==W){late.push({lbl:_BUL_LBL[r.k],ym:r.ym,mt:r.mt,q:r.q,k:r.k});return;}
     var q=_BUL_H[r.k]?Math.round(r.q*60):r.k==='absResto'?1:r.q;
@@ -2482,11 +2486,9 @@ function _bulCompare(b){
   var rA=rows.filter(function(r){return r.k==='antenne';})[0],rC=rows.filter(function(r){return r.k==='coord';})[0];
   if(rA&&rC&&!(rA.ok&&rC.ok)&&rA.bq+rA.rq+rC.bq+rC.rq===rA.aq+rC.aq){rA.ok=rC.ok=true;rA.mix=rC.mix=1;}
   var nBad=rows.filter(function(r){return !r.ok;}).length+fixed.filter(function(f){return !f.ok;}).length;
-  // Paniers : nombre payé différent de celui de l'app, ou aucun panier sur le bulletin alors que l'app en compte
-  var pBq=b.paniers?Number(b.paniers.q)||0:0;if(Math.abs(pBq-(v.paniers||0))>=0.01){nBad++;alerts.push(b.paniers?'Paniers payés : '+pBq+', l\u2019app en compte '+(v.paniers||0)+'.':'Aucun panier sur le bulletin, l\u2019app en compte '+v.paniers+'.');}
   var adj=r2(diff+paidLater-lateSum),later=[];rows.forEach(function(r){r.rFrom.forEach(function(f){if(later.indexOf(f)<0)later.push(f);});});
   var status=nBad||alerts.length?'ecart':Math.abs(adj)>0.1?'ecart':paidLater?'later':late.some(function(l){return !l.info;})?'late':'ok';
-  return{P:P,rows:rows,fixed:fixed,late:late,lateSum:lateSum,paidLater:paidLater,later:later.sort(),adj:adj,alerts:alerts,diff:diff,status:status,nBad:nBad,paniers:b.paniers?{bq:b.paniers.q,aq:v.paniers}:null};
+  return{P:P,rows:rows,fixed:fixed,late:late,lateSum:lateSum,paidLater:paidLater,later:later.sort(),adj:adj,alerts:alerts,diff:diff,status:status,nBad:nBad,paniers:(bq.panier||rq.panier||v.paniers)?{bq:(bq.panier||0)+(rq.panier||0),aq:v.paniers||0,bm:r2((bm.panier||0)+(rm.panier||0))}:null};
 }
 var _BUL_ST={ok:['✓','var(--green)','Conforme'],late:['✓','var(--green)','Conforme, avec des rattrapages'],later:['✓','var(--green)','Conforme, complété plus tard'],ecart:['⚠','var(--amber)','Écarts à vérifier']};
 // Écarts ignorés : un bulletin reste ignoré tant que son écart ne change pas, le tableau Gestion tant que c'est le même tableau et le même écart
@@ -2554,7 +2556,7 @@ function _payPageHtml(ym){
     var ig=c.status==='ecart'&&_bulIgn(ym,c),lk='color:var(--blue);font-weight:400;cursor:pointer;margin-left:6px;white-space:nowrap';
     h+='<div style="font-size:11px;font-weight:600;margin:0 0 4px;color:'+(ig?'var(--text3)':c.status==='ecart'?'var(--amber)':'var(--green)')+'">'+(ig?msg.replace(/^⚠ /,''):msg)+(ig?' · ignoré <a style="'+lk+'" onclick="bulIgnore('+ym+',0)">Ne plus ignorer</a>':c.status==='ecart'?' <a style="'+lk+'" onclick="bulIgnore('+ym+',1)">Ignorer</a>':'')+'</div>';}
   var pR=(v.panierRate!=null?v.panierRate:getPanierRate());
-  if(v.paniers>0||(c&&c.paniers))h+=row('Paniers ('+v.paniers+' × '+pR.toFixed(2).replace('.',',')+' €)',v.supPaniers,null,c?(c.paniers?bul(Math.abs(Number(c.paniers.bq)-Number(c.paniers.aq))<0.01,b.paniers.mt):bul(false,0)):null);
+  if(v.paniers>0||(c&&c.paniers))h+=row('Paniers ('+v.paniers+' × '+pR.toFixed(2).replace('.',',')+' €)',v.supPaniers,null,c?(c.paniers?bul(Math.abs(Number(c.paniers.bq)-Number(c.paniers.aq))<0.01,c.paniers.bm):bul(false,0)):null);
   // Cumul depuis janvier : brut des bulletins importés, sinon estimation
   (function(){var cum=0,est=0;for(var mm=0;mm<=m;mm++){var bb=(S.bulletins||{})[y*12+mm];if(bb){cum+=bb.brut;}else{var pp=calcPayeMois(y,mm);if(pp&&pp.configured){cum+=pp.total;est+=pp.total;}}}
     h+='<div class="pp-r" style="padding:3px 0"><span class="pp-l">Depuis janvier'+(est>0.05?' <span style="font-size:10px">· dont '+fe(est)+' estimé</span>':'')+'</span>'+(c?E:'')+'<b style="color:var(--gold-pay)">'+fe(cum)+'</b></div>';})();
