@@ -570,10 +570,10 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 @keyframes dialogIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);z-index:200;display:flex;align-items:flex-end;justify-content:center;}
 .overlay.behind{z-index:100;}
-.sheet{background:var(--bg2);border-radius:20px 20px 0 0;padding:0 16px 44px;--spt:16px;--sph:16px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;touch-action:pan-y;overscroll-behavior:contain;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;animation:sheetUp .32s cubic-bezier(.32,.72,0,1);}
+.sheet{background:var(--bg2);border-radius:20px 20px 0 0;padding:16px 16px 44px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;touch-action:pan-y;overscroll-behavior:contain;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;animation:sheetUp .32s cubic-bezier(.32,.72,0,1);}
 @media(min-width:721px){
   .overlay{align-items:center;}
-  .sheet{border-radius:14px;padding:0 24px 20px;--spt:24px;--sph:24px;animation:dialogIn .15s ease;max-height:85vh;touch-action:auto;}
+  .sheet{border-radius:14px;padding:24px 24px 20px;animation:dialogIn .15s ease;max-height:85vh;touch-action:auto;}
   .sh{display:none;}
 }
 .sh-x{display:none;width:28px;height:28px;border-radius:50%;border:none;background:transparent;cursor:pointer;align-items:center;justify-content:center;color:var(--text3);padding:0;font-size:16px;transition:background .1s;flex-shrink:0;}
@@ -589,18 +589,6 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .stabs-bar5{flex:1}
 .stabs-sp{display:block;width:28px;flex-shrink:0}
 .stabs-body{flex:1;overflow-y:auto;min-height:0}}
-/* Haut des fenêtres : quand on fait défiler, le contenu passe sous un flou dégradé (fort en haut, nul en bas), comme sur iOS.
-   Bande collée en haut de la zone qui défile ; visible seulement une fois défilé (.scrolled).
-   La fenêtre n'a pas de marge intérieure en haut : c'est la bande qui la remplace (--spt). Sinon Safari colle la bande
-   sous la marge et laisse une partie nette au-dessus du flou. */
-.sheet::before,.stabs-body::before{content:"";display:block;position:sticky;z-index:5;height:44px;pointer-events:none;opacity:0;transition:opacity .2s ease;
-  -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);background:linear-gradient(rgba(36,35,33,.7),rgba(36,35,33,0));
-  -webkit-mask-image:linear-gradient(#000 35%,transparent);mask-image:linear-gradient(#000 35%,transparent)}
-/* la bande déborde de 20 px au-dessus du bord (masqués) : sans contenu au-dessus à mélanger, le flou laissait le tout premier bord net sur iPhone */
-.sheet::before{top:-20px;height:calc(var(--spt) + 48px);margin:-20px calc(-1 * var(--sph)) -28px;-webkit-mask-image:linear-gradient(#000 55%,transparent);mask-image:linear-gradient(#000 55%,transparent)}
-.stabs-body::before{top:0;margin:0 0 -44px}
-.sheet.scrolled::before,.stabs-body.scrolled::before{opacity:1}
-@media(min-width:721px){.smod::before{display:none}.smod{padding-top:var(--spt)}} /* grand écran : c'est le corps des onglets qui défile */
 .sh{width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 14px;}
 .st{font-size:15px;font-weight:600;margin-bottom:10px;} /* même respiration sous le titre dans tous les modals */
 .ss{font-size:12px;color:var(--text2);margin-bottom:12px;}
@@ -5647,8 +5635,6 @@ function rcgTab(idx){
     }).observe(root,{childList:true});};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })();
-// Flou dégradé en haut des fenêtres : affiché dès qu'on a fait défiler leur contenu
-document.addEventListener('scroll',function(e){var t=e.target;if(t&&t.classList&&(t.classList.contains('sheet')||t.classList.contains('stabs-body')))t.classList.toggle('scrolled',t.scrollTop>2);},true);
 function _lockBodyScroll(){var sy=window.scrollY;document.body.style.top='-'+sy+'px';document.body.classList.add('modal-open');}
 function _unlockBodyScroll(){var top=parseInt(document.body.style.top||'0');document.body.classList.remove('modal-open');document.body.style.top='';window.scrollTo(0,-top);}
 function closeModal(){
@@ -7389,11 +7375,15 @@ function init(){
       var parts=ok.split(':'),off=parts[0]==='off'||!navigator.onLine,t0=+parts[1]||Date.now();
       // (roue déjà lancée au premier affichage par le petit script sous la barre du mois)
       tit.style.transition='none';tit.style.opacity=0;spin.style.transition='none';spin.style.opacity=1;spin.style.transform='scale(1)';if(!ind.classList.contains('load'))startSpin(t0);
+      var faded=false;
+      // l'écran de chargement s'estompe : la roue s'arrête et disparaît en même temps
+      window._ptrFade=function(){window._ptrFade=null;faded=true;hideSpin(380);setTimeout(function(){ind.classList.remove('load');},380);};
+      // écran parti : « Actualisé » (ou « Hors ligne »), puis le nom du mois revient
       window._ptrDone=function(){window._ptrDone=null;
-        setTimeout(function(){hideSpin(220);
-          setTimeout(function(){ind.classList.remove('load');msg.textContent=off?'Hors ligne':'Actualisé ✓';msg.classList.add('on');
-            setTimeout(function(){msg.classList.remove('on');setTimeout(function(){tit.style.transition='';tit.style.opacity='';},250);},off?1400:900);},220);},350);};
-      setTimeout(function(){if(window._ptrDone)window._ptrDone();},4000); // filet de sécurité si l'app tarde
+        var show=function(){ind.classList.remove('load');msg.textContent=off?'Hors ligne':'Actualisé';msg.classList.add('on');
+          setTimeout(function(){msg.classList.remove('on');setTimeout(function(){tit.style.transition='';tit.style.opacity='';},250);},off?1400:900);};
+        if(faded)show();else{hideSpin(220);setTimeout(show,220);}};
+      setTimeout(function(){if(window._ptrFade)window._ptrFade();if(window._ptrDone)window._ptrDone();},4000); // filet de sécurité si l'app tarde
     }
   })();
   // Auth check
@@ -8259,7 +8249,7 @@ function _revealBody(){
   // Durée minimale d'affichage (~1 pulsation) même si les données arrivent tout de suite
   var wait=Math.max(0,1200-performance.now());
   setTimeout(function(){
-    b.style.opacity='0';b.style.pointerEvents='none';
+    b.style.opacity='0';b.style.pointerEvents='none';if(window._ptrFade)window._ptrFade(); // la roue de l'app s'efface avec l'écran
     // retour d'actualisation : la suite (roue → « Actualisé ✓ » → mois) une fois l'écran de chargement parti
     setTimeout(function(){b.remove();if(window._ptrDone)window._ptrDone();},440);
   },wait);
