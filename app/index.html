@@ -2783,7 +2783,7 @@ function openBulletinsCal(y){
 // Salaire de l'année, style de l'onglet Paie : tous les mois, brut du bulletin s'il est importé, sinon estimé
 function _svSalHtml(y){
   // Comme la paie du mois : brut estimé à droite, écart avec le payé (bulletin) dans la colonne à sa gauche
-  var nowYM=NOW.getFullYear()*12+NOW.getMonth(),rows='',tot=0,tB=0,tBe=0,nB=0,nBad=0;
+  var nowYM=NOW.getFullYear()*12+NOW.getMonth(),rows='',tot=0,tB=0,tBe=0,nB=0,nBad=0,adjT=0;
   var fe=function(x){return fmtEuro(x).replace(/\s*€/,'');};
   for(var m=0;m<12;m++){
     var ym=y*12+m,pt;try{pt=calcPayeMois(y,m);}catch(e){continue;}
@@ -2791,13 +2791,17 @@ function _svSalHtml(y){
     var bu=(S.bulletins||{})[ym],fut=ym>nowYM,est=pt.total,st='';
     tot+=est;
     if(bu){nB++;tB+=bu.brut||0;tBe+=est;var cc=null;try{cc=_bulCompare(bu);}catch(e){}
-      var d=Math.round(((bu.brut||0)-est)*100)/100,ig=cc&&cc.status==='ecart'&&_bulIgn(ym,cc),bad=cc&&cc.status==='ecart'&&!ig;if(bad)nBad++;
-      st=Math.abs(d)<=0.05?'<span style="color:'+(bad?'var(--amber)':'var(--green)')+'">'+(bad?'⚠ lignes':'✓')+'</span>'
+      var d=Math.round(((bu.brut||0)-est)*100)/100,ig=cc&&cc.status==='ecart'&&_bulIgn(ym,cc),bad=cc&&cc.status==='ecart'&&!ig;if(bad)nBad++;if(cc&&!ig)adjT+=cc.adj||0;
+      // Écart expliqué par des rattrapages (payés un autre mois, ou ce mois pour un mois passé) : tout va bien
+      var rat=cc&&!bad&&!ig&&Math.abs(d)>0.05;
+      if(rat)st='<span style="color:var(--green)">✓ <span style="color:var(--text3)">'+(cc.later&&cc.later.length?'rattrapé en '+MCs[cc.later[0]%12]:'dont rattrapage')+'</span></span>';
+      else st=Math.abs(d)<=0.05?'<span style="color:'+(bad?'var(--amber)':'var(--green)')+'">'+(bad?'⚠ lignes':'✓')+'</span>'
         :'<span style="color:'+(ig?'var(--text3)':d>0?'var(--green)':'var(--red)')+'">'+(d>0?'+':'−')+fe(Math.abs(d))+(ig?' · ignoré':'')+'</span>';}
     else st='<span style="color:var(--text3)">'+(fut?'prévu':'—')+'</span>';
     rows+='<div class="sv-pr" onclick="'+'openBulletinModal('+ym+',\'recap\')'+'"><span class="l">'+ML[m]+'</span><span class="s">'+st+'</span><b>'+fe(est)+'</b><i>›</i></div>';
   }
-  var dT=Math.round((tB-tBe)*100)/100,dS=!nB?'':Math.abs(dT)<=0.05?'<span style="color:var(--green)">✓</span>':'<span style="color:'+(dT>0?'var(--green)':'var(--red)')+'">'+(dT>0?'+':'−')+fe(Math.abs(dT))+'</span>';
+  // Écart total après rattrapages (un rattrapage versé un autre mois n'est pas un écart)
+  var dT=Math.round(adjT*100)/100,dS=!nB?'':Math.abs(dT)<=0.05?'<span style="color:var(--green)">✓</span>':'<span style="color:'+(dT>0?'var(--green)':'var(--red)')+'">'+(dT>0?'+':'−')+fe(Math.abs(dT))+'</span>';
   return ''
     // Totaux alignés sur les colonnes des mois
     +'<div class="hd-card out"><div class="sv-pr" style="cursor:default;padding:2px 0 4px"><span class="l" style="font-size:11px">total brut estimé</span><b style="width:auto;min-width:78px;font-size:17px;font-weight:700">'+(rows?fe(tot):'—')+'</b><i></i></div>'
