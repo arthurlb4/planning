@@ -105,8 +105,9 @@ function situation(opts) {
   eq('Bulletin : lignes RAP reconnues, cotisations ignorées', a.run('JSON.stringify(_b.rap.map(function(r){return [r.ym,r.k,r.q];}))'),
     JSON.stringify([[YM(2026, 7), 'hsLow', 9.25], [YM(2026, 7), 'nuit', 13.5], [YM(2026, 4), 'reel', 1]]));
   eq('Bulletin : paniers', a.run('_b.paniers.q'), 2);
-  eq('Bulletin : HS en quart d’heure signalées, rattrapage d’avril à part', a.run('(function(){var c=_bulCompare(_b);return JSON.stringify([c.alerts.length,c.late.length,c.late[0].ym]);})()'), JSON.stringify([1, 1, YM(2026, 4)]));
+  eq('Bulletin : HS en quart d’heure signalées, rattrapage d’avril à part', a.run('(function(){var c=_bulCompare(_b);return JSON.stringify([c.alerts.filter(function(x){return /Heures sup/.test(x);}).length,c.late.length,c.late[0].ym]);})()'), JSON.stringify([1, 1, YM(2026, 4)]));
   // Le rattrapage d'avril (payé en août) complète le bulletin de mai, qui comptait les variables d'avril
+  eq('Bulletin : paniers payés différents de l’app signalés', a.run('(function(){var c=_bulCompare(_b);return c.status==="ecart"&&c.alerts.some(function(x){return /Paniers payés : 2, l.app en compte [^2]/.test(x);});})()'), true);
   eq('Bulletin : rattrapage relié au mois où il manquait', a.run('(function(){S.bulletins={};S.bulletins[_b.ym]=_b;var m={ym:' + YM(2026, 5) + ',rap:[],nao:{},brut:3000};var c=_bulCompare(m),r=c.rows.filter(function(x){return x.k==="reel";})[0];return JSON.stringify([c.paidLater,c.later,r.rq,r.rFrom]);})()'),
     JSON.stringify([34.76, [YM(2026, 8)], 1, [YM(2026, 8)]]));
 }
