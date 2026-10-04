@@ -135,5 +135,14 @@ function situation(opts) {
   eq('Modifier : plus longue → surplus en heures sup (2h30)', a.run('S.overrides={"2026-10-06":{vac:"Long",motif:"forme"}};_v="Long";_dayHSMin(new Date(2026,9,6,12))'), 150);
 }
 
+// Échange de semaine : la semaine prend une autre ligne du cycle, sans toucher aux autres semaines
+{
+  const a = load('2026-10-01');
+  a.run('var _m=getMonday(new Date(2026,9,7,12)),_b=_lineIdxBase(_m),_N=getCycleLen(_m),_o=(_b+3)%_N;S.weekLines={};S.weekLines[dk(_m)]=_o;');
+  eq('Échange de semaine : ligne échangée cette semaine', a.run('lineIdx(_m)===_o&&_o!==_b'), true);
+  eq('Échange de semaine : semaine suivante inchangée', a.run('(function(){var n=new Date(_m);n.setDate(n.getDate()+7);return lineIdx(n)===_lineIdxBase(n);})()'), true);
+  eq('Échange de semaine : vacations de la ligne échangée', a.run('(function(){var g=getActiveCycleGrid(_m)||CYCLE,d=new Date(_m);d.setDate(d.getDate()+1);return getCycleVac(d).cycleVac===(g[_o][1]||"RH")||getCycleVac(d).cycleVac===g[_o][1];})()'), true);
+}
+
 console.log('\n' + (count - fails) + '/' + count + ' contrôles réussis');
 if (fails) process.exit(1);
