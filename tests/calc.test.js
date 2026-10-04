@@ -111,17 +111,18 @@ function situation(opts) {
     JSON.stringify([34.76, [YM(2026, 8)], 1, [YM(2026, 8)]]));
 }
 
-// Vacation modifiée avec « Garder les primes de A1 » : les heures de nuit payées sont celles réellement faites
+// Vacation modifiée en « Formé » (formation suivie) : nuit et primes de la vacation prévue, le reste selon la vacation faite
 {
   const a = load('2026-10-01');
   a.run('S.conges={};var _k="2026-10-06";getVac=function(d){return dk(d)===_k?{vac:"C1",absent:false}:{vac:"",absent:false};};'
     + 'getPayVac=function(d){return dk(d)===_k?"A1":"";};');
-  eq('Garder les primes : nuit de A1 non payée si on fait C1', a.run('[calcNuitMinShift(getVAC().A1)>0,calcNuitWeek(getMonday(new Date(2026,9,6,12)))===calcNuitMinShift(getVAC().C1)]'), [true, true]);
+  eq('Formé : nuit de A1 gardée même si on fait C1', a.run('[calcNuitMinShift(getVAC().A1)>0,calcNuitWeek(getMonday(new Date(2026,9,6,12)))===calcNuitMinShift(getVAC().A1)]'), [true, true]);
+  eq('Formateur / autre : nuit de la vacation faite', a.run('(function(){var g=getPayVac;getPayVac=function(d){return dk(d)===_k?"C1":"";};var n=calcNuitWeek(getMonday(new Date(2026,9,6,12)));getPayVac=g;return n===calcNuitMinShift(getVAC().C1);})()'), true);
   // Dimanche 4 octobre 2026 : majoration sur la vacation faite (accord VIII.3.2 « heures accomplies »)
   a.run('_k="2026-10-04";isRHDay=function(){return false;};settingsForYM=function(){return {};};');
-  eq('Garder les primes : majoration dimanche sur la durée de C1, pas de A1', a.run('[getVAC().A1.dur!==getVAC().C1.dur,calcDimRHFerMinsMois(2026,9).dim===getVAC().C1.dur]'), [true, true]);
-  eq('Garder les primes : panier selon la vacation faite', a.run('(function(){S.customVacs={X1:{deb:"11h00",fin:"18h00",dur:420,panier:true}};var d=new Date(2026,9,4,12);getVac=function(){return {vac:"X1",absent:false};};S.overrides={"2026-10-04":{vac:"X1",formation:true}};return isPanier(d);})()'), true);
-  eq('Garder les primes : restauration du 1er mai selon la vacation faite', a.run('(function(){S.customVacs={X2:{deb:"09h00",fin:"17h00",dur:420}};S.conges={};getVac=function(d){return dk(d)==="2026-05-01"?{vac:"X2",absent:false}:{vac:"",absent:false};};getPayVac=function(d){return dk(d)==="2026-05-01"?"A1":"";};var v=calcVariablesMois(2026,4);return v.supAbsResto===v.absRestoRate&&v.absRestoRate>0;})()'), true);
+  eq('Formé : majoration dimanche sur la durée de C1, pas de A1', a.run('[getVAC().A1.dur!==getVAC().C1.dur,calcDimRHFerMinsMois(2026,9).dim===getVAC().C1.dur]'), [true, true]);
+  eq('Formé : panier selon la vacation faite', a.run('(function(){S.customVacs={X1:{deb:"11h00",fin:"18h00",dur:420,panier:true}};var d=new Date(2026,9,4,12);getVac=function(){return {vac:"X1",absent:false};};S.overrides={"2026-10-04":{vac:"X1",formation:true}};return isPanier(d);})()'), true);
+  eq('Formé : restauration du 1er mai selon la vacation faite', a.run('(function(){S.customVacs={X2:{deb:"09h00",fin:"17h00",dur:420}};S.conges={};getVac=function(d){return dk(d)==="2026-05-01"?{vac:"X2",absent:false}:{vac:"",absent:false};};getPayVac=function(d){return dk(d)==="2026-05-01"?"A1":"";};var v=calcVariablesMois(2026,4);return v.supAbsResto===v.absRestoRate&&v.absRestoRate>0;})()'), true);
 }
 
 console.log('\n' + (count - fails) + '/' + count + ' contrôles réussis');
