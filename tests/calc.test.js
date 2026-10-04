@@ -117,6 +117,9 @@ function situation(opts) {
   a.run('S.conges={};var _k="2026-10-06";getVac=function(d){return dk(d)===_k?{vac:"C1",absent:false}:{vac:"",absent:false};};'
     + 'getPayVac=function(d){return dk(d)===_k?"A1":"";};');
   eq('Garder les primes : nuit de A1 non payée si on fait C1', a.run('[calcNuitMinShift(getVAC().A1)>0,calcNuitWeek(getMonday(new Date(2026,9,6,12)))===calcNuitMinShift(getVAC().C1)]'), [true, true]);
+  // Dimanche 4 octobre 2026 : majoration sur la vacation faite (accord VIII.3.2 « heures accomplies »)
+  a.run('_k="2026-10-04";isRHDay=function(){return false;};settingsForYM=function(){return {};};');
+  eq('Garder les primes : majoration dimanche sur la durée de C1, pas de A1', a.run('[getVAC().A1.dur!==getVAC().C1.dur,calcDimRHFerMinsMois(2026,9).dim===getVAC().C1.dur]'), [true, true]);
 }
 
 console.log('\n' + (count - fails) + '/' + count + ' contrôles réussis');
