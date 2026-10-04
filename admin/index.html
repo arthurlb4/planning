@@ -1193,18 +1193,44 @@ function setVacScope(scope) {
   }
 }
 
-// Propose de remplacer l'ancien code par la copie dans la grille du cycle
-async function offerCycleGridSwap(oldName, newName, cycleId) {
-  const cyc = _allCycles.find(c => c.id === cycleId);
-  if (!cyc || !cyc.weeks) return;
-  const n = cyc.weeks.flat().filter(c => c === oldName).length;
-  if (!n) return;
-  if (!confirm(`Modifier le cycle avec cette nouvelle vacation ?\n\n${oldName} sera remplacée par ${newName} dans la grille de ${cyc.name || 'ce cycle'} (${n} case${n>1?'s':''}).`)) return;
-  const weeks = cyc.weeks.map(w => w.map(c => c === oldName ? newName : c));
-  const res = await fetch(API + '/admin/cycle/update', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ cycle: { id: cyc.id, weeks } }) });
-  if (res.ok) cyc.weeks = weeks;
-  else alert('Erreur lors de la mise à jour du cycle');
+// Copie d'une vacation pour un cycle : proposer de remplacer l'original par la copie,
+// dans les vacations du cycle (l'original en est retiré) et dans sa grille (onglet Cycles)
+function offerReplaceCopy(oldName, newName, cycleId) {
+  return new Promise(resolve => {
+    const cyc = _allCycles.find(c => c.id === cycleId) || (_adminCycles||[]).find(c => c.id === cycleId);
+    const n = cyc && cyc.weeks ? cyc.weeks.flat().filter(c => c === oldName).length : 0;
+    const linked = ((_allVacs[oldName] && _allVacs[oldName].cycleIds) || []).includes(cycleId);
+    if (!linked && !n) { resolve(); return; }
+    const cn = _esc((cyc && cyc.name) || 'ce cycle'), o = _esc(oldName), nw = _esc(newName);
+    const mc = document.getElementById('modal-content');
+    mc.innerHTML = `<h2 style="margin-bottom:6px">Remplacer ${o} par ${nw} ?</h2>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:14px">Dans <b>${cn}</b>, la copie <b>${nw}</b> peut prendre la place de <b>${o}</b>. Les autres cycles gardent ${o}.</p>
+      <div class="vchips" style="flex-direction:column;align-items:stretch;margin-bottom:16px">
+        ${linked ? `<label class="vchip" style="justify-content:flex-start"><input type="checkbox" id="rc-vacs" checked>Dans les vacations du cycle (${o} en est retirée)</label>` : ''}
+        ${n ? `<label class="vchip" style="justify-content:flex-start"><input type="checkbox" id="rc-grid" checked>Dans la grille du cycle (${n} case${n>1?'s':''})</label>` : ''}
+      </div>
+      <div class="modal-btns"><button class="btn btn-ghost" id="rc-no">Garder les deux</button><button class="btn btn-green" id="rc-yes">Remplacer</button></div>`;
+    document.getElementById('modal-bg').style.display = 'flex';
+    document.getElementById('rc-no').onclick = () => { closeModal(); resolve(); };
+    document.getElementById('rc-yes').onclick = async () => {
+      const doVacs = !!(document.getElementById('rc-vacs') || {}).checked, doGrid = !!(document.getElementById('rc-grid') || {}).checked;
+      closeModal();
+      if (doVacs) {
+        await fetch(API + '/admin/vacation/removecycle', { method:'POST', headers:adminHeaders(), body:JSON.stringify({ name: oldName, cycleId }) });
+        if (_allVacs[oldName]) _allVacs[oldName].cycleIds = (_allVacs[oldName].cycleIds||[]).filter(id => id !== cycleId);
+      }
+      if (doGrid && cyc) {
+        const weeks = cyc.weeks.map(w => w.map(c => c === oldName ? newName : c));
+        const res = await fetch(API + '/admin/cycle/update', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ cycle: { id: cyc.id, weeks } }) });
+        if (res.ok) { cyc.weeks = weeks; const ac = (_adminCycles||[]).find(c => c.id === cycleId); if (ac) ac.weeks = weeks; }
+        else alert('Erreur lors de la mise à jour de la grille');
+      }
+      resolve();
+    };
+  });
 }
+// Bandeau « Remplacer dans la grille » (copie rattachée, grille encore sur l'original)
+async function offerCycleGridSwap(oldName, newName, cycleId) { return offerReplaceCopy(oldName, newName, cycleId); }
 
 async function saveVac() {
   // Code vide : on reprend le nom affiché
@@ -1251,9 +1277,7 @@ async function saveVac() {
       if (window._duplicateUnlinkOld) {
         const oldName = window._duplicateUnlinkOld;
         window._duplicateUnlinkOld = null;
-        await fetch(API + '/admin/vacation/removecycle', { method:'POST', headers:adminHeaders(), body:JSON.stringify({ name: oldName, cycleId: _vacActiveTab }) });
-        if (_allVacs[oldName]) _allVacs[oldName].cycleIds = (_allVacs[oldName].cycleIds||[]).filter(id => id !== _vacActiveTab);
-        await offerCycleGridSwap(oldName, name, _vacActiveTab);
+        await offerReplaceCopy(oldName, name, _vacActiveTab);
       }
     } else if (!isNew) {
       // Existing vacation: apply cycle checkbox changes
@@ -1330,9 +1354,8 @@ async function saveVacDuplicate() {
     if (_vacActiveTab && _vacActiveTab !== 'none') {
       await fetch(API + '/admin/vacation/addcycle', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ name: newName, cycleId: _vacActiveTab }) });
     }
-    // Unlink old vacation from current cycle
-    await fetch(API + '/admin/vacation/removecycle', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ name: oldName, cycleId: _vacActiveTab }) });
-    if (_vacActiveTab && _vacActiveTab !== 'none') await offerCycleGridSwap(oldName, newName, _vacActiveTab);
+    // Proposer de remplacer l'original par la copie dans ce cycle (vacations et grille)
+    if (_vacActiveTab && _vacActiveTab !== 'none') await offerReplaceCopy(oldName, newName, _vacActiveTab);
     closeVacForm();
     loadVacations();
   } catch(e) { errEl.textContent = 'Erreur réseau'; }
