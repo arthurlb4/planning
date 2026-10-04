@@ -782,11 +782,13 @@ body.modal-open{overflow:hidden;position:fixed;width:100%;left:0;right:0;overscr
 (function(){try{if(!sessionStorage.getItem('ptr-ok'))return;}catch(e){return;}
   var b=document.getElementById('boot');if(!b)return;b.classList.add('ptr');
   var h=b.querySelector('.bt-hdr'),w=document.createElement('div');w.className='bt-ptr';
-  w.style.top=((h?h.getBoundingClientRect().bottom:39)+11)+'px';
+  var gh=0;try{var g=JSON.parse(localStorage.getItem('pl_boot_geo')||'null');if(g&&g.h>20&&Math.abs(g.w-innerWidth)<=2)gh=g.h;}catch(e){}
+  w.style.top=((gh||(h?h.getBoundingClientRect().bottom:39))+11)+'px';
   w.innerHTML='<svg viewBox="0 0 30 30" width="30" height="30"><line x1="15" y1="3.5" x2="15" y2="9" transform="rotate(0 15 15)" style="animation-delay:0.000s"/><line x1="15" y1="3.5" x2="15" y2="9" transform="rotate(45 15 15)" style="animation-delay:-0.700s"/><line x1="15" y1="3.5" x2="15" y2="9" transform="rotate(90 15 15)" style="animation-delay:-0.600s"/><line x1="15" y1="3.5" x2="15" y2="9" transform="rotate(135 15 15)" style="animation-delay:-0.500s"/><line x1="15" y1="3.5" x2="15" y2="9" transform="rotate(180 15 15)" style="animation-delay:-0.400s"/><line x1="15" y1="3.5" x2="15" y2="9" transform="rotate(225 15 15)" style="animation-delay:-0.300s"/><line x1="15" y1="3.5" x2="15" y2="9" transform="rotate(270 15 15)" style="animation-delay:-0.200s"/><line x1="15" y1="3.5" x2="15" y2="9" transform="rotate(315 15 15)" style="animation-delay:-0.100s"/></svg>';b.appendChild(w);})();
 </script>
 <script>/* Écran de chargement : cases du côté placées comme au dernier affichage de l'accueil */
 try{(function(){var g=JSON.parse(localStorage.getItem('pl_boot_geo')||'null');if(!g||innerWidth>720||Math.abs(g.w-innerWidth)>2)return;
+var bh=document.querySelector('#boot .bt-hdr');if(bh&&g.h>20)bh.style.height=g.h+'px'; // même hauteur que la vraie barre (icônes comprises)
 var bl=document.querySelectorAll('#boot .bt-bloc'),sd=document.querySelector('#boot .bt-side');if(!sd||bl.length!==g.b.length)return;
 var t0=bl[0].getBoundingClientRect().top;sd.style.top=(g.b[0][0]-t0)+'px';
 for(var i=0;i<bl.length;i++){bl[i].style.height=g.b[i][1]+'px';bl[i].style.marginBottom=(i<bl.length-1?g.b[i+1][0]-g.b[i][0]-g.b[i][1]:0)+'px';}})();}catch(e){}</script>
@@ -7356,9 +7358,9 @@ function init(){
       setContent(REST,0); // dès le départ : le calendrier attend abaissé sous l'écran de chargement
       var go=function(){place(REST);msg.textContent=off?'Hors ligne · données locales':'Actualisé ✓';
         requestAnimationFrame(function(){msg.classList.add('on');});
-        setTimeout(function(){msg.classList.remove('on');setTimeout(function(){setContent(0,500);},180);},off?1600:1100);};
+        setTimeout(function(){msg.classList.remove('on');setContent(0,420);},off?1300:650);};
       // attendre que l'écran de chargement soit parti
-      (function wait(){if(document.getElementById('boot')&&getComputedStyle(document.getElementById('boot')).display!=='none')setTimeout(wait,100);else go();})();
+      (function wait(){var bt=document.getElementById('boot');if(bt&&getComputedStyle(bt).display!=='none'&&bt.style.opacity!=='0')setTimeout(wait,50);else go();})();
     }
   })();
   // Auth check
@@ -8213,7 +8215,8 @@ window.addEventListener('resize',function(){_applyBigScreenZoom();_fitCalendar()
 // Affichage de l'app une fois les données chargées : l'écran de chargement s'efface
 // Mémorise la position des cases du côté (téléphone) pour que l'écran de chargement suivant les reproduise
 function _saveBootGeo(){try{if(innerWidth>720||document.body.scrollTop>0||scrollY>0)return;var bl=document.querySelectorAll('#side-v2 > .bloc');if(!bl.length)return;
-  localStorage.setItem('pl_boot_geo',JSON.stringify({w:innerWidth,b:[].map.call(bl,function(e){var r=e.getBoundingClientRect();return[Math.round(r.top),Math.round(r.height)];})}));}catch(e){}}
+  var ly=document.querySelector('.layout');if(ly&&ly.style.transform)return;var hd=document.querySelector('.hdr');
+  localStorage.setItem('pl_boot_geo',JSON.stringify({w:innerWidth,h:hd?Math.round(hd.getBoundingClientRect().height):0,b:[].map.call(bl,function(e){var r=e.getBoundingClientRect();return[Math.round(r.top),Math.round(r.height)];})}));}catch(e){}}
 function _revealBody(){
   setTimeout(_saveBootGeo,1600);
   var b=document.getElementById('boot');if(!b)return;
