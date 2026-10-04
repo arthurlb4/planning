@@ -1585,16 +1585,20 @@ function toggleFractForfait(year){
   saveState();updateCounters();openMergedRenduCgModal(6,1);
 }
 
-// Anneau des congés : longueur visible et rotation de chaque arc (vert, CET, posés), avec un petit écart entre les bouts arrondis.
-// Un arc très court (1 jour) garde une taille minimale, prise sur le plus grand, pour ne pas toucher son voisin.
-// keep : arcs à garder visibles même à 0 (pendant l'animation, ceux qui existeront à la fin)
-function _cgGeo(fg,fc,fu,keep){var C=2*Math.PI*27,w=8,gp=3,Smin=w+gp+1.5,fs={g:fg,c:fc,u:fu},K=['g','c','u'],o={};
-  var vis=K.filter(function(k){return fs[k]>0.0001||(keep&&keep[k]);});
-  K.forEach(function(k){o[k]={L:0,r:0,o:0};});
-  if(vis.length===1){o[vis[0]]={L:C,r:0,o:1};return o;}
-  var S={},def=0,big=vis[0];vis.forEach(function(k){S[k]=Math.max(0,fs[k])*C;if(S[k]<Smin){def+=Smin-S[k];S[k]=Smin;}});
-  vis.forEach(function(k){if(S[k]>S[big])big=k;});S[big]-=def;
-  var a=0;vis.forEach(function(k){o[k]={L:Math.max(0.01,S[k]-w-gp),r:(a+w/2+gp/2)/C*360,o:1};a+=S[k];});
+// Anneau des congés : longueur visible (L), rotation (r) et épaisseur (w) de chaque arc (vert, CET, posés).
+// Tout varie de façon continue avec les proportions, pour que l'animation n'ait aucun saut :
+// - un arc très court reçoit un peu plus de place (prise sur le plus grand) et devient un point, qui rétrécit jusqu'à 0 ;
+// - l'espace entre les bouts arrondis s'ouvre progressivement dès qu'il y a plus d'un arc (un seul arc = cercle complet).
+function _cgGeo(fg,fc,fu){var C=2*Math.PI*27,w=8,gp=3,D=w+gp,Sm=16,fs={g:fg,c:fc,u:fu},K=['g','c','u'],S={},o={},big='g',def=0;
+  var lg=0;K.forEach(function(k){var x=Math.max(0,fs[k]||0)*C;if(x>0&&x<Sm){var y=x*(2-x/Sm);def+=y-x;x=y;}else lg+=x;S[k]=x;if(x>S[big])big=k;});
+  // la place donnée aux petits arcs est prise sur les grands, au prorata (pas de saut quand deux grands se croisent)
+  K.forEach(function(k){if(S[k]>=Sm&&lg>0)S[k]=Math.max(0,S[k]-def*S[k]/lg);});
+  var q=Math.min(1,(C-S[big])/D),a=0;
+  K.forEach(function(k){var x=S[k];
+    if(x<=0.001)o[k]={L:0,r:a/C*360,w:0,o:0};
+    else if(x>=q*D)o[k]={L:Math.max(0.01,x-q*D),r:(a+q*D/2)/C*360,w:w*Math.min(1,x/D),o:1};
+    else o[k]={L:0.01,r:(a+x/2)/C*360,w:w*x/D,o:1}; // point : centré dans sa place, plus fin si la place manque
+    a+=x;});
   return o;}
 // Animation de l'en-tête Congés (anneau + chiffres), en un seul mouvement.
 // from = null : ouverture (tout vert, restants depuis le solde total) ; sinon l'état d'avant un +/− (anneau et chiffres précédents)
@@ -1602,14 +1606,13 @@ function _cgAnim(from){
   var rg=document.querySelector('#rcc-1 .cg-ring'),ns=[].slice.call(document.querySelectorAll('#rcc-1 .cg-n'));if(!rg)return;
   var C=2*Math.PI*27,to={g:+rg.dataset.g,c:+rg.dataset.c,u:+rg.dataset.u},fr=from||{g:1,c:0,u:0},arcs=rg.querySelectorAll('.cg-arc');
   var n0=ns.map(function(n,i){return from&&from.n&&from.n[i]!=null?from.n[i]:(+n.dataset.f||0);}),n1=ns.map(function(n){return +n.dataset.n;});
-  var keep={};['g','c','u'].forEach(function(k){keep[k]=fr[k]>0.0001||to[k]>0.0001;});
-  var set=function(G){arcs.forEach(function(c){var g=G[c.dataset.k];c.style.transition='none';c.style.transform='rotate('+g.r+'deg)';c.style.strokeDashoffset=(C-g.L)+'px';c.style.opacity=g.o;});};
+  var set=function(G){arcs.forEach(function(c){var g=G[c.dataset.k];c.style.transition='none';c.style.transform='rotate('+g.r+'deg)';c.style.strokeDashoffset=(C-g.L)+'px';c.style.strokeWidth=g.w;c.style.opacity=g.o;});};
   var id=(_cgAnim.id=(_cgAnim.id||0)+1),t0=performance.now(),D=from?600:900;
   (function st(t){if(id!==_cgAnim.id)return; // une nouvelle animation (clic suivant) remplace celle-ci
     var k=Math.min(1,Math.max(0,(t-t0)/D)),e=1-Math.pow(1-k,3),L=function(a,b){return a+(b-a)*e;};
     ns.forEach(function(n,i){n.textContent=Math.round(L(n0[i],n1[i]));});
     _cgAnim.cur=k<1?{g:L(fr.g,to.g),c:L(fr.c,to.c),u:L(fr.u,to.u)}:to; // état affiché, repris si on reclique pendant l'animation
-    set(k<1?_cgGeo(_cgAnim.cur.g,_cgAnim.cur.c,_cgAnim.cur.u,keep):_cgGeo(to.g,to.c,to.u));
+    set(_cgGeo(_cgAnim.cur.g,_cgAnim.cur.c,_cgAnim.cur.u));
     if(k<1)requestAnimationFrame(st);})(t0);
 }
 function adjCET(delta,year){
@@ -4863,7 +4866,7 @@ function openMergedRenduCgModal(limit,tab){
   // Anneau : restants en vert depuis le haut (sens horaire), puis CET, puis posés, bouts arrondis comme dans le Suivi ;
   // à l'ouverture, le vert part du solde total et se réduit (animation CSS, comme les anneaux du Suivi)
   const _cgRing=(function(){var T=Math.max(1,soldeEffectif),fu=Math.min(1,usedNow/T),fc=Math.min(1-fu,cet/T),fg=Math.max(0,1-fu-fc),C=2*Math.PI*27,G=_cgGeo(fg,fc,fu);
-    var arc=function(k,col){var g=G[k];return '<circle cx="34" cy="34" r="27" fill="none" stroke="'+col+'" stroke-width="8" stroke-linecap="round" stroke-dasharray="'+C.toFixed(2)+' '+C.toFixed(2)+'" class="cg-arc" data-k="'+k+'" style="transform-origin:34px 34px;transform:rotate('+g.r.toFixed(2)+'deg);stroke-dashoffset:'+(C-g.L).toFixed(2)+'px;opacity:'+g.o+'"/>';};
+    var arc=function(k,col){var g=G[k];return '<circle cx="34" cy="34" r="27" fill="none" stroke="'+col+'" stroke-width="8" stroke-linecap="round" stroke-dasharray="'+C.toFixed(2)+' '+C.toFixed(2)+'" class="cg-arc" data-k="'+k+'" style="transform-origin:34px 34px;transform:rotate('+g.r.toFixed(2)+'deg);stroke-dashoffset:'+(C-g.L).toFixed(2)+'px;stroke-width:'+g.w.toFixed(2)+';opacity:'+g.o+'"/>';};
     return '<svg class="cg-ring" data-g="'+fg+'" data-c="'+fc+'" data-u="'+fu+'" width="68" height="68" viewBox="0 0 68 68" style="transform:rotate(-90deg);flex-shrink:0"><circle cx="34" cy="34" r="27" fill="none" stroke="var(--border2)" stroke-width="8"/>'
       +arc('g','var(--green)')+arc('c','var(--amber)')+arc('u','var(--red)')+'</svg>';})();
   const _cgCell=(lbl,val,col,from)=>'<div class="hd3-c"><span>'+lbl+'</span><b style="color:'+col+'"><span class="cg-n" data-n="'+val+'" data-f="'+(from||0)+'">'+val+'</span> j</b></div>';
