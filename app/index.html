@@ -688,6 +688,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .fold .rc-go{width:8px;color:var(--text3);font-size:12px;text-align:right}
 .rc-cbtn{flex:1;width:100%;margin-top:10px;padding:9px;border:0.5px solid var(--border);border-radius:10px;background:none;color:var(--blue);font-size:12px;font-family:var(--font);cursor:pointer}
 .recap-row{display:flex;justify-content:space-between;align-items:center;min-height:22px;font-size:11px;padding:2px 0;color:var(--text2);}
+#rcc-1 .recap-row{font-size:12px;min-height:24px} /* onglet Congés : à la taille des lignes du Suivi */
 .recap-row b{font-weight:600;}
 @keyframes gcal-breathe{0%,100%{opacity:.25;}50%{opacity:1;}}
 @keyframes gcal-done{0%,100%{opacity:.3;}50%{opacity:1;}}
@@ -3939,6 +3940,8 @@ function rhCompareShow(rh){
     const M=sheet[ym]||{nat:{},cons:0,stock:0,solde:0,com:[]};const g=gen[ym]||{};
     const appNat={fer:g.fer||0,dim:g.dim||0,rh:g.rh||0,hs:(g.hs||0)+(g.ram||0),extra:g.extra||0};
     const tracked=ym>=createdYM;
+    // Comparaison des acquisitions et des rendus déduits limitée aux 12 derniers mois : au-delà, les heures ont expiré des deux côtés
+    const recent=tracked&&ym>=asOfYM-12;
     const pm=app.perMonth[ym]||{acquis:0,conso:0,reste:0};
     const valid=getExpYm(ym)>=asOfYM;
     const _al=app.alloc[ym]||[];
@@ -3949,7 +3952,7 @@ function rhCompareShow(rh){
     const startSolde=g.solde||0,cmpSol=tracked||startSolde>0;
     if(cmpSol)sumSolApp+=appSol;
     // Acquisitions par nature : une ligne « à vérifier » par écart
-    if(tracked){
+    if(recent){
       const keys=[...new Set(Object.keys(appNat).filter(k=>appNat[k]>0).concat(Object.keys(M.nat)))];
       const diffs=keys.map(k=>{const s=M.nat[k]||0,a=k.startsWith('autre:')?0:(appNat[k]||0);return{k,s,a,d:a-s};}).filter(x=>bad(x.d));
       const daysOf=k=>(k==='hs'?(det[ym+':hs']||[]).concat(det[ym+':ram']||[]):(det[ym+':'+k]||[])).map(x=>(/^\d{4}-/.test(x.lbl)?dayL(x.lbl):x.lbl)+' '+fmtMin(x.v));
@@ -3968,7 +3971,7 @@ function rhCompareShow(rh){
     // Détail mois par mois
     if(cmpSol){
       const tA=Object.values(M.nat).reduce((x,y)=>x+y,0),aA=Object.values(appNat).reduce((x,y)=>x+y,0);
-      if(tracked){acqRows.push({ym,s:tA,a:aA});tConsS+=M.cons;tConsA+=consA;}
+      if(recent){acqRows.push({ym,s:tA,a:aA});tConsS+=M.cons;tConsA+=consA;}
       const r=(l,s,a,cls)=>'<tr'+(cls?' class="'+cls+'"':bad(a-s)?' class="rc-bad"':'')+'><td>'+l+'</td><td>'+(s?fmtMin(s):'—')+'</td><td>'+(a?fmtMin(a):'—')+'</td><td>'+(cls?'':fmtE(a-s))+'</td></tr>';
       detRows.push('<tr class="rc-ym"><td colspan="4">'+ymL(ym)+(valid?'':' <span style="opacity:.6;font-weight:400">(expiré)</span>')+'</td></tr>'
         +(tracked?r('Acquises',tA,aA)+r('Consommées',M.cons,consA):'<tr><td colspan="4" style="opacity:.6">Solde de départ : '+fmtMin(startSolde)+'</td></tr>')
@@ -3985,7 +3988,7 @@ function rhCompareShow(rh){
       +'<button class="rv-b2" onclick="rhApplyReports('+JSON.stringify(gr.map(y=>[y.ym,y.rhRep]))+')">Faire comme le tableau</button>');});
   // Rendus semaine par semaine (commentaires du gestionnaire)
   const _isoMon=(y,w)=>{const j4=new Date(y,0,4),m=getMonday(j4);m.setDate(m.getDate()+(w-1)*7);return m;};
-  const _trkStart=new Date(Math.floor(createdYM/12),createdYM%12,1);
+  const _trkYM=Math.max(createdYM,asOfYM-12),_trkStart=new Date(Math.floor(_trkYM/12),_trkYM%12,1);
   const _appWk=new Set();Object.keys(S.conges||{}).forEach(k=>{if(S.conges[k]!=='rend')return;const d=new Date(k+'T12:00:00');if(d<_trkStart||d>asOf||d.getFullYear()!==edY)return;_appWk.add(getISOWeek(getMonday(d)));});
   const _wk=rh.lastWeek||Object.keys(rh.weeks||{}).length?[...new Set([...Object.keys(rh.weeks||{}).map(Number),..._appWk])].sort((a,b)=>a-b):[];
   let wkBad=0,wkCmt=0;const consOk=!bad(tConsA-tConsS);
@@ -4045,8 +4048,8 @@ function rhCompareShow(rh){
     +(whyTxt&&bad(dSol)?'<div class="rv-why" style="border-top:none;margin-top:0;padding-top:0">'+whyTxt+'</div>':'')
     +(lagTot>0?'<div class="rv-hn" style="border-top:none;padding-top:0;margin-top:6px"><i class="ti ti-clock"></i> <span><b>'+fmtMin(lagTot)+'</b> de rendus pas encore notés par le gestionnaire ('+lagKeys.sort().map(k=>new Date(k+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'})).join(', ')+') : mis de côté.</span></div>':'')
     +'</div>'
-    +(acqRows.length?'<div class="rv-sec">Heures acquises <small>par mois</small></div><div class="rv-det on">'+acqTbl+'</div><div style="margin-top:6px">'+acqIt.join('')+'</div>':'')
-    +'<div class="rv-sec">Rendus déduits <small>depuis le début du suivi</small></div><div class="rv-det on">'+consTbl+'</div>'
+    +(acqRows.length?'<div class="rv-sec">Heures acquises <small>par mois'+(createdYM<asOfYM-12?', 12 derniers mois':'')+'</small></div><div class="rv-det on">'+acqTbl+'</div><div style="margin-top:6px">'+acqIt.join('')+'</div>':'')
+    +'<div class="rv-sec">Rendus déduits <small>'+(createdYM<asOfYM-12?'sur les 12 derniers mois':'depuis le début du suivi')+'</small></div><div class="rv-det on">'+consTbl+'</div>'
     +(items.length?'<div class="rv-sec">Autres points <span>'+items.length+'</span></div>'+items.join(''):'')
     +(okParts.length?'<div class="rv-ok" style="margin-top:12px"><i class="ti ti-check"></i> <span>'+okParts.join(', ').replace(/^./,c=>c.toUpperCase())+' : identiques.</span></div>':'')
     +'<div class="rv-more" onclick="this.nextElementSibling.classList.toggle(\'on\');this.firstChild.textContent=this.nextElementSibling.classList.contains(\'on\')?\'Masquer le détail\':\'Détail par mois d’origine (expirations)\'">Détail par mois d’origine (expirations)</div>'
