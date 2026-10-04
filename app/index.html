@@ -6862,7 +6862,7 @@ function openCustomVacModal(){
     +'<div class="st" style="margin-bottom:2px">'+(key?'Modifier':'Ajouter')+'</div>'
     +(key?'<div style="font-size:11.5px;color:var(--text3);margin-bottom:12px">'+fmtDate(date)+'</div>':'')
     +'<div class="hd-card" style="'+card+'"><div class="btit" style="margin:0 0 8px">Vacation</div>'
-    +'<div class="mrow"><label>Nom</label><input id="custom-name" placeholder="Formation, renfort…" style="width:100%;'+fs+'"></div>'
+    +'<div class="mrow"><label>Nom</label><input id="custom-name" list="cv-vac-list" autocomplete="off" placeholder="B1, formation, renfort…" style="width:100%;'+fs+'"><datalist id="cv-vac-list">'+_cvVacOpts(date,VAC)+'</datalist></div>'
     +'<div class="mr2"><div><label>Début</label><select id="custom-deb" style="width:100%;'+fs+'">'+T+'</select></div><div><label>Fin</label><select id="custom-fin" style="width:100%;'+fs+'">'+T+'</select></div></div>'
     +'<div class="mr2" style="margin-bottom:6px"><div><label>Pause</label><select id="custom-pause" style="width:100%;'+fs+'"><option value="0">Sans</option><option value="45">45 min</option><option value="60">1h00</option></select></div>'
     +'<div><label>Prime de la vacation</label><select id="custom-prime" onchange="_cvPrimeSync(this)" style="width:100%;'+fs+'"><option value="">Aucune</option><option value="antenne">Antenne</option><option value="reel">Réal</option><option value="coord">Coordination</option>'+(key?'<option value="autre">Autre</option>':'')+'</select></div></div>'
@@ -6880,10 +6880,23 @@ function openCustomVacModal(){
   document.getElementById('custom-fin').value=fin;
   document.getElementById('custom-pause').value=pause;
   document.getElementById('custom-prime').value=prSel;
+  document.getElementById('custom-name').addEventListener('change',function(){_cvFromVac(this.value);});
   ['custom-deb','custom-fin','custom-pause'].forEach(function(id){var e=document.getElementById(id);if(e)e.addEventListener('change',_cvCalc);});_cvCalc();
   // Déjà « Formé » : la liste verrouillée n'est pas un changement de la vacation
   if(document.getElementById('cv-motif')&&_cvPrimeLock(motif)){window._cvInit.prime='';window._cvInit.sel='';}
 }
+// Nom : vacations connues du jour proposées ; en choisir une remplit horaires, pause et prime (ex. B1 rallongée sur un repos)
+function _cvVacOpts(date,VAC){var dw=date.getDay(),dt=dw===6?'sat':dw===0?'sun':'week',ns=_cycleVacList(date);
+  if(!ns)ns=Object.keys(VAC).filter(function(n){return VAC_STD[n]||_globalVacs[n];});
+  var seen={};return ns.filter(function(n){var v=VAC[n];if(!v||v.mixte||!(v.dur>0)||n==='RH'||n==='SV')return false;var ts=String(v.type||'all').split(',');if(_globalVacs[n]&&!(ts.includes('all')||ts.includes(dt)))return false;var l=vLbl(n,VAC);if(seen[l])return false;seen[l]=1;return true;})
+    .map(function(n){var v=VAC[n];return '<option value="'+String(vLbl(n,VAC)).replace(/"/g,'&quot;')+'">'+(v.deb||'')+'–'+(v.fin||'')+'</option>';}).join('');}
+function _cvFromVac(lbl){var key=pendingKey;if(!lbl||!key)return;var date=new Date(key+'T12:00:00'),VAC=getVAC(date),L=lbl.trim().toLowerCase();
+  var n=Object.keys(VAC).filter(function(k){return !(S.customVacs&&S.customVacs[k]&&S.customVacs[k].hidden)&&String(vLbl(k,VAC)).toLowerCase()===L;})[0],v=n&&VAC[n];if(!v||v.mixte||!v.deb||!v.fin)return;
+  var set=function(id,val){var e=document.getElementById(id);if(e)e.value=val;};set('custom-deb',v.deb);set('custom-fin',v.fin);
+  var tot=parseHM(v.fin)-parseHM(v.deb);if(tot<0)tot+=1440;var pz=tot-(v.dur||0);set('custom-pause',pz>=60?'60':pz>=45?'45':'0');
+  var sel=document.getElementById('custom-prime'),pr=v.primes||{},pv=pr.antenne?'antenne':pr.reel?'reel':pr.coord?'coord':'';
+  if(sel&&sel.value!=='autre'){var o=sel.querySelector('option[value="'+pv+'"]');if(!pv||(o&&!o.disabled))sel.value=pv;_cvPrimeSync(sel);}
+  _cvCalc();}
 // Ligne de calcul sous les horaires : heures faites, heures comptées, heures sup
 function _cvCalc(){var el=document.getElementById('cv-calc'),R=window._cvCalcRef;if(!el)return;if(!R){el.textContent='';return;}
   var g=function(id){var e=document.getElementById(id);return e?e.value:'';},d=g('custom-deb'),f=g('custom-fin');if(!d||!f){el.textContent='';return;}
