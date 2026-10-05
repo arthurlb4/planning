@@ -701,7 +701,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 html.kb .overlay{top:var(--vvt,0);bottom:auto;height:var(--vvh,100%)}html.kb .sheet{max-height:calc(var(--vvh,100dvh) - 8px)!important;padding-bottom:16px}
 @supports(height:1dvh){.sheet{max-height:90dvh}.pp-sheet{height:88dvh}@media(min-width:721px){.sheet{max-height:85dvh}.pp-sheet{height:85dvh}}}
 /* Taille standard des grandes fenêtres (Suivi/Rendus/Congés, Variables, Paie du mois, Bulletins, Tableau Gestion) : même hauteur fixe */
-.sheet.daymod{height:min(var(--dayh,85vh),85vh);display:flex;flex-direction:column}.sheet.daymod>*{flex-shrink:0}.sheet.daymod>.mclose{margin-top:auto}@supports(height:1dvh){.sheet.daymod{height:min(var(--dayh,85dvh),85dvh)}}
+.sheet.daymod{height:min(var(--dayh,85vh),85vh);display:flex;flex-direction:column}.sheet.daymod>*{flex-shrink:0}.sheet.daymod>.mclose{margin-top:auto}.sheet.daymod>.dbox{min-height:76px}@supports(height:1dvh){.sheet.daymod{height:min(var(--dayh,85dvh),85dvh)}}
 .sheet.smod,.sheet.tabmod,.sheet.pp-sheet{height:85vh}@supports(height:1dvh){.sheet.smod,.sheet.tabmod,.sheet.pp-sheet{height:85dvh}}
 .sv-tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px}.sv-tile{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:14px 12px;border:0.5px solid var(--border);border-radius:14px;background:var(--bg3);font-family:var(--font);cursor:pointer;text-align:left}.sv-tile .t{font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.07em}.sv-tile b{font-size:17px;font-weight:600;font-family:var(--font-num);line-height:1.2}.sv-tile small{font-size:11px;color:var(--text3);line-height:1.35}
 .sv-card{background:var(--bg3);border:0.5px solid var(--border);border-radius:14px;padding:12px;margin-bottom:8px}.sv-h{font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px}.sv-h small{font-weight:400;font-size:10.5px;color:var(--text3);margin-left:4px}
@@ -3245,9 +3245,16 @@ function _dayVacRows(date,VAC){
 function _dayVacCount(date){var VAC=getVAC(date);return _dayVacRows(date,VAC).rows.reduce(function(n,r){return n+r.filter(function(v){return !(VAC[v]&&VAC[v].mixte);}).length;},0);}
 function _dayFixH(){var sh=document.querySelector('#modal-root .sheet.daymod');if(!sh)return;var db=sh.querySelector('.dbox');
   sh.style.setProperty('--dayh','auto');var base=sh.scrollHeight-(db?db.offsetHeight:0);
-  var g=sh.querySelectorAll('.mbtns')[0],d=new Date((pendingKey||_lpk)+'T12:00:00'),mon=getMonday(d),cur=Math.ceil(_dayVacCount(d)/3),mx=cur;
-  for(var i=0;i<7;i++){var x=new Date(mon);x.setDate(mon.getDate()+i);mx=Math.max(mx,Math.ceil(_dayVacCount(x)/3));}
-  if(g&&mx>cur){var gap=parseFloat(getComputedStyle(g).rowGap)||0;base+=(mx-cur)*(g.offsetHeight+gap)/cur;}sh.style.setProperty('--dayh',Math.ceil((base+160)/8)*8+'px');}
+  var bs=sh.querySelectorAll('.mbtns'),g=bs[0],d=new Date((pendingKey||_lpk)+'T12:00:00'),cur=Math.ceil(_dayVacCount(d)/3),mx=cur;
+  // grille la plus haute sur 3 semaines autour du jour (le passage d'une semaine à l'autre ne change rien)
+  for(var i=-10;i<=10;i++){var x=new Date(d);x.setDate(d.getDate()+i);mx=Math.max(mx,Math.ceil(_dayVacCount(x)/3));}
+  if(g&&mx>cur){var gap=parseFloat(getComputedStyle(g).rowGap)||0;base+=(mx-cur)*(g.offsetHeight+gap)/cur;}
+  // jour sans boutons Congé / Rendu / Échange / Absent (repos…) : on compte leur place quand même
+  if(g&&bs.length<2)base+=(g.firstElementChild?g.firstElementChild.offsetHeight:42)+16;
+  var h=Math.ceil((base+160)/8)*8,k='dayH:'+window.innerWidth,m=0;try{m=+localStorage.getItem(k)||0;}catch(e){}
+  // la plus grande hauteur déjà vue est gardée : la fiche ne rétrécit jamais d'un jour à l'autre
+  if(h>m){m=h;try{localStorage.setItem(k,h);}catch(e){}}
+  sh.style.setProperty('--dayh',m+'px');}
 function openDay(key){
   if(!key)return;pendingKey=key;_lpk=key;
   if(!document.body.classList.contains('modal-open'))_lockBodyScroll();
