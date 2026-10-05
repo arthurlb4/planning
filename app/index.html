@@ -1177,6 +1177,8 @@ function getVac(date){
   return{vac:cycleVac,ov:false,fromSV:false,absent:false,echange:false,ecSelf:false,li,cycleVac};
 }
 function getDur(date){const{vac}=getVac(date);const VAC=getVAC();return(vac&&vac!=='RH'&&VAC[vac])?VAC[vac].dur:0;}
+// Minutes de nuit d'un jour : formation suivie → la plus grande entre la vacation prévue et la formation
+function getNuitMinDay(date,VAC){VAC=VAC||getVAC(date);const pv=getPayVac(date),v=getVac(date).vac;let n=calcNuitMinShift(VAC[pv])||0;if(v&&v!==pv&&v!=='RH')n=Math.max(n,calcNuitMinShift(VAC[v])||0);return n;}
 function getPayVac(date){const key=dk(date);const ov=(S.overrides||{})[key];if(ov&&ov.formation){const cv=getCycleVac(date).cycleVac;if(cv&&cv!=='RH')return cv;}return getVac(date).vac;}
 // Panier : selon la vacation réellement faite (horaires, pause), même avec « Garder les primes » (accord, annexe 12 §6)
 function isPanier(date){const vac=getVac(date).vac;const VAC=getVAC();return!!(vac&&vac!=='RH'&&VAC[vac]&&VAC[vac].panier);}
@@ -2713,8 +2715,8 @@ function calcNuitWeek(monday){
     if(_cg&&(_cg==='cg'||_cg==='rend'||_cg==='rend-hist'||_cg==='absent'))continue;
     if(echange&&!ecSelf)continue;
     if(!vac||vac==='RH')continue;
-    // Heures de nuit : formation suivie (« Formé ») → celles de la vacation prévue ; sinon celles réellement faites
-    nuit+=calcNuitMinShift(VAC[getPayVac(d)]);
+    // Heures de nuit : formation suivie (« Formé ») → max(vacation prévue, formation) ; sinon celles réellement faites
+    nuit+=getNuitMinDay(d,VAC);
   }
   return nuit;
 }
@@ -2824,7 +2826,7 @@ function _bilanCount(y,toMonth,toDay){
     if(!g.absent&&!(cg==='cg'||cg==='rend'||cg==='rend-hist'||cg==='absent')&&!(g.echange&&!g.ecSelf)&&g.vac&&g.vac!=='RH'){
       var V=getVAC(d)[g.vac];
       c.jours++;
-      if(V)c.nuits+=calcNuitMinShift(V)||0; // minutes de nuit
+      if(V)c.nuits+=getNuitMinDay(d); // minutes de nuit
       if(d.getDay()===0)c.dim++;
       if(FERIES.has(k))c.fer++;
       if(V&&V.deb&&_toMinApp(V.deb)<240)c.matins++;
@@ -3308,7 +3310,7 @@ function openDay(key){
   if(vac&&vac!=='RH'&&!absent&&!hasCg){
     var _pvac=getPayVac(date),_pv=_pvac?VAC[_pvac]:null,_epv=[];
     if(_pv){
-      var _nMin=calcNuitMinShift(_pv);if(_nMin>0)_epv.push('<span style="color:#9c7fe0">Nuit '+fmtMin(_nMin)+'</span>');
+      var _nMin=getNuitMinDay(date,VAC);if(_nMin>0)_epv.push('<span style="color:#9c7fe0">Nuit '+fmtMin(_nMin)+'</span>');
       var _hsD=_dayHSMin(date);if(_hsD>0)_epv.push('<span style="color:var(--blue)">HS +'+fmtMin(_hsD)+(sett.hsRendu?' rendues':'')+'</span>');
       if(_pv.primes&&_pv.primes.antenne)_epv.push('<span style="color:var(--amber)">Antenne</span>');
       if(_pv.primes&&_pv.primes.reel)_epv.push('<span style="color:var(--amber)">Réal</span>');
@@ -5438,7 +5440,7 @@ function openMergedMoisModal(mym,tab){
     const _sn=new Date(_mn);_sn.setDate(_mn.getDate()+6);
     if(_sn.getFullYear()*12+_sn.getMonth()!==mym)continue;
     const _days=[];
-    for(let i=0;i<7;i++){const _dd=new Date(_mn);_dd.setDate(_mn.getDate()+i);const _kd=dk(_dd);const{vac:_vn,absent:_ab,echange:_ec,ecSelf:_es}=getVac(_dd);if(_ab)continue;const _cgd=(S.conges||{})[_kd];if(_cgd&&(_cgd==='cg'||_cgd==='rend'||_cgd==='rend-hist'||_cgd==='absent'))continue;if(_ec&&!_es)continue;if(!_vn||_vn==='RH')continue;const _pv2=getPayVac(_dd)||_vn,_nm2=calcNuitMinShift(VAC[_pv2]);if(_nm2>0){const _ji=_dd.getDay();_days.push({lbl:JOURS_L[_ji===0?6:_ji-1]+' '+_dd.getDate()+' '+MLf[m].toLowerCase(),vac:_pv2,min:_nm2});}}
+    for(let i=0;i<7;i++){const _dd=new Date(_mn);_dd.setDate(_mn.getDate()+i);const _kd=dk(_dd);const{vac:_vn,absent:_ab,echange:_ec,ecSelf:_es}=getVac(_dd);if(_ab)continue;const _cgd=(S.conges||{})[_kd];if(_cgd&&(_cgd==='cg'||_cgd==='rend'||_cgd==='rend-hist'||_cgd==='absent'))continue;if(_ec&&!_es)continue;if(!_vn||_vn==='RH')continue;const _pv2=getPayVac(_dd)||_vn,_nm2=getNuitMinDay(_dd,VAC);if(_nm2>0){const _ji=_dd.getDay();_days.push({lbl:JOURS_L[_ji===0?6:_ji-1]+' '+_dd.getDate()+' '+MLf[m].toLowerCase(),vac:_pv2,min:_nm2});}}
     const _wkMin=_days.reduce((s,d)=>s+d.min,0);
     if(_wkMin>0)_nuitRows.push({wk:getISOWeek(_mn),min:_wkMin,days:_days});
   }
@@ -7125,7 +7127,7 @@ function openCustomVacModal(){
   // Motif du changement : formé (garde les primes prévues), formateur (les perd, prime de formateur), autre
   var motif=ov.motif||(ov.formation?'forme':'autre');window._cvMotif=motif;
   var cP=[];if(cI){var cp=cI.primes||{};if(cp.antenne)cP.push('Antenne');if(cp.reel)cP.push('Réal');if(cp.coord)cP.push('Coordination');if(cI.deb&&_toMinApp(cI.deb)<240)cP.push('matin');}
-  window._cvHints={forme:cP.length?'Garde les primes de '+cN+' ('+cP.join(', ')+') et ses heures de nuit.':'Garde les heures de nuit de '+cN+'.',formateur:'Primes de '+cN+' non dues.',autre:''};
+  window._cvHints={forme:cP.length?'Garde les primes de '+cN+' ('+cP.join(', ')+'). Nuit : la plus grande des deux.':'Nuit : la plus grande entre '+cN+' et la formation.',formateur:'Primes de '+cN+' non dues.',autre:''};
   var mB=function(k,l){return '<button type="button" data-m="'+k+'" class="'+(motif===k?'on':'')+'" onclick="_cvSetMotif(\''+k+'\')">'+l+'</button>';};
   // « Pourquoi ce changement ? » : chaque choix montre directement ce qu'il implique pour les primes
   var opts=(cI?'<div style="margin:10px 0 4px"><label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Raison du changement</label><div class="cv-seg" id="cv-motif">'+mB('autre','Horaires modifiés')+mB('forme','Formation suivie')+mB('formateur','Formateur')+'</div></div>':'')

@@ -119,6 +119,7 @@ function situation(opts) {
   a.run('S.conges={};var _k="2026-10-06";getVac=function(d){return dk(d)===_k?{vac:"C1",absent:false}:{vac:"",absent:false};};'
     + 'getPayVac=function(d){return dk(d)===_k?"A1":"";};');
   eq('Formé : nuit de A1 gardée même si on fait C1', a.run('[calcNuitMinShift(getVAC().A1)>0,calcNuitWeek(getMonday(new Date(2026,9,6,12)))===calcNuitMinShift(getVAC().A1)]'), [true, true]);
+  eq('Formé : formation avec plus de nuit que la vacation prévue → nuit de la formation', a.run('(function(){var g=getPayVac,gv=getVac;S.customVacs={FN:{deb:"20h00",fin:"06h00",dur:540}};getVac=function(d){return dk(d)===_k?{vac:"FN",absent:false}:{vac:"",absent:false};};getPayVac=function(d){return dk(d)===_k?"A1":"";};var n=calcNuitWeek(getMonday(new Date(2026,9,6,12))),f=calcNuitMinShift(getVAC().FN),p=calcNuitMinShift(getVAC().A1);getPayVac=g;getVac=gv;S.customVacs={};return f>p&&n===f;})()'), true);
   eq('Formateur / autre : nuit de la vacation faite', a.run('(function(){var g=getPayVac;getPayVac=function(d){return dk(d)===_k?"C1":"";};var n=calcNuitWeek(getMonday(new Date(2026,9,6,12)));getPayVac=g;return n===calcNuitMinShift(getVAC().C1);})()'), true);
   // Dimanche 4 octobre 2026 : majoration sur la vacation faite (accord VIII.3.2 « heures accomplies »)
   a.run('_k="2026-10-04";isRHDay=function(){return false;};settingsForYM=function(){return {};};');
