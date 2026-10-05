@@ -1845,12 +1845,11 @@ function render(){
   else{_fitCalendar();_setTitle(el_ml,ML[curM]+' '+curY);if(!window._skipCalOnce)renderMonth(el_heads,el_cal);requestAnimationFrame(_checkSideBelow);}
   var _todayBtn=document.querySelector('.mnav.today');
   if(_todayBtn){
-    var _isTodayView=curM===NOW.getMonth()&&curY===NOW.getFullYear()&&!annualOpen;
+    var _isTodayView=!annualOpen&&curM===NOW.getMonth()&&curY===NOW.getFullYear(); // vue annuelle : « auj. » reste pour revenir au mois en cours
     var _btnHidden=_todayBtn.classList.contains('hide-l')||_todayBtn.classList.contains('hide-r');
-    if(_isTodayView&&!_btnHidden&&!_todayBtn.dataset.init){
-      _todayBtn.style.transition='none';
-      _todayBtn.classList.add('hide-l');
-      requestAnimationFrame(function(){_todayBtn.style.transition='';});
+    if(_isTodayView&&!_btnHidden){
+      if(!_todayBtn.dataset.init){_todayBtn.style.transition='none';_todayBtn.classList.add('hide-l');requestAnimationFrame(function(){_todayBtn.style.transition='';});}
+      else _todayBtnHide(); // retour sur le mois en cours : il s'efface en glissant
     }else if(!_isTodayView&&_btnHidden){
       _todayBtn.style.transition='none';
       _todayBtn.classList.remove('hide-l','hide-r');
@@ -2012,7 +2011,9 @@ function _calVeil(cb){
   if(!col){cb();return;}
   if(window._veilBusy)return;window._veilBusy=true;
   const v=document.createElement('div');
-  v.style.cssText='position:absolute;inset:-14px -14px 0 -14px;z-index:60;pointer-events:none;opacity:0;transition:opacity .13s ease;background:'+getComputedStyle(document.body).backgroundColor;
+  // le voile commence sous la barre du mois : les flèches et « auj. » restent visibles pendant le changement de vue
+  const mb=col.querySelector('.mbar'),vt=mb?Math.round(mb.getBoundingClientRect().bottom-col.getBoundingClientRect().top):-14;
+  v.style.cssText='position:absolute;inset:'+vt+'px -14px 0 -14px;z-index:60;pointer-events:none;opacity:0;transition:opacity .13s ease;background:'+getComputedStyle(document.body).backgroundColor;
   col.appendChild(v);void v.offsetWidth;v.style.opacity='1';
   setTimeout(function(){
     try{cb();}finally{
