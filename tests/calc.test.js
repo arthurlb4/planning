@@ -113,6 +113,9 @@ function situation(opts) {
     + 'S.profile.ignBulL[_b.ym]={};S.profile.ignBulL[_b.ym][it.id]=it.d;var c2=_bulCompare(_b);'
     + 'c.items.forEach(function(i){S.profile.ignBulL[_b.ym][i.id]=i.d;});var c3=_bulCompare(_b);S.profile.ignBulL={};'
     + 'return JSON.stringify([Math.abs(sum-c.adj)<0.02,c2.badList.length===n-1,Math.abs(c2.adj-(c.adj-it.d))<0.02,_bulIgn(_b.ym,c2),_bulIgn(_b.ym,c3)]);})()'), JSON.stringify([true,true,true,false,true]));
+  eq('Bulletin : rappel de prix des paniers réparti sur les mois payés sous le prix', a.run('(function(){var sv=S.bulletins;S.bulletins={};var F=' + YM(2026, 1) + ',A=' + YM(2026, 3) + ';'
+    + 'S.bulletins[F]={ym:F,rap:[{ym:F-1,k:"panier",q:2,pu:7.4,mt:14.8}]};S.bulletins[A]={ym:A,rap:[{ym:A-1,k:"panier",q:3,pu:7.5,mt:23.2}]};'
+    + 'var R=_panRappels();S.bulletins=sv;return JSON.stringify([R.cover[F],R.from[F],R.used[A]]);})()'), JSON.stringify([0.2, [YM(2026, 3)], 0.2]));
   eq('Bulletin : panier rattrapé (RAP aaaamm) rattaché à son mois', a.run('(function(){var b2=_bulParse(["PERIODE DE PAIE DU 01/09/2026 AU 30/09/2026","RAP 202607 PRIME DE PANIERS 2,00 7,500 15,00","RAP PRIME DE PANIERS 3,00 7,500 22,50","**TOTAL BRUT PAYE 3000,00"]);var c=_bulCompare(b2),late=c.late.filter(function(l){return l.k==="panier";});S.bulletins={};S.bulletins[_b.ym]=_b;S.bulletins[b2.ym]=b2;var c1=_bulCompare(_b),r=c1.rows.filter(function(x){return x.k==="panier";})[0];return JSON.stringify([b2.rap.filter(function(x){return x.k==="panier";}).map(function(x){return x.ym%12;}),late.length,r.bq,r.rq]);})()'), JSON.stringify([[6,7],1,2,2]));
   eq('Bulletin : rattrapage relié au mois où il manquait', a.run('(function(){S.bulletins={};S.bulletins[_b.ym]=_b;var m={ym:' + YM(2026, 5) + ',rap:[],nao:{},brut:3000};var c=_bulCompare(m),r=c.rows.filter(function(x){return x.k==="reel";})[0];return JSON.stringify([c.paidLater,c.later,r.rq,r.rFrom]);})()'),
     JSON.stringify([34.76, [YM(2026, 8)], 1, [YM(2026, 8)]]));

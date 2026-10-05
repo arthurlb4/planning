@@ -2560,6 +2560,20 @@ function useBulletinCompCP(ym){
   pr.compCPManual[Math.floor(ym/12)]=b.epv;saveState();render();openBulletinModal(ym);
 }
 // Comparaison ligne à ligne : variables du mois précédent, fixe, rattrapages, total
+// Rappels de prix des paniers (revalorisation rétroactive) : sur un bulletin, ce qui est payé au-delà de « quantité × valeur unitaire »
+// comble les mois précédents payés sous le prix de l'app (le plus ancien d'abord). cover : rattrapé pour ce bulletin ; used : rappel expliqué
+function _panRappels(){
+  var r2=function(x){return Math.round(x*100)/100;},bs=Object.keys(S.bulletins||{}).map(Number).sort(function(a,b){return a-b;}),def=[],cover={},from={},used={};
+  bs.forEach(function(ym){var b=S.bulletins[ym];if(!b)return;var rap=b.rap||[],W=ym-1;
+    var ex=0;rap.forEach(function(r){if(r.k!=='panier'||!(r.pu>0))return;var e=r2(r.mt-r.q*r.pu);if(e>0.005)ex+=e;});ex=r2(ex);
+    def.forEach(function(d){if(ex<=0.005||d.left<=0.005)return;var t=r2(Math.min(ex,d.left));d.left=r2(d.left-t);ex=r2(ex-t);
+      cover[d.ym]=r2((cover[d.ym]||0)+t);(from[d.ym]=from[d.ym]||[]).indexOf(ym)<0&&from[d.ym].push(ym);used[ym]=r2((used[ym]||0)+t);});
+    var q=0,mt=0,has=false;rap.forEach(function(r){if(r.k==='panier'&&r.ym===W){q+=r.q;mt+=r.mt;has=true;}});
+    if(!has&&b.paniers){q=b.paniers.q;mt=b.paniers.mt;}
+    var dd=r2(q*getPanierRate(W)-mt);if(dd>0.005)def.push({ym:ym,left:dd});
+  });
+  return{cover:cover,from:from,used:used};
+}
 function _bulCompare(b){
   var y=Math.floor(b.ym/12),m=b.ym%12,P=calcPayeMois(y,m),v=P.vars,W=b.ym-1,r2=function(x){return Math.round(x*100)/100;};
   var rows=[],late=[],alerts=[];
@@ -2591,13 +2605,13 @@ function _bulCompare(b){
   if(b.supFam!=null||P.supFamilial>0)fix.push(['Suppl. familial',b.supFam||0,P.supFamilial]);
   var fixed=fix.filter(function(f){return f[1]!=null||f[2];}).map(function(f){var bv=f[1]||0,av=r2(f[2]||0);return{lbl:f[0],bm:bv,am:av,ok:Math.abs(bv-av)<=0.05,key:f[3]};});
   // Paniers hors brut : leur rattrapage n'entre pas dans le brut, leur écart s'ajoute à part
-  var lateSum=r2(late.reduce(function(s,l){return s+(l.k==='panier'?0:l.mt);},0)),diff=r2(b.brut-P.total),panDiff=r2((bm.panier||0)+(rm.panier||0)-(v.supPaniers||0));
+  var lateSum=r2(late.reduce(function(s,l){return s+(l.k==='panier'?0:l.mt);},0)),diff=r2(b.brut-P.total),PR=_panRappels(),panCov=PR.cover[b.ym]||0,panDiff=r2((bm.panier||0)+(rm.panier||0)-(v.supPaniers||0)+panCov-(PR.used[b.ym]||0));
   // Coordination payée comme antenne (même taux) : le total des deux suffit
   var rA=rows.filter(function(r){return r.k==='antenne';})[0],rC=rows.filter(function(r){return r.k==='coord';})[0];
   if(rA&&rC&&!(rA.ok&&rC.ok)&&rA.bq+rA.rq+rC.bq+rC.rq===rA.aq+rC.aq){rA.ok=rC.ok=true;rA.mix=rC.mix=1;}
   // Paniers : « RAP » sans mois = mois de travail ; un écart compte comme une ligne qui diffère (le brut n'en dépend pas)
   var nBad=rows.filter(function(r){return !r.ok;}).length+fixed.filter(function(f){return !f.ok;}).length;
-  var adj=r2(diff+paidLater-lateSum+panDiff),later=[];rows.forEach(function(r){r.rFrom.forEach(function(f){if(later.indexOf(f)<0)later.push(f);});});
+  var adj=r2(diff+paidLater-lateSum+panDiff),later=(PR.from[b.ym]||[]).slice();if(panCov)panLater=1;rows.forEach(function(r){r.rFrom.forEach(function(f){if(later.indexOf(f)<0)later.push(f);});});
   var status=nBad||alerts.length?'ecart':Math.abs(adj)>0.1?'ecart':paidLater||panLater?'later':late.some(function(l){return !l.info;})?'late':'ok';
   var badList=rows.filter(function(r){return !r.ok;}).map(function(r){return r.k==='panier'?'Paniers':(_BUL_LBL[r.k]||r.k);}).concat(fixed.filter(function(f){return !f.ok;}).map(function(f){return f.lbl;}));
   // L'alerte « demi-heure » des HS décrit le même problème qu'une ligne HS en écart : comptée une seule fois
