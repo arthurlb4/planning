@@ -7167,7 +7167,7 @@ function openCustomVacModal(){
   // « Pourquoi ce changement ? » : chaque choix montre directement ce qu'il implique pour les primes
   var opts=(cI?'<div style="margin:10px 0 4px"><label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Raison du changement</label><div class="cv-seg" id="cv-motif">'+mB('autre','Horaires modifiés')+mB('forme','Formation suivie')+mB('formateur','Formateur')+'</div></div>':'')
     ;
-  window._cvCalcRef=cI&&!cI.mixte?{n:cN,dur:cI.dur||0}:(cI?null:{n:'',dur:0});
+  window._cvCalcRef=cI&&!cI.mixte?{n:cN,dur:cI.dur||0,nuit:calcNuitMinShift(cI),deb:cI.deb}:(cI?{n:'',dur:-1}:{n:'',dur:0});
   var dO='<option value="0">—</option>';for(var d=15;d<=600;d+=15)dO+='<option value="'+d+'"'+(x&&x.dur===d?' selected':'')+'>'+fmtMin(d)+'</option>';
   var card='margin:0 0 10px;padding:12px';
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this){if(pendingKey)openDay(pendingKey);else closeModal();}"><div class="sheet"><div class="sh"></div>'
@@ -7178,7 +7178,7 @@ function openCustomVacModal(){
     // Début | Fin | Pause sur une ligne
     +'<div class="mr2" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:6px"><div><label>Début</label><select id="custom-deb" style="width:100%;'+fs+'">'+T+'</select></div><div><label>Fin</label><select id="custom-fin" style="width:100%;'+fs+'">'+T+'</select></div>'
     +'<div><label>Pause</label><select id="custom-pause" style="width:100%;'+fs+'"><option value="0">Sans</option><option value="45">45 min</option><option value="60">1h00</option></select></div></div>'
-    +(key?'<div class="cv-hint" id="cv-calc" style="margin:-2px 2px 8px"></div>':'')
+    +(key?'<div class="cv-hint" id="cv-calc" style="margin:-2px 2px 8px;min-height:2.8em"></div>':'')
     +(key?opts:'')
     // Une seule ligne de hauteur fixe : [menu des primes | phrase d'explication] + montant à droite (prime « Autre » ou de formateur)
     +'<div class="mrow" style="margin:8px 0 2px"><label id="cv-autre-lbl">'+(motif==='formateur'?'Prime de formateur (€)':'Primes du jour')+'</label>'
@@ -7206,8 +7206,11 @@ function openCustomVacModal(){
   if(document.getElementById('cv-motif')&&_cvPrimeLock(motif)){window._cvInit.prime='';window._cvInit.sel='';}
 }
 // Nom : vacations connues du jour proposées ; en choisir une remplit horaires, pause et prime (ex. B1 rallongée sur un repos)
-function _cvVacOpts(date,VAC){var dw=date.getDay(),dt=dw===6?'sat':dw===0?'sun':'week',ns=_cycleVacList(date);
-  if(!ns)ns=Object.keys(VAC).filter(function(n){return VAC_STD[n]||_globalVacs[n];});
+// Vacations proposables ce jour-là : celles du cycle actif pour ce type de jour (sans cycle : la grille par défaut du jour), plus les vacations perso visibles
+function _cvDayVacs(date,VAC){var ns=_cycleVacList(date);
+  if(!ns)ns=_dayVacRows(date,VAC).rows.reduce(function(a,r){return a.concat(r);},[]).filter(function(n){return n!=='SV'&&n!=='Autre';});
+  Object.keys(S.customVacs||{}).forEach(function(k){if(!S.customVacs[k].hidden&&ns.indexOf(k)<0)ns=ns.concat([k]);});return ns;}
+function _cvVacOpts(date,VAC){var dw=date.getDay(),dt=dw===6?'sat':dw===0?'sun':'week',ns=_cvDayVacs(date,VAC);
   var seen={};return ns.filter(function(n){var v=VAC[n];if(!v||v.mixte||!(v.dur>0)||n==='RH'||n==='SV')return false;var ts=String(v.type||'all').split(',');if(_globalVacs[n]&&!(ts.includes('all')||ts.includes(dt)))return false;var l=vLbl(n,VAC);if(seen[l])return false;seen[l]=1;return true;})
     .map(function(n){var v=VAC[n];return '<option value="'+String(vLbl(n,VAC)).replace(/"/g,'&quot;')+'">'+(v.deb||'')+'–'+(v.fin||'')+'</option>';}).join('');}
 // Pré-remplissage : on garde les valeurs d'avant ; si le nom ne correspond plus à une vacation (C1 → C10), elles reviennent
@@ -7220,7 +7223,7 @@ function _cvUnfill(){if(!_cvAuto)return;var a=_cvAuto;_cvAuto=null;if(JSON.strin
 function _cvFromVac(lbl){var key=pendingKey;if(!lbl||!key){_cvUnfill();return;}var date=new Date(key+'T12:00:00'),VAC=getVAC(date),L=lbl.trim().toLowerCase();
   // Même label pour plusieurs vacations (ex. C1 du cycle actuel et C1 par défaut de l'app) : celle du cycle du jour d'abord, puis les vacations de l'équipe, puis les perso, en dernier les horaires par défaut
   var _cl=_cycleVacList(date)||[],_cvPrio=function(k){return _cl.indexOf(k)>=0?0:(_globalVacs[k]?1:(S.customVacs&&S.customVacs[k]?2:3));};
-  var n=Object.keys(VAC).filter(function(k){return !(S.customVacs&&S.customVacs[k]&&S.customVacs[k].hidden)&&String(vLbl(k,VAC)).toLowerCase()===L;}).sort(function(a,b){return _cvPrio(a)-_cvPrio(b);})[0],v=n&&VAC[n];if(!v||v.mixte||!v.deb||!v.fin){_cvUnfill();return;}
+  var _ok=_cvDayVacs(date,VAC);var n=Object.keys(VAC).filter(function(k){return _ok.indexOf(k)>=0&&String(vLbl(k,VAC)).toLowerCase()===L;}).sort(function(a,b){return _cvPrio(a)-_cvPrio(b);})[0],v=n&&VAC[n];if(!v||v.mixte||!v.deb||!v.fin){_cvUnfill();return;}
   var _snap=_cvAuto?_cvAuto.snap:_cvVals();
   var set=function(id,val){var e=document.getElementById(id);if(e)e.value=val;};set('custom-deb',v.deb);set('custom-fin',v.fin);
   var tot=parseHM(v.fin)-parseHM(v.deb);if(tot<0)tot+=1440;var pz=tot-(v.dur||0);set('custom-pause',pz>=60?'60':pz>=45?'45':'0');
@@ -7231,10 +7234,18 @@ function _cvFromVac(lbl){var key=pendingKey;if(!lbl||!key){_cvUnfill();return;}v
 function _cvCalc(){var el=document.getElementById('cv-calc'),R=window._cvCalcRef;if(!el)return;if(!R){el.textContent='';return;}
   var g=function(id){var e=document.getElementById(id);return e?e.value:'';},d=g('custom-deb'),f=g('custom-fin');if(!d||!f){el.textContent='';return;}
   var a=parseHM(d),b=parseHM(f),t=b-a;if(t<=0)t+=1440;var pz=parseInt(g('custom-pause'))||0;if(pz>=45)t-=pz;if(t<=0){el.textContent='';return;}
-  if(!R.dur){el.innerHTML='<b style="color:var(--text2)">'+fmtMin(t)+'</b> faites, en heures sup (jour de repos).';return;}
-  var x=t-R.dur;el.innerHTML='<b style="color:var(--text2)">'+fmtMin(t)+'</b> faites · '+R.n+' prévue '+fmtMin(R.dur)+(x>0?' → <b style="color:var(--blue)">+'+fmtMin(x)+' en heures sup</b>':x<0?' → '+fmtMin(R.dur)+' comptées (horaires prévus)':'');}
+  var l1=R.dur<0?'<b style="color:var(--text2)">'+fmtMin(t)+'</b> faites':!R.dur?'<b style="color:var(--text2)">'+fmtMin(t)+'</b> faites, en heures sup (jour de repos).'
+    :(function(){var x=t-R.dur;return '<b style="color:var(--text2)">'+fmtMin(t)+'</b> faites · '+R.n+' prévue '+fmtMin(R.dur)+(x>0?' → <b style="color:var(--blue)">+'+fmtMin(x)+' en heures sup</b>':x<0?' → '+fmtMin(R.dur)+' comptées':'');})();
+  // Ce que le jour rapporte en plus : nuit (formation suivie → la plus grande des deux), matin, panier, majoration du jour
+  var forme=window._cvMotif==='forme'&&R.dur>0,key=pendingKey,date=key?new Date(key+'T12:00:00'):null,ch=[];
+  var nu=calcNuitMinShift({deb:d,fin:f});if(forme)nu=Math.max(nu,R.nuit||0);if(nu>0)ch.push('<span style="color:#9c7fe0">Nuit '+fmtMin(nu)+'</span>');
+  var md=forme&&R.deb?_toMinApp(R.deb):a;if(md!==null&&md<240)ch.push('<span style="color:var(--amber)">Matin</span>');
+  if(pz<45&&coversMealSlot(a,b))ch.push('<span style="color:var(--amber)">Panier</span>');
+  if(date){var tx=getTauxForYM(date.getFullYear()*12+date.getMonth()),gv=getVac(date);
+    if(FERIES.has(key))ch.push('Férié ×'+tx.fer+'%');else if(date.getDay()===0)ch.push('Dim ×'+tx.dim+'%');else if(isRHDay(date)&&!gv.echange)ch.push('RH ×'+tx.rh+'%');}
+  el.innerHTML=l1+(ch.length?'<br>'+ch.join(' · '):'');}
 // Motif : formateur ouvre directement la prime de formateur
-function _cvSetMotif(k){var prev=window._cvMotif;window._cvMotif=k;document.querySelectorAll('#cv-motif button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-m')===k);});
+function _cvSetMotif(k){var prev=window._cvMotif;window._cvMotif=k;setTimeout(_cvCalc,0);document.querySelectorAll('#cv-motif button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-m')===k);});
   var h=document.getElementById('cv-motif-hint');if(h){h.textContent=(window._cvHints||{})[k]||'';h.style.visibility=k==='autre'?'hidden':'visible';}
   var al=document.getElementById('cv-autre-lbl');if(al)al.textContent=k==='formateur'?'Prime de formateur (€)':'Primes du jour';
   var row=document.getElementById('custom-prime');if(row)row.style.visibility=k==='autre'?'visible':'hidden'; // menu des primes : seulement pour « Horaires modifiés »
