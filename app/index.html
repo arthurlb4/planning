@@ -7352,7 +7352,7 @@ function init(){
     var y0=0,active=false,trig=false,TH=64,H=420,P=800;
     var ind=document.getElementById('ptr-indicator'),spin=document.getElementById('ptr-spin'),msg=document.getElementById('ptr-msg'),tit=document.getElementById('mtit'),lines=[].slice.call(spin.querySelectorAll('line'));
     var rubber=function(x){return (1-1/(x*.55/H+1))*H;};
-    var tms=[],later=function(f,ms){tms.push(setTimeout(f,ms));},clearLater=function(){tms.forEach(clearTimeout);tms=[];};
+    var msgMode=false,tms=[],later=function(f,ms){tms.push(setTimeout(f,ms));},clearLater=function(){tms.forEach(clearTimeout);tms=[];};
     var ticks=function(n){lines.forEach(function(l,k){l.style.transition='';l.style.opacity=k<n?.8:0;});};
     var startSpin=function(t0){ind.style.setProperty('--ph',(-((Date.now()-t0)%P)/1000)+'s');lines.forEach(function(l){l.style.opacity='';});ind.classList.add('load');};
     // Arrêt façon iOS : la roue ne relance plus de tour, chaque rayon finit de s'éteindre à son rythme (les plus pâles partent d'abord)
@@ -7368,23 +7368,29 @@ function init(){
     document.addEventListener('touchstart',function(e){
       if(window.scrollY>0||document.body.scrollTop>0||document.body.classList.contains('modal-open')||ind.classList.contains('load'))return;
       y0=e.touches[0].clientY;active=true;trig=false;
+      // « Actualisé » à l'écran (nom du mois masqué) : pendant cette traction, seul le message s'efface, le mois reste caché
+      msgMode=msg.classList.contains('on')||tms.length>0||tit.style.opacity==='0';
     },{passive:true});
     document.addEventListener('touchmove',function(e){
       if(!active)return;
       var dy=e.touches[0].clientY-y0;
-      if(dy<=0||window.scrollY>0){spin.style.opacity=0;tit.style.opacity='';return;}
+      if(dy<=0||window.scrollY>0){spin.style.opacity=0;if(msgMode)msg.style.opacity='';else tit.style.opacity='';return;}
       var p=Math.min(1,rubber(dy)/TH);
       // « Actualisé » encore affiché : il s'efface comme le nom du mois, et ne revient pas
-      if(msg.classList.contains('on')||tms.length){clearLater();msg.style.opacity=Math.max(0,1-p*2.2);}
-      tit.style.opacity=Math.max(0,1-p*2.2);
+      if(msgMode){clearLater();msg.style.transition='none';msg.style.opacity=Math.max(0,1-p*2.2);tit.style.transition='none';tit.style.opacity=0;}
+      else tit.style.opacity=Math.max(0,1-p*2.2);
       spin.style.transition='none';spin.style.opacity=Math.min(1,p*1.5);spin.style.transform='scale('+(.5+.5*p)+')';
       ticks(Math.ceil(p*8));
       var was=trig;trig=p>=1;if(trig&&!was)_haptic();
     },{passive:true});
     document.addEventListener('touchend',function(){
       if(!active)return;active=false;
-      if(!trig){hideSpin(250);tit.style.transition='';tit.style.opacity='';if(msg.classList.contains('on')){msg.classList.remove('on');msg.style.opacity='';}return;}
-      msg.classList.remove('on');msg.style.opacity='';
+      if(!trig){hideSpin(250);
+        // relâché sans actualiser : le message disparaît, puis le nom du mois revient en fondu
+        if(msgMode){msg.style.transition='';msg.classList.remove('on');msg.style.opacity='';setTimeout(function(){tit.style.transition='';tit.style.opacity='';},200);}
+        else{tit.style.transition='';tit.style.opacity='';}
+        return;}
+      msg.style.transition='';msg.classList.remove('on');msg.style.opacity='';
       var t0=Date.now();startSpin(t0);
       try{sessionStorage.setItem('ptr-ok',(navigator.onLine?'1':'off')+':'+t0);}catch(e){}
       // fondu vers l'écran de chargement (calé sur la page, roue au même endroit et même cycle), puis rechargement
