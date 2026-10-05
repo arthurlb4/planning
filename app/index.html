@@ -2507,6 +2507,8 @@ function _bulParse(lines){
     if((m=rePan.exec(t))){var pq=_bulNum(m[1]),pm=_bulNum(m[3]);if(!b.paniers)b.paniers={q:pq,pu:_bulNum(m[2]),mt:pm};else{b.paniers.q+=pq;b.paniers.mt=Math.round((b.paniers.mt+pm)*100)/100;}b.rap.push({ym:null,k:'panier',lbl:'PRIME DE PANIERS',q:pq,pu:_bulNum(m[2]),mt:pm});return;}
     if(/^RAP /.test(t))return;
     if((m=/^MESURE NAO (.+?) (-?\d+,\d+)$/.exec(t))){b.nao[m[1]]=_bulNum(m[2]);return;}
+    // « SALAIRE DE QUALIFICATION base taux montant » : base temps plein (→ palier) et taux de travail (→ contrat)
+    if(b.salQBase==null&&(m=/^SALAIRE DE QUALIFICATION (\d+,\d+) (\d+,\d+) (-?\d+,\d+)$/.exec(t))){b.salQBase=_bulNum(m[1]);b.taux=_bulNum(m[2]);b.salQ=_bulNum(m[3]);return;}
     for(var i=0;i<fx.length;i++){if(b[fx[i][0]]==null&&(m=fx[i][1].exec(t))){b[fx[i][0]]=_bulNum(m[1]);return;}}
   });
   if(b.ym!=null)b.rap.forEach(function(r){if(r.ym==null)r.ym=b.ym-1;});
@@ -2534,7 +2536,59 @@ function _infoToast(msg){
   clearTimeout(window._utHide);requestAnimationFrame(function(){t.classList.add('on');});
   window._utHide=setTimeout(_hideUndoToast,5000);
 }
-function importBulletins(){
+// ── Réglages de paie lus sur les bulletins : palier, contrat, groupe, ancienneté (et mois d'anniversaire) ──
+function _bulPaySet(b){
+  var r={},ym=b.ym,base=b.salQBase||b.salQ,t=b.taux>0?b.taux:null,k=(t||100)/100,near=function(a,v){return Math.abs(a-v)<0.02||Math.abs(a*k-v)<0.02;};
+  if(base>0)for(var n=11;n<=99;n++){if(Math.abs(calcPalierSalaire(n)-base)<0.02){r.palier=n;break;}}
+  if(t)r.pct=t;
+  if(b.gpe>0)for(var g=1;g<=9;g++){if(near(calcGPE(g,ym),b.gpe)){r.groupe=g;break;}}
+  if(b.anc>0)for(var y=1;y<=50;y++){if(near(calcAncPrime(y,ym),b.anc)){r.anc=y;break;}}
+  return r;
+}
+// Différences avec les réglages : un changement par valeur nouvelle, daté du premier bulletin qui la montre
+function _bulPayDiffs(){
+  var pr=S.profile||{},bs=Object.keys(S.bulletins||{}).map(Number).sort(function(a,b){return a-b;}),out={palier:[],heures:[],groupe:[]},anc=[],last={};
+  bs.forEach(function(ym){var d=_bulPaySet(S.bulletins[ym]);
+    var chk=function(k,v,cur,eq){if(v==null)return;if(!eq(v,cur)&&last[k]!==v)out[k].push({ym:ym,v:v,cur:cur});last[k]=eq(v,cur)?null:v;};
+    chk('palier',d.palier,getPalierForYM(ym),function(a,b){return a===b;});
+    chk('heures',d.pct!=null?Math.round(d.pct*151.67/100*100)/100:null,getHeuresForYM(ym),function(a,b){return Math.abs(a-b)<0.01;});
+    chk('groupe',d.groupe,getGroupeForYM(ym),function(a,b){return a===b;});
+    if(d.anc!=null)anc.push({ym:ym,y:d.anc});});
+  // Ancienneté : années du dernier bulletin ; mois d'anniversaire si deux bulletins consécutifs passent d'une année à la suivante
+  var A=null;if(anc.length){var L=anc[anc.length-1],mo=null;for(var i=1;i<anc.length;i++)if(anc[i].y===anc[i-1].y+1&&anc[i].ym-anc[i-1].ym===1)mo=anc[i].ym%12;
+    var bad=anc.some(function(a){return Math.abs(calcAncPrime(a.y,a.ym)-getAncForYM(a.ym))>0.02;});
+    if(bad||(mo!=null&&mo!==pr.ancMoisAnni))A={y:L.y,ym:L.ym,mo:mo};}
+  return{palier:out.palier,heures:out.heures,groupe:out.groupe,anc:A,n:out.palier.length+out.heures.length+out.groupe.length+(A?1:0)};
+}
+function _bulPayApply(){
+  var D=_bulPayDiffs(),pr=S.profile;if(!D.n)return;pushUndo('Réglages de paie depuis les bulletins');
+  var put=function(hk,fk,list,empty){list.forEach(function(c,i){
+    // première valeur et rien de réglé avant : elle vaut depuis toujours ; les suivantes à partir du mois du bulletin
+    if(empty&&i===0&&!(pr[hk]||[]).some(function(e){return e.ym<=c.ym;})){pr[fk]=c.v;return;}
+    if(!pr[hk])pr[hk]=[];var i=pr[hk].findIndex(function(e){return e.ym===c.ym;});if(i>=0)pr[hk][i].v=c.v;else pr[hk].push({ym:c.ym,v:c.v});pr[hk].sort(function(a,b){return a.ym-b.ym;});});};
+  put('palierHistory','palierNum',D.palier,!(pr.palierNum>0));if(pr.palierNum>0)pr.salaireQualif=calcPalierSalaire(pr.palierNum);
+  put('heuresHistory','heuresMensuelles',D.heures,false);
+  put('groupeHistory','groupeClassif',D.groupe,!(pr.groupeClassif>0));
+  if(D.anc){pr.ancYears=D.anc.y;pr.ancRefYM=D.anc.ym;if(D.anc.mo!=null)pr.ancMoisAnni=D.anc.mo;pr.primeAnciennete=calcAncPrime(D.anc.y);}
+  saveState();render();
+}
+// Fenêtre de proposition (après un import, ou depuis Réglages → Paie)
+function _bulPayPropose(then){
+  var D=_bulPayDiffs();if(!D.n){if(then)then();else _infoToast('Réglages de paie conformes aux bulletins');return false;}
+  window._bulPayThen=then||null;
+  var mo=function(ym){return MC[ym%12]+' '+Math.floor(ym/12);},li=function(l,v,c,ym){return '<div class="recap-row" style="font-size:12px;min-height:26px;gap:10px"><span style="color:var(--text3)">'+l+'</span><span><b>'+v+'</b><span style="color:var(--text3)"> · dès '+mo(ym)+(c?' (avant : '+c+')':'')+'</span></span></div>';};
+  var rows=D.palier.map(function(c){return li('Palier','P'+c.v,c.cur?'P'+c.cur:'',c.ym);}).join('')
+    +D.heures.map(function(c){return li('Contrat',Math.round(c.v/151.67*1000)/10+' %',Math.round(c.cur/151.67*1000)/10+' %',c.ym);}).join('')
+    +D.groupe.map(function(c){return li('Groupe','Gr. '+c.v,c.cur?'Gr. '+c.cur:'',c.ym);}).join('')
+    +(D.anc?'<div class="recap-row" style="font-size:12px;min-height:26px;gap:10px"><span style="color:var(--text3)">Ancienneté</span><span><b>'+D.anc.y+' ans</b><span style="color:var(--text3)"> en '+mo(D.anc.ym)+(D.anc.mo!=null?' · anniversaire en '+MC[D.anc.mo]:'')+'</span></span></div>':'');
+  document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)_bulPayDone(0)"><div class="sheet"><div class="sh"></div><div class="st">Réglages lus sur les bulletins</div>'
+    +'<div style="font-size:12px;color:var(--text3);line-height:1.45;margin:-4px 0 10px">Les bulletins ne correspondent pas aux réglages de paie. Chaque valeur s’applique à partir du mois où le bulletin la montre ; les mois d’avant gardent l’ancienne.</div>'
+    +'<div class="hd-card">'+rows+'</div>'
+    +'<div class="mbtns"><button class="mb" onclick="_bulPayDone(0)">Plus tard</button><button class="mb pri" onclick="_bulPayDone(1)">Mettre à jour</button></div></div></div>';
+  return true;
+}
+function _bulPayDone(ok){if(ok)_bulPayApply();var t=window._bulPayThen;window._bulPayThen=null;if(t)t();else if(ok)openSettingsModal(1);else closeModal();}
+function importBulletins(after){
   var inp=document.createElement('input');inp.type='file';inp.accept='application/pdf,.pdf';inp.multiple=true;
   inp.onchange=async function(){
     var files=[].slice.call(inp.files||[]);if(!files.length)return;
@@ -2548,7 +2602,7 @@ function importBulletins(){
     var msg=ok.length?(ok.length===1?'Bulletin '+_deMois(ok[0])+' '+Math.floor(ok[0]/12)+' importé':ok.length+' bulletins importés'):'';
     if(bad)msg+=(msg?' · ':'')+(bad===1?'1 fichier illisible':bad+' fichiers illisibles')+(navigator.onLine===false?' (hors ligne)':'');
     _infoToast(msg);
-    if(ok.length){ok.sort(function(a,b){return a-b;});render();openBulletinModal(ok[ok.length-1]);}
+    if(ok.length){ok.sort(function(a,b){return a-b;});render();var _last=ok[ok.length-1];_bulPayPropose(after||function(){openBulletinModal(_last);});}
   };
   inp.click();
 }
@@ -2663,7 +2717,8 @@ function _payPageHtml(ym){
   if(!P.configured||!P.salQ||!P.heures)return '<div style="display:flex;flex-direction:column;align-items:center;gap:12px;padding:32px 16px;text-align:center">'
     +'<div style="font-size:13px;font-weight:600;color:var(--text2)">Données de paie incomplètes</div>'
     +'<div style="font-size:12px;color:var(--text3);line-height:1.5">Renseigner le palier, l’ancienneté et le taux de travail dans les paramètres pour voir l’estimation du salaire.</div>'
-    +'<button class="mb" style="height:36px;padding:0 16px;font-size:12px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);cursor:pointer" onclick="closeModal();setTimeout(()=>openSettingsModal(1),80)">Paramètres → Paie</button></div>';
+    +'<button class="mb" style="height:36px;padding:0 16px;font-size:12px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);cursor:pointer" onclick="closeModal();setTimeout(()=>openSettingsModal(1),80)">Paramètres → Paie</button>'
+    +'<button class="mb" style="height:36px;padding:0 16px;font-size:12px;margin-top:8px;cursor:pointer" onclick="window._bulFrom=\'recap\';importBulletins()">ou importer un bulletin (PDF)</button></div>';
   var c=b?_bulCompare(b):null,fe=function(x){return fmtEuro(x).replace(/\s*€/,'');},v=P.vars,_tx=v.tx||getTauxForYM(),_eu=function(n){return n.toFixed(2).replace('.',',')+' €';};
   var btn='font-size:11px;padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:rgba(255,250,243,.1);cursor:pointer;font-family:var(--font)';
   var rowsBy={},fixBy={};if(c){c.rows.forEach(function(r){rowsBy[r.k]=r;});c.fixed.forEach(function(f){fixBy[f.lbl]=f;});}
@@ -6543,7 +6598,11 @@ function openSettingsModal(tab){
   var _oncPal='onchange="window._sMP=true;openPalierModal()"';
   var _oncAnc='onchange="window._sMP=true;openAncModal()"';
   var _oncHeur='onchange="window._sMP=true;openContratModal()"';
+  var _hasBul=Object.keys(S.bulletins||{}).length>0;
   var tab1=''
+    // Palier, contrat, groupe et ancienneté lus sur les bulletins (pré-remplissage, augmentations datées)
+    +'<div style="display:flex;align-items:center;gap:8px;margin:0 0 8px"><span style="flex:1;font-size:11px;color:var(--text3);line-height:1.4">'+(_hasBul?'Comparer ces réglages aux bulletins importés.':'Remplir ces réglages à partir d’un bulletin de paie.')+'</span>'
+    +'<button class="adj-pill" style="width:auto;padding:0 12px;height:28px;font-size:12px;white-space:nowrap" onclick="'+(_hasBul?'_bulPayPropose(function(){openSettingsModal(1);})':'importBulletins(function(){openSettingsModal(1);})')+'"><i class="ti ti-file-import" style="margin-right:4px"></i>'+(_hasBul?'Vérifier':'Importer un bulletin')+'</button></div>'
     +'<div class="srow" '+_sr+'><div class="slbl">Palier'+_inf('salaire de qualification')+'</div><div '+_rCol+'><div id="ps-palier-lbl" '+_subV+'>'+_palLbl+'</div><select id="ps-palier" '+_oncPal+' style="'+_selR+'">'+palierOpts+'</select></div></div>'
     +'<div class="srow" '+_sr+'><div class="slbl">Ancienneté'+_inf('prime mensuelle')+'</div><div '+_rCol+'><div id="ps-salanc-lbl" '+_subV+'>'+_ancLbl+'</div><select id="ps-salanc" '+_oncAnc+' style="'+_selR+'">'+ancOpts+'</select></div></div>'
     +'<div class="srow" '+_sr+'><div class="slbl">Contrat'+_inf('taux de travail')+'</div><div '+_rCol+'><div id="ps-heures-lbl" '+_subV+'>'+_heurLbl+'</div><select id="ps-heures" '+_oncHeur+' style="'+_selR+'">'+heurOpts+'</select></div></div>'
