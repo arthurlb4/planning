@@ -3219,7 +3219,7 @@ function _dayHSMin(date){
 function openDay(key){
   if(!key)return;pendingKey=key;_lpk=key;
   if(!document.body.classList.contains('modal-open'))_lockBodyScroll();
-  var date=new Date(key+'T12:00:00'),VAC=getVAC(date),v2=getVac(date),vac=v2.vac,ov=v2.ov,fromSV=v2.fromSV,absent=v2.absent,echange=v2.echange,li=v2.li,cycleVac=v2.cycleVac;
+  var date=new Date(key+'T12:00:00'),VAC=getVAC(date),v2=getVac(date),vac=v2.vac,ov=v2.ov,fromSV=v2.fromSV,absent=v2.absent,echange=v2.echange,ecSelf=v2.ecSelf,li=v2.li,cycleVac=v2.cycleVac;
   var isFer=FERIES.has(key),hasCg=(S.conges||{})[key],dur=getDur(date);
   var cs=calcSoldes(),totalReal=cs.totalReal,matelas=cs.matelas,totalDispo=totalReal+cs.totalPrev+Math.max(0,matelas);
   var cR=Math.max(0,computeCongesRest(date.getFullYear()));
@@ -3350,11 +3350,14 @@ function openDay(key){
   var _wlk=dk(getMonday(date)),_wlHtml=S.weekLines&&S.weekLines[_wlk]!=null?'<div style="font-size:11.5px;color:#c88048;margin-top:3px">\u21c4 Semaine échangée : S'+(lineIdx(getMonday(date))+1)+' au lieu de S'+(_lineIdxBase(getMonday(date))+1)+'</div>':'';
   var _dayBox='';
   if(vac&&vac!=='RH'&&!absent&&VAC[vac]){
+    // Vacation cédée par échange (je ne la fais pas) : barrée, sans nuit ni primes, avec la mention de l'échange
+    var _given=echange&&!ecSelf,_ttH=_given&&tt?'<span style="text-decoration:line-through;color:var(--text3)">'+tt+'</span>':tt;
     _dayBox='<div class="dbox" onclick="openCustomVacModal()" style="cursor:pointer;background:var(--bg3);border-radius:10px;padding:10px 14px;margin-bottom:12px">'
-      +'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div style="font-size:15px;font-weight:600;color:var(--text);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(date.getFullYear()===NOW.getFullYear()?lbl.replace(' '+date.getFullYear(),''):lbl)+(tt?' — '+tt:'')+'</div>'+_renduBtn+'</div>'
-      +'<div style="font-size:12px;color:var(--text2);margin-top:3px">'+VAC[vac].deb+'→'+VAC[vac].fin+' · '+fmtMin(dur)+'</div>'
-      +(epvHtml?'<div style="margin-top:3px">'+epvHtml+'</div>':'')
-      +_restWarn(key)
+      +'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div style="font-size:15px;font-weight:600;color:var(--text);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(date.getFullYear()===NOW.getFullYear()?lbl.replace(' '+date.getFullYear(),''):lbl)+(tt?' — '+_ttH:'')+'</div>'+_renduBtn+'</div>'
+      +'<div style="font-size:12px;color:'+(_given?'var(--text3);text-decoration:line-through':'var(--text2)')+';margin-top:3px">'+VAC[vac].deb+'→'+VAC[vac].fin+' · '+fmtMin(dur)+'</div>'
+      +(echange?'<div style="font-size:12px;color:#e09a9a;margin-top:3px;display:flex;align-items:center;gap:5px"><i class="ti ti-arrows-exchange" style="font-size:14px"></i>'+(_given?'Cédée par échange · non travaillée':'Faite par échange')+'</div>':'')
+      +(epvHtml&&!_given?'<div style="margin-top:3px">'+epvHtml+'</div>':'')
+      +(_given?'':_restWarn(key))
       +_wlHtml
       +_exrHtml
       +_noteHtml
