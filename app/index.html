@@ -2629,7 +2629,7 @@ function _bulCompare(b){
   items.forEach(function(i){i.ign=IG[i.id]!=null&&Math.abs(IG[i.id]-i.d)<=0.05;if(i.ign)adjI=r2(adjI-i.d);});
   badList=items.filter(function(i){return !i.ign;}).map(function(i){return i.lbl;});
   var nIgn=items.filter(function(i){return i.ign;}).length,allIgn=status==='ecart'&&items.length>0&&nIgn===items.length;
-  return{items:items,nIgn:nIgn,allIgn:allIgn,adjAll:adj,badList:badList,P:P,rows:rows,fixed:fixed,late:late,lateSum:lateSum,paidLater:paidLater,later:later.sort(),adj:adjI,alerts:alerts,diff:diff,status:status,nBad:nBad,paniers:(bq.panier||rq.panier||v.paniers)?{bq:(bq.panier||0)+(rq.panier||0),aq:v.paniers||0,bm:r2((bm.panier||0)+(rm.panier||0))}:null};
+  return{panCov:panCov,panFrom:PR.from[b.ym]||[],panUsed:PR.used[b.ym]||0,items:items,nIgn:nIgn,allIgn:allIgn,adjAll:adj,badList:badList,P:P,rows:rows,fixed:fixed,late:late,lateSum:lateSum,paidLater:paidLater,later:later.sort(),adj:adjI,alerts:alerts,diff:diff,status:status,nBad:nBad,paniers:(bq.panier||rq.panier||v.paniers)?{bq:(bq.panier||0)+(rq.panier||0),aq:v.paniers||0,bm:r2((bm.panier||0)+(rm.panier||0))}:null};
 }
 var _BUL_ST={ok:['✓','var(--green)','Conforme'],late:['✓','var(--green)','Conforme, avec des rattrapages'],later:['✓','var(--green)','Conforme, complété plus tard'],ecart:['⚠','var(--amber)','Écarts à vérifier']};
 // Écarts ignorés : un bulletin reste ignoré tant que son écart ne change pas, le tableau Gestion tant que c'est le même tableau et le même écart
@@ -2706,7 +2706,15 @@ function _payPageHtml(ym){
   // Ligne paniers et ligne de statut toujours présentes : la case garde la même hauteur
   if(!c)h+='<div style="font-size:11px;margin:0 0 4px;color:var(--text3)">Pas de bulletin</div>';
   if(!(v.paniers>0||(c&&c.paniers)))h+='<div class="pp-r"><span class="pp-l">Paniers</span>'+(c?E:'')+'<b style="color:var(--text3);font-weight:400">—</b></div>';
-  else h+=row('Paniers ('+v.paniers+' × '+pR.toFixed(2).replace('.',',')+' €)',v.supPaniers,null,c?(c.paniers?bul(Math.abs(Number(c.paniers.bq)-Number(c.paniers.aq))<0.01,c.paniers.bm,'r:panier'):bul(false,0)):null);
+  else{var _e2=function(x){return x.toFixed(2).replace('.',',');},_pl='Paniers ('+v.paniers+' × '+_e2(pR)+' €)',_pn=null;
+    // Prix payé sous celui de l'app puis rattrapé (rappel de revalorisation) : prix payé → prix dû, et le mois du rattrapage
+    if(c&&c.paniers&&c.panCov>0.005&&c.paniers.bq>0){_pl='Paniers ('+v.paniers+' × '+_e2(c.paniers.bm/c.paniers.bq)+' → '+_e2(pR)+' €)';
+      if(Math.abs(Number(c.paniers.bq)-Number(c.paniers.aq))<0.01)_pn='<span class="pp-n" style="color:var(--green)">en '+c.panFrom.map(function(f){return MCs[f%12].toLowerCase();}).join(', ')+' <span class="tk">✓</span></span>';}
+    // Bulletin qui verse un rappel de prix pour des mois précédents
+    else if(c&&c.panUsed>0.005){_pl='Paniers ('+v.paniers+' × '+_e2(pR)+' €) + rappel';
+      if(c.paniers&&Math.abs(Number(c.paniers.bq)-Number(c.paniers.aq))<0.01)_pn='<span class="pp-n" style="color:var(--green)">+'+_e2(c.panUsed)+' <span class="tk">✓</span></span>';}
+    _pl='<span style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+_pl+'</span>';
+    h+=row(_pl,v.supPaniers,null,c?(_pn||(c.paniers?bul(Math.abs(Number(c.paniers.bq)-Number(c.paniers.aq))<0.01,c.paniers.bm,'r:panier'):bul(false,0))):null);}
   // Cumul depuis janvier : estimé de l'app ; colonne bulletin = brut des bulletins importés
   (function(){var cum=0,paid=0,nb=0;for(var mm=0;mm<=m;mm++){var pp=calcPayeMois(y,mm);if(pp&&pp.configured)cum+=pp.total;var bb=(S.bulletins||{})[y*12+mm];if(bb){paid+=bb.brut||0;nb++;}}
     h+='<div class="pp-r" style="padding:3px 0"><span class="pp-l">Depuis janvier</span>'+(c?'<span class="pp-n" style="color:var(--text3)">'+(nb?fe(paid):'')+'</span>':'')+'<b style="color:var(--gold-pay)">'+fe(cum)+'</b></div>';})();
