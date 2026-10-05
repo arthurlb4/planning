@@ -2574,10 +2574,10 @@ function _bulCompare(b){
     bq[r.k]=(bq[r.k]||0)+q;bm[r.k]=r2((bm[r.k]||0)+r.mt);
   });
   // Lignes de ce mois de travail rattrapées sur un bulletin suivant : elles complètent celui-ci
-  var rq={},rm={},rFrom={},paidLater=0;
+  var rq={},rm={},rFrom={},paidLater=0,panLater=0;
   Object.keys(S.bulletins||{}).forEach(function(k){var o=S.bulletins[k];if(!o||o.ym<=b.ym||!o.rap)return;
     o.rap.forEach(function(r){if(r.ym!==W||!app[r.k])return;
-      rq[r.k]=(rq[r.k]||0)+(_BUL_H[r.k]?Math.round(r.q*60):r.k==='absResto'?1:r.q);rm[r.k]=r2((rm[r.k]||0)+r.mt);paidLater=r2(paidLater+r.mt);
+      rq[r.k]=(rq[r.k]||0)+(_BUL_H[r.k]?Math.round(r.q*60):r.k==='absResto'?1:r.q);rm[r.k]=r2((rm[r.k]||0)+r.mt);if(r.k==='panier')panLater=1;else paidLater=r2(paidLater+r.mt);
       (rFrom[r.k]=rFrom[r.k]||[]).indexOf(o.ym)<0&&rFrom[r.k].push(o.ym);});});
   Object.keys(app).forEach(function(k){
     var aq=app[k][0]||0,am=r2(app[k][1]||0),q=bq[k]||0,mt=bm[k]||0,lq=rq[k]||0;
@@ -2590,14 +2590,15 @@ function _bulCompare(b){
   if(b.epv!=null||P.compCP>0)fix.push(['Complément CP',b.epv||0,r2(P.compCP),'epv']);
   if(b.supFam!=null||P.supFamilial>0)fix.push(['Suppl. familial',b.supFam||0,P.supFamilial]);
   var fixed=fix.filter(function(f){return f[1]!=null||f[2];}).map(function(f){var bv=f[1]||0,av=r2(f[2]||0);return{lbl:f[0],bm:bv,am:av,ok:Math.abs(bv-av)<=0.05,key:f[3]};});
-  var lateSum=r2(late.reduce(function(s,l){return s+l.mt;},0)),diff=r2(b.brut-P.total);
+  // Paniers hors brut : leur rattrapage n'entre pas dans le brut, leur écart s'ajoute à part
+  var lateSum=r2(late.reduce(function(s,l){return s+(l.k==='panier'?0:l.mt);},0)),diff=r2(b.brut-P.total),panDiff=r2((bm.panier||0)+(rm.panier||0)-(v.supPaniers||0));
   // Coordination payée comme antenne (même taux) : le total des deux suffit
   var rA=rows.filter(function(r){return r.k==='antenne';})[0],rC=rows.filter(function(r){return r.k==='coord';})[0];
   if(rA&&rC&&!(rA.ok&&rC.ok)&&rA.bq+rA.rq+rC.bq+rC.rq===rA.aq+rC.aq){rA.ok=rC.ok=true;rA.mix=rC.mix=1;}
   // Paniers : « RAP » sans mois = mois de travail ; un écart compte comme une ligne qui diffère (le brut n'en dépend pas)
   var nBad=rows.filter(function(r){return !r.ok;}).length+fixed.filter(function(f){return !f.ok;}).length;
-  var adj=r2(diff+paidLater-lateSum),later=[];rows.forEach(function(r){r.rFrom.forEach(function(f){if(later.indexOf(f)<0)later.push(f);});});
-  var status=nBad||alerts.length?'ecart':Math.abs(adj)>0.1?'ecart':paidLater?'later':late.some(function(l){return !l.info;})?'late':'ok';
+  var adj=r2(diff+paidLater-lateSum+panDiff),later=[];rows.forEach(function(r){r.rFrom.forEach(function(f){if(later.indexOf(f)<0)later.push(f);});});
+  var status=nBad||alerts.length?'ecart':Math.abs(adj)>0.1?'ecart':paidLater||panLater?'later':late.some(function(l){return !l.info;})?'late':'ok';
   return{P:P,rows:rows,fixed:fixed,late:late,lateSum:lateSum,paidLater:paidLater,later:later.sort(),adj:adj,alerts:alerts,diff:diff,status:status,nBad:nBad,paniers:(bq.panier||rq.panier||v.paniers)?{bq:(bq.panier||0)+(rq.panier||0),aq:v.paniers||0,bm:r2((bm.panier||0)+(rm.panier||0))}:null};
 }
 var _BUL_ST={ok:['✓','var(--green)','Conforme'],late:['✓','var(--green)','Conforme, avec des rattrapages'],later:['✓','var(--green)','Conforme, complété plus tard'],ecart:['⚠','var(--amber)','Écarts à vérifier']};
@@ -2681,6 +2682,8 @@ function _payPageHtml(ym){
   if(m===0){var cf=fixBy['Complément CP'];
     h+=tit('Complément CP')+(P.compCP>0||cf?row(P.compCPManual?'Montant du bulletin':'1/10 variables '+(y-1),P.compCP,null,fn('Complément CP',P.compCP)):'<div style="color:var(--amber);display:flex;gap:5px;padding:4px 0"><span>⚠</span><span>1/10 des variables '+(y-1)+' non calculable : les données de l’année précédente sont incomplètes.</span></div>')
       +'<div style="display:flex;gap:6px;margin-top:4px"><button onclick="editCompCP('+y+','+ym+')" style="'+btn+';color:var(--text2);padding:3px 8px">'+(P.compCPManual?'Modifier le montant':'Saisir le montant du bulletin')+'</button>'+(cf&&!cf.ok&&b.epv!=null?'<button onclick="useBulletinCompCP('+ym+')" style="'+btn+';color:var(--blue);padding:3px 8px">Reprendre le bulletin</button>':'')+'</div>';}
+  // Indemnité 10e (complément CP) versée un autre mois que janvier : affichée, sinon elle comptait comme un problème invisible
+  if(m!==0&&fixBy['Complément CP'])h+=tit('Complément CP')+row('Indemnité 10e (bulletin)',P.compCP,null,fn('Complément CP',P.compCP));
   // NAO : le bulletin les nomme autrement, comparées en total (sur la dernière ligne si ça diffère)
   var naoF=fixBy['Mesures NAO'],nN=P.primesConv.length,fa=P.totalFixes+P.totalPrimesCustom;
   h+=tit('Primes fixes')+P.primesConv.map(function(p,i){return row(p.label,p.montant,null,c?(naoF&&naoF.ok?OK:i===nN-1?(naoF?bul(false,naoF.bm):bul(false,0)):E):null);}).join('')
