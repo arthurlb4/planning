@@ -7142,11 +7142,15 @@ function openCustomVacModal(){
     +'<div class="mr2" style="margin-bottom:6px"><div><label>Pause</label><select id="custom-pause" style="width:100%;'+fs+'"><option value="0">Sans</option><option value="45">45 min</option><option value="60">1h00</option></select></div><div></div></div>'
     +(key?'<div class="cv-hint" id="cv-calc" style="margin:-2px 2px 8px"></div>':'')
     +(key?opts:'')
-    // hauteur fixe : le menu des primes et la phrase d'explication occupent la même place, la ligne du montant est toujours réservée
-    +'<div style="display:grid;margin:8px 0 0">'
+    // Une seule ligne de hauteur fixe : [menu des primes | phrase d'explication] + montant à droite (prime « Autre » ou de formateur)
+    +'<div class="mrow" style="margin:8px 0 2px"><label id="cv-autre-lbl">'+(motif==='formateur'?'Prime de formateur (€)':'Primes du jour')+'</label>'
+    +'<div style="display:flex;gap:8px;align-items:stretch">'
+    +'<div style="flex:1;min-width:0;display:grid">'
+    +'<select id="custom-prime" onchange="_cvPrimeSync(this)" style="grid-area:1/1;width:100%;'+fs+';visibility:'+(cI&&motif!=='autre'?'hidden':'visible')+'"><option value="">Aucune</option><option value="antenne">Antenne</option><option value="reel">Réal</option><option value="coord">Coordination</option>'+(key?'<option value="autre">Autre (montant)</option>':'')+'</select>'
     +(cI?'<div class="cv-hint" id="cv-motif-hint" style="grid-area:1/1;align-self:center;margin:0 2px;visibility:'+(motif==='autre'?'hidden':'visible')+'">'+window._cvHints[motif]+'</div>':'')
-    +'<div id="cv-prime-row" class="mrow" style="grid-area:1/1;margin:0;visibility:'+(cI&&motif!=='autre'?'hidden':'visible')+'"><label>Primes du jour</label><select id="custom-prime" onchange="_cvPrimeSync(this)" style="width:100%;'+fs+'"><option value="">Aucune</option><option value="antenne">Antenne</option><option value="reel">Réal</option><option value="coord">Coordination</option>'+(key?'<option value="autre">Autre (montant)</option>':'')+'</select></div></div>'
-    +(key?'<div id="cv-autre" class="mr2" style="grid-template-columns:1fr;margin:8px 0 6px;display:grid;visibility:'+(prSel==='autre'||motif==='formateur'?'visible':'hidden')+'"><div><label id="cv-autre-lbl">'+(motif==='formateur'?'Prime de formateur (€)':'Montant de la prime (€)')+'</label><input id="cv-autre-amt" inputmode="decimal" placeholder="0,00" value="'+(dp&&dp.amt>0?String(dp.amt).replace('.',','):'')+'" style="width:100%;'+fs+'"></div></div>':'')
+    +'</div>'
+    +(key?'<div id="cv-autre" style="width:110px;flex:none;visibility:'+(prSel==='autre'||motif==='formateur'?'visible':'hidden')+'"><input id="cv-autre-amt" inputmode="decimal" placeholder="0,00 €" value="'+(dp&&dp.amt>0?String(dp.amt).replace('.',','):'')+'" style="width:100%;height:100%;box-sizing:border-box;'+fs+'"></div>':'')
+    +'</div></div>'
     +'</div>'
     +(key?'<div class="hd-card" style="'+card+'"><div class="btit" style="margin:0 0 8px">Heures de rendu acquises</div>'
       +'<div style="display:flex;gap:8px"><input id="cv-exr-lbl" placeholder="Réunion, formation…" value="'+String((x&&x.label)||'').replace(/"/g,'&quot;')+'" style="flex:1;min-width:0;'+fs+'"><select id="cv-exr-dur" onchange="_cvRmSync()" style="width:96px;'+fs+'">'+dO+'</select><button id="cv-exr-rm" class="cv-rm'+(x&&x.dur>0?' on':'')+'" type="button" aria-label="Retirer les heures acquises" onclick="_cvRmClick(this)"><i class="ti ti-trash"></i></button></div></div>'
@@ -7184,8 +7188,8 @@ function _cvCalc(){var el=document.getElementById('cv-calc'),R=window._cvCalcRef
 // Motif : formateur ouvre directement la prime de formateur
 function _cvSetMotif(k){var prev=window._cvMotif;window._cvMotif=k;document.querySelectorAll('#cv-motif button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-m')===k);});
   var h=document.getElementById('cv-motif-hint');if(h){h.textContent=(window._cvHints||{})[k]||'';h.style.visibility=k==='autre'?'hidden':'visible';}
-  var al=document.getElementById('cv-autre-lbl');if(al)al.textContent=k==='formateur'?'Prime de formateur (€)':'Montant de la prime (€)';
-  var row=document.getElementById('cv-prime-row');if(row)row.style.visibility=k==='autre'?'visible':'hidden'; // menu des primes : seulement pour « Horaires modifiés »
+  var al=document.getElementById('cv-autre-lbl');if(al)al.textContent=k==='formateur'?'Prime de formateur (€)':'Primes du jour';
+  var row=document.getElementById('custom-prime');if(row)row.style.visibility=k==='autre'?'visible':'hidden'; // menu des primes : seulement pour « Horaires modifiés »
   var sel=document.getElementById('custom-prime'),I=window._cvInit||{};
   if(k==='formateur'&&sel&&sel.value!=='autre'){sel.value='autre';_cvPrimeSync(sel);}            // formateur : champ du montant
   else if(k==='forme'&&sel){sel.value='';_cvPrimeSync(sel);}                                       // formé : rien à saisir
