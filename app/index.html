@@ -2599,7 +2599,8 @@ function _bulCompare(b){
   var nBad=rows.filter(function(r){return !r.ok;}).length+fixed.filter(function(f){return !f.ok;}).length;
   var adj=r2(diff+paidLater-lateSum+panDiff),later=[];rows.forEach(function(r){r.rFrom.forEach(function(f){if(later.indexOf(f)<0)later.push(f);});});
   var status=nBad||alerts.length?'ecart':Math.abs(adj)>0.1?'ecart':paidLater||panLater?'later':late.some(function(l){return !l.info;})?'late':'ok';
-  return{P:P,rows:rows,fixed:fixed,late:late,lateSum:lateSum,paidLater:paidLater,later:later.sort(),adj:adj,alerts:alerts,diff:diff,status:status,nBad:nBad,paniers:(bq.panier||rq.panier||v.paniers)?{bq:(bq.panier||0)+(rq.panier||0),aq:v.paniers||0,bm:r2((bm.panier||0)+(rm.panier||0))}:null};
+  var badList=rows.filter(function(r){return !r.ok;}).map(function(r){return r.k==='panier'?'Paniers':(_BUL_LBL[r.k]||r.k);}).concat(fixed.filter(function(f){return !f.ok;}).map(function(f){return f.lbl;})).concat(alerts.map(function(){return 'HS (demi-heure)';}));
+  return{badList:badList,P:P,rows:rows,fixed:fixed,late:late,lateSum:lateSum,paidLater:paidLater,later:later.sort(),adj:adj,alerts:alerts,diff:diff,status:status,nBad:nBad,paniers:(bq.panier||rq.panier||v.paniers)?{bq:(bq.panier||0)+(rq.panier||0),aq:v.paniers||0,bm:r2((bm.panier||0)+(rm.panier||0))}:null};
 }
 var _BUL_ST={ok:['✓','var(--green)','Conforme'],late:['✓','var(--green)','Conforme, avec des rattrapages'],later:['✓','var(--green)','Conforme, complété plus tard'],ecart:['⚠','var(--amber)','Écarts à vérifier']};
 // Écarts ignorés : un bulletin reste ignoré tant que son écart ne change pas, le tableau Gestion tant que c'est le même tableau et le même écart
@@ -2676,6 +2677,8 @@ function _payPageHtml(ym){
   (function(){var cum=0,paid=0,nb=0;for(var mm=0;mm<=m;mm++){var pp=calcPayeMois(y,mm);if(pp&&pp.configured)cum+=pp.total;var bb=(S.bulletins||{})[y*12+mm];if(bb){paid+=bb.brut||0;nb++;}}
     h+='<div class="pp-r" style="padding:3px 0"><span class="pp-l">Depuis janvier</span>'+(c?'<span class="pp-n" style="color:var(--text3)">'+(nb?fe(paid):'')+'</span>':'')+'<b style="color:var(--gold-pay)">'+fe(cum)+'</b></div>';})();
   h+='</div>';
+  // Lignes comptées en écart (sous la case d'en-tête, qui garde sa hauteur)
+  if(c&&c.status==='ecart'&&!_bulIgn(ym,c)&&c.badList.length)h+='<div style="font-size:11px;color:var(--amber);margin:6px 0 0">'+c.badList.length+' ligne'+(c.badList.length>1?'s':'')+' en écart : '+c.badList.join(', ')+'</div>';
   var fn=function(lbl,av){var f=fixBy[lbl];return c?(f?bul(f.ok,f.bm):cmp(0,av)):null;},fsum=function(ls){return ls.reduce(function(s,l){var f=fixBy[l];return s+(f?f.bm:0);},0);};
   h+=tit('Salaire de base',1)+row('Qualification',P.salQ,null,fn('Qualification',P.salQ))+row('Ancienneté',P.salAnc,null,fn('Ancienneté',P.salAnc))+sub('Sous-total',P.base,c?cmp(fsum(['Qualification','Ancienneté']),P.base):null);
   h+=tit('Variables <span style="font-weight:400;color:var(--text3);font-size:11px">('+MC[P.prevM]+')</span>')+vl+sub('Sous-total',v.total,c?cmp(vb,v.total):null);
