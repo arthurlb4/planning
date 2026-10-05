@@ -4076,9 +4076,24 @@ function rhCompareOpen(mode){
 // ── Import du tableau RH : point de départ du suivi (matelas, solde par mois d'origine, reports, date) ──
 function rhImportOpen(){rhCompareOpen('import');}
 // Après une inscription sans matelas ni rendus saisis : proposer d'importer le tableau RH
+// Après une inscription « avec un bulletin » : le demander d'abord (palier, ancienneté, contrat, groupe), puis le tableau Gestion
+function _bulImportPromptIfNeeded(){
+  let f=null;try{f=localStorage.getItem('pl_bul_import_prompt');}catch(e){}
+  if(!f||document.getElementById('modal-root').innerHTML)return false;
+  try{localStorage.removeItem('pl_bul_import_prompt');}catch(e){}
+  var next=function(){closeModal();setTimeout(function(){if(!_rhImportPromptIfNeeded())openSettingsModal(1);},250);};
+  window._bulOnbNext=next;
+  document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this){closeModal();setTimeout(_rhImportPromptIfNeeded,250);}"><div class="sheet tabmod">'
+    +'<div class="sh"></div><div class="st">Importer un bulletin de paie ?</div>'
+    +'<div style="font-size:13px;color:var(--text2);line-height:1.5;margin:8px 0 14px">Choisir un bulletin récent (PDF) : l’app y lit le palier, l’ancienneté, le contrat et le groupe. Avec plusieurs bulletins de mois qui se suivent, elle trouve aussi le mois d’anniversaire de l’ancienneté. Le fichier est lu sur l’appareil, rien n’est envoyé.</div>'
+    +'<button class="rc-btn" style="height:42px" onclick="closeModal();importBulletins(window._bulOnbNext)">Choisir le bulletin</button>'
+    +'<button class="rc-btn rc-btn2" style="margin-top:8px;height:38px" onclick="closeModal();setTimeout(_rhImportPromptIfNeeded,250)">Plus tard (Réglages → Paie)</button>'
+    +'</div></div>';
+  return true;
+}
 function _rhImportPromptIfNeeded(){
   let f=null;try{f=localStorage.getItem('pl_rh_import_prompt');}catch(e){}
-  if(!f||document.getElementById('modal-root').innerHTML)return;
+  if(!f||document.getElementById('modal-root').innerHTML)return false;
   try{localStorage.removeItem('pl_rh_import_prompt');}catch(e){}
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet tabmod">'
     +'<div class="sh"></div><div class="st">Importer le tableau Gestion ?</div>'
@@ -4086,6 +4101,7 @@ function _rhImportPromptIfNeeded(){
     +'<button class="rc-btn" style="height:42px" onclick="closeModal();rhImportOpen()">Choisir le tableau Gestion</button>'
     +'<button class="rc-btn rc-btn2" style="margin-top:8px;height:38px" onclick="closeModal()">Plus tard (Réglages → Tableau Gestion)</button>'
     +'</div></div>';
+  return true;
 }
 function _rhImportPlan(rh,keepCounted){
   const ed=new Date(rh.edition.getFullYear(),rh.edition.getMonth(),rh.edition.getDate(),12);
@@ -7703,7 +7719,7 @@ function init(){
     if(hpn&&S&&S.profile)hpn.textContent=S.profile.name||'Profil';
     _revealBody();
     showPayPromptIfNeeded();
-    setTimeout(_rhImportPromptIfNeeded,700);
+    setTimeout(function(){if(!_bulImportPromptIfNeeded())_rhImportPromptIfNeeded();},700);
     // Pousse au chargement les modifs locales qui n'auraient pas encore été synchronisées
     if(S&&S.profile&&window._authToken)cloudSave(_aid);
   }).catch(function(){
