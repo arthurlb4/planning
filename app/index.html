@@ -118,6 +118,9 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .ann-month.cur-month{border-color:rgba(98,170,220,.6);}
 
 .ann-mname{font-size:12px;font-weight:500;color:var(--text);margin-bottom:5px;}
+@media(max-width:719px){.ann-month{padding:var(--ann-pad,8px)!important}.ann-mname{font-size:11px;line-height:13px;margin-bottom:4px}}
+/* léger liseré sur les jours colorés, comme les cases du calendrier du mois */
+.ann-day:not(.sv):not(.rh):not(.fer):not(.ec2){box-shadow:inset 0 0 0 .5px rgba(255,250,243,.16)}
 .ann-mini{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;}
 .ann-day{width:100%;height:var(--ann-d-h,auto);border-radius:3px;}
 .ann-day.tv-am{background:var(--blue-l);}
@@ -7359,12 +7362,12 @@ function init(){
     // Arrêt façon iOS : la roue ne relance plus de tour, chaque rayon finit de s'éteindre à son rythme (les plus pâles partent d'abord)
     var stopSpin=function(){var ops=lines.map(function(l){return parseFloat(getComputedStyle(l).opacity)||0;});
       lines.forEach(function(l,k){l.style.transition='none';l.style.opacity=ops[k];});ind.classList.remove('load');void spin.offsetWidth;
-      lines.forEach(function(l,k){var d=ops[k]/.75*.8;l.style.transition='opacity '+d.toFixed(3)+'s linear';l.style.opacity=0;});};
+      lines.forEach(function(l,k){var d=ops[k]/.75*.45;l.style.transition='opacity '+d.toFixed(3)+'s linear';l.style.opacity=0;});};
     // Arrêt en haut : on laisse la tête finir son tour jusqu'au rayon du haut, puis arrêt ; c'est ce rayon qui s'éteint en dernier
     var stopEnd=0,stopAtTop=function(t0){var w=P-((Date.now()-t0)%P);
       // phase réelle du rayon du haut (l'animation peut avoir démarré un peu après le calcul) : on s'arrête quand il se rallume
       try{var an=lines[0].getAnimations()[0],pr=an&&an.effect.getComputedTiming().progress;if(pr!=null)w=(1-pr)*P;}catch(e){}
-      if(w<40)w+=P;stopEnd=Date.now()+w+1100;setTimeout(stopSpin,w);};
+      if(w<40)w+=P;stopEnd=Date.now()+w+650;setTimeout(stopSpin,w);};
     var hideSpin=function(ms){spin.style.transition='opacity '+ms+'ms ease,transform '+ms+'ms ease';spin.style.opacity=0;spin.style.transform='scale(.5)';};
     document.addEventListener('touchstart',function(e){
       if(window.scrollY>0||document.body.scrollTop>0||document.body.classList.contains('modal-open')||ind.classList.contains('load'))return;
@@ -7415,8 +7418,10 @@ function init(){
       window._ptrFade=function(){window._ptrFade=null;faded=true;stopAtTop(t0);};
       // écran parti : « Actualisé » (ou « Hors ligne »), puis le nom du mois revient
       window._ptrDone=function(){window._ptrDone=null;
-        var show=function(){ind.classList.remove('load');msg.textContent=off?'Hors ligne':'Actualisé';msg.style.opacity='';msg.classList.add('on');
-          later(function(){msg.classList.remove('on');later(function(){tit.style.transition='';tit.style.opacity='';},250);},off?1400:900);};
+        var show=function(){ind.classList.remove('load');
+          if(!off){tit.style.transition='';tit.style.opacity='';return;} // actualisé : le nom du mois revient directement
+          msg.textContent='Hors ligne';msg.style.opacity='';msg.classList.add('on');
+          later(function(){msg.classList.remove('on');later(function(){tit.style.transition='';tit.style.opacity='';},250);},1400);};
         if(!faded){faded=true;stopAtTop(t0);}
         later(show,Math.max(0,stopEnd-Date.now())+80);};
       setTimeout(function(){if(window._ptrFade)window._ptrFade();if(window._ptrDone)window._ptrDone();},4000); // filet de sécurité si l'app tarde
@@ -7565,6 +7570,8 @@ function init(){
     const g=_annGrid(),el=document.createElement('div');
     el.className='annual-grid ann-peek';el.setAttribute('aria-hidden','true');
     el.style.cssText='position:absolute;pointer-events:none;margin:0;top:'+g.offsetTop+'px;left:'+g.offsetLeft+'px;width:'+g.offsetWidth+'px';
+    // même grille compacte que la vue annuelle affichée (4 colonnes × 3 rangées sur téléphone)
+    if(g.style.gridTemplateColumns){el.style.gridTemplateColumns=g.style.gridTemplateColumns;el.style.gridTemplateRows=g.style.gridTemplateRows;el.style.height=g.style.height;}
     el.innerHTML=_annHtml(y);
     g.parentNode.appendChild(el);return el;
   }
@@ -8204,12 +8211,15 @@ function _fitAnnual(){
   const ncols=window.innerWidth<600?3:4;
   const rowGap=6,colGap=6,mPad=6,mBorder=2,cellGap=2;
   if(window.innerWidth<720){
-    // Mobile: width-driven only, grid scrolls vertically
-    const availW=(col?col.clientWidth:window.innerWidth)-0;
-    const perMonthW=(availW-(ncols-1)*colGap)/ncols;
-    const miniW=perMonthW-2*mPad-2*mBorder;
-    const cellH=Math.max(3,Math.round(((miniW-6*cellGap)/7)/1.2));
-    document.documentElement.style.setProperty('--ann-d-h',cellH+'px');
+    // Téléphone : 4 colonnes × 3 rangées, à la hauteur exacte du calendrier du mois (même place, rien ne bouge en dessous)
+    const cw=document.querySelector('#month-view > .cal-wrap');if(cw&&cw.offsetHeight>100)window._calH=cw.offsetHeight;
+    const H=window._calH||304,g=document.getElementById('ann-grid');
+    if(g){g.style.gridTemplateColumns='repeat(4,1fr)';g.style.marginBottom='0';g.style.height=H+'px';g.style.gridTemplateRows='repeat(3,1fr)';}
+    const G=8,P=7,NM=17,CG=2,availW=col?col.clientWidth:window.innerWidth;
+    const perMonthH=(H-2*G)/3,perMonthW=(availW-3*G)/4;
+    const fromH=(perMonthH-2*P-2-NM-5*CG)/6,fromW=(perMonthW-2*P-2-6*CG)/7;
+    document.documentElement.style.setProperty('--ann-d-h',Math.max(3,Math.min(fromH,fromW*1.15)).toFixed(2)+'px');
+    document.documentElement.style.setProperty('--ann-pad',P+'px');
     return;
   }
   const availH=window.innerHeight/_zoomFix()-hdrH-mbarH-20;
@@ -8291,8 +8301,10 @@ function _revealBody(){
   try{var cl=b.cloneNode(true);cl.classList.remove('ptr');cl.style.opacity='';cl.style.pointerEvents='';var bp=cl.querySelector('.bt-ptr');if(bp)bp.remove();window._bootCopy=cl;}catch(e){}
   // Durée minimale d'affichage (~1 pulsation) même si les données arrivent tout de suite
   var wait=Math.max(0,1200-performance.now());
+  // la roue commence à s'arrêter un peu avant que l'écran s'estompe (elle doit d'abord revenir en haut)
+  setTimeout(function(){if(window._ptrFade)window._ptrFade();},Math.max(0,wait-350));
   setTimeout(function(){
-    b.style.opacity='0';b.style.pointerEvents='none';if(window._ptrFade)window._ptrFade(); // la roue de l'app s'efface avec l'écran
+    b.style.opacity='0';b.style.pointerEvents='none';
     // retour d'actualisation : la suite (roue → « Actualisé ✓ » → mois) une fois l'écran de chargement parti
     setTimeout(function(){b.remove();if(window._ptrDone)window._ptrDone();},440);
   },wait);
