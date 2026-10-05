@@ -2683,7 +2683,8 @@ function _payPageHtml(ym){
     else msg='⚠ Le total correspond, mais des lignes diffèrent';
     var ig=c.status==='ecart'&&_bulIgn(ym,c),nI=c.nIgn||0;
     if(ig)msg='Écarts ignorés';else if(c.status==='ecart'&&!(A>0.1)&&!c.badList.length)msg='✓ Conforme, écarts ignorés';
-    h+='<div style="font-size:11px;font-weight:600;margin:0 0 4px;color:'+(ig?'var(--text3)':c.status==='ecart'&&c.badList.length?'var(--amber)':'var(--green)')+'">'+msg+(nI&&!ig?'<span style="font-weight:400;color:var(--text3)"> · '+nI+' ignoré'+(nI>1?'s':'')+'</span>':'')+'</div>';}
+    h+='<div style="font-size:11px;font-weight:600;margin:0 0 4px;display:flex;align-items:baseline;color:'+(ig?'var(--text3)':c.status==='ecart'&&c.badList.length?'var(--amber)':'var(--green)')+'"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+msg+(nI&&!ig?'<span style="font-weight:400;color:var(--text3)"> · '+nI+' ignoré'+(nI>1?'s':'')+'</span>':'')+'</span>'
+      +(c.status==='ecart'&&c.items.length?'<a style="font-weight:400;color:var(--blue);cursor:pointer;margin-left:auto;padding-left:8px;flex-shrink:0;white-space:nowrap" onclick="event.stopPropagation();_openBulIgnMenu(this,'+ym+')">Ignorer…</a>':'')+'</div>';}
   var pR=(v.panierRate!=null?v.panierRate:getPanierRate());
   // Ligne paniers et ligne de statut toujours présentes : la case garde la même hauteur
   if(!c)h+='<div style="font-size:11px;margin:0 0 4px;color:var(--text3)">Pas de bulletin</div>';
@@ -2710,11 +2711,6 @@ function _payPageHtml(ym){
     +P.primesCustom.map(function(p){return row(p.label,p.montant,null);}).join('')
     +sub('Sous-total',fa,c?cmp(fsum(['Mesures NAO','Ind. GPE','PFA','Suppl. familial']),fa):null);
   if(c&&c.late.length)h+=tit('Rattrapages et autres lignes')+c.late.map(function(l){return '<div class="pp-r"><span class="pp-l">'+l.lbl+(l.q!=null?' ('+(_BUL_H[l.k]?fmtMin(Math.round(l.q*60)):l.q)+')':'')+'<span style="display:block;font-size:11px;font-style:italic">'+(l.info?'sans effet sur la comparaison':'travail '+_deMois(l.ym)+' '+Math.floor(l.ym/12)+((S.bulletins||{})[l.ym+1]?', manquait sur le <a onclick="event.stopPropagation();_swipeGo(-1,function(){openBulletinModal('+(l.ym+1)+')})" style="color:var(--blue);cursor:pointer;font-style:normal">bulletin '+_deMois(l.ym+1)+'</a>':''))+'</span></span><span class="pp-n" style="color:var(--text2)">'+fe(l.mt)+'</span><b style="color:var(--text3)">—</b></div>';}).join('');
-  // Écarts : une ligne par problème, chacun ignorable (en bas de page, rien ne se décale au-dessus)
-  if(c&&c.status==='ecart'&&c.items.length){var lk2='color:var(--blue);cursor:pointer;margin-left:10px;white-space:nowrap';
-    h+=tit('Écarts')+c.items.map(function(i){return '<div class="pp-r"'+(i.ign?' style="color:var(--text3)"':'')+'><span class="pp-l"'+(i.ign?' style="color:var(--text3)"':'')+'>'+i.lbl+(i.ign?' · ignoré':'')+'</span>'
-      +(i.d?'<b style="font-weight:500;color:'+(i.ign?'var(--text3)':i.d<0?'var(--red)':'var(--green)')+'">'+(i.d>0?'+':'−')+fe(Math.abs(i.d))+'</b>':'')
-      +'<a style="'+lk2+'" onclick="bulIgnL('+ym+',\''+i.id+'\','+(i.ign?0:1)+')">'+(i.ign?'Ne plus ignorer':'Ignorer')+'</a></div>';}).join('');}
   if(c)h+=c.alerts.map(function(a){return '<div style="font-size:11px;color:var(--amber);display:flex;gap:5px;padding:10px 0 0;line-height:1.45"><span>⚠</span><span>'+a+'</span></div>';}).join('');
   h+='<div style="font-size:11px;color:var(--text3);text-align:center;margin-top:10px">taux : '+fmtEuro(P.tauxH)+'/h · '+P.heures.toFixed(2)+'h/mois</div>';
   h+=(b?'':'<div style="font-size:11px;color:var(--text3);line-height:1.5;margin:14px 0 0">Importer le PDF du bulletin pour que l’app compare chaque ligne. Le fichier est lu sur le téléphone et n’est envoyé nulle part ; seuls les montants sont gardés.</div>')
@@ -3668,6 +3664,25 @@ function _openRepMenu(btn,ym,limit,rr){
   m.style.left=left+'px';m.style.top=top+'px';m.style.transformOrigin=(r.left+r.width/2-left)+'px '+(below?'0':'100%');
   requestAnimationFrame(function(){veil.classList.add('on');m.classList.add('on');});
 }
+// Paie du mois : sous-menu des écarts, chacun ignorable (gardé ignoré tant que son montant ne change pas)
+function _openBulIgnMenu(btn,ym){
+  var c=_bulCompare(S.bulletins[ym]),fe=function(x){return fmtEuro(Math.abs(x)).replace(/\s*€/,'');};
+  var items=c.items.map(function(i){return '<button onclick="_bulIgnAct('+ym+',\''+i.id+'\','+(i.ign?0:1)+')"><i class="ti '+(i.ign?'ti-eye-off':'ti-alert-triangle')+'" style="color:'+(i.ign?'var(--text3)':'var(--amber)')+'"></i>'
+    +'<span style="'+(i.ign?'color:var(--text3)':'')+'">'+i.lbl+'</span><span class="rep-tag">'+(i.d?(i.d>0?'+':'−')+fe(i.d)+' · ':'')+(i.ign?'ignoré':'ignorer')+'</span></button>';}).join('');
+  _haptic();
+  var veil=document.createElement('div');veil.id='lp-veil';veil.style.zIndex=450;
+  veil.addEventListener('click',function(e){e.stopPropagation();_closeDayMenu();});
+  veil.addEventListener('touchmove',function(e){e.preventDefault();},{passive:false});
+  var m=document.createElement('div');m.id='lp-menu';m.style.zIndex=451;
+  m.innerHTML='<div class="lp-h">Écarts de '+MF_(ym)+' · toucher pour ignorer</div>'+items;
+  document.body.appendChild(veil);document.body.appendChild(m);
+  var r=btn.getBoundingClientRect(),mw=m.offsetWidth,mh=m.offsetHeight,vw=window.innerWidth,vh=window.innerHeight;
+  var left=Math.min(Math.max(12,r.right-mw),vw-mw-12),below=r.bottom+8+mh<vh-12,top=below?r.bottom+8:Math.max(12,r.top-8-mh);
+  m.style.left=left+'px';m.style.top=top+'px';m.style.transformOrigin=(r.left+r.width/2-left)+'px '+(below?'0':'100%');
+  requestAnimationFrame(function(){veil.classList.add('on');m.classList.add('on');});
+}
+function MF_(ym){return ML[ym%12].toLowerCase()+' '+Math.floor(ym/12);}
+function _bulIgnAct(ym,id,on){_haptic();_closeDayMenu();bulIgnL(ym,id,on);}
 function _repMenuAct(ym,n,limit){
   _haptic();_closeDayMenu();
   if(n===getEphExtensions(ym))return;
