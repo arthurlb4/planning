@@ -131,6 +131,14 @@ input,textarea,select{user-select:text;-webkit-user-select:text;}
         <div id="reg-s2" style="display:none">
           <div class="back" onclick="regGoStep1()" style="margin-bottom:10px">← Retour</div>
           <div class="field"><label>Ligne actuelle</label><select id="reg-line"></select></div>
+          <!-- Tableau Gestion d'abord : matelas et heures mois par mois repris du fichier après la création -->
+          <div class="rsec">Matelas et rendus</div>
+          <div style="display:flex;gap:8px;margin:6px 0 8px">
+            <button type="button" id="reg-rh-imp" class="btn" style="flex:1;margin:0;height:40px;font-size:13px" onclick="regRhMode(1)">Importer le tableau</button>
+            <button type="button" id="reg-rh-man" class="btn" style="flex:1;margin:0;height:40px;font-size:13px;background:transparent;color:var(--text2);border:0.5px solid var(--border)" onclick="regRhMode(0)">Saisir à la main</button>
+          </div>
+          <div id="reg-rh-note" style="font-size:11.5px;color:var(--text3);line-height:1.5;margin-bottom:10px">Recommandé : juste après la création, l’app demande le tableau Gestion (Excel envoyé par le gestionnaire) et en reprend le matelas et les heures mois par mois, avec leurs dates d’expiration. Le fichier est lu sur l’appareil.</div>
+          <div id="reg-rh-manual" style="display:none">
           <div class="rrow">
             <span class="rrow-lbl">Matelas (h)</span>
             <input type="text" id="reg-matelas" placeholder="00h00">
@@ -139,7 +147,7 @@ input,textarea,select{user-select:text;-webkit-user-select:text;}
             <span class="rrow-lbl">Rendus éphem. (h)</span>
             <input type="text" id="reg-eph" placeholder="00h00">
           </div>
-          <div style="font-size:11px;color:var(--text3);line-height:1.5;margin:-2px 0 10px">Tableau RH (Excel) disponible ? Laisser ces deux champs vides : l’app proposera de l’importer juste après, mois par mois.</div>
+          </div>
           <div class="rsec">Génération des rendus</div>
           <div class="rrow">
             <span class="rrow-lbl">Dimanches</span>
@@ -325,6 +333,15 @@ function regGoStep3() {
   });
 }
 
+// Étape profil : import du tableau Gestion (par défaut) ou saisie à la main du matelas et des rendus
+var _regRhImport=true;
+function regRhMode(imp){
+  _regRhImport=!!imp;
+  document.getElementById('reg-rh-manual').style.display=imp?'none':'';
+  document.getElementById('reg-rh-note').style.display=imp?'':'none';
+  var on='',off='background:transparent;color:var(--text2);border:0.5px solid var(--border)',st='flex:1;margin:0;height:40px;font-size:13px;';
+  document.getElementById('reg-rh-imp').style.cssText=st+(imp?on:off);document.getElementById('reg-rh-man').style.cssText=st+(imp?off:on);
+}
 // Étape paie : import d'un bulletin (par défaut) ou saisie à la main
 var _regBulImport=true;
 function regPayMode(bul){
@@ -584,8 +601,8 @@ async function doRegister() {
   const pwd = document.getElementById('reg-pwd').value;
   // Profile data
   const regLineIdx = parseInt(document.getElementById('reg-line')?.value||'0');
-  const regMatelasRaw = document.getElementById('reg-matelas')?.value||'';
-  const regEphRaw = document.getElementById('reg-eph')?.value||'';
+  const regMatelasRaw = _regRhImport ? '' : (document.getElementById('reg-matelas')?.value||'');
+  const regEphRaw = _regRhImport ? '' : (document.getElementById('reg-eph')?.value||'');
   const regPalierVal = document.getElementById('reg-palier')?.value||'';
   const regPalier = parseInt(regPalierVal);
   const regAnc = parseFloat(document.getElementById('reg-anc')?.value||'');
@@ -645,7 +662,7 @@ async function doRegister() {
     };
     localStorage.setItem('pl_v8', JSON.stringify({p:{default:profileData},a:'default'}));
     // Matelas et rendus laissés vides : proposer l'import du tableau RH à l'arrivée dans l'app
-    if (!regMatelasRaw && !regEphRaw) localStorage.setItem('pl_rh_import_prompt', '1');
+    if (_regRhImport || (!regMatelasRaw && !regEphRaw)) localStorage.setItem('pl_rh_import_prompt', '1');
     // Paie à remplir depuis un bulletin : l'app le demande à l'arrivée
     if (_regBulImport) localStorage.setItem('pl_bul_import_prompt', '1');
     localStorage.setItem('planning_aid', 'default');
