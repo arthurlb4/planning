@@ -1538,7 +1538,7 @@ export default {
       }
       if (path === '/push/test') {
         var n = 0;
-        for (var s2 of (rec.subs || [])) { try { if (await sendPush(env, s2, { title: 'Planning', body: 'Les notifications fonctionnent.', tag: 'test', url: './' }) < 300) n++; } catch (e) {} }
+        for (var s2 of (rec.subs || [])) { try { if (await sendPush(env, s2, { title: 'Planning', body: 'test cedric', tag: 'test', url: './' }) < 300) n++; } catch (e) {} }
         return resp({ ok: n > 0, sent: n });
       }
       if (path === '/push/alerts' && !(rec.subs || []).length) return resp({ ok: true, subs: 0 });

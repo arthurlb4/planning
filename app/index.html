@@ -2574,7 +2574,7 @@ function _bulPayApply(){
 }
 // Fenêtre de proposition (après un import, ou depuis Réglages → Paie)
 function _bulPayPropose(then){
-  var D=_bulPayDiffs();if(!D.n){if(then)then();else _infoToast('Réglages de paie conformes aux bulletins');return false;}
+  var D=_bulPayDiffs();if(!D.n){var nb=Object.keys(S.bulletins||{}).length;_haptic();_infoToast('✓ Réglages conformes '+(nb>1?'aux '+nb+' bulletins':'au bulletin'));if(then)then();return false;}
   window._bulPayThen=then||null;
   var mo=function(ym){return MC[ym%12]+' '+Math.floor(ym/12);},li=function(l,v,c,ym){return '<div class="recap-row" style="font-size:12px;min-height:26px;gap:10px"><span style="color:var(--text3)">'+l+'</span><span><b>'+v+'</b><span style="color:var(--text3)"> · dès '+mo(ym)+(c?' (avant : '+c+')':'')+'</span></span></div>';};
   var rows=D.palier.map(function(c){return li('Palier','P'+c.v,c.cur?'P'+c.cur:'',c.ym);}).join('')
@@ -6676,7 +6676,11 @@ function openSettingsModal(tab){
     +_sh+'Génération des rendus</div>'
     +'<div class="srow" '+_sr+'><div style="display:flex;gap:20px;align-items:center;flex:1;padding-left:4px">'+_rendDots+'</div><button '+_bS+' onclick="openAnnualSettingsModal('+new Date().getFullYear()+')">Changer</button></div>'
     +_sh+'Soldes initiaux</div>'
-    +'<div class="srow" '+_sr+'><div class="slbl">Tableau Gestion <span style="color:var(--text3);font-size:10px">'+(pr.profile.rhImportedAt?'importé, suivi depuis le '+new Date(pr.profile.rhImportedAt+'T12:00:00').toLocaleDateString('fr-FR'):'repartir du fichier Excel')+'</span></div><div style="display:flex;gap:6px">'+(pr.profile._rhImportBackup?'<button '+_bS+' onclick="rhImportUndo()">Annuler</button>':'')+'<button '+_bS+' onclick="closeModal();rhImportOpen()">Importer</button></div></div>'
+    // Même rangée que pour la paie : comparer au tableau Gestion importé, ou en importer un
+    +(function(){var has=!!(pr.profile.rhTable||pr.profile.rhImportedAt);
+      return '<div style="display:flex;align-items:center;gap:8px;margin:0 0 8px"><span style="flex:1;font-size:11px;color:var(--text3);line-height:1.4">'+(has?'Comparer ces soldes au tableau Gestion'+(pr.profile.rhImportedAt?' (suivi depuis le '+new Date(pr.profile.rhImportedAt+'T12:00:00').toLocaleDateString('fr-FR')+')':'')+'.':'Remplir ces soldes à partir du tableau Gestion (Excel).')+'</span>'
+        +(pr.profile._rhImportBackup?'<button class="adj-pill" style="width:auto;padding:0 12px;height:28px;font-size:12px;white-space:nowrap" onclick="rhImportUndo()">Annuler l’import</button>':'')
+        +'<button class="adj-pill" style="width:auto;padding:0 12px;height:28px;font-size:12px;white-space:nowrap" onclick="closeModal();'+(has?'rhOpenFrom(\'recap\')':'rhImportOpen()')+'"><i class="ti ti-file-import" style="margin-right:4px"></i>'+(has?'Vérifier':'Importer le tableau')+'</button></div>';})()
     +'<div class="srow" '+_sr+'><div class="slbl">Matelas <span style="color:var(--text3);font-size:10px">stock initial permanent</span></div><input id="ps-matelas" '+_onb+' value="'+fmtMin(pr.profile.matelas||0)+'" onfocus="if(this.value)this.select()" style="'+_inpR+'"></div>'
     +'<div class="srow" '+_sr+'><div class="slbl">Stock éphémère <span style="color:var(--text3);font-size:10px">stock initial éphémère</span></div><input id="ps-eph" '+_onb+' value="'+fmtMin(Math.round((pr.profile.ephSolde||0)*60))+'" onfocus="if(this.value)this.select()" style="'+_inpR+'"></div>'
     +'<div class="srow" '+_sr+'><div class="slbl">CET <span style="color:var(--text3);font-size:10px">compte épargne-temps initial</span></div><input id="ps-cet-init" type="number" '+_onb+' value="'+(pr.profile.cetInit||0)+'" onfocus="if(this.value)this.select()" style="'+_inpR+'"></div>';
