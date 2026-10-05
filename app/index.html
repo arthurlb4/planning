@@ -7200,7 +7200,7 @@ function openCustomVacModal(){
   document.getElementById('custom-fin').value=fin;
   document.getElementById('custom-pause').value=pause;
   document.getElementById('custom-prime').value=prSel;
-  document.getElementById('custom-name').addEventListener('input',function(){_cvFromVac(this.value);}); // pré-remplit dès que le nom tapé correspond à une vacation connue
+  _cvAuto=null;document.getElementById('custom-name').addEventListener('input',function(){_cvFromVac(this.value);}); // pré-remplit dès que le nom tapé correspond à une vacation connue
   ['custom-deb','custom-fin','custom-pause'].forEach(function(id){var e=document.getElementById(id);if(e)e.addEventListener('change',_cvCalc);});_cvCalc();
   // Déjà « Formé » : la liste verrouillée n'est pas un changement de la vacation
   if(document.getElementById('cv-motif')&&_cvPrimeLock(motif)){window._cvInit.prime='';window._cvInit.sel='';}
@@ -7210,15 +7210,23 @@ function _cvVacOpts(date,VAC){var dw=date.getDay(),dt=dw===6?'sat':dw===0?'sun':
   if(!ns)ns=Object.keys(VAC).filter(function(n){return VAC_STD[n]||_globalVacs[n];});
   var seen={};return ns.filter(function(n){var v=VAC[n];if(!v||v.mixte||!(v.dur>0)||n==='RH'||n==='SV')return false;var ts=String(v.type||'all').split(',');if(_globalVacs[n]&&!(ts.includes('all')||ts.includes(dt)))return false;var l=vLbl(n,VAC);if(seen[l])return false;seen[l]=1;return true;})
     .map(function(n){var v=VAC[n];return '<option value="'+String(vLbl(n,VAC)).replace(/"/g,'&quot;')+'">'+(v.deb||'')+'–'+(v.fin||'')+'</option>';}).join('');}
-function _cvFromVac(lbl){var key=pendingKey;if(!lbl||!key)return;var date=new Date(key+'T12:00:00'),VAC=getVAC(date),L=lbl.trim().toLowerCase();
+// Pré-remplissage : on garde les valeurs d'avant ; si le nom ne correspond plus à une vacation (C1 → C10), elles reviennent
+// (sauf si l'utilisateur a retouché les champs entre-temps)
+var _cvAuto=null;
+function _cvVals(){var g=function(id){var e=document.getElementById(id);return e?e.value:'';};return{deb:g('custom-deb'),fin:g('custom-fin'),pause:g('custom-pause'),prime:g('custom-prime')};}
+function _cvUnfill(){if(!_cvAuto)return;var a=_cvAuto;_cvAuto=null;if(JSON.stringify(_cvVals())!==JSON.stringify(a.filled))return;
+  var set=function(id,val){var e=document.getElementById(id);if(e)e.value=val;};set('custom-deb',a.snap.deb);set('custom-fin',a.snap.fin);set('custom-pause',a.snap.pause);
+  var sel=document.getElementById('custom-prime');if(sel){sel.value=a.snap.prime;_cvPrimeSync(sel);}_cvCalc();}
+function _cvFromVac(lbl){var key=pendingKey;if(!lbl||!key){_cvUnfill();return;}var date=new Date(key+'T12:00:00'),VAC=getVAC(date),L=lbl.trim().toLowerCase();
   // Même label pour plusieurs vacations (ex. C1 du cycle actuel et C1 par défaut de l'app) : celle du cycle du jour d'abord, puis les vacations de l'équipe, puis les perso, en dernier les horaires par défaut
   var _cl=_cycleVacList(date)||[],_cvPrio=function(k){return _cl.indexOf(k)>=0?0:(_globalVacs[k]?1:(S.customVacs&&S.customVacs[k]?2:3));};
-  var n=Object.keys(VAC).filter(function(k){return !(S.customVacs&&S.customVacs[k]&&S.customVacs[k].hidden)&&String(vLbl(k,VAC)).toLowerCase()===L;}).sort(function(a,b){return _cvPrio(a)-_cvPrio(b);})[0],v=n&&VAC[n];if(!v||v.mixte||!v.deb||!v.fin)return;
+  var n=Object.keys(VAC).filter(function(k){return !(S.customVacs&&S.customVacs[k]&&S.customVacs[k].hidden)&&String(vLbl(k,VAC)).toLowerCase()===L;}).sort(function(a,b){return _cvPrio(a)-_cvPrio(b);})[0],v=n&&VAC[n];if(!v||v.mixte||!v.deb||!v.fin){_cvUnfill();return;}
+  var _snap=_cvAuto?_cvAuto.snap:_cvVals();
   var set=function(id,val){var e=document.getElementById(id);if(e)e.value=val;};set('custom-deb',v.deb);set('custom-fin',v.fin);
   var tot=parseHM(v.fin)-parseHM(v.deb);if(tot<0)tot+=1440;var pz=tot-(v.dur||0);set('custom-pause',pz>=60?'60':pz>=45?'45':'0');
   var sel=document.getElementById('custom-prime'),pr=v.primes||{},pv=pr.antenne?'antenne':pr.reel?'reel':pr.coord?'coord':'';
   if(sel&&sel.value!=='autre'){var o=sel.querySelector('option[value="'+pv+'"]');if(!pv||(o&&!o.disabled))sel.value=pv;_cvPrimeSync(sel);}
-  _cvCalc();}
+  _cvAuto={snap:_snap,filled:_cvVals()};_cvCalc();}
 // Ligne de calcul sous les horaires : heures faites, heures comptées, heures sup
 function _cvCalc(){var el=document.getElementById('cv-calc'),R=window._cvCalcRef;if(!el)return;if(!R){el.textContent='';return;}
   var g=function(id){var e=document.getElementById(id);return e?e.value:'';},d=g('custom-deb'),f=g('custom-fin');if(!d||!f){el.textContent='';return;}
