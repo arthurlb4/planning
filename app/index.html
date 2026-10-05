@@ -517,7 +517,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .eph-u-exp{width:84px;min-width:84px;box-sizing:border-box;text-align:right;flex-shrink:0;white-space:nowrap;font-size:11px;color:var(--text3);padding-top:1px;display:flex;flex-direction:column;align-items:flex-end;gap:1px}
 .rep-pill{display:flex;width:100%;box-sizing:border-box;justify-content:flex-end;align-items:center;gap:3px;padding:3px 7px;border:none;border-radius:999px;background:rgba(255,250,243,.09);color:var(--text);font:500 12px var(--font);cursor:pointer;white-space:nowrap;margin-top:-3px}
 .rep-pill i{font-size:11px;color:var(--text3)}.rep-pill:active{background:rgba(255,250,243,.16)}
-.rep-pill.lost{background:rgba(192,57,43,.18);color:#e07a6e}.rep-pill.on{background:rgba(224,140,60,.2);color:var(--orange)}.rep-pill.warn{box-shadow:inset 0 0 0 1px rgba(224,160,48,.55)}
+.rep-pill.urg{color:var(--orange);box-shadow:inset 0 0 0 1px rgba(224,140,60,.5)}.rep-pill.lost{background:rgba(192,57,43,.18);color:#e07a6e}.rep-pill.on{background:rgba(224,140,60,.2);color:var(--orange)}.rep-pill.warn{box-shadow:inset 0 0 0 1px rgba(224,160,48,.55)}
 .rep-sub{display:block;font-size:10px;color:var(--text3);line-height:1.2}
 #lp-menu .rep-tag{margin-left:auto;font-size:11px;color:var(--text3);font-weight:400}
 .eph-urow.expired{opacity:.45;}
@@ -4989,12 +4989,14 @@ function openMergedRenduCgModal(limit,tab){
     // Expiration : simple date, ou pastille « date › » qui ouvre le menu des reports quand un report a un sens
     // (heures restantes ou report déjà posé, mois pas encore expiré). Le tableau Gestion : ✓ s'il donne la même date, ⚠ sinon.
     const rr=_rhRep[ym]!==undefined&&!isExp?_rhRep[ym]:-1;
+    const _mLeft=expYm-TODAY_YM,_urg=!isExp&&!isFut&&avail>0&&_mLeft<=1;
+    const _urgC=isExp?(lostMinM>0?'rgba(214,72,56,.75)':'transparent'):isFut?'rgba(150,180,100,.4)':_urg?'var(--orange)':'var(--rend-text)';
     let expLblM;
     // Heures perdues : le montant ouvre aussi le menu des reports (un report accordé après coup par le gestionnaire les rend)
     if(isExp)expLblM=lostMinM>0?'<button class="rep-pill lost" onclick="event.stopPropagation();_openRepMenu(this,'+ym+','+limit+',-1)">−'+fmtMin(lostMinM)+' <i class="ti ti-chevron-down"></i></button>':'<span style="color:var(--text3)">'+_dl(expYm)+'</span>';
     else if(isFut||(avail<=0&&!ext))expLblM='<span style="color:var(--text3)">'+_dl(expYm)+'</span>';
     else{
-      expLblM='<button class="rep-pill'+(ext>0?' on':'')+(rr>=0&&rr!==ext?' warn':'')+'" onclick="event.stopPropagation();_openRepMenu(this,'+ym+','+limit+','+rr+')">'
+      expLblM='<button class="rep-pill'+(ext>0?' on':'')+(_urg&&!ext?' urg':'')+(rr>=0&&rr!==ext?' warn':'')+'" onclick="event.stopPropagation();_openRepMenu(this,'+ym+','+limit+','+rr+')">'
         +(rr>=0?(rr===ext?'<span style="color:var(--green)">✓</span> ':'<span style="color:var(--amber)">⚠</span> '):'')
         +_dl(expYm)+' <i class="ti ti-chevron-down"></i></button>'
         // pas d'annotation sous la date (le report et l'écart avec le tableau se voient dans la couleur et le menu)
@@ -5005,7 +5007,9 @@ function openMergedRenduCgModal(limit,tab){
       +'<div class="eph-u-mc">'+ML2[m]+' '+String(y).slice(2)+'</div>'
       +'<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">'
       +'<div class="eph-u-flow" style="display:flex;align-items:center;justify-content:space-between"><div><span style="color:var(--blue);font-size:11px">'+fmtMin(orig)+'</span><span style="color:var(--text3);font-size:11px;margin:0 2px">→</span><span style="font-weight:500;color:'+availColor+'">'+fmtMin(avail)+'</span></div></div>'
-      +'<div class="eph-bw"><div class="eph-b2" style="width:'+origPct+'%;background:var(--blue);opacity:'+blueOpacity+'"></div><div class="eph-b" style="width:'+barPct+'%;background:var(--rend-text);opacity:'+greenOpacity+'"></div></div>'
+      // Une seule barre : longueur = heures acquises ; partie déjà utilisée en gris, reste coloré selon l'urgence
+      // (vert : a le temps ; orange : expire ce mois-ci ou le suivant ; rouge : perdu ; pâle : mois à venir)
+      +'<div class="eph-bw"><div class="eph-b2" style="width:'+origPct+'%;background:rgba(255,250,243,.16)"></div><div class="eph-b" style="width:'+(isExp&&lostMinM>0?Math.round(lostMinM/maxV*100):barPct)+'%;background:'+_urgC+'"></div></div>'
       +'</div>'
       +'<div class="eph-u-exp">'+expLblM+'</div>'
       +'</div>';
