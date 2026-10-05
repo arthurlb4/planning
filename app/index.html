@@ -701,6 +701,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 html.kb .overlay{top:var(--vvt,0);bottom:auto;height:var(--vvh,100%)}html.kb .sheet{max-height:calc(var(--vvh,100dvh) - 8px)!important;padding-bottom:16px}
 @supports(height:1dvh){.sheet{max-height:90dvh}.pp-sheet{height:88dvh}@media(min-width:721px){.sheet{max-height:85dvh}.pp-sheet{height:85dvh}}}
 /* Taille standard des grandes fenêtres (Suivi/Rendus/Congés, Variables, Paie du mois, Bulletins, Tableau Gestion) : même hauteur fixe */
+.sheet.daymod{height:min(var(--dayh,85vh),85vh);display:flex;flex-direction:column}.sheet.daymod>*{flex-shrink:0}.sheet.daymod>.mclose{margin-top:auto}@supports(height:1dvh){.sheet.daymod{height:min(var(--dayh,85dvh),85dvh)}}
 .sheet.smod,.sheet.tabmod,.sheet.pp-sheet{height:85vh}@supports(height:1dvh){.sheet.smod,.sheet.tabmod,.sheet.pp-sheet{height:85dvh}}
 .sv-tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px}.sv-tile{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:14px 12px;border:0.5px solid var(--border);border-radius:14px;background:var(--bg3);font-family:var(--font);cursor:pointer;text-align:left}.sv-tile .t{font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.07em}.sv-tile b{font-size:17px;font-weight:600;font-family:var(--font-num);line-height:1.2}.sv-tile small{font-size:11px;color:var(--text3);line-height:1.35}
 .sv-card{background:var(--bg3);border:0.5px solid var(--border);border-radius:14px;padding:12px;margin-bottom:8px}.sv-h{font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px}.sv-h small{font-weight:400;font-size:10.5px;color:var(--text3);margin-left:4px}
@@ -3216,23 +3217,16 @@ function _dayHSMin(date){
   }
   const d=Math.max(0,w-_dayBase);return d>0?Math.ceil(d/30)*30:0;
 }
-function openDay(key){
-  if(!key)return;pendingKey=key;_lpk=key;
-  if(!document.body.classList.contains('modal-open'))_lockBodyScroll();
-  var date=new Date(key+'T12:00:00'),VAC=getVAC(date),v2=getVac(date),vac=v2.vac,ov=v2.ov,fromSV=v2.fromSV,absent=v2.absent,echange=v2.echange,ecSelf=v2.ecSelf,li=v2.li,cycleVac=v2.cycleVac;
-  var isFer=FERIES.has(key),hasCg=(S.conges||{})[key],dur=getDur(date);
-  var cs=calcSoldes(),totalReal=cs.totalReal,matelas=cs.matelas,totalDispo=totalReal+cs.totalPrev+Math.max(0,matelas);
-  var cR=Math.max(0,computeCongesRest(date.getFullYear()));
-  var lbl=fmtDate(date),factor=renduFactor(date),ramee=isSemaineRamenée(getMonday(date)),hsW=calcHSWeek(getMonday(date)),sett=settingsForYM(date.getFullYear()*12+date.getMonth());
-  var _ovData=(S.overrides||{})[key];
-  var tt=vac&&vac!=='RH'?vLbl(vac,VAC):'';if(absent)tt='Absent';else if(isFer)tt=vac&&vac!=='RH'?vLbl(vac,VAC):'Férié';else if(!vac)tt='Repos';
-  var dw=date.getDay();
-  var rows=[],cycleVacNames=_cycleVacList(date);
+// Fiche du jour : une seule hauteur quel que soit le jour (on passe d'un jour à l'autre sans que la fenêtre change de taille).
+// Hauteur = tout sauf la case d'en-tête + une place fixe pour celle-ci (titre, horaires, nuit/primes, alerte, note…),
+// grille la plus haute de la semaine, arrondie à 8 px (absorbe la bordure du bouton du jour)
+function _dayVacRows(date,VAC){
+  var dw=date.getDay(),rows=[],cycleVacNames=_cycleVacList(date),_scheduledVacs=null,_accessibleVacs=null;
   if(cycleVacNames){
     var _scheduledSet=_cycleGridScheduledVacs(date);
     var _scheduledVacs=cycleVacNames.filter(function(n){return _scheduledSet.has(n);});
     var _accessibleVacs=cycleVacNames.filter(function(n){return !_scheduledSet.has(n);});
-    window._autreVacsForDay=_accessibleVacs;window._cycleVacsShown=_scheduledVacs;
+    
     var _rowSz=(dw===0||dw===6)?3:4;
     for(var _i=0;_i<_scheduledVacs.length;_i+=_rowSz)rows.push(_scheduledVacs.slice(_i,_i+_rowSz));
     var _lc=Object.keys(S.customVacs||{}).filter(function(v){return !(S.customVacs[v].hidden)&&!cycleVacNames.includes(v);});
@@ -3245,6 +3239,27 @@ function openDay(key){
     var customVacs=Object.keys(VAC).filter(v=>!VAC_STD[v]&&v!=='SV'&&!(S.customVacs&&S.customVacs[v]&&S.customVacs[v].hidden));
     customVacs.forEach(function(cv){var found=false;rows.forEach(function(r){if(r.includes(cv))found=true;});if(!found)rows[rows.length-1].unshift(cv);});
   }
+  return{rows:rows,sched:_scheduledVacs,acc:_accessibleVacs};
+}
+// Nombre max de boutons de vacation sur la semaine (semaine / samedi / dimanche n'ont pas la même grille)
+function _dayVacCount(date){var VAC=getVAC(date);return _dayVacRows(date,VAC).rows.reduce(function(n,r){return n+r.filter(function(v){return !(VAC[v]&&VAC[v].mixte);}).length;},0);}
+function _dayFixH(){var sh=document.querySelector('#modal-root .sheet.daymod');if(!sh)return;var db=sh.querySelector('.dbox');
+  sh.style.setProperty('--dayh','auto');var base=sh.scrollHeight-(db?db.offsetHeight:0);
+  var g=sh.querySelectorAll('.mbtns')[0],d=new Date((pendingKey||_lpk)+'T12:00:00'),mon=getMonday(d),cur=Math.ceil(_dayVacCount(d)/3),mx=cur;
+  for(var i=0;i<7;i++){var x=new Date(mon);x.setDate(mon.getDate()+i);mx=Math.max(mx,Math.ceil(_dayVacCount(x)/3));}
+  if(g&&mx>cur){var gap=parseFloat(getComputedStyle(g).rowGap)||0;base+=(mx-cur)*(g.offsetHeight+gap)/cur;}sh.style.setProperty('--dayh',Math.ceil((base+160)/8)*8+'px');}
+function openDay(key){
+  if(!key)return;pendingKey=key;_lpk=key;
+  if(!document.body.classList.contains('modal-open'))_lockBodyScroll();
+  var date=new Date(key+'T12:00:00'),VAC=getVAC(date),v2=getVac(date),vac=v2.vac,ov=v2.ov,fromSV=v2.fromSV,absent=v2.absent,echange=v2.echange,ecSelf=v2.ecSelf,li=v2.li,cycleVac=v2.cycleVac;
+  var isFer=FERIES.has(key),hasCg=(S.conges||{})[key],dur=getDur(date);
+  var cs=calcSoldes(),totalReal=cs.totalReal,matelas=cs.matelas,totalDispo=totalReal+cs.totalPrev+Math.max(0,matelas);
+  var cR=Math.max(0,computeCongesRest(date.getFullYear()));
+  var lbl=fmtDate(date),factor=renduFactor(date),ramee=isSemaineRamenée(getMonday(date)),hsW=calcHSWeek(getMonday(date)),sett=settingsForYM(date.getFullYear()*12+date.getMonth());
+  var _ovData=(S.overrides||{})[key];
+  var tt=vac&&vac!=='RH'?vLbl(vac,VAC):'';if(absent)tt='Absent';else if(isFer)tt=vac&&vac!=='RH'?vLbl(vac,VAC):'Férié';else if(!vac)tt='Repos';
+  var dw=date.getDay();
+  var _dvr=_dayVacRows(date,VAC),rows=_dvr.rows;if(_dvr.sched){window._autreVacsForDay=_dvr.acc;window._cycleVacsShown=_dvr.sched;}
   const gridCols=3; // vacations sur 3 colonnes, semaine comme week-end
   var vgHtml='<div style="height:8px"></div>';
   // Flatten all rows into a single grid (same sizing as action buttons)
@@ -3319,8 +3334,8 @@ function openDay(key){
       if(_pv.deb&&_toMinApp(_pv.deb)<240)_epv.push('<span style="color:var(--amber)">Matin</span>');
       if(isPanier(date))_epv.push('<span style="color:var(--amber)">Panier</span>');
       if(isFer)_epv.push('<span style="color:var(--text2)">Férié ×'+getTauxForYM(date.getFullYear()*12+date.getMonth()).fer+'%</span>');
-      else if(date.getDay()===0)_epv.push('<span style="color:var(--text2)">Dim ×30%</span>');
-      else if(isRHDay(date))_epv.push('<span style="color:var(--text2)">RH ×30%</span>');
+      else if(date.getDay()===0)_epv.push('<span style="color:var(--text2)">Dim ×'+getTauxForYM(date.getFullYear()*12+date.getMonth()).dim+'%</span>');
+      else if(isRHDay(date)&&!echange)_epv.push('<span style="color:var(--text2)">RH ×'+getTauxForYM(date.getFullYear()*12+date.getMonth()).rh+'%</span>'); // pas de majoration RH sur une vacation faite par échange (comme le calcul)
     }
     if(_epv.length)epvHtml='<div style="font-size:12px">'+_epv.join(' · ')+'</div>';
   }
@@ -3371,8 +3386,9 @@ function openDay(key){
       +'</div>';
   }
 
-  document.getElementById('modal-root').innerHTML=`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="sh"></div>${_dayBox}${vgHtml}<div style="height:16px"></div>${ah}<button class="mcancel mclose" onclick="closeModal()">Fermer</button></div></div>`;
+  document.getElementById('modal-root').innerHTML=`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet daymod"><div class="sh"></div>${_dayBox}${vgHtml}<div style="height:16px"></div>${ah}<button class="mcancel mclose" onclick="closeModal()">Fermer</button></div></div>`;
   if(_note){var _ns=document.querySelector('#modal-root .ti-note');if(_ns)_ns.nextElementSibling.textContent=_note;}
+  _dayFixH();
   _dayNavSetup(key);
 }
 function avw(sel){
