@@ -698,6 +698,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .hd-card{margin:0 0 10px;padding:8px 12px 10px;background:var(--bg3);border:0.5px solid var(--border);border-radius:14px}.hd-card.out{margin:0 -12px 10px}
 @media(max-width:360px){.pp-n{width:64px}.pp-r{gap:6px}.pp-r>b,.pp-v{min-width:58px}}
 /* Safari avec ses barres : vh dépasse l'écran visible, dvh suit la hauteur réellement affichée */
+html.kb .overlay{top:var(--vvt,0);bottom:auto;height:var(--vvh,100%)}html.kb .sheet{max-height:calc(var(--vvh,100dvh) - 8px)!important;padding-bottom:16px}
 @supports(height:1dvh){.sheet{max-height:90dvh}.pp-sheet{height:88dvh}@media(min-width:721px){.sheet{max-height:85dvh}.pp-sheet{height:85dvh}}}
 /* Taille standard des grandes fenêtres (Suivi/Rendus/Congés, Variables, Paie du mois, Bulletins, Tableau Gestion) : même hauteur fixe */
 .sheet.smod,.sheet.tabmod,.sheet.pp-sheet{height:85vh}@supports(height:1dvh){.sheet.smod,.sheet.tabmod,.sheet.pp-sheet{height:85dvh}}
@@ -5626,6 +5627,21 @@ function rcgTab(idx){
   }
   var _p=document.getElementById('rcp-pill');if(_p){if(_same){_p.style.transition='none';_p.style.transform=_tx[_RCG_ORDER.indexOf(idx)]||_tx[0];void _p.offsetWidth;_p.style.transition='';}else _p.style.transform=_tx[_RCG_ORDER.indexOf(idx)]||_tx[0];}
 }
+// Clavier iPhone : la fenêtre se cale au-dessus du clavier (zone visible = visualViewport) et la case saisie défile
+// dans la partie visible, sinon on écrit sous le clavier sans se voir
+(function(){
+  var vv=window.visualViewport,de=document.documentElement;if(!vv)return;
+  var isField=function(el){return el&&(el.tagName==='TEXTAREA'||(el.tagName==='INPUT'&&!/^(checkbox|radio|button|submit|range|color|file)$/.test(el.type))||el.isContentEditable);};
+  var scroller=function(el){for(var p=el.parentElement;p&&p!==document.body;p=p.parentElement){var o=getComputedStyle(p).overflowY;if((o==='auto'||o==='scroll')&&p.scrollHeight>p.clientHeight+1)return p;}return null;};
+  var reveal=function(){var el=document.activeElement;if(!isField(el))return;var sc=scroller(el);if(!sc)return;
+    var r=el.getBoundingClientRect(),b=sc.getBoundingClientRect(),top=Math.max(b.top,vv.offsetTop)+12,bot=Math.min(b.bottom,vv.offsetTop+vv.height)-16;
+    var d=r.bottom>bot?r.bottom-bot:(r.top<top?r.top-top:0);if(d)sc.scrollBy({top:d,behavior:'smooth'});};
+  var t=0,upd=function(){var kb=window.innerHeight-vv.height>120;
+    de.style.setProperty('--vvh',vv.height+'px');de.style.setProperty('--vvt',vv.offsetTop+'px');de.classList.toggle('kb',kb);
+    clearTimeout(t);if(kb)t=setTimeout(reveal,60);};
+  vv.addEventListener('resize',upd);vv.addEventListener('scroll',upd);
+  document.addEventListener('focusin',function(e){if(isField(e.target))setTimeout(function(){upd();reveal();},350);});
+})();
 // Hauteur des fenêtres animée : quand le contenu d'une fenêtre change de taille, ou quand une fenêtre en remplace une autre
 // (fiche du jour → Rendu…), la hauteur glisse de l'ancienne à la nouvelle au lieu de sauter
 (function(){
