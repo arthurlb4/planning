@@ -905,7 +905,16 @@ export default {
       if (!session) return resp({ error: 'Non authentifie' }, 401);
       var profileId = body.profileId, data = body.data;
       if (!profileId || !data) return resp({ error: 'Donnees manquantes' }, 400);
-      await env.PLANNING_DB.put('data:' + session.userId + ':' + profileId, JSON.stringify(data));
+      var dataKey = 'data:' + session.userId + ':' + profileId, newStr = JSON.stringify(data);
+      // Historique : la version d'avant le premier enregistrement du jour est gardée 60 jours (une par jour)
+      try {
+        var prevStr = await env.PLANNING_DB.get(dataKey);
+        if (prevStr && prevStr !== newStr) {
+          var bakKey = 'bak:' + session.userId + ':' + profileId + ':' + new Date().toISOString().slice(0, 10);
+          if (!(await env.PLANNING_DB.get(bakKey))) await env.PLANNING_DB.put(bakKey, prevStr, { expirationTtl: 60 * 86400 });
+        }
+      } catch (e) {}
+      await env.PLANNING_DB.put(dataKey, newStr);
       var user = await env.PLANNING_DB.get('user:' + session.userId, { type: 'json' });
       if (user) {
         if (!user.profiles) user.profiles = {};
@@ -926,6 +935,24 @@ export default {
       if (!profileId) return resp({ error: 'ProfileId manquant' }, 400);
       var data = await env.PLANNING_DB.get('data:' + session.userId + ':' + profileId, { type: 'json' });
       return resp({ data: data });
+    }
+
+    // Historique des versions d'un profil (une par jour, 60 jours) : liste des dates, puis lecture d'une version
+    if (path === '/data/backups') {
+      var session = await verifySession(request, env);
+      if (!session) return resp({ error: 'Non authentifie' }, 401);
+      var pid = body.profileId;
+      if (!pid) return resp({ error: 'ProfileId manquant' }, 400);
+      var pre = 'bak:' + session.userId + ':' + pid + ':';
+      var l = await env.PLANNING_DB.list({ prefix: pre });
+      return resp({ dates: l.keys.map(function (k) { return k.name.slice(pre.length); }).sort().reverse() });
+    }
+    if (path === '/data/backup') {
+      var session = await verifySession(request, env);
+      if (!session) return resp({ error: 'Non authentifie' }, 401);
+      if (!body.profileId || !/^\d{4}-\d\d-\d\d$/.test(body.date || '')) return resp({ error: 'Parametres manquants' }, 400);
+      var bk = await env.PLANNING_DB.get('bak:' + session.userId + ':' + body.profileId + ':' + body.date, { type: 'json' });
+      return resp({ data: bk });
     }
 
     if (path === '/data/list') {
