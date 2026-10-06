@@ -1189,6 +1189,8 @@ function getVac(date){
   if(ov&&(ov.vac||ov.fromSV))return{vac:ov.vac||null,ov:true,fromSV:!!ov.fromSV,absent:false,echange:false,ecSelf:false,li,cycleVac};
   return{vac:cycleVac,ov:false,fromSV:false,absent:false,echange:false,ecSelf:false,li,cycleVac};
 }
+// Texte saisi ou lu (noms, libellés de primes, lignes de bulletin) avant de l'insérer dans le HTML
+function _h(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function getDur(date){const{vac}=getVac(date);const VAC=getVAC();const d=(vac&&vac!=='RH'&&VAC[vac])?VAC[vac].dur:0;
   // demi-journée de congé exceptionnel complétée par des rendus : le rendu ne compte que l'autre moitié
   if(d&&S.excInfo){const k=dk(date),x=S.excInfo[k];if(x&&x.half&&x.rest==='rend'&&/^rend/.test((S.conges||{})[k]||''))return Math.round(d/2);}return d;}
@@ -2977,12 +2979,12 @@ function _payPageHtml(ym){
     +row('Ind. GPE'+(P.groupeClassif?' (Gr.'+P.groupeClassif+')':''),P.gpe,null,fn('Ind. GPE',P.gpe))
     +row('PFA ('+fmtEuro(P.pfaM)+'/mois)'+(P.pfaMensuelle?'':' (sem.)'),P.pfa,null,fn('PFA',P.pfa))
     +(P.supFamilial>0||fixBy['Suppl. familial']?row('Suppl. familial',P.supFamilial,null,fn('Suppl. familial',P.supFamilial)):'')
-    +P.primesCustom.filter(function(p){return !/INDIV/i.test(p.label);}).map(function(p){return row(p.label,p.montant,null);}).join('')
+    +P.primesCustom.filter(function(p){return !/INDIV/i.test(p.label);}).map(function(p){return row(_h(p.label),p.montant,null);}).join('')
     +sub('Sous-total',fa,c?cmp(fsum(['Mesures NAO','Ind. GPE','PFA','Suppl. familial']),fa):null);
   if(P.greveRet>0||fixBy['Absence non rémunérée'])h+=tit('Absences non rémunérées')
     +P.greveDays.map(function(g,i){var d=new Date(g.k+'T12:00:00');return row(d.getDate()+' '+MCs[d.getMonth()]+' · '+(g.m==='greve'?'grève ':'')+(g.g==='h'?'1 heure':g.g==='dj'?'½ journée':'journée'),-g.r,null,i===P.greveDays.length-1?fn('Absence non rémunérée',-P.greveRet):null);}).join('')
     +(!P.greveDays.length?row('Absence non rémunérée',0,null,fn('Absence non rémunérée',0)):'');
-  if(c&&c.late.length)h+=tit('Rattrapages et autres lignes')+c.late.map(function(l){return '<div class="pp-r"><span class="pp-l">'+l.lbl+(l.q!=null?' ('+(_BUL_H[l.k]?fmtMin(Math.round(l.q*60)):l.q)+')':'')+'<span style="display:block;font-size:11px;font-style:italic">'+(l.info?'sans effet sur la comparaison':'travail '+_deMois(l.ym)+' '+Math.floor(l.ym/12)+((S.bulletins||{})[l.ym+1]?', manquait sur le <a onclick="event.stopPropagation();_swipeGo(-1,function(){openBulletinModal('+(l.ym+1)+')})" style="color:var(--blue);cursor:pointer;font-style:normal">bulletin '+_deMois(l.ym+1)+'</a>':''))+'</span></span><span class="pp-n" style="color:var(--text2)">'+fe(l.mt)+'</span><b style="color:var(--text3)">—</b></div>';}).join('');
+  if(c&&c.late.length)h+=tit('Rattrapages et autres lignes')+c.late.map(function(l){return '<div class="pp-r"><span class="pp-l">'+_h(l.lbl)+(l.q!=null?' ('+(_BUL_H[l.k]?fmtMin(Math.round(l.q*60)):l.q)+')':'')+'<span style="display:block;font-size:11px;font-style:italic">'+(l.info?'sans effet sur la comparaison':'travail '+_deMois(l.ym)+' '+Math.floor(l.ym/12)+((S.bulletins||{})[l.ym+1]?', manquait sur le <a onclick="event.stopPropagation();_swipeGo(-1,function(){openBulletinModal('+(l.ym+1)+')})" style="color:var(--blue);cursor:pointer;font-style:normal">bulletin '+_deMois(l.ym+1)+'</a>':''))+'</span></span><span class="pp-n" style="color:var(--text2)">'+fe(l.mt)+'</span><b style="color:var(--text3)">—</b></div>';}).join('');
   if(c)h+=c.alerts.map(function(a){return '<div style="font-size:11px;color:var(--amber);display:flex;gap:5px;padding:10px 0 0;line-height:1.45"><span>⚠</span><span>'+a+'</span></div>';}).join('');
   h+='<div style="font-size:11px;color:var(--text3);text-align:center;margin-top:10px">taux : '+fmtEuro(P.tauxH)+'/h · '+P.heures.toFixed(2)+'h/mois</div>';
   h+=(b?'':'<div style="font-size:11px;color:var(--text3);line-height:1.5;margin:14px 0 0">Importer le PDF du bulletin pour que l’app compare chaque ligne. Le fichier est lu sur le téléphone et n’est envoyé nulle part ; seuls les montants sont gardés.</div>')
@@ -3937,7 +3939,7 @@ function _openRepMenu(btn,ym,limit,rr){
 function _openBulIgnMenu(btn,ym){
   var c=_bulCompare(S.bulletins[ym]),fe=function(x){return fmtEuro(Math.abs(x)).replace(/\s*€/,'');};
   var items=c.items.map(function(i){return '<button onclick="_bulIgnAct('+ym+',\''+i.id+'\','+(i.ign?0:1)+')"><i class="ti '+(i.ign?'ti-eye-off':'ti-alert-triangle')+'" style="color:'+(i.ign?'var(--text3)':'var(--amber)')+'"></i>'
-    +'<span style="'+(i.ign?'color:var(--text3)':'')+'">'+i.lbl+'</span><span class="rep-tag">'+(i.d?(i.d>0?'+':'−')+fe(i.d)+' · ':'')+(i.ign?'ignoré':'ignorer')+'</span></button>';}).join('');
+    +'<span style="'+(i.ign?'color:var(--text3)':'')+'">'+_h(i.lbl)+'</span><span class="rep-tag">'+(i.d?(i.d>0?'+':'−')+fe(i.d)+' · ':'')+(i.ign?'ignoré':'ignorer')+'</span></button>';}).join('');
   var allI=c.items.every(function(i){return i.ign;});
   if(c.items.length)items='<button onclick="_bulIgnAct('+ym+',\'*\','+(allI?0:1)+')"><i class="ti '+(allI?'ti-eye':'ti-eye-off')+'" style="color:var(--blue)"></i><span style="color:var(--blue)">'+(allI?'Ne plus rien ignorer':'Tout ignorer')+'</span></button>'+items;
   _haptic();
@@ -6363,7 +6365,7 @@ function _wvBodyHtml(data,monKey){
       html+='<tr style="border-top:0.5px solid var(--border2);background:'+rowBg+';height:43px">'
         +'<td style="padding:0 4px 0 10px;overflow:hidden;width:62px">'
         +'<div style="font-size:12px;font-weight:'+(isUser?'600':'400')+';color:'+(isUser?'var(--blue)':hasUser?'var(--text)':'var(--text3)')+'">'+lineName+(multiUser?' <span style="font-size:9px;color:var(--amber)">✕'+users.length+'</span>':'')+'</div>'
-        +(hasUser?'<div style="font-size:9px;color:'+(multiUser?'var(--amber)':'var(--text3)')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+profileNames.join(', ')+'</div>':'')
+        +(hasUser?'<div style="font-size:9px;color:'+(multiUser?'var(--amber)':'var(--text3)')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_h(profileNames.join(', '))+'</div>':'')
         +'</td>';
       for(var d=0;d<7;d++){
         var _cellHtml;
@@ -6825,7 +6827,7 @@ function openSettingsModal(tab){
   var _sh='<div class="btit" style="margin:16px 0 4px">';
   var tab0=''
     // ─ Profil ─
-    +'<div class="srow" '+_sr+'><div class="slbl">Nom</div><input id="ps-name" '+_onb+' value="'+(pr.profile.name||'')+'" style="'+_inpR+'"></div>'
+    +'<div class="srow" '+_sr+'><div class="slbl">Nom</div><input id="ps-name" '+_onb+' value="'+_h(pr.profile.name||'')+'" style="'+_inpR+'"></div>'
     +'<div class="srow" '+_sr+'><div class="slbl">Ligne actuelle'+_inf('cycle de vacations')+'</div><button '+_bS+' data-pid="'+pid+'" onclick="openChangeLigneModal(this.dataset.pid)">Changer</button></div>'
     // ─ Google Agenda ─
     +_sh+'Google Agenda</div>'
@@ -6922,7 +6924,7 @@ function openSettingsModal(tab){
       var pfc=pr.profile.primesFixesCustom||[];
       var rows=pfc.filter(function(p){return (p.finYM==null||p.finYM>=TODAY_YM)&&!/INDIV/i.test(p.label);}).map(function(p){
         return '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:0.5px solid var(--border)">'
-          +'<span style="font-size:12px;color:var(--text2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+p.label+'</span>'
+          +'<span style="font-size:12px;color:var(--text2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_h(p.label)+'</span>'
           +'<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">'
           +'<span style="font-size:12px;color:var(--amber)">+'+fmtEuro(p.montant)+'</span>'
           +'<button onclick="openDeletePrimeFixeModal(\''+p.id+'\',TODAY_YM);window._pfFromSettings=true" style="width:20px;height:20px;border-radius:50%;border:0.5px solid var(--border);background:transparent;color:var(--red);cursor:pointer;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center">×</button>'
@@ -8452,12 +8454,15 @@ function setSyncStatus(st){
 async function _silentRelogin(){
   // Identifiants mémorisés (« Se souvenir de moi ») : nouvelle session sans rien demander
   var cr=null;try{cr=JSON.parse(localStorage.getItem('remember_creds')||'null');}catch(e){}
+  // identifiants d'un autre compte (mémorisés avant un changement d'utilisateur) : jamais utilisés pour ce compte
+  var me=window._authUser||{};if(cr&&me.email&&String(cr.email).toLowerCase()!==String(me.email).toLowerCase())cr=null;
   if(!cr||!cr.email||!cr.password||window._silentReloginTried)return false;
   window._silentReloginTried=true;
   try{
     var r=await fetch(CLOUD_API+'/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:cr.email,password:cr.password})});
     if(!r.ok)return false;
     var d=await r.json();if(!d.token)return false;
+    if(_plU()&&d.userId&&d.userId!==_plU())return false;
     window._authToken=d.token;localStorage.setItem('auth_token',d.token);
     return true;
   }catch(e){return false;}
@@ -8560,6 +8565,8 @@ async function cloudLoadAll(){
   if(!window._authToken){gcalLoad();return;}
   try{
     const res=await fetch(CLOUD_API+'/data/list',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({})});
+    // session expirée au démarrage : reconnexion puis rechargement (le cloud d'abord), sinon le dire tout de suite
+    if(res.status===401){gcalLoad();(async function(){if(await _silentRelogin())location.reload();else _sessionExpired();})();return;}
     if(!res.ok){gcalLoad();return;}
     const text=await res.text();
     if(!text||text.trim()===''){gcalLoad();return;}
@@ -8572,7 +8579,8 @@ async function cloudLoadAll(){
       if(localState){
         try{
           const parsed=JSON.parse(localState);
-          if(parsed.p&&Object.keys(parsed.p).length>0){
+          // seulement les données locales de ce compte (inscription) : jamais celles d'un autre compte resté sur l'appareil
+          if(parsed.p&&Object.keys(parsed.p).length>0&&parsed.u&&parsed.u===_plU()){
             _profs=parsed.p;_aid=parsed.a||'default';
             S=_profs[_aid]||_profs[Object.keys(_profs)[0]];
             if(window._authUser&&window._authUser.name&&S.profile)S.profile.name=capitalize(window._authUser.name);

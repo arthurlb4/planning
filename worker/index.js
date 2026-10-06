@@ -12,6 +12,9 @@ const cors = {
   'Content-Type': 'application/json',
 };
 
+// Noms saisis par les utilisateurs : affichés chez les autres (vue semaine, admin) → sans caractères HTML, longueur limitée
+function cleanName(v) { return String(v == null ? '' : v).replace(/[<>"'&`]/g, '').trim().slice(0, 60); }
+
 function resp(data, status) {
   return new Response(JSON.stringify(data), { status: status || 200, headers: cors });
 }
@@ -714,7 +717,7 @@ export default {
         if (cleaned.length > 0) linesMap[ligne] = cleaned; else delete linesMap[ligne];
       }
       if (!linesMap[ligne]) linesMap[ligne] = [];
-      linesMap[ligne].push({ userId: session.userId, userName: body.userName || session.userId, profileId: profileId, profileName: profileName || profileId, weekVacs: body.weekVacs || [], regLine: body.regLine !== undefined ? body.regLine : parseInt(ligne.slice(1))-1, regWeek: body.regWeek || getMondayKey() });
+      linesMap[ligne].push({ userId: session.userId, userName: cleanName(body.userName) || session.userId, profileId: profileId, profileName: cleanName(profileName) || profileId, weekVacs: body.weekVacs || [], regLine: body.regLine !== undefined ? body.regLine : parseInt(ligne.slice(1))-1, regWeek: body.regWeek || getMondayKey() });
       // Quota KV : les écritures sont limitées (lectures ~100x moins chères) → n'écrire que ce qui a changé
       // Ordre stable (sinon chaque ré-inscription réordonne la ligne et force une écriture)
       for (var l2 in linesMap) linesMap[l2].sort(function(a, b){ return (a.userId + ':' + a.profileId).localeCompare(b.userId + ':' + b.profileId); });
@@ -758,6 +761,7 @@ export default {
     }
 
     if (path === '/lines/available') {
+      if (!(await verifySession(request, env))) return resp({ error: 'Non authentifie' }, 401);
       var linesMap = await env.PLANNING_DB.get('global:lines_used', { type: 'json' }) || {};
       return resp({ lines: linesMap });
     }
@@ -794,8 +798,9 @@ export default {
     // ============================================================
 
     if (path === '/auth/register') {
-      var email = body.email, password = body.password, name = body.name;
+      var email = body.email, password = body.password, name = cleanName(body.name);
       if (!email || !password || !name) return resp({ error: 'Champs manquants' }, 400);
+      if (!/^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']+$/.test(email) || email.length > 120) return resp({ error: 'Email invalide' }, 400);
       var emailKey = 'user:email:' + email.toLowerCase();
       var existing = await env.PLANNING_DB.get(emailKey);
       if (existing) return resp({ error: 'Email deja utilise' }, 409);
