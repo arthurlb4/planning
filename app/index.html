@@ -2673,7 +2673,8 @@ function _bulMsgLines(onlyB){var D=_bulPayDiffs(),L={ferRendu:'Fériés travaill
   var yms=Object.keys(S.bulletins||{}).map(Number);D.keptList.forEach(function(x){if(yms.indexOf(x.ym+1)<0)yms.push(x.ym+1);});
   yms.filter(function(v,i,a){return a.indexOf(v)===i&&(onlyB==null||v===onlyB);}).sort(function(a,b){return a-b;}).forEach(function(ym){
     var W=ym-1,bl='Bulletin '+_deMois(ym)+' '+Math.floor(ym/12)+' – ',kp=D.keptList.filter(function(x){return x.ym===W&&x.h>0;});
-    kp.forEach(function(x){out.push(bl+L[x.k]+' '+_deMois(W)+' ('+fmtMin(x.h)+') : '+(x.v?'à payer, mis en rendus à tort.':'à mettre en rendus, payés à tort.'));});
+    // seulement ce qui manque (payé à tort : pas de rattrapage négatif à demander)
+    kp.forEach(function(x){if(x.v)out.push(bl+L[x.k]+' '+_deMois(W)+' ('+fmtMin(x.h)+') : à payer, mis en rendus à tort.');});
     var b=(S.bulletins||{})[ym],c=null;if(!b)return;try{c=_bulCompare(b);}catch(e){return;}if(c.status!=='ecart'||_bulIgn(ym,c))return;
     c.items.forEach(function(i){if(i.ign||!(i.d<-0.05))return;var k=i.id.slice(2),sk=RK[k];
       // fériés, dimanches, RH, HS : déjà dans la ligne « rendus », ou réglage de l'app à corriger d'abord (Vérification)
@@ -2687,7 +2688,7 @@ function _bulMsgLines(onlyB){var D=_bulPayDiffs(),L={ferRendu:'Fériés travaill
 function _bulMsgOpen(only,back){
   var ls=_bulMsgLines(only),txt=ls.join('\n');window._bulMsgTxt=txt;window._bulMsgBack=back||null;
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="sh"></div><div class="st">Message au gestionnaire</div>'
-    +'<div style="font-size:12px;color:var(--text3);line-height:1.45;margin:-4px 0 10px">Lignes à copier : ce qui manque sur les bulletins, et les rendus mal appliqués.</div>'
+    +'<div style="font-size:12px;color:var(--text3);line-height:1.45;margin:-4px 0 10px">Lignes à copier : ce qui manque sur les bulletins.</div>'
     +'<div class="hd-card" style="font-size:12.5px;line-height:1.5;white-space:pre-wrap;user-select:text;-webkit-user-select:text">'+(ls.length?txt.replace(/&/g,'&amp;').replace(/</g,'&lt;'):'<span style="color:var(--text3)">Rien à signaler.</span>')+'</div>'
     +'<div class="mbtns"><button class="mb" onclick="var b=window._bulMsgBack;b?b():closeModal()">Retour</button><button class="mb pri"'+(ls.length?'':' disabled')+' onclick="_bulMsgCopy()">Copier</button></div></div></div>';
 }
@@ -2804,7 +2805,9 @@ var _BUL_ST={ok:['✓','var(--green)','Conforme'],late:['✓','var(--green)','Co
 function _bulIgn(ym,c){return !!c&&!!c.allIgn;}
 function _bulBad(ym){var c;try{c=_bulCompare(S.bulletins[ym]);}catch(e){return false;}return c.status==='ecart'&&!_bulIgn(ym,c);}
 function bulIgnL(ym,id,on){var pr=S.profile,c=_bulCompare(S.bulletins[ym]),it=c.items.filter(function(i){return i.id===id;})[0];delete pr.ignBul;
-  if(!pr.ignBulL)pr.ignBulL={};var m=pr.ignBulL[ym]||(pr.ignBulL[ym]={});if(on&&it)m[id]=it.d;else delete m[id];if(!Object.keys(m).length)delete pr.ignBulL[ym];
+  if(!pr.ignBulL)pr.ignBulL={};var m=pr.ignBulL[ym]||(pr.ignBulL[ym]={});
+  if(id==='*')c.items.forEach(function(i){if(on)m[i.id]=i.d;else delete m[i.id];}); // tout ignorer / ne plus rien ignorer
+  else if(on&&it)m[id]=it.d;else delete m[id];if(!Object.keys(m).length)delete pr.ignBulL[ym];
   var sh=document.querySelector('#modal-root .sheet'),st=sh?sh.scrollTop:0;saveState();render();openBulletinModal(ym);var s2=document.querySelector('#modal-root .sheet');if(s2){s2.style.animation='none';s2.scrollTop=st;}}
 // Tableau Gestion : on ignore une différence précise (gardée tant que sa valeur ne change pas), pas l'écart entier
 function _rhCIgn(k,v){var i=((S.profile||{}).ignRhC||{})[k];return i!=null&&Math.abs(i-v)<2;}
@@ -3860,6 +3863,8 @@ function _openRepMenu(btn,ym,limit,rr){
   var items=[0,1,2,3].map(function(n){var e=ym+3+n*3,dis=n<auto,cur=n===ext;
     return '<button onclick="_repMenuAct('+ym+','+n+','+limit+')"'+(dis?' disabled':'')+'><i class="ti '+(cur?'ti-check':'ti-point')+'" style="color:'+(cur?'var(--orange)':'var(--text3)')+'"></i>'
       +(n?'Jusqu’à fin '+dl(e):'Sans report · fin '+dl(e))+'<span class="rep-tag">'+(n===rr?'<span style="color:var(--amber)">tableau</span>':n?'+'+n*3+' mois':'')+(dis?' · auto':'')+'</span></button>';}).join('');
+  var allI=c.items.every(function(i){return i.ign;});
+  if(c.items.length>1)items='<button onclick="_bulIgnAct('+ym+',\'*\','+(allI?0:1)+')"><i class="ti '+(allI?'ti-eye':'ti-eye-off')+'" style="color:var(--blue)"></i><span style="color:var(--blue)">'+(allI?'Ne plus rien ignorer':'Tout ignorer')+'</span></button>'+items;
   _haptic();
   var veil=document.createElement('div');veil.id='lp-veil';veil.style.zIndex=450;
   veil.addEventListener('click',function(e){e.stopPropagation();_closeDayMenu();});
