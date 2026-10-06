@@ -6679,7 +6679,7 @@ function openSettingsModal(tab){
   var _hasBul=Object.keys(S.bulletins||{}).length>0;
   var tab1=''
     // Palier, contrat, groupe et ancienneté lus sur les bulletins (pré-remplissage, augmentations datées)
-    +_verifRow(1,_hasBul?'':'<button class="adj-pill" style="width:auto;padding:0 12px;height:28px;font-size:12px;white-space:nowrap" onclick="importBulletins(function(){openSettingsModal(1);})"><i class="ti ti-file-import" style="margin-right:4px"></i>Importer un bulletin</button>')
+    +_verifRow(1,_hasBul?'':'<button class="adj-pill" style="width:auto;padding:0 12px;height:28px;font-size:12px;white-space:nowrap" onclick="importBulletins(function(){openSettingsModal(1);})">+ Bulletin</button>')
     +'<div class="srow" '+_sr+'><div class="slbl">Palier'+_inf('salaire de qualification')+'</div><div '+_rCol+'><div id="ps-palier-lbl" '+_subV+'>'+_palLbl+'</div><select id="ps-palier" '+_oncPal+' style="'+_selR+'">'+palierOpts+'</select></div></div>'
     +'<div class="srow" '+_sr+'><div class="slbl">Ancienneté'+_inf('prime mensuelle')+'</div><div '+_rCol+'><div id="ps-salanc-lbl" '+_subV+'>'+_ancLbl+'</div><select id="ps-salanc" '+_oncAnc+' style="'+_selR+'">'+ancOpts+'</select></div></div>'
     +'<div class="srow" '+_sr+'><div class="slbl">Contrat'+_inf('taux de travail')+'</div><div '+_rCol+'><div id="ps-heures-lbl" '+_subV+'>'+_heurLbl+'</div><select id="ps-heures" '+_oncHeur+' style="'+_selR+'">'+heurOpts+'</select></div></div>'
@@ -6734,9 +6734,11 @@ function openSettingsModal(tab){
     +_sh+'Génération des rendus</div>'
     +'<div class="srow" '+_sr+'><div style="display:flex;gap:20px;align-items:center;flex:1;padding-left:4px">'+_rendDots+'</div><button '+_bS+' onclick="openAnnualSettingsModal('+new Date().getFullYear()+')">Changer</button></div>'
     +_sh+'Soldes initiaux</div>'
-    // Même « Vérifier » que l'onglet Paie (bulletins, génération des rendus, tableau Gestion) ; import du tableau s'il n'y en a pas
-    +_verifRow(2,(pr.profile._rhImportBackup?'<button class="adj-pill" style="width:auto;padding:0 12px;height:28px;font-size:12px;white-space:nowrap" onclick="rhImportUndo()">Annuler l’import</button>':'')
-      +(!(pr.profile.rhTable||pr.profile.rhImportedAt)?'<button class="adj-pill" style="width:auto;padding:0 12px;height:28px;font-size:12px;white-space:nowrap" onclick="closeModal();rhImportOpen()"><i class="ti ti-file-import" style="margin-right:4px"></i>Importer le tableau</button>':''))
+    // Tableau Gestion : état de l'import ; importer (ou un plus récent), revenir aux soldes d'avant l'import. La vérification est dans l'onglet Paie
+    +(function(){var has=!!(pr.profile.rhTable||pr.profile.rhImportedAt),b='class="adj-pill" style="width:auto;padding:0 12px;height:28px;font-size:12px;white-space:nowrap"';
+      return '<div class="srow" '+_sr+'><div class="slbl">Tableau Gestion <span style="color:var(--text3);font-size:10px">'+(pr.profile.rhImportedAt?'suivi depuis le '+new Date(pr.profile.rhImportedAt+'T12:00:00').toLocaleDateString('fr-FR'):'non importé')+'</span></div><div style="display:flex;gap:6px;flex-shrink:0">'
+        +(pr.profile._rhImportBackup?'<button '+b+' onclick="if(confirm(\'Revenir aux soldes d’avant l’import du tableau ?\'))rhImportUndo()">Défaire</button>':'')
+        +'<button '+b+' onclick="closeModal();rhImportOpen()">'+(has?'Réimporter':'Importer')+'</button></div></div>';})()
     +'<div class="srow" '+_sr+'><div class="slbl">Matelas <span style="color:var(--text3);font-size:10px">stock initial permanent</span></div><input id="ps-matelas" '+_onb+' value="'+fmtMin(pr.profile.matelas||0)+'" onfocus="if(this.value)this.select()" style="'+_inpR+'"></div>'
     +'<div class="srow" '+_sr+'><div class="slbl">Stock éphémère <span style="color:var(--text3);font-size:10px">stock initial éphémère</span></div><input id="ps-eph" '+_onb+' value="'+fmtMin(Math.round((pr.profile.ephSolde||0)*60))+'" onfocus="if(this.value)this.select()" style="'+_inpR+'"></div>'
     +'<div class="srow" '+_sr+'><div class="slbl">CET <span style="color:var(--text3);font-size:10px">compte épargne-temps initial</span></div><input id="ps-cet-init" type="number" '+_onb+' value="'+(pr.profile.cetInit||0)+'" onfocus="if(this.value)this.select()" style="'+_inpR+'"></div>';
@@ -6799,7 +6801,7 @@ function openSettingsModal(tab){
   });
 }
 // Une seule vérification, la même dans les onglets Paie et Heures : réglages de paie et rendus d'après les bulletins, écart avec le tableau Gestion
-function _verifRow(tab,extra){return '<div style="margin:0 0 10px"><div style="font-size:11px;color:var(--text3);line-height:1.4;margin-bottom:6px">Comparer les réglages aux bulletins et au tableau Gestion.</div><div style="display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap">'+(extra||'')
+function _verifRow(tab,extra){return '<div style="display:flex;align-items:center;gap:8px;margin:0 0 10px"><span style="flex:1;min-width:0;font-size:11px;color:var(--text3);line-height:1.35">Bulletins et tableau Gestion</span><div style="display:flex;gap:6px;flex-shrink:0">'+(extra||'')
   +'<button class="adj-pill" style="width:auto;padding:0 12px;height:28px;font-size:12px;white-space:nowrap" onclick="_bulPayPropose(function(){openSettingsModal('+tab+');},1)"><i class="ti ti-checks" style="margin-right:4px"></i>Vérifier</button></div></div>';}
 function settingsTab(n){
   var _tx=['translateX(0)','translateX(calc(100% + 2px))','translateX(calc(200% + 4px))'];
