@@ -2831,7 +2831,9 @@ function _bulCompare(b){
   // Prime d'avantage individuel acquis : prime fixe personnelle (Réglages → primes fixes, libellé « … indiv. … »)
   var avA=P.primesCustom.filter(function(p){return /INDIV/i.test(p.label);}).reduce(function(s,p){return s+p.montant;},0);
   if(b.avInd!=null||avA>0)fix.push(['Av. indiv. acquis',b.avInd||0,avA]);
-  var fixed=fix.filter(function(f){return f[1]!=null||f[2];}).map(function(f){var bv=f[1]||0,av=r2(f[2]||0);return{lbl:f[0],bm:bv,am:av,ok:Math.abs(bv-av)<=0.05,key:f[3]};});
+  // Mois avec absence non rémunérée / grève : PFA et NAO légèrement réduites sur le bulletin (règle non publiée, ex. 190 → 188,76) : pas un écart
+  var fixed=fix.filter(function(f){return f[1]!=null||f[2];}).map(function(f){var bv=f[1]||0,av=r2(f[2]||0),red=!!b.absNR&&(f[0]==='PFA'||f[0]==='Mesures NAO')&&bv<av&&av-bv<=av*0.02;
+    return{lbl:f[0],bm:bv,am:av,ok:Math.abs(bv-av)<=0.05||red,red:red,key:f[3]};});
   // Paniers hors brut : leur rattrapage n'entre pas dans le brut, leur écart s'ajoute à part
   var lateSum=r2(late.reduce(function(s,l){return s+(l.k==='panier'?0:l.mt);},0)),diff=r2(b.brut-P.total),PR=_panRappels(),panCov=PR.cover[b.ym]||0,panDiff=r2((bm.panier||0)+(rm.panier||0)-(v.supPaniers||0)+panCov-(PR.used[b.ym]||0));
   // Coordination payée comme antenne (même taux) : le total des deux suffit
@@ -2839,7 +2841,8 @@ function _bulCompare(b){
   if(rA&&rC&&!(rA.ok&&rC.ok)&&rA.bq+rA.rq+rC.bq+rC.rq===rA.aq+rC.aq){rA.ok=rC.ok=true;rA.mix=rC.mix=1;}
   // Paniers : « RAP » sans mois = mois de travail ; un écart compte comme une ligne qui diffère (le brut n'en dépend pas)
   var nBad=rows.filter(function(r){return !r.ok;}).length+fixed.filter(function(f){return !f.ok;}).length;
-  var adj=r2(diff+paidLater-lateSum+panDiff),later=(PR.from[b.ym]||[]).slice();if(panCov)panLater=1;rows.forEach(function(r){r.rFrom.forEach(function(f){if(later.indexOf(f)<0)later.push(f);});});
+  var redSum=fixed.reduce(function(t,f){return t+(f.red?f.bm-f.am:0);},0); // PFA/NAO réduites pour absence : retirées de l'écart
+  var adj=r2(diff+paidLater-lateSum+panDiff-redSum),later=(PR.from[b.ym]||[]).slice();if(panCov)panLater=1;rows.forEach(function(r){r.rFrom.forEach(function(f){if(later.indexOf(f)<0)later.push(f);});});
   var status=nBad||alerts.length?'ecart':Math.abs(adj)>0.1?'ecart':paidLater||panLater?'later':late.some(function(l){return !l.info;})?'late':'ok';
   var badList=rows.filter(function(r){return !r.ok;}).map(function(r){return r.k==='panier'?'Paniers':(_BUL_LBL[r.k]||r.k);}).concat(fixed.filter(function(f){return !f.ok;}).map(function(f){return f.lbl;}));
   // L'alerte « demi-heure » des HS décrit le même problème qu'une ligne HS en écart : comptée une seule fois
