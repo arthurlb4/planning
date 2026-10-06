@@ -2516,7 +2516,7 @@ function _bulParse(lines){
     // Paniers sans mois : ceux du mois de travail (mois précédent), comme les primes
     if((m=rePan.exec(t))){var pq=_bulNum(m[1]),pm=_bulNum(m[3]);if(!b.paniers)b.paniers={q:pq,pu:_bulNum(m[2]),mt:pm};else{b.paniers.q+=pq;b.paniers.mt=Math.round((b.paniers.mt+pm)*100)/100;}b.rap.push({ym:null,k:'panier',lbl:'PRIME DE PANIERS',q:pq,pu:_bulNum(m[2]),mt:pm});return;}
     if(/^RAP /.test(t))return;
-    if((m=/^MESURE NAO (.+?) (-?\d+,\d+)$/.exec(t))){b.nao[m[1]]=_bulNum(m[2]);return;}
+    if((m=/(?:^| )MESURE NAO (.+?) (-?\d+,\d+)$/.exec(t))){b.nao[m[1]]=_bulNum(m[2]);return;}
     // « SALAIRE DE QUALIFICATION base taux montant » : base temps plein (→ palier) et taux de travail (→ contrat)
     if(b.salQBase==null&&(m=/^SALAIRE DE QUALIFICATION (\d+,\d+) (\d+,\d+) (-?\d+,\d+)$/.exec(t))){b.salQBase=_bulNum(m[1]);b.taux=_bulNum(m[2]);b.salQ=_bulNum(m[3]);return;}
     for(var i=0;i<fx.length;i++){if(b[fx[i][0]]==null&&(m=fx[i][1].exec(t))){b[fx[i][0]]=_bulNum(m[1]);if(fx[i][0]==='pfa')b.pfaMens=/\bMENS/i.test(t);return;}} // « P.F.A NAC MENS » : PFA mensuelle
@@ -2535,7 +2535,7 @@ async function _pdfLines(file){
   for(var p=1;p<=doc.numPages;p++){
     var tc=await (await doc.getPage(p)).getTextContent();
     // Même ligne si la hauteur diffère de moins de 2,5 pt (un arrondi fixe coupait parfois un libellé de son montant)
-    var its=tc.items.filter(function(it){return it.str&&it.str.trim();}).map(function(it){return [it.transform[5],it.transform[4],it.str];}).sort(function(a,b){return b[0]-a[0];}),grp=[];
+    var its=tc.items.filter(function(it){return it.str&&it.str.trim()&&Math.abs(it.transform[1])<0.01&&Math.abs(it.transform[2])<0.01;}) // texte pivoté (mention verticale dans la marge) écarté : il se collait à une ligne.map(function(it){return [it.transform[5],it.transform[4],it.str];}).sort(function(a,b){return b[0]-a[0];}),grp=[];
     its.forEach(function(it){var g=grp[grp.length-1];if(g&&g.y-it[0]<2.5)g.it.push(it);else grp.push({y:it[0],it:[it]});});
     grp.forEach(function(g){out.push(g.it.sort(function(a,b){return a[1]-b[1];}).map(function(r){return r[2];}).join(' '));});
   }
