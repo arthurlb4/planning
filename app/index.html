@@ -2592,8 +2592,11 @@ function _bulPayPropose(then){
 function _bulPayDone(ok){if(ok)_bulPayApply();var t=window._bulPayThen;window._bulPayThen=null;if(t)t();else if(ok)openSettingsModal(1);else closeModal();}
 function importBulletins(after){
   var inp=document.createElement('input');inp.type='file';inp.accept='application/pdf,.pdf';inp.multiple=true;
-  inp.onchange=async function(){
-    var files=[].slice.call(inp.files||[]);if(!files.length)return;
+  inp.onchange=function(){_importBulletinFiles([].slice.call(inp.files||[]),after);};
+  inp.click();
+}
+async function _importBulletinFiles(files,after){{
+    if(!files.length)return;
     _infoToast('Lecture du bulletin…');
     var ok=[],bad=0;
     for(var i=0;i<files.length;i++){
@@ -2605,9 +2608,11 @@ function importBulletins(after){
     if(bad)msg+=(msg?' · ':'')+(bad===1?'1 fichier illisible':bad+' fichiers illisibles')+(navigator.onLine===false?' (hors ligne)':'');
     _infoToast(msg);
     if(ok.length){ok.sort(function(a,b){return a-b;});render();var _last=ok[ok.length-1];_bulPayPropose(after||function(){openBulletinModal(_last);});}
-  };
-  inp.click();
-}
+    else if(after)after();
+}}
+// Fichiers choisis sur la page d'inscription (gardés en data URL) → Blob lisibles comme un fichier choisi ici
+function _regFiles(key){var a=null;try{a=JSON.parse(localStorage.getItem(key)||'null');localStorage.removeItem(key);}catch(e){}
+  if(!a||!a.length)return null;return a.map(function(f){var p=String(f.data).split(','),bin=atob(p[1]||''),u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);var b=new Blob([u]);b.name=f.name;return b;});}
 function deleteBulletin(ym){
   if(!confirm('Retirer le bulletin '+_deMois(ym)+' '+Math.floor(ym/12)+' ?'))return;
   if(S.bulletins)delete S.bulletins[ym];saveState();openBulletinModal(ym);
@@ -4081,9 +4086,11 @@ function rhImportOpen(){rhCompareOpen('import');}
 // Après une inscription « avec un bulletin » : le demander d'abord (palier, ancienneté, contrat, groupe), puis le tableau Gestion
 function _bulImportPromptIfNeeded(){
   let f=null;try{f=localStorage.getItem('pl_bul_import_prompt');}catch(e){}
-  if(!f||document.getElementById('modal-root').innerHTML)return false;
+  var pre=_regFiles('pl_bul_files');
+  if(!f&&!pre)return false;if(document.getElementById('modal-root').innerHTML)return false;
   try{localStorage.removeItem('pl_bul_import_prompt');}catch(e){}
   var next=function(){closeModal();setTimeout(function(){if(!_rhImportPromptIfNeeded())openSettingsModal(1);},250);};
+  if(pre){_importBulletinFiles(pre,next);return true;} // bulletins choisis à l'inscription : lus directement
   window._bulOnbNext=next;
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this){closeModal();setTimeout(_rhImportPromptIfNeeded,250);}"><div class="sheet tabmod">'
     +'<div class="sh"></div><div class="st">Importer un bulletin de paie ?</div>'
@@ -4095,6 +4102,12 @@ function _bulImportPromptIfNeeded(){
 }
 function _rhImportPromptIfNeeded(){
   let f=null;try{f=localStorage.getItem('pl_rh_import_prompt');}catch(e){}
+  const pre=_regFiles('pl_rh_file');
+  // tableau choisi à l'inscription : lu et appliqué directement (annulable depuis Réglages)
+  if(pre){try{localStorage.removeItem('pl_rh_import_prompt');}catch(e){}
+    (async function(){try{const cells=await _xlsxRead(pre[0]);const rh=_rhParse(cells,pre[0].name);_rhStore(cells,pre[0].name);window._rhLast=rh;rhImportApply();}
+      catch(e){_infoToast('Tableau Gestion illisible : à réimporter depuis Réglages');}})();
+    return true;}
   if(!f||document.getElementById('modal-root').innerHTML)return false;
   try{localStorage.removeItem('pl_rh_import_prompt');}catch(e){}
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet tabmod">'

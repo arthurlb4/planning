@@ -135,9 +135,9 @@ input,textarea,select{user-select:text;-webkit-user-select:text;}
           <div class="rsec">Matelas et rendus</div>
           <div style="display:flex;gap:8px;margin:6px 0 8px">
             <button type="button" id="reg-rh-imp" class="btn" style="flex:1;margin:0;height:40px;font-size:13px" onclick="regRhMode(1)">Importer le tableau</button>
-            <button type="button" id="reg-rh-man" class="btn" style="flex:1;margin:0;height:40px;font-size:13px;background:transparent;color:var(--text2);border:0.5px solid var(--border)" onclick="regRhMode(0)">Saisir à la main</button>
+            <button type="button" id="reg-rh-man" class="btn" style="flex:1;margin:0;height:40px;font-size:13px;background:rgba(255,250,243,.09);color:var(--text);border:none" onclick="regRhMode(0)">Saisir à la main</button>
           </div>
-          <div id="reg-rh-note" style="font-size:11.5px;color:var(--text3);line-height:1.5;margin-bottom:10px">Recommandé : juste après la création, l’app demande le tableau Gestion (Excel envoyé par le gestionnaire) et en reprend le matelas et les heures mois par mois, avec leurs dates d’expiration. Le fichier est lu sur l’appareil.</div>
+          <div id="reg-rh-note" style="font-size:11.5px;color:var(--text3);line-height:1.5;margin-bottom:10px">Recommandé : choisir le tableau Gestion (Excel envoyé par le gestionnaire). Le matelas et les heures mois par mois, avec leurs dates d’expiration, sont repris à la création. Le fichier est lu sur l’appareil.</div>
           <div id="reg-rh-manual" style="display:none">
           <div class="rrow">
             <span class="rrow-lbl">Matelas (h)</span>
@@ -175,9 +175,9 @@ input,textarea,select{user-select:text;-webkit-user-select:text;}
           <!-- Bulletin d'abord : palier, ancienneté (et mois d'anniversaire), contrat et groupe lus dessus après la création -->
           <div id="reg-pay-choice" style="display:flex;gap:8px;margin-bottom:8px">
             <button type="button" id="reg-pay-bul" class="btn" style="flex:1;margin:0;height:40px;font-size:13px" onclick="regPayMode(1)">Importer un bulletin</button>
-            <button type="button" id="reg-pay-man" class="btn" style="flex:1;margin:0;height:40px;font-size:13px;background:transparent;color:var(--text2);border:0.5px solid var(--border)" onclick="regPayMode(0)">Saisir à la main</button>
+            <button type="button" id="reg-pay-man" class="btn" style="flex:1;margin:0;height:40px;font-size:13px;background:rgba(255,250,243,.09);color:var(--text);border:none" onclick="regPayMode(0)">Saisir à la main</button>
           </div>
-          <div id="reg-pay-bulnote" style="font-size:11.5px;color:var(--text3);line-height:1.5;margin-bottom:8px">Recommandé : juste après la création, l’app demande un bulletin de paie (PDF) et en lit le palier, l’ancienneté, le contrat et le groupe. Le fichier est lu sur l’appareil, rien n’est envoyé.</div>
+          <div id="reg-pay-bulnote" style="font-size:11.5px;color:var(--text3);line-height:1.5;margin-bottom:8px">Recommandé : choisir un ou plusieurs bulletins récents (PDF). Le palier, l’ancienneté, le contrat et le groupe y sont lus à la création ; avec des mois qui se suivent, le mois d’anniversaire aussi. Le fichier est lu sur l’appareil, rien n’est envoyé.</div>
           <div id="reg-pay-manual" style="display:none">
           <div class="rrow">
             <span class="rrow-lbl">Palier</span>
@@ -333,22 +333,40 @@ function regGoStep3() {
   });
 }
 
+// fichiers d'une inscription précédente non aboutie : oubliés à l'ouverture de la page
+try{localStorage.removeItem('pl_rh_file');localStorage.removeItem('pl_bul_files');}catch(e){}
+// Fichiers choisis à la création : gardés sur l'appareil puis lus par l'app à l'arrivée (tableau Gestion, bulletins)
+function _regPick(accept,multi,key,noteId,lbl){
+  var inp=document.createElement('input');inp.type='file';inp.accept=accept;inp.multiple=!!multi;
+  inp.onchange=async function(){
+    var fs=[].slice.call(inp.files||[]);if(!fs.length)return;
+    try{var out=[];for(var i=0;i<fs.length;i++){out.push({name:fs[i].name,data:await new Promise(function(ok,ko){var r=new FileReader();r.onload=function(){ok(r.result);};r.onerror=ko;r.readAsDataURL(fs[i]);})});}
+      localStorage.setItem(key,JSON.stringify(out));
+      var n=document.getElementById(noteId);if(n)n.innerHTML='<span style="color:#6a9878">✓</span> '+(out.length>1?out.length+' '+lbl+' choisis':out[0].name.replace(/</g,'&lt;'))+' · repris à la création. <a style="color:var(--blue);cursor:pointer" onclick="'+(key==='pl_rh_file'?'regRhMode(1)':'regPayMode(1)')+'">Changer</a>';
+    }catch(e){var n2=document.getElementById(noteId);if(n2)n2.textContent='Fichier trop lourd pour être gardé : l’app le demandera juste après la création.';try{localStorage.removeItem(key);}catch(_){}}
+  };
+  inp.click();
+}
 // Étape profil : import du tableau Gestion (par défaut) ou saisie à la main du matelas et des rendus
 var _regRhImport=true;
 function regRhMode(imp){
+  if(!imp)try{localStorage.removeItem('pl_rh_file');}catch(e){}
+  if(imp)_regPick('.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',false,'pl_rh_file','reg-rh-note','tableaux');
   _regRhImport=!!imp;
   document.getElementById('reg-rh-manual').style.display=imp?'none':'';
   document.getElementById('reg-rh-note').style.display=imp?'':'none';
-  var on='',off='background:transparent;color:var(--text2);border:0.5px solid var(--border)',st='flex:1;margin:0;height:40px;font-size:13px;';
+  var on='',off='background:rgba(255,250,243,.09);color:var(--text);border:none',st='flex:1;margin:0;height:40px;font-size:13px;';
   document.getElementById('reg-rh-imp').style.cssText=st+(imp?on:off);document.getElementById('reg-rh-man').style.cssText=st+(imp?off:on);
 }
 // Étape paie : import d'un bulletin (par défaut) ou saisie à la main
 var _regBulImport=true;
 function regPayMode(bul){
+  if(!bul)try{localStorage.removeItem('pl_bul_files');}catch(e){}
+  if(bul)_regPick('application/pdf,.pdf',true,'pl_bul_files','reg-pay-bulnote','bulletins');
   _regBulImport=!!bul;
   document.getElementById('reg-pay-manual').style.display=bul?'none':'';
   document.getElementById('reg-pay-bulnote').style.display=bul?'':'none';
-  var b=document.getElementById('reg-pay-bul'),m=document.getElementById('reg-pay-man'),on='',off='background:transparent;color:var(--text2);border:0.5px solid var(--border)';
+  var b=document.getElementById('reg-pay-bul'),m=document.getElementById('reg-pay-man'),on='',off='background:rgba(255,250,243,.09);color:var(--text);border:none';
   b.style.cssText='flex:1;margin:0;height:40px;font-size:13px;'+(bul?on:off);m.style.cssText='flex:1;margin:0;height:40px;font-size:13px;'+(bul?off:on);
 }
 
