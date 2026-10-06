@@ -2260,7 +2260,7 @@ function _renderSideV2(d){
     +'<div class="sv2-pay" style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:10px"><span class="sv2-lbl" style="font-size:11px">'+(_bu?'Brut du bulletin':'Brut estimé')+'</span>'
     +'<span class="sv2-val" style="font-size:22px;color:'+(brutOk||_bu?'var(--gold-pay)':'var(--text3)')+'">'+(_bu?fmtEuro(_bu.brut):brutOk?fmtEuro(pt.total):'—')+'</span></div>'
     +'<div class="sv2-sub sv2-pl"><span>Inclut les variables '+deMois(prevMn)+'</span>'
-    +(_bst&&_bc.status==='ecart'&&_bulIgn(d.mym,_bc)?'<span style="color:var(--text3)">écart ignoré</span>':_bst?'<span style="color:'+_bst[1]+'">'+_bst[0]+' '+(_bc.status==='ecart'?(_bc.adj>0?'+':'')+fmtEuro(_bc.adj):'conforme')+'</span>':'<span style="color:var(--text3)">pas de bulletin</span>')+'</div>'
+    +(_bst&&_bc.status==='ecart'&&_bulIgn(d.mym,_bc)?'<span style="color:var(--text3)">écart ignoré'+(_bulIgnTxt(_bc)?' '+_bulIgnTxt(_bc):'')+'</span>':_bst?'<span style="color:'+_bst[1]+'">'+_bst[0]+' '+(_bc.status==='ecart'?(_bc.adj>0?'+':'')+fmtEuro(_bc.adj):'conforme')+'</span>':'<span style="color:var(--text3)">pas de bulletin</span>')+'</div>'
     +'</div>';
   v2.innerHTML=soldes+heures+paie;
   // Primes sur une seule ligne : si elles débordent, on réduit leur taille juste ce qu'il faut
@@ -2663,14 +2663,13 @@ function _bulPayPropose(then,all){
       +'<span style="flex:1;min-width:0"><span style="color:var(--text)">'+MCs[x.ym%12]+' '+String(Math.floor(x.ym/12)).slice(2)+' · '+RL[x.k]+'</span>'
       +'<span style="display:block;color:var(--text3);font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+why+'</span></span>'
       +'<span class="bpseg" data-bp="'+x.k+':'+x.ym+'" data-v="'+(x.v?1:0)+'">'+[0,1].map(function(v){return '<span'+((x.v?1:0)===v?' class="on"':'')+' onclick="var g=this.parentNode;g.dataset.v='+v+';[].forEach.call(g.children,function(c,j){c.classList.toggle(\'on\',j==='+v+');})">'+(v?'rendus':'payés')+'</span>';}).join('')+'</span></div>';}).join('');
-  var KEPT=D.kept?'<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0 2px;border-top:0.5px solid var(--border);font-size:11px;color:var(--text3)"><span>Bulletin faux, réglage conservé : '+D.kept+' mois</span><span style="white-space:nowrap"><a style="color:var(--blue);cursor:pointer" onclick="_bulMsgOpen(null,function(){_bulPayPropose(window._bulPayThen,'+(all?1:0)+');})">Message</a><a style="color:var(--blue);cursor:pointer;margin-left:12px" onclick="delete S.profile.bulRendKeep;saveState();_bulPayPropose(window._bulPayThen,'+(all?1:0)+')">Revoir</a></span></div>':'';
+  var KEPT=D.kept?'<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0 2px;border-top:0.5px solid var(--border);font-size:11px;color:var(--text3)"><span>Bulletin faux, réglage conservé : '+D.kept+' mois</span><span style="white-space:nowrap"><a style="color:var(--blue);cursor:pointer" onclick="delete S.profile.bulRendKeep;saveState();_bulPayPropose(window._bulPayThen,'+(all?1:0)+')">Revoir</a></span></div>':'';
   var okR=function(t){return '<div class="recap-row" style="font-size:12px;min-height:26px;gap:10px"><span style="color:var(--text3)">'+t+'</span><span>'+(nb?'<b style="color:var(--green)">✓ conforme</b><span style="color:var(--text3)"> · '+nb+' bulletin'+(nb>1?'s':'')+'</span>':'aucun bulletin<a style="color:var(--blue);cursor:pointer;margin-left:8px" onclick="importBulletins(function(){_bulPayPropose(window._bulPayThen,1);})">Importer</a>')+'</span></div>';};
   var sec=function(t,h){return '<div class="bpsec">'+t+'</div><div class="hd-card">'+h+'</div>';};
   // écart de paie avec les bulletins (comme la tuile Suivi) : souvent dû à la génération de rendus
   var EP='';if(all&&nb){var E=_bulEcart(),eok=!E.nBad;
     EP='<div class="recap-row" style="font-size:12px;min-height:26px;gap:10px"><span style="color:var(--text3)">Écart avec les bulletins</span><span style="white-space:nowrap">'
       +(eok?'<b style="color:var(--green)">✓ aucun</b>':'<b style="color:'+(E.bal<-0.05?'var(--red)':Math.abs(E.bal)<=0.05?'var(--amber)':'var(--green)')+'">'+(Math.abs(E.bal)>0.05?(E.bal<0?'−':'+')+fmtEuro(Math.abs(E.bal)):'⚠ '+E.nPb)+'</b><span style="color:var(--text3)"> · '+E.nBad+' mois</span>')
-      +(!eok?'<a style="color:var(--blue);cursor:pointer;margin-left:8px" onclick="_bulMsgOpen(null,function(){_bulPayPropose(window._bulPayThen,1);})">Message</a>':'')
       +'<a style="color:var(--blue);cursor:pointer;margin-left:8px" onclick="closeModal();openBulletinsCal()">Détail</a></span></div>'
       +(!eok&&D.paid.length?'<div style="font-size:10.5px;color:var(--text3);padding:0 0 4px">Corrigé en partie par la génération de rendus ci-dessous</div>':'');}
   var body=((rows||all)?sec('Paie',(rows||okR('Palier, contrat, primes'))+EP):'')+((rend||all)?sec('Génération de rendus',(rend||okR('Payés ou rendus'))+KEPT):'')+(all?sec('Tableau Gestion',G):'');
@@ -2680,7 +2679,7 @@ function _bulPayPropose(then,all){
     +(D.n?'<div class="mbtns"><button class="mb" onclick="_bulPayDone(0)">Plus tard</button><button class="mb pri" onclick="_bulPayDone(1)">Mettre à jour</button></div>':'<div class="mbtns" style="grid-template-columns:1fr"><button class="mb pri" style="width:100%" onclick="_bulPayDone(0)">OK</button></div>')+'</div></div>';
   return true;
 }
-// Lignes à copier pour le gestionnaire, bulletin par bulletin : ce qui manque (lignes en écart non ignorées)
+// Lignes à copier pour le gestionnaire, bulletin par bulletin : toutes les lignes en écart non ignorées
 // et la génération de rendus mal appliquée (réglage maintenu malgré le bulletin). onlyB : un seul bulletin
 function _bulMsgLines(onlyB){var D=_bulPayDiffs(),L={ferRendu:'Fériés travaillés',dimRendu:'Dimanches travaillés',rhRendu:'RH travaillés',hsRendu:'Heures sup'},
   RK={fer:'ferRendu',dim:'dimRendu',rh:'rhRendu',hsLow:'hsRendu',hsHigh:'hsRendu'},out=[],e2=function(x){return fmtEuro(Math.abs(x));};
@@ -2690,20 +2689,21 @@ function _bulMsgLines(onlyB){var D=_bulPayDiffs(),L={ferRendu:'Fériés travaill
     // seulement ce qui manque (payé à tort : pas de rattrapage négatif à demander)
     kp.forEach(function(x){if(x.v)out.push(bl+L[x.k]+' '+_deMois(W)+' ('+fmtMin(x.h)+') : à payer, mis en rendus à tort.');});
     var b=(S.bulletins||{})[ym],c=null;if(!b)return;try{c=_bulCompare(b);}catch(e){return;}if(c.status!=='ecart'||_bulIgn(ym,c))return;
-    c.items.forEach(function(i){if(i.ign||!(i.d<-0.05))return;var k=i.id.slice(2),sk=RK[k];
-      // fériés, dimanches, RH, HS : déjà dans la ligne « rendus », ou réglage de l'app à corriger d'abord (Vérification)
-      if(sk&&(kp.some(function(x){return x.k===sk;})||D.paid.some(function(x){return x.k===sk&&x.ym===W;})))return;
+    c.items.forEach(function(i){if(i.ign)return;var k=i.id.slice(2),sk=RK[k];
+      // fériés, dimanches, RH, HS déjà dans la ligne « à payer, mis en rendus à tort »
+      if(sk&&kp.some(function(x){return x.k===sk;}))return;
       var r=i.id.indexOf('r:')===0?c.rows.filter(function(x){return x.k===k;})[0]:null,f=i.id.indexOf('f:')===0?c.fixed.filter(function(x){return x.lbl===i.lbl;})[0]:null,det='';
       if(r&&r.h)det=fmtMin(r.bq+r.rq)+' payées au lieu de '+fmtMin(r.aq)+', ';
       else if(r&&k==='panier')det=(r.bq+r.rq)+' payés au lieu de '+r.aq+', ';
       else if(f)det=e2(f.bm)+' au lieu de '+e2(f.am)+', ';
-      out.push(bl+(i.id==='reste'?'Écart non expliqué':i.lbl)+(r?' ('+MC[W%12]+')':'')+' : '+det+'il manque '+e2(i.d)+'.');});});
+      var fin=i.d<-0.05?'il manque '+e2(i.d):i.d>0.05?'payé '+e2(i.d)+' de plus':'montant identique';
+      out.push(bl+(i.id==='reste'?'Écart non expliqué':i.lbl)+(r?' ('+MC[W%12]+')':'')+' : '+det+fin+'.');});});
   return out;}
 function _bulMsgOpen(only,back){
   var ls=_bulMsgLines(only),txt=ls.join('\n');window._bulMsgTxt=txt;window._modalBack=back||null;
   // fermer (toucher à côté, glisser) ramène à la page d'avant, comme « Retour »
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="sh"></div><div class="st">Message au gestionnaire</div>'
-    +'<div style="font-size:12px;color:var(--text3);line-height:1.45;margin:-4px 0 10px">Lignes à copier : ce qui manque sur les bulletins.</div>'
+    +'<div style="font-size:12px;color:var(--text3);line-height:1.45;margin:-4px 0 10px">Lignes à copier : les écarts non ignorés des bulletins.</div>'
     +'<div class="hd-card" style="font-size:12.5px;line-height:1.5;white-space:pre-wrap;user-select:text;-webkit-user-select:text">'+(ls.length?txt.replace(/&/g,'&amp;').replace(/</g,'&lt;'):'<span style="color:var(--text3)">Rien à signaler.</span>')+'</div>'
     +'<div class="mbtns"><button class="mb" onclick="closeModal()">Retour</button><button class="mb pri"'+(ls.length?'':' disabled')+' onclick="_bulMsgCopy()">Copier</button></div></div></div>';
 }
@@ -2828,6 +2828,9 @@ function _bulCompare(b){
 var _BUL_ST={ok:['✓','var(--green)','Conforme'],late:['✓','var(--green)','Conforme, avec des rattrapages'],later:['✓','var(--green)','Conforme, complété plus tard'],ecart:['⚠','var(--amber)','Écarts à vérifier']};
 // Écarts ignorés : un bulletin reste ignoré tant que son écart ne change pas, le tableau Gestion tant que c'est le même tableau et le même écart
 function _bulIgn(ym,c){return !!c&&!!c.allIgn;}
+// Montant des écarts ignorés (tous les écarts moins ceux qui restent), signé : − il manque, + payé en plus
+function _bulIgnAmt(c){return c?Math.round(((c.adjAll||0)-(c.adj||0))*100)/100:0;}
+function _bulIgnTxt(c){var a=_bulIgnAmt(c);return Math.abs(a)>0.05?(a>0?'+':'−')+fmtEuro(Math.abs(a)):'';}
 function _bulBad(ym){var c;try{c=_bulCompare(S.bulletins[ym]);}catch(e){return false;}return c.status==='ecart'&&!_bulIgn(ym,c);}
 function bulIgnL(ym,id,on){var pr=S.profile,c=_bulCompare(S.bulletins[ym]),it=c.items.filter(function(i){return i.id===id;})[0];delete pr.ignBul;
   if(!pr.ignBulL)pr.ignBulL={};var m=pr.ignBulL[ym]||(pr.ignBulL[ym]={});
@@ -2898,15 +2901,18 @@ function _payPageHtml(ym){
     else if(A>0.1)msg='⚠ '+(c.adj<0?'Il manque '+fmtEuro(A)+' sur le bulletin':'Le bulletin paie '+fmtEuro(A)+' de plus')+(c.paidLater?', après le rattrapage de '+lt:'');
     else msg='⚠ Le total correspond, mais des lignes diffèrent';
     var ig=c.status==='ecart'&&_bulIgn(ym,c),nI=c.nIgn||0;
-    if(ig)msg='Écarts ignorés';else if(c.status==='ecart'&&!(A>0.1)&&!c.badList.length)msg='✓ Conforme, écarts ignorés';
-    h+='<div style="font-size:11px;font-weight:600;margin:0 0 4px;display:flex;align-items:baseline;color:'+(ig?'var(--text3)':c.status==='ecart'&&c.badList.length?'var(--amber)':'var(--green)')+'"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+msg+(nI&&!ig?'<span style="font-weight:400;color:var(--text3)"> · '+nI+' ignoré'+(nI>1?'s':'')+'</span>':'')+'</span>'
+    var _iT=_bulIgnTxt(c);
+    if(ig)msg='Écarts ignorés'+(_iT?' · '+_iT:'');else if(c.status==='ecart'&&!(A>0.1)&&!c.badList.length)msg='✓ Conforme, écarts ignorés'+(_iT?' ('+_iT+')':'');
+    h+='<div style="font-size:11px;font-weight:600;margin:0 0 4px;display:flex;align-items:baseline;color:'+(ig?'var(--text3)':c.status==='ecart'&&c.badList.length?'var(--amber)':'var(--green)')+'"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+msg+'</span>'
       +(c.status==='ecart'&&c.items.length?'<a style="font-weight:400;color:var(--blue);cursor:pointer;margin-left:auto;padding-left:8px;flex-shrink:0;white-space:nowrap" onclick="event.stopPropagation();_openBulIgnMenu(this,'+ym+')">Ignorer…</a>':'')+'</div>'
+    // Écarts ignorés en partie : combien et leur montant, sur une ligne à part
+    +(nI&&!ig&&!/écarts ignorés/.test(msg)?'<div style="font-size:11px;margin:0 0 4px;color:var(--text3)">'+nI+' écart'+(nI>1?'s':'')+' ignoré'+(nI>1?'s':'')+(_iT?' · '+_iT:'')+'</div>':'')
     // Écart sur fériés, dimanches, RH ou HS dû au réglage de l'app → Vérification ; sinon ce qui manque → message au gestionnaire
     if(c.status==='ecart'&&!ig){var _D=null,_ms=[];try{_D=_bulPayDiffs();_ms=_bulMsgLines(ym);}catch(e){}
       var _lk='color:var(--blue);cursor:pointer;margin-left:auto;padding-left:8px;white-space:nowrap',_W=ym-1;
       if(_D&&_D.paid.some(function(x){return x.ym===_W;})&&c.items.some(function(i){return !i.ign&&/^r:(fer|dim|rh|hsLow|hsHigh)$/.test(i.id);}))
         h+='<div style="font-size:11px;margin:0 0 4px;display:flex;color:var(--text3)"><span>Génération de rendus à corriger</span><a style="'+_lk+'" onclick="_bulPayPropose(function(){openBulletinModal('+ym+')},1)">Vérifier ›</a></div>';
-      if(_ms.length)h+='<div style="font-size:11px;margin:0 0 4px;display:flex;color:var(--text3)"><span>À signaler au gestionnaire</span><a style="'+_lk+'" onclick="_bulMsgOpen('+ym+',function(){openBulletinModal('+ym+')})">Message ›</a></div>';}}
+      if(_ms.length)h+='<div style="font-size:11px;margin:0 0 4px;display:flex;color:var(--text3)"><span>Écarts à signaler au gestionnaire</span><a style="'+_lk+'" onclick="_bulMsgOpen('+ym+',function(){openBulletinModal('+ym+')})">Message ›</a></div>';}}
   var pR=(v.panierRate!=null?v.panierRate:getPanierRate());
   // Ligne paniers et ligne de statut toujours présentes : la case garde la même hauteur
   if(!c)h+='<div style="font-size:11px;margin:0 0 4px;color:var(--text3)">Pas de bulletin</div>';
@@ -3163,7 +3169,8 @@ function openBulletinsCal(y){
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet tabmod"><div class="sh"></div>'
     +'<div class="nav-back" style="'+_navBackCss+'" onclick="openMergedRenduCgModal(6,2)">‹ Suivi</div>'
     +'<div class="st" style="display:flex;align-items:center;justify-content:space-between"><span style="'+arr+'" onclick="_svYearGo('+(y-1)+')">‹</span><span>Paie '+y+'</span><span style="'+arr+'" onclick="_svYearGo('+(y+1)+')">›</span></div><div id="sv-sal" style="padding:0 12px">'+_svSalHtml(y)+'</div>'
-    +'<div style="display:flex;gap:8px;margin:14px 0 14px"><button onclick="window._bulFrom=\'recap\';importBulletins()" style="font-size:11px;padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:none;cursor:pointer;font-family:var(--font);color:var(--text2)"><i class="ti ti-file-import" style="margin-right:4px"></i>Importer / réimporter des bulletins</button></div>'
+    +'<div style="display:flex;gap:8px;margin:14px 0 14px"><button onclick="window._bulFrom=\'recap\';importBulletins()" style="white-space:nowrap;font-size:11px;padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:none;cursor:pointer;font-family:var(--font);color:var(--text2)"><i class="ti ti-file-import" style="margin-right:4px"></i>Importer des bulletins</button>'
+      +(function(){var n=0;try{n=_bulMsgLines().length;}catch(e){}return n?'<button onclick="_bulMsgOpen(null,function(){openBulletinsCal()})" style="white-space:nowrap;font-size:11px;padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:none;cursor:pointer;font-family:var(--font);color:var(--text2)"><i class="ti ti-message" style="margin-right:4px"></i>Message au gestionnaire</button>':'';})()+'</div>'
     +'<button class="mcancel mclose" onclick="closeModal()">Fermer</button></div></div>';
   _swipeNav(function(nd){window._svYear=y+nd;openBulletinsCal(y+nd);},function(){openMergedRenduCgModal(6,2);}); // glisser : année voisine ; depuis le bord gauche : retour à Suivi
 }
@@ -3184,7 +3191,7 @@ function _svSalHtml(y){
       if(rat)st='<span style="color:var(--text3)">'+(cc.later&&cc.later.length?'rattrapé en '+MCs[cc.later[0]%12]:'dont rattrapage')+' <span style="color:var(--green)"><span class="tk">✓</span></span></span>';
       // Écart affiché = celui de la page du mois (paniers compris, rattrapages et lignes ignorées déduits)
       else{var e=cc?cc.adj:d;
-        st=ig?'<span style="color:var(--text3)">ignoré</span>'
+        st=ig?'<span style="color:var(--text3)">ignoré'+(_bulIgnTxt(cc)?' '+_bulIgnTxt(cc):'')+'</span>'
           :Math.abs(e)<=0.05?'<span style="color:'+(bad?'var(--amber)':'var(--green)')+'">'+(bad?'lignes ⚠':'<span class="tk">✓</span>')+'</span>'
           :'<span style="color:'+(e>0?'var(--green)':'var(--red)')+'">'+(e>0?'+':'−')+fe(Math.abs(e))+'</span>';}}
     else st='<span style="color:var(--text3)">—</span>';
