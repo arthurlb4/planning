@@ -197,5 +197,15 @@ function situation(opts) {
   eq('Échange de semaine : vacations de la ligne échangée', a.run('(function(){var g=getActiveCycleGrid(_m)||CYCLE,d=new Date(_m);d.setDate(d.getDate()+1);return getCycleVac(d).cycleVac===(g[_o][1]||"RH")||getCycleVac(d).cycleVac===g[_o][1];})()'), true);
 }
 
+// Détachement : vacation plus longue que prévue, mais aucune heure sup ni rendu
+{
+  const a = load('2026-10-01');
+  eq('Détachement : pas d\'heures sup', a.run(`(function(){var m=getMonday(new Date(2026,9,5,12));
+    for(var i=0;i<7;i++){var d=new Date(m);d.setDate(m.getDate()+i);var c=getCycleVac(d).cycleVac;if(c&&c!=='RH'){var k=dk(d);
+      S.customVacs=S.customVacs||{};S.customVacs.X={deb:'06h00',fin:'20h00',dur:840,panier:false,hidden:true,label:'X',primes:{}};
+      S.overrides=S.overrides||{};S.overrides[k]={vac:'X',fromSV:false,echange:false,hs:false,formation:false,motif:'autre'};
+      var w1=calcHSWeek(m).surplus>0;S.overrides[k].motif='detache';return [w1,calcHSWeek(m).surplus,_dayHSMin(d)];}}})()`), [true, 0, 0]);
+}
+
 console.log('\n' + (count - fails) + '/' + count + ' contrôles réussis');
 if (fails) process.exit(1);

@@ -1252,7 +1252,10 @@ function calcHSWeek(monday){
     }else{
       if(!vac||vac==='RH'){weekWorked+=0;roundedSurplus+=0;continue;}
       const _ov=(S.overrides||{})[key];
-      if(_ov&&_ov.vac&&!_ov.echange&&cycleVac&&VAC[cycleVac]&&VAC[cycleVac].mixte){
+      if(_ov&&_ov.vac&&!_ov.echange&&_ov.motif==='detache'){
+        // Détachement sur un autre service : compte la vacation prévue au cycle, jamais d'heures sup
+        _dayWorked=_dayBase;
+      } else if(_ov&&_ov.vac&&!_ov.echange&&cycleVac&&VAC[cycleVac]&&VAC[cycleVac].mixte){
         _dayWorked=(VAC[cycleVac].dur||0)+_calcMixteHsMin(cycleVac,_ov.vac,VAC);
       } else if(_ov&&_ov.vac&&!_ov.echange&&cycleVac&&cycleVac!=='RH'&&VAC[cycleVac]){
         // Jour travaillé changé (grille ou « Modifier ») : la plus grande des deux, prévue ou faite ; le surplus part en heures sup
@@ -3533,6 +3536,7 @@ function _dayHSMin(date){
     else if(cycleVac&&cycleVac!=='RH')w=VAC[cycleVac]?VAC[cycleVac].dur:0;
   }else{
     if(!vac||vac==='RH')return 0;
+    if(_ov&&_ov.vac&&!_ov.echange&&_ov.motif==='detache')return 0;
     if(_ov&&_ov.vac&&!_ov.echange&&cycleVac&&VAC[cycleVac]&&VAC[cycleVac].mixte)w=(VAC[cycleVac].dur||0)+_calcMixteHsMin(cycleVac,_ov.vac,VAC);
     else if(_ov&&_ov.vac&&!_ov.echange&&cycleVac&&cycleVac!=='RH'&&VAC[cycleVac])w=Math.max(VAC[cycleVac].dur||0,VAC[vac]?VAC[vac].dur:0);
     else if(_ov&&_ov.vac&&!_ov.echange&&!_ov.hs)w=(!cycleVac||cycleVac==='RH'||!VAC[cycleVac])?(VAC[vac]?VAC[vac].dur:0):VAC[cycleVac].dur;
@@ -7624,10 +7628,10 @@ function openCustomVacModal(){
   // Motif du changement : formé (garde les primes prévues), formateur (les perd, prime de formateur), autre
   var motif=ov.motif||(ov.formation?'forme':'autre');window._cvMotif=motif;
   var cP=[];if(cI){var cp=cI.primes||{};if(cp.antenne)cP.push('Antenne');if(cp.reel)cP.push('Réal');if(cp.coord)cP.push('Coordination');if(cI.deb&&_toMinApp(cI.deb)<240)cP.push('matin');}
-  window._cvHints={forme:cP.length?'Garde les primes de '+cN+' ('+cP.join(', ')+'). Nuit : la plus grande des deux.':'Nuit : la plus grande entre '+cN+' et la formation.',formateur:'Primes de '+cN+' non dues.',autre:''};
+  window._cvHints={forme:cP.length?'Garde les primes de '+cN+' ('+cP.join(', ')+'). Nuit : la plus grande des deux.':'Nuit : la plus grande entre '+cN+' et la formation.',formateur:'Primes de '+cN+' non dues.',detache:cI?'Pas d\'heures sup ni de rendus : compte '+cN+'.':'Pas d\'heures sup ni de rendus.',autre:''};
   var mB=function(k,l){return '<button type="button" data-m="'+k+'" class="'+(motif===k?'on':'')+'" onclick="_cvSetMotif(\''+k+'\')">'+l+'</button>';};
   // « Pourquoi ce changement ? » : chaque choix montre directement ce qu'il implique pour les primes
-  var opts=(cI?'<div style="margin:10px 0 4px"><label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Raison du changement</label><div class="cv-seg" id="cv-motif">'+mB('autre','Horaires modifiés')+mB('forme','Formation suivie')+mB('formateur','Formateur')+'</div></div>':'')
+  var opts=(key?'<div style="margin:10px 0 4px"><label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Raison du changement</label><div class="cv-seg" id="cv-motif">'+mB('autre','Horaires')+(cI?mB('forme','Formation')+mB('formateur','Formateur'):'')+mB('detache','Détachement')+'</div></div>':'')
     ;
   window._cvCalcRef=cI&&!cI.mixte?{n:cN,dur:cI.dur||0,nuit:calcNuitMinShift(cI),deb:cI.deb}:(cI?{n:'',dur:-1}:{n:'',dur:0});
   var dO='<option value="0">—</option>';for(var d=15;d<=600;d+=15)dO+='<option value="'+d+'"'+(x&&x.dur===d?' selected':'')+'>'+fmtMin(d)+'</option>';
@@ -7646,8 +7650,8 @@ function openCustomVacModal(){
     +'<div class="mrow" style="margin:8px 0 2px"><label id="cv-autre-lbl">'+(motif==='formateur'?'Prime de formateur (€)':'Primes du jour')+'</label>'
     +'<div style="display:flex;gap:8px;align-items:stretch">'
     +'<div style="flex:1;min-width:0;display:grid">'
-    +'<select id="custom-prime" onchange="_cvPrimeSync(this)" style="grid-area:1/1;width:100%;'+fs+';visibility:'+(cI&&motif!=='autre'?'hidden':'visible')+'"><option value="">Aucune</option><option value="antenne">Antenne</option><option value="reel">Réal</option><option value="coord">Coordination</option>'+(key?'<option value="autre">Autre (montant)</option>':'')+'</select>'
-    +(cI?'<div class="cv-hint" id="cv-motif-hint" style="grid-area:1/1;align-self:center;margin:0 2px;visibility:'+(motif==='autre'?'hidden':'visible')+'">'+window._cvHints[motif]+'</div>':'')
+    +'<select id="custom-prime" onchange="_cvPrimeSync(this)" style="grid-area:1/1;width:100%;'+fs+';visibility:'+(key&&motif!=='autre'?'hidden':'visible')+'"><option value="">Aucune</option><option value="antenne">Antenne</option><option value="reel">Réal</option><option value="coord">Coordination</option>'+(key?'<option value="autre">Autre (montant)</option>':'')+'</select>'
+    +(key?'<div class="cv-hint" id="cv-motif-hint" style="grid-area:1/1;align-self:center;margin:0 2px;visibility:'+(motif==='autre'?'hidden':'visible')+'">'+window._cvHints[motif]+'</div>':'')
     +'</div>'
     +(key?'<div id="cv-autre" style="width:110px;flex:none;visibility:'+(prSel==='autre'||motif==='formateur'?'visible':'hidden')+'"><input id="cv-autre-amt" inputmode="decimal" placeholder="0,00 €" value="'+(dp&&dp.amt>0?String(dp.amt).replace('.',','):'')+'" style="width:100%;height:100%;box-sizing:border-box;'+fs+'"></div>':'')
     +'</div></div>'
@@ -7696,7 +7700,7 @@ function _cvFromVac(lbl){var key=pendingKey;if(!lbl||!key){_cvUnfill();return;}v
 function _cvCalc(){var el=document.getElementById('cv-calc'),R=window._cvCalcRef;if(!el)return;if(!R){el.textContent='';return;}
   var g=function(id){var e=document.getElementById(id);return e?e.value:'';},d=g('custom-deb'),f=g('custom-fin');if(!d||!f){el.textContent='';return;}
   var a=parseHM(d),b=parseHM(f),t=b-a;if(t<=0)t+=1440;var pz=parseInt(g('custom-pause'))||0;if(pz>=45)t-=pz;if(t<=0){el.textContent='';return;}
-  var l1=R.dur<0?'<b style="color:var(--text2)">'+fmtMin(t)+'</b> faites':!R.dur?'<b style="color:var(--text2)">'+fmtMin(t)+'</b> faites, en heures sup (jour de repos).'
+  var l1=window._cvMotif==='detache'?'<b style="color:var(--text2)">'+fmtMin(t)+'</b> faites · détachement, pas d\'heures sup.':R.dur<0?'<b style="color:var(--text2)">'+fmtMin(t)+'</b> faites':!R.dur?'<b style="color:var(--text2)">'+fmtMin(t)+'</b> faites, en heures sup (jour de repos).'
     :(function(){var x=t-R.dur;return '<b style="color:var(--text2)">'+fmtMin(t)+'</b> faites · '+R.n+' prévue '+fmtMin(R.dur)+(x>0?' → <b style="color:var(--blue)">+'+fmtMin(x)+' en heures sup</b>':x<0?' → '+fmtMin(R.dur)+' comptées':'');})();
   // Ce que le jour rapporte en plus : nuit (formation suivie → la plus grande des deux), matin, panier, majoration du jour
   var forme=window._cvMotif==='forme'&&R.dur>0,key=pendingKey,date=key?new Date(key+'T12:00:00'):null,ch=[];
@@ -7768,7 +7772,7 @@ function confirmCustomVac(){
       var date=new Date(key+'T12:00:00'),cv=getCycleVac(date).cycleVac;
       if(!S.overrides)S.overrides={};
       S.overrides[key]={vac:vacKey,fromSV:!cv||cv==='RH',echange:false,hs:hs,formation:formation,motif:motif};
-      logH(fmtDate(date)+' -> '+name+(motif==='forme'?' (formation suivie)':motif==='formateur'?' (formateur)':''),'#62aadc',key);
+      logH(fmtDate(date)+' -> '+name+(motif==='forme'?' (formation suivie)':motif==='formateur'?' (formateur)':motif==='detache'?' (détachement)':''),'#62aadc',key);
     }
   } else if(key&&I.had){
     // Vacation inchangée : seules les options changent (jour déjà modifié)
