@@ -7631,7 +7631,7 @@ function openCustomVacModal(){
   window._cvHints={forme:cP.length?'Garde les primes de '+cN+' ('+cP.join(', ')+'). Nuit : la plus grande des deux.':'Nuit : la plus grande entre '+cN+' et la formation.',formateur:'Primes de '+cN+' non dues.',detache:cI?'Pas d\'heures sup ni de rendus : compte '+cN+'.':'Pas d\'heures sup ni de rendus.',autre:''};
   var mB=function(k,l){return '<button type="button" data-m="'+k+'" class="'+(motif===k?'on':'')+'" onclick="_cvSetMotif(\''+k+'\')">'+l+'</button>';};
   // « Pourquoi ce changement ? » : chaque choix montre directement ce qu'il implique pour les primes
-  var opts=(key?'<div style="margin:10px 0 4px"><label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Raison du changement</label><div class="cv-seg" id="cv-motif">'+mB('autre','Horaires')+(cI?mB('forme','Formation')+mB('formateur','Formateur'):'')+mB('detache','Détachement')+'</div></div>':'')
+  var opts=(key?'<div style="margin:0 0 8px"><label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Raison du changement</label><div class="cv-seg" id="cv-motif">'+mB('autre','Horaires')+(cI?mB('forme','Formation')+mB('formateur','Formateur'):'')+mB('detache','Détachement')+'</div></div>':'')
     ;
   window._cvCalcRef=cI&&!cI.mixte?{n:cN,dur:cI.dur||0,nuit:calcNuitMinShift(cI),deb:cI.deb}:(cI?{n:'',dur:-1}:{n:'',dur:0});
   var dO='<option value="0">—</option>';for(var d=15;d<=600;d+=15)dO+='<option value="'+d+'"'+(x&&x.dur===d?' selected':'')+'>'+fmtMin(d)+'</option>';
@@ -7639,13 +7639,15 @@ function openCustomVacModal(){
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this){if(pendingKey)openDay(pendingKey);else closeModal();}"><div class="sheet"><div class="sh"></div>'
     +'<div class="st" style="margin-bottom:2px">'+(key?'Modifier':'Ajouter')+'</div>'
     +(key?'<div style="font-size:11.5px;color:var(--text3);margin-bottom:12px">'+fmtDate(date)+'</div>':'')
-    +'<div class="hd-card" style="'+card+'"><div class="btit" style="margin:0 0 8px">Vacation</div>'
+    // Jour déjà modifié (hors échange) : retour à la vacation prévue au cycle
+    +'<div class="hd-card" style="'+card+'"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 8px"><div class="btit" style="margin:0">Vacation</div>'
+    +(key&&ov.vac&&!ov.echange?'<button type="button" class="adj-pill" style="width:auto;padding:0 12px;height:28px;font-size:12px" onclick="_cvRevert()"><i class="ti ti-arrow-back-up"></i> Revenir à l’original</button>':'')+'</div>'
+    +(key?opts:'')
     +'<div class="mrow"><label>Nom</label><input id="custom-name" list="cv-vac-list" autocomplete="off" placeholder="B1, formation, renfort…" style="width:100%;'+fs+'"><datalist id="cv-vac-list">'+_cvVacOpts(date,VAC)+'</datalist></div>'
     // Début | Fin | Pause sur une ligne
     +'<div class="mr2" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:6px"><div><label>Début</label><select id="custom-deb" style="width:100%;'+fs+'">'+T+'</select></div><div><label>Fin</label><select id="custom-fin" style="width:100%;'+fs+'">'+T+'</select></div>'
     +'<div><label>Pause</label><select id="custom-pause" style="width:100%;'+fs+'"><option value="0">Sans</option><option value="45">45 min</option><option value="60">1h00</option></select></div></div>'
     +(key?'<div class="cv-hint" id="cv-calc" style="margin:-2px 2px 8px;min-height:2.8em"></div>':'')
-    +(key?opts:'')
     // Une seule ligne de hauteur fixe : [menu des primes | phrase d'explication] + montant à droite (prime « Autre » ou de formateur)
     +'<div class="mrow" style="margin:8px 0 2px"><label id="cv-autre-lbl">'+(motif==='formateur'?'Prime de formateur (€)':'Primes du jour')+'</label>'
     +'<div style="display:flex;gap:8px;align-items:stretch">'
@@ -7710,6 +7712,9 @@ function _cvCalc(){var el=document.getElementById('cv-calc'),R=window._cvCalcRef
   if(date){var tx=getTauxForYM(date.getFullYear()*12+date.getMonth()),gv=getVac(date);
     if(FERIES.has(key))ch.push('Férié ×'+tx.fer+'%');else if(date.getDay()===0)ch.push('Dim ×'+tx.dim+'%');else if(isRHDay(date)&&!gv.echange)ch.push('RH ×'+tx.rh+'%');}
   el.innerHTML=l1+(ch.length?'<br>'+ch.join(' · '):'');}
+// Revenir à l'original : retire la modification du jour (et sa prime du jour), l'écran se recharge sur la vacation prévue
+function _cvRevert(){var k=pendingKey;if(!k||!(S.overrides||{})[k])return;pushUndo('Vacation remise');
+  delete S.overrides[k];if(S.dayPrimes)delete S.dayPrimes[k];saveState();render();gcalTrigger();openCustomVacModal();}
 // Motif : formateur ouvre directement la prime de formateur
 function _cvSetMotif(k){var prev=window._cvMotif;window._cvMotif=k;setTimeout(_cvCalc,0);document.querySelectorAll('#cv-motif button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-m')===k);});
   var h=document.getElementById('cv-motif-hint');if(h){h.textContent=(window._cvHints||{})[k]||'';h.style.visibility=k==='autre'?'hidden':'visible';}
@@ -8720,7 +8725,10 @@ async function confirmDeleteAccount(){
 // Historique (cloud) : liste des jours, puis restauration d'une version (la version actuelle reste dans l'historique du jour)
 async function _histOpen(){var pid=_aid,dates=[];
   try{var r=await fetch(CLOUD_API+'/data/backups',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({profileId:pid})});var d=await r.json();dates=d.dates||[];}catch(e){_infoToast('Historique injoignable');return;}
-  var ls=dates.length?dates.map(function(dt){var x=new Date(dt+'T12:00:00');return '<div class="srow" style="padding:6px 0"><div class="slbl" style="font-size:13px">Avant le '+x.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'long'})+'</div><button class="adj-pill" style="width:auto;padding:0 12px;height:30px;font-size:12px" onclick="_histRestore(\''+dt+'\')">Restaurer</button></div>';}).join('')
+  // Sélecteur de jour (jusqu'à 60) + un seul bouton Restaurer
+  var ls=dates.length?'<div style="display:flex;gap:8px;align-items:center"><select id="hist-sel" style="flex:1;min-width:0;padding:9px 10px;border:0.5px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--bg2);color:var(--text);font-family:var(--font);-webkit-appearance:none">'
+      +dates.slice().sort().reverse().map(function(dt){var x=new Date(dt+'T12:00:00');return '<option value="'+dt+'">Avant le '+x.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'long'})+'</option>';}).join('')
+      +'</select><button class="adj-pill" style="width:auto;padding:0 14px;height:38px;font-size:13px" onclick="_histRestore(document.getElementById(\'hist-sel\').value)">Restaurer</button></div>'
     :'<div style="font-size:12px;color:var(--text3);padding:6px 0">Pas encore de version : elles s’enregistrent chaque jour où l’app est modifiée.</div>';
   window._modalBack=function(){openSettingsModal();};
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="sh"></div><div class="st">Sauvegardes</div>'
