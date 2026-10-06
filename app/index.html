@@ -999,7 +999,8 @@ function loadState(){
 }
 function saveState(){
   var _ts=Date.now();
-  Object.keys(_profs).forEach(function(pid){if(_profs[pid]&&_profs[pid].profile)_profs[pid].profile._lastSaved=_ts;});
+  // seulement le profil actif (les autres n'ont pas changé : les dater les ferait passer pour plus récents que le cloud)
+  if(_profs[_aid]&&_profs[_aid].profile)_profs[_aid].profile._lastSaved=_ts;
   try{localStorage.setItem('pl_v8',JSON.stringify({p:_profs,a:_aid,u:_plU()}));}catch(e){}
   // Cloud sync debounced (5s)
   clearTimeout(window._cloudSyncTimer);
@@ -1009,7 +1010,8 @@ function saveState(){
   },5000);
   if(window._authToken)setSyncStatus('pending');
 }
-function switchProfile(id){_profs[_aid]=S;saveState();if(!_profs[id])_profs[id]=DEFAULT_PD();_aid=id;S=_profs[_aid];saveState();}
+// changement de profil : l'ancien est envoyé tout de suite, l'historique d'annulation vidé (il concernait l'autre profil)
+function switchProfile(id){_profs[_aid]=S;saveState();var _old=_aid;try{cloudSave(_old);}catch(e){}if(!_profs[id])_profs[id]=DEFAULT_PD();_aid=id;S=_profs[_aid];_us=[];_rs=[];try{updateUrBtns();}catch(e){}saveState();}
 function createProfile(id,data){_profs[id]=data;saveState();}
 function deleteProfile(id){if(id==='default')return;delete _profs[id];if(_aid===id){_aid='default';if(!_profs.default)_profs.default=DEFAULT_PD();S=_profs.default;}saveState();}
 function getProfiles(){
@@ -7957,12 +7959,13 @@ function init(){
   })();
   // Auth check
   const authToken=localStorage.getItem('auth_token');
-  const authUser=JSON.parse(localStorage.getItem('auth_user')||'null');
+  let authUser=null;try{authUser=JSON.parse(localStorage.getItem('auth_user')||'null');}catch(e){}
   if(!authToken||!authUser){window.location.replace('/planning/');return;}
   window._authToken=authToken;
   window._authUser=authUser;
   // Show user name in header if needed
-  loadState();autoReportEph();applyTheme();
+  // reports automatiques après la lecture du cloud (avant, ils dataient les données locales et les faisaient passer pour plus récentes)
+  loadState();applyTheme();
   // Load global pay config (convention collective)
   fetch(CLOUD_API+'/get-pay-config',{method:'POST',headers:cloudHeaders(),body:'{}'})
     .then(function(r){return r.json();})
@@ -8006,6 +8009,7 @@ function init(){
     // Pousse au chargement les modifs locales qui n'auraient pas encore été synchronisées (pas celles d'un compte inconnu)
     if(S&&S.profile&&window._authToken&&!window._plLegacy)cloudSave(_aid);
   }).catch(function(){
+    try{autoReportEph();render();}catch(e){}
     _revealBody();
   });
   // Scroll to navigate months/years
@@ -8548,9 +8552,7 @@ async function cloudRefresh(){
   if(!cloud||pid!==_aid)return;
   var cloudSig=_syncSig(cloud);
   if(cloudSig===localSig)return;
-  // N'accepter qu'une version plus récente que la nôtre
-  var _cTs=(cloud.profile&&cloud.profile._lastSaved)||0,_lTs=(_profs[pid].profile&&_profs[pid].profile._lastSaved)||0;
-  if(_cTs<=_lTs)return;
+  // Rien en attente ici et le cloud a changé depuis notre dernier envoi : c'est une modification faite ailleurs, on la prend
   // L'utilisateur a modifié entre-temps, ou une fenêtre est ouverte : ne pas écraser
   if(_syncSig(_profs[pid])!==localSig||document.getElementById('modal-root').innerHTML)return;
   _profs[pid]=cloud;S=cloud;_us=[];_rs=[];
@@ -8602,8 +8604,11 @@ async function cloudLoadAll(){
         if(cloudData){
           var _localTs=(_profs[pid]&&_profs[pid].profile&&_profs[pid].profile._lastSaved)||0;
           var _cloudTs=(cloudData.profile&&cloudData.profile._lastSaved)||0;
-          // données locales d'un compte inconnu (ancien format) : jamais préférées au cloud
-          if(_cloudTs>=_localTs||window._plLegacy){
+          // données locales d'un compte inconnu (ancien format) : jamais préférées au cloud ;
+          // rien en attente d'envoi ici (signature = dernier envoi réussi) : le cloud fait foi, quelle que soit la date
+          var _synced=null;try{_synced=localStorage.getItem(_syncKey(pid));}catch(e){}
+          var _dirty=!!(_profs[pid]&&_synced&&_syncSig(_profs[pid])!==_synced);
+          if(_cloudTs>=_localTs||window._plLegacy||!_dirty){
             // ce que le cloud remplace sur l'appareil est gardé 30 jours (Réglages → Profil → Restaurer)
             if(_profs[pid]&&_profs[pid].profile&&!(window._plBlank&&pid===_aid)&&_syncSig(_profs[pid])!==_syncSig(cloudData))try{localStorage.setItem('pl_bak',JSON.stringify({at:Date.now(),u:_plU(),pid:pid,d:_profs[pid]}));}catch(e){}
             _profs[pid]=cloudData;try{localStorage.setItem(_syncKey(pid),_syncSig(cloudData));}catch(e){}}
@@ -8708,12 +8713,15 @@ async function _histOpen(){var pid=_aid,dates=[];
 async function _histRestore(dt){var data=null;try{var r=await fetch(CLOUD_API+'/data/backup',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({profileId:_aid,date:dt})});data=(await r.json()).data;}catch(e){}
   if(!data){_infoToast('Version introuvable');return;}
   if(!confirm('Remettre les données d’avant le '+new Date(dt+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long'})+' ?\n\nLes données actuelles restent dans l’historique d’aujourd’hui.'))return;
-  pushUndo('Version précédente restaurée');_profs[_aid]=data;S=_profs[_aid];saveState();cloudSave(_aid);window._modalBack=null;closeModal();render();_infoToast('✓ Version restaurée');}
+  _us=[];_rs=[];_profs[_aid]=data;S=_profs[_aid];saveState();cloudSave(_aid);window._modalBack=null;closeModal();render();_infoToast('✓ Version restaurée');}
 function _restoreBak(){var k=null;try{k=JSON.parse(localStorage.getItem('pl_bak')||'null');}catch(e){}if(!k||!k.d)return;
   if(!confirm('Remettre la version d’avant enregistrée sur cet appareil ('+((k.d.profile||{}).name||'profil')+') ?\n\nElle remplace les données actuelles, ici et dans le cloud.'))return;
-  pushUndo('Restauration de la version d’avant');_profs[k.pid]=k.d;_aid=k.pid;S=_profs[_aid];try{localStorage.removeItem('pl_bak');}catch(e){}
+  _us=[];_rs=[];_profs[k.pid]=k.d;_aid=k.pid;S=_profs[_aid];try{localStorage.removeItem('pl_bak');}catch(e){}
   saveState();cloudSave(_aid);render();closeModal();_infoToast('✓ Version d’avant restaurée');}
-function signOut(){
+document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden'&&window._authToken&&_aid&&window._syncStatus==='pending'){clearTimeout(window._cloudSyncTimer);cloudSave(_aid);}});
+async function signOut(){
+  // modifications pas encore envoyées : envoyées avant de fermer la session
+  if(window._authToken&&_aid&&window._syncStatus==='pending'){clearTimeout(window._cloudSyncTimer);try{await cloudSave(_aid);}catch(e){}}
   fetch(CLOUD_API+'/auth/logout',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({})}).catch(()=>{});
   localStorage.removeItem('auth_token');
   localStorage.removeItem('auth_user');
