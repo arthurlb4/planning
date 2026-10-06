@@ -4285,12 +4285,12 @@ function rhCompareOpen(mode){
   let inp=document.getElementById('rh-file');
   if(!inp){inp=document.createElement('input');inp.type='file';inp.id='rh-file';inp.accept='.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';inp.style.display='none';document.body.appendChild(inp);
     inp.addEventListener('change',async function(){const f=inp.files&&inp.files[0];inp.value='';if(!f)return;
-      try{const cells=await _xlsxRead(f);const rh=_rhParse(cells,f.name);_rhStore(cells,f.name);if(inp._mode==='import')rhImportPreview(rh);else rhCompareShow(rh);}
+      try{const cells=await _xlsxRead(f);const rh=_rhParse(cells,f.name);_rhStore(cells,f.name);if(inp._mode==='import'||!(S.profile&&S.profile.rhImportedAt))rhImportPreview(rh);else rhCompareShow(rh);}
       catch(e){console.warn(e);showBlockAlert('Lecture impossible',e.message||'Ce fichier n’a pas pu être lu.');}});}
   inp._mode=mode||'compare';inp.click();
 }
-// ── Import du tableau RH : point de départ du suivi (matelas, solde par mois d'origine, reports, date) ──
-function rhImportOpen(){rhCompareOpen('import');}
+// ── Import du tableau RH : un seul bouton. Premier tableau : on en repart ; ensuite : comparaison, avec « Repartir de ce tableau » en bas ──
+function rhImportOpen(){rhCompareOpen();}
 // Après une inscription sans matelas ni rendus saisis : proposer d'importer le tableau RH
 // Après une inscription « avec un bulletin » : le demander d'abord (palier, ancienneté, contrat, groupe), puis le tableau Gestion
 function _bulImportPromptIfNeeded(){
@@ -4372,7 +4372,7 @@ function rhImportPreview(rh){
     +(hist.length?'<div class="rc-note"><i class="ti ti-history" style="color:var(--blue)"></i> <b>'+hist.length+' rendu'+(hist.length>1?'s':'')+' jusqu’au '+(rh.lastWeek?'dimanche de la S'+rh.lastWeek:P.ed.toLocaleDateString('fr-FR'))+' ('+fmtMin(histH)+')</b> : déjà déduit'+(hist.length>1?'s':'')+' dans le tableau. Ils restent affichés dans le calendrier, mais l’app ne les retire pas une deuxième fois.</div>':'')
     +(P.maybeLate.length?'<div class="rc-note"><i class="ti ti-clock" style="color:var(--blue)"></i> <b>'+P.maybeLate.length+' rendu'+(P.maybeLate.length>1?'s':'')+' après la S'+rh.lastWeek+'</b>, dernière semaine notée par le gestionnaire ('+P.maybeLate.map(k=>new Date(k+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'})).join(', ')+') : pas encore dans son tableau, l’app les décompte elle-même.</div>':'')
     +(P.toHist.length?'<div class="rc-com" style="margin:2px 0 4px">Si l’app s’est trompée sur un rendu, touche le jour dans le calendrier pour corriger.</div>':'')
-    +'<button class="rc-btn" style="margin-top:10px;height:40px" onclick="rhImportApply()">Importer et repartir de ce tableau</button>'
+    +'<button class="rc-btn" style="margin-top:10px;height:40px" onclick="rhImportApply()">Repartir de ce tableau</button>'
     +'<button class="rc-btn rc-btn2" style="margin-top:8px;height:36px" onclick="closeModal()">Annuler</button>'
     +'</div></div>';
   document.getElementById('modal-root').innerHTML=html;
@@ -4615,7 +4615,11 @@ function rhCompareShow(rh){
     +'<div class="rv-det"><div style="font-size:11px;color:var(--text3);line-height:1.45;margin:2px 0 6px">Les rendus consomment d’abord les heures les plus anciennes : une différence d’heures acquises se reporte sur les mois suivants.</div><table class="rc-t"><tr><th></th><th>Tableau</th><th>App</th><th>Écart</th></tr>'+detRows.join('')+'</table>'
     +(_hasSplit?'<button class="rv-b2" onclick="rhApplySplit(false)">Annuler la répartition du solde de départ</button>':'')
     +'</div>'
-    +'<div style="display:flex;gap:8px;margin:16px 0 14px"><button onclick="rhCompareOpen()" style="font-size:11px;padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:none;cursor:pointer;font-family:var(--font);color:var(--text2)"><i class="ti ti-table-import" style="margin-right:4px"></i>Importer un tableau</button></div>'
+    +(function(){var bk=S.profile&&S.profile.ephBaseDate,ek=dk(asOf);if(!bk||bk===ek)return '';var fd=function(k){return new Date(k+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long'});};
+      window._rhLast=rh;
+      return '<div class="rv-sec">Point de départ</div><div style="font-size:12px;color:var(--text3);line-height:1.45;margin:0 0 8px">Le suivi part du tableau du '+fd(bk)+'. Repartir de celui du '+fd(ek)+' reprend ses soldes, reports et matelas'+(ek<bk?' (il est plus ancien)':'')+'.</div>'
+        +'<button class="rv-b2" onclick="rhImportPreview(window._rhLast)">Repartir de ce tableau</button>';})()
+    +'<div style="display:flex;gap:8px;margin:16px 0 14px"><button onclick="rhCompareOpen()" style=""font-size:11px;padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:none;cursor:pointer;font-family:var(--font);color:var(--text2)"><i class="ti ti-table-import" style="margin-right:4px"></i>Importer un tableau</button></div>'
     +'<button class="mcancel mclose" onclick="closeModal()">Fermer</button>'
     +'</div></div>';
   document.getElementById('modal-root').innerHTML=html;
@@ -6942,7 +6946,7 @@ function openSettingsModal(tab){
     +(function(){var has=!!(pr.profile.rhTable||pr.profile.rhImportedAt),b='class="adj-pill" style="width:auto;padding:0 12px;height:28px;font-size:12px;white-space:nowrap"';
       return '<div class="srow" '+_sr+'><div class="slbl">Tableau Gestion <span style="color:var(--text3);font-size:10px">'+(pr.profile.rhImportedAt?'suivi depuis le '+new Date(pr.profile.rhImportedAt+'T12:00:00').toLocaleDateString('fr-FR'):'non importé')+'</span></div><div style="display:flex;gap:6px;flex-shrink:0">'
         +(pr.profile._rhImportBackup?'<button '+b+' onclick="if(confirm(\'Revenir aux soldes d’avant l’import du tableau ?\'))rhImportUndo()">Défaire</button>':'')
-        +'<button '+b+' onclick="closeModal();rhImportOpen()">'+(has?'Réimporter':'Importer')+'</button></div></div>';})()
+        +'<button '+b+' onclick="closeModal();rhImportOpen()">Importer</button></div></div>';})()
     +'<div class="srow" '+_sr+'><div class="slbl">Matelas <span style="color:var(--text3);font-size:10px">stock initial permanent</span></div><input id="ps-matelas" '+_onb+' value="'+fmtMin(pr.profile.matelas||0)+'" onfocus="if(this.value)this.select()" style="'+_inpR+'"></div>'
     +'<div class="srow" '+_sr+'><div class="slbl">Stock éphémère <span style="color:var(--text3);font-size:10px">stock initial éphémère</span></div><input id="ps-eph" '+_onb+' value="'+fmtMin(Math.round((pr.profile.ephSolde||0)*60))+'" onfocus="if(this.value)this.select()" style="'+_inpR+'"></div>'
     +'<div class="srow" '+_sr+'><div class="slbl">CET <span style="color:var(--text3);font-size:10px">compte épargne-temps initial</span></div><input id="ps-cet-init" type="number" '+_onb+' value="'+(pr.profile.cetInit||0)+'" onfocus="if(this.value)this.select()" style="'+_inpR+'"></div>';
