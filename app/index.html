@@ -80,7 +80,6 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .ibtn i{font-size:16px;}
 .ibtn:active{opacity:.7;}
 .ibtn:disabled{opacity:.3;pointer-events:none;}
-#warn-icon-btn{border-color:transparent!important;box-shadow:inset 0 0 0 1px rgba(214,72,56,.8),inset .5px .5px 0 1px rgba(255,190,180,.12)!important;} /* liseré rouge en anneau net (une bordure de 0,5 px crénelait les coins) */
 /* ── Liquid Glass : barre du haut et boutons (icônes, navigation des mois) ── */
 .ibtn,.mnav{background:rgba(255,250,243,.05);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border:.5px solid rgba(255,250,243,.09);
   box-shadow:inset .5px .5px 0 rgba(255,250,243,.15),inset -.5px -.5px 0 rgba(255,250,243,.05)}
@@ -832,13 +831,6 @@ for(var i=0;i<bl.length;i++){bl[i].style.height=g.b[i][1]+'px';bl[i].style.margi
     <button class="ibtn" id="undo-btn" onclick="undoAction()" disabled><i class="ti ti-arrow-back-up"></i></button>
     <button class="ibtn" id="redo-btn" onclick="redoAction()" disabled><i class="ti ti-arrow-forward-up"></i></button>
     <div class="hdr-sep"></div>
-    <div style="position:relative;display:none;align-items:center;" id="warn-icon-wrap">
-      <button class="ibtn" id="warn-icon-btn" onclick="toggleWarnDropdown()"><i class="ti ti-alert-triangle"></i></button>
-      <div id="warn-dropdown" class="dropdown" style="display:none;width:220px;font-size:11px;color:var(--text2);">
-        <div style="font-weight:600;margin-bottom:6px;color:var(--amber)">Rendus en dépassement</div>
-        <div id="warn-dates-list"></div>
-      </div>
-    </div>
     <button class="ibtn" onclick="openExternalUrl('https://sirhius-radiofrance.soprahronline.com/',true)"><i class="ti ti-calendar-time"></i><span class="ibtn-lbl">Sirhius</span></button>
     <button class="ibtn" onclick="openExternalUrl('https://apps.powerapps.com/play/e/4d596619-663c-ed3d-98c0-e114b119ea41/a/040bffc0-58b2-4c9d-965f-9479efa0b375?tenantId=1d643b07-8cf5-4e2d-ad1e-86d6b948fc3b&sourcetime=2023-08-16%2008%3A23%3A27Z')"><i class="ti ti-send"></i><span class="ibtn-lbl">Demande</span></button>
     <!-- <button class="ibtn" onclick="var _wvo=document.getElementById('week-view-overlay');if(_wvo&&_wvo.style.display!=='none')closeWeekView();else openWeekView()"><i class="ti ti-users"></i><span class="ibtn-lbl">Quintic</span></button> -->
@@ -1773,45 +1765,6 @@ function applyTheme(t){
   const icon=document.getElementById('theme-icon');
   if(icon)icon.className=t==='dark'?'ti ti-moon':'ti ti-sun';
 }
-function updateWarnIcon(warnKeys,expNext){
-  const wrap=document.getElementById('warn-icon-wrap');
-  if(!wrap)return;
-  const hasWarn=warnKeys&&warnKeys.size>0;
-  const hasExpiry=expNext&&expNext.length>0;
-  if(!hasWarn&&!hasExpiry){
-    wrap.style.display='none';
-    const dd=document.getElementById('warn-dropdown');if(dd)dd.style.display='none';
-    return;
-  }
-  wrap.style.display='inline-flex';
-  const dd=document.getElementById('warn-dropdown');
-  if(!dd)return;
-  const ML=MC;
-  let html='';
-  if(hasWarn){
-    html+='<div style="font-weight:600;margin-bottom:6px;color:var(--amber)">Rendus en d\u00e9passement</div>';
-    html+=[...warnKeys].sort().map(function(k){const d=new Date(k+'T12:00:00');return'<div style="padding:2px 0">'+d.getDate()+' '+ML[d.getMonth()]+' '+d.getFullYear()+'</div>';}).join('');
-  }
-  if(hasExpiry){
-    if(hasWarn)html+='<div style="height:8px"></div>';
-    const MLf=['janvier','f\u00e9vrier','mars','avril','mai','juin','juillet','ao\u00fbt','septembre','octobre','novembre','d\u00e9cembre'];
-    [...new Set(expNext.map(function(e){return e.expYm;}))].forEach(function(ey,i){
-      if(i)html+='<div style="height:6px"></div>';
-      html+='<div style="font-weight:600;margin-bottom:6px;color:var(--red)">Expire fin '+MLf[ey%12]+'</div>';
-      html+=expNext.filter(function(e){return e.expYm===ey;}).map(function(e){const y=Math.floor(e.ym/12),m=e.ym%12;return'<div style="padding:2px 0">acquises en '+MLf[m]+' \u00b7 '+fmtMin(e.avail)+'</div>';}).join('');
-    });
-  }
-  dd.innerHTML=html;
-}
-function toggleWarnDropdown(){
-  const dd=document.getElementById('warn-dropdown');
-  if(!dd)return;
-  dd.style.display=dd.style.display==='none'?'block':'none';
-  if(dd.style.display==='block'){requestAnimationFrame(()=>_fitDropdown(dd));
-    setTimeout(function(){document.addEventListener('click',function _cl(e){if(!document.getElementById('warn-icon-wrap').contains(e.target)){dd.style.display='none';document.removeEventListener('click',_cl);}});},10);
-  }
-}
-
 function toggleTheme(){
   const t=localStorage.getItem('pl_theme')||'dark',nt=t==='dark'?'light':'dark';
   if(!S.settings)S.settings={};S.settings.theme=nt;_profs[_aid]=S;saveState();applyTheme(nt);
@@ -1930,11 +1883,6 @@ function renderMonth(el_heads,el_cal){
   // Warn keys come directly from the FIFO inside calcSoldes (no double-pass)
   const _cs0=calcSoldes();
   const _warnKeys=_cs0.warnKeys;
-  // Alerte d'expiration : heures qui expirent à la fin de ce mois ; à partir de 14 jours avant la fin du mois,
-  // aussi celles qui expirent à la fin du mois suivant
-  const _endCur=new Date(NOW.getFullYear(),NOW.getMonth()+1,0).getTime(),_soon=NOW.getTime()>=_endCur-14*864e5;
-  const _expNext=Object.keys(_cs0.realAvail).map(Number).filter(function(ym){const av=_cs0.realAvail[ym],e=getExpYm(ym);return av>0&&(e===TODAY_YM||(_soon&&e===TODAY_YM+1));})
-    .map(function(ym){return{ym,avail:_cs0.realAvail[ym],expYm:getExpYm(ym)};}).sort(function(a,b){return a.expYm-b.expYm||a.ym-b.ym;});
   const cells=[];
   const _VAC=getVAC();
   // Previous month overflow days (greyed)
@@ -1995,7 +1943,6 @@ function renderMonth(el_heads,el_cal){
   el_cal.innerHTML=html;
   requestAnimationFrame(function(){_renderCycBadges(el_cal);});
   // Update header warn icon
-  updateWarnIcon(_warnKeys,_expNext);
 }
 
 function _renderCycBadges(calEl){
