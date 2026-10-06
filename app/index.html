@@ -4483,7 +4483,9 @@ function rhCompareShow(rh){
   // le total par mois d'origine mélange des rendus d'avant le départ (déjà soldés) et ne couvre pas les mêmes rendus des deux côtés
   if(rh.weeks&&Object.keys(rh.weeks).length){
     const _bd=S.profile&&S.profile.ephBaseDate?new Date(S.profile.ephBaseDate+'T12:00:00'):_trkStart;
-    const _in=w=>{const mon=_isoMon(edY,w);return mon>_bd&&mon<=asOf&&(!rh.lastWeek||w<=rh.lastWeek);};
+    // semaines après le départ, et celles d'avant qui ont encore des rendus décomptés par l'app (pas encore notés au tableau de départ)
+    const _kw=new Set(Object.keys(S.conges||{}).filter(k=>S.conges[k]==='rend').map(k=>new Date(k+'T12:00:00')).filter(d=>d.getFullYear()===edY&&d<=asOf).map(d=>getISOWeek(getMonday(d))));
+    const _in=w=>{const mon=_isoMon(edY,w);return (mon>_bd||_kw.has(w))&&mon<=asOf&&(!rh.lastWeek||w<=rh.lastWeek);};
     tConsS=Object.keys(rh.weeks).map(Number).filter(_in).reduce((t,w)=>t+rh.weeks[w],0);
     tConsA=Object.keys(S.conges||{}).filter(k=>{if(S.conges[k]!=='rend')return false;const d=new Date(k+'T12:00:00');return d.getFullYear()===edY&&_in(getISOWeek(getMonday(d)));}).reduce((t,k)=>t+getDur(new Date(k+'T12:00:00')),0);}
   let wkBad=0,wkCmt=0;const consOk=!bad(tConsA-tConsS);
