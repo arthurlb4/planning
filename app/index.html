@@ -2906,11 +2906,14 @@ function _payPageHtml(ym){
     else msg='⚠ Le total correspond, mais des lignes diffèrent';
     var ig=c.status==='ecart'&&_bulIgn(ym,c),nI=c.nIgn||0;
     var _iT=_bulIgnTxt(c);
-    if(ig)msg='Écarts ignorés'+(_iT?' · '+_iT:'');else if(c.status==='ecart'&&!(A>0.1)&&!c.badList.length)msg='✓ Conforme, écarts ignorés'+(_iT?' ('+_iT+')':'');
-    h+='<div style="font-size:11px;font-weight:600;margin:0 0 4px;display:flex;align-items:baseline;color:'+(ig?'var(--text3)':c.status==='ecart'&&c.badList.length?'var(--amber)':'var(--green)')+'"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+msg+'</span>'
-      +(c.status==='ecart'&&c.items.length?'<a style="font-weight:400;color:var(--blue);cursor:pointer;margin-left:auto;padding-left:8px;flex-shrink:0;white-space:nowrap" onclick="event.stopPropagation();_openBulIgnMenu(this,'+ym+')">Ignorer…</a>':'')+'</div>'
+    if(ig)msg='Écarts ignorés';else if(c.status==='ecart'&&!(A>0.1)&&!c.badList.length)msg='✓ Conforme, écarts ignorés';
+    h+='<div style="font-size:11px;font-weight:600;margin:0 0 4px;display:flex;align-items:baseline;gap:8px;color:'+(ig?'var(--text3)':c.status==='ecart'&&c.badList.length?'var(--amber)':'var(--green)')+'"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+msg+'</span>'
+      // tout ignoré (ou le reste conforme) : le montant ignoré dans la colonne bulletin
+      +(/cart?s? ignorés/i.test(msg)&&_iT?'<span class="pp-n" style="font-weight:400;color:var(--text3)">'+_iT+'</span>':'')
+      +(c.status==='ecart'&&c.items.length?'<a style="font-weight:400;color:var(--blue);cursor:pointer;margin-left:auto;min-width:66px;text-align:right;flex-shrink:0;white-space:nowrap" onclick="event.stopPropagation();_openBulIgnMenu(this,'+ym+')">Ignorer…</a>':'')+'</div>'
     // Écarts ignorés en partie : combien et leur montant, sur une ligne à part
-    +(nI&&!ig&&!/écarts ignorés/.test(msg)?'<div style="font-size:11px;margin:0 0 4px;color:var(--text3)">'+nI+' écart'+(nI>1?'s':'')+' ignoré'+(nI>1?'s':'')+(_iT?' · '+_iT:'')+'</div>':'')
+    // Montant des écarts ignorés dans la colonne bulletin (ligne à part si d'autres écarts restent)
+    +(nI&&!ig&&!/écarts ignorés/.test(msg)?'<div class="pp-r" style="color:var(--text3)"><span class="pp-l">'+nI+' écart'+(nI>1?'s':'')+' ignoré'+(nI>1?'s':'')+'</span><span class="pp-n">'+_iT+'</span><b></b></div>':'')
     // Écart sur fériés, dimanches, RH ou HS dû au réglage de l'app → Vérification (le message au gestionnaire est dans Paie de l'année)
     if(c.status==='ecart'&&!ig){var _D=null;try{_D=_bulPayDiffs();}catch(e){}
       var _lk='color:var(--blue);cursor:pointer;margin-left:auto;padding-left:8px;white-space:nowrap',_W=ym-1;
@@ -5303,7 +5306,7 @@ function openMergedRenduCgModal(limit,tab){
     // Expiration : simple date, ou pastille « date › » qui ouvre le menu des reports quand un report a un sens
     // (heures restantes ou report déjà posé, mois pas encore expiré). Le tableau Gestion : ✓ s'il donne la même date, ⚠ sinon.
     const rr=_rhRep[ym]!==undefined&&!isExp?_rhRep[ym]:-1;
-    const _mLeft=expYm-TODAY_YM,_urg=!isExp&&!isFut&&avail>0&&_mLeft<=1;
+    const _mLeft=expYm-TODAY_YM,_urg=!isExp&&!isFut&&avail>0&&_mLeft<=0;
     const _urgC=isExp?(lostMinM>0?'rgba(214,72,56,.75)':'transparent'):isFut?'rgba(150,180,100,.4)':_urg?'var(--orange)':'var(--rend-text)';
     let expLblM;
     // Heures perdues : le montant ouvre aussi le menu des reports (un report accordé après coup par le gestionnaire les rend)
@@ -5322,7 +5325,7 @@ function openMergedRenduCgModal(limit,tab){
       +'<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">'
       +'<div class="eph-u-flow" style="display:flex;align-items:center;justify-content:space-between"><div><span style="color:var(--blue);font-size:11px">'+fmtMin(orig)+'</span><span style="color:var(--text3);font-size:11px;margin:0 2px">→</span><span style="font-weight:500;color:'+availColor+'">'+fmtMin(avail)+'</span></div></div>'
       // Une seule barre : longueur = heures acquises ; partie déjà utilisée en gris, reste coloré selon l'urgence
-      // (vert : a le temps ; orange : expire ce mois-ci ou le suivant ; rouge : perdu ; pâle : mois à venir)
+      // (vert : a le temps, y compris fin du mois prochain ; orange : expire ce mois-ci ; rouge : perdu ; pâle : mois à venir)
       +'<div class="eph-bw"><div class="eph-b2" style="width:'+origPct+'%;background:rgba(255,250,243,.16)"></div><div class="eph-b" style="width:'+(isExp&&lostMinM>0?Math.round(lostMinM/maxV*100):barPct)+'%;background:'+_urgC+'"></div></div>'
       +'</div>'
       +'<div class="eph-u-exp">'+expLblM+'</div>'
