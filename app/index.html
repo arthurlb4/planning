@@ -1195,10 +1195,10 @@ function getDur(date){const{vac}=getVac(date);const VAC=getVAC();const d=(vac&&v
 // Congés pour événements familiaux (accord collectif, art. IX.2.4) : rémunérés, ni congés payés ni rendus
 const EXC_M={rentree:{l:'Rentrée scolaire',s:'Rentrée',half:1,info:'½ journée · enfant en maternelle, élémentaire ou 6ᵉ'},enfant:{l:'Enfant malade',s:'Enf.',info:'6 j/an · 9 avec 2 enfants · 12 avec 3+ (avec conjoint ou parent malade)'},
   proche:{l:'Conjoint ou parent malade',s:'Malad.',info:'compté avec enfant malade : 6 j/an · 9 · 12'},mariage:{l:'Mariage / PACS',s:'Mar.',info:'5 j (2 j pour un enfant ou un parent)'},
-  naissance:{l:'Naissance / adoption',s:'Naiss.',info:'3 j, à prendre dans les 15 jours'},deces:{l:'Décès',s:'Décès',info:'2 à 5 j selon le lien'},demenag:{l:'Déménagement',s:'Démén.',info:'2 j'},autre:{l:'Autre congé exceptionnel',s:'Exc.'}};
+  naissance:{l:'Naissance / adoption',s:'Naiss.',info:'3 j, à prendre dans les 15 jours'},deces:{l:'Décès',s:'Décès',info:'2 à 5 j selon le lien'},demenag:{l:'Déménagement',s:'Démén.',info:'2 j'},autre:{l:'Autre congé exceptionnel',s:'Exc.'},greve:{l:'Grève',s:'Grève',greve:1}};
 function _excOf(k){var x=(S.excInfo||{})[k];if(!x)return null;var c=(S.conges||{})[k];
   // valable seulement si le jour est toujours posé comme ça (absence, ou rendu pour la ½ journée complétée)
-  if(x.half?(x.rest==='rend'?(c!=='rend'&&c!=='rend-hist'):!!c):c!=='absent')return null;return x;}
+  if(x.g&&x.g!=='j')return c?null:x;if(x.half?(x.rest==='rend'?(c!=='rend'&&c!=='rend-hist'):!!c):c!=='absent')return null;return x;}
 // Jours pris par motif sur l'année (½ journée = 0,5 ; enfant et proche malades comptés ensemble)
 function _excUsed(m,y){var n=0;Object.keys(S.excInfo||{}).forEach(function(k){if(+k.slice(0,4)!==y)return;var x=_excOf(k);if(!x)return;
   var same=x.m===m||((m==='enfant'||m==='proche')&&(x.m==='enfant'||x.m==='proche'));if(same)n+=x.half?0.5:1;});return n;}
@@ -2374,6 +2374,9 @@ function fmtEuro(n){if(!isFinite(n)||isNaN(n))n=0;const abs=Math.abs(n).toFixed(
 function calcPalierSalaire(n){const base=2091.75;if(n<1)return base;if(n<=44)return Math.floor(base*Math.pow(1.015,n-19)*100)/100;const p44=Math.floor(base*Math.pow(1.015,25)*100)/100;return Math.floor(p44*Math.pow(1.0075,n-44)*100)/100;}
 var _DPC={primes:[{id:'nao2022',label:'NAO 2022',montant:130,debutYM:0,finYM:null},{id:'nao2023',label:'NAO 2023',montant:55,debutYM:0,finYM:null}],gpe:[{debutYM:0,t:[20,52,62,128,154,159,172,187,231]}],pfa:[{debutYM:0,t:[{max:1,v:240},{max:3,v:230},{max:5,v:220},{max:8,v:210},{max:17,v:200},{max:22,v:190},{max:30,v:170},{max:9999,v:160}]}],anc:[{debutYM:0,base:2091.75,rate1:0.01,rate2:0.005,threshold:20}]};
 function getPayConfig(){return window._globalPayConfig||{};}
+// Grève : retenue de 1/160ᵉ (heure), 1/50ᵉ (demi-journée), 1/30ᵉ (journée) du salaire mensuel ; modifiable dans l'admin (Convention)
+var _DEF_GREVE={h:160,dj:50,j:30,base:'qag',txt:'Le décompte se fait à l’heure (1/160ᵉ), à la demi-journée (1/50ᵉ) ou à la journée (1/30ᵉ). On peut entrer et sortir de la grève à tout moment, dans la limite d’une heure par journée, d’une demi-journée ou d’une journée. Si la grève touche plus d’une vacation, une journée complète est décomptée. Toute sortie de grève au sein d’une vacation est définitive. L’entrée en grève se constate à la prise de poste : prévenir sa hiérarchie, au moins par mail, d’une sortie (ou d’une entrée et d’une sortie) en cours de planification, sinon la journée entière est décomptée. Pour les salariés affectés à l’édition, la fabrication ou la diffusion de l’antenne : se déclarer dès la prise de poste pour la première heure, la première demi-journée ou la journée.'};
+function getGreveConf(){var g=getPayConfig().greve||{};return Object.assign({},_DEF_GREVE,g);}
 function _pcLatest(arr,ym,def){var a=(arr||[]).filter(function(e){return e.debutYM<=ym;});if(a.length)return a.sort(function(a,b){return b.debutYM-a.debutYM;})[0];return(arr&&arr.length)?arr.sort(function(a,b){return b.debutYM-a.debutYM;})[0]:def;}
 function getPrimesConvAllForYM(ym){var pc=getPayConfig();var src=pc.primes&&pc.primes.length?pc.primes:_DPC.primes;return src.filter(function(p){return p.debutYM<=ym&&(p.finYM==null||ym<=p.finYM);});}
 // Primes de la convention (NAO…) : chaque profil peut décocher celles qu'il ne touche pas
@@ -2477,10 +2480,15 @@ function calcPayeMois(y,m){
   const totalFixes=_pcTotal+gpe+pfa+supFamilial;
   const primesCustom=getPrimesFixesCustomForYM(mym_cp);
   const totalPrimesCustom=primesCustom.reduce(function(s,p){return s+p.montant;},0);
+  // Grève (mois de travail, comme les variables) : salaire mensuel / 160 l'heure, / 50 la ½ journée, / 30 la journée
+  const _G=getGreveConf(),_gBase=base+(_G.base==='qag'?gpe:0);let greveRet=0;const greveDays=[];
+  Object.keys(S.excInfo||{}).forEach(function(k){var x=_excOf(k);if(!x||x.m!=='greve')return;var d=new Date(k+'T12:00:00');if(d.getFullYear()!==prevY||d.getMonth()!==prevM)return;
+    var r=_gBase/(x.g==='h'?_G.h:x.g==='dj'?_G.dj:_G.j);greveRet+=r;greveDays.push({k:k,g:x.g,r:Math.round(r*100)/100});});
+  greveRet=Math.round(greveRet*100)/100;
   // Complément CP de janvier : montant saisi depuis le bulletin s'il existe, sinon 1/10 des variables de l'année précédente
   const _cpMan=pr.compCPManual&&pr.compCPManual[y]!=null?pr.compCPManual[y]:null;
   let compCP=0;if(m===0){if(_cpMan!=null)compCP=_cpMan;else{let yv=0;for(let pm=0;pm<12;pm++)yv+=calcVariablesMois(y-1,pm).total;compCP=yv/10;}}
-  return{base,salQ,salAnc,tauxH,heures,prevM,prevY,vars,primesConv:_primesConv,gpe,groupeClassif:getGroupeForYM(mym_cp),pfa,pfaM,pfaMensuelle:pr.pfaMensuelle,supFamilial,totalFixes,primesCustom,totalPrimesCustom,compCP,compCPManual:_cpMan!=null,total:base+vars.total+totalFixes+totalPrimesCustom+compCP,configured:(salQ>0||salAnc>0||heures>0)&&_hasCycleMonth(y,m),noCycle:!_hasCycleMonth(y,m)};
+  return{base,salQ,salAnc,tauxH,heures,prevM,prevY,vars,primesConv:_primesConv,gpe,groupeClassif:getGroupeForYM(mym_cp),pfa,pfaM,pfaMensuelle:pr.pfaMensuelle,supFamilial,totalFixes,primesCustom,totalPrimesCustom,greveRet,greveDays,compCP,compCPManual:_cpMan!=null,total:base+vars.total+totalFixes+totalPrimesCustom+compCP-greveRet,configured:(salQ>0||salAnc>0||heures>0)&&_hasCycleMonth(y,m),noCycle:!_hasCycleMonth(y,m)};
 }
 function calcNetPaye(brut,paniers,ym){
   const r2=v=>Math.round(v*100)/100,PMSS=3925,ta=Math.min(brut,PMSS);
@@ -2963,6 +2971,8 @@ function _payPageHtml(ym){
     +(P.supFamilial>0||fixBy['Suppl. familial']?row('Suppl. familial',P.supFamilial,null,fn('Suppl. familial',P.supFamilial)):'')
     +P.primesCustom.filter(function(p){return !/INDIV/i.test(p.label);}).map(function(p){return row(p.label,p.montant,null);}).join('')
     +sub('Sous-total',fa,c?cmp(fsum(['Mesures NAO','Ind. GPE','PFA','Suppl. familial']),fa):null);
+  if(P.greveRet>0)h+=tit('Retenue grève <span style="font-weight:400;color:var(--text3);font-size:11px">('+MC[P.prevM]+')</span>')
+    +P.greveDays.map(function(g){var d=new Date(g.k+'T12:00:00');return row(d.getDate()+' '+MCs[d.getMonth()]+' · '+(g.g==='h'?'1 heure':g.g==='dj'?'½ journée':'journée'),-g.r,null);}).join('');
   if(c&&c.late.length)h+=tit('Rattrapages et autres lignes')+c.late.map(function(l){return '<div class="pp-r"><span class="pp-l">'+l.lbl+(l.q!=null?' ('+(_BUL_H[l.k]?fmtMin(Math.round(l.q*60)):l.q)+')':'')+'<span style="display:block;font-size:11px;font-style:italic">'+(l.info?'sans effet sur la comparaison':'travail '+_deMois(l.ym)+' '+Math.floor(l.ym/12)+((S.bulletins||{})[l.ym+1]?', manquait sur le <a onclick="event.stopPropagation();_swipeGo(-1,function(){openBulletinModal('+(l.ym+1)+')})" style="color:var(--blue);cursor:pointer;font-style:normal">bulletin '+_deMois(l.ym+1)+'</a>':''))+'</span></span><span class="pp-n" style="color:var(--text2)">'+fe(l.mt)+'</span><b style="color:var(--text3)">—</b></div>';}).join('');
   if(c)h+=c.alerts.map(function(a){return '<div style="font-size:11px;color:var(--amber);display:flex;gap:5px;padding:10px 0 0;line-height:1.45"><span>⚠</span><span>'+a+'</span></div>';}).join('');
   h+='<div style="font-size:11px;color:var(--text3);text-align:center;margin-top:10px">taux : '+fmtEuro(P.tauxH)+'/h · '+P.heures.toFixed(2)+'h/mois</div>';
@@ -3977,6 +3987,8 @@ function openPoseModal(type,fromMenu){
     excH='<select id="_exc-m" onchange="_excPick()" style="'+_sel+';margin-bottom:6px"><option value="">Absence (sans motif)</option>'
       +Object.keys(EXC_M).map(function(m){return '<option value="'+m+'">'+EXC_M[m].l+'</option>';}).join('')+'</select>'
       +'<div id="_exc-i" style="font-size:11px;color:var(--text3);line-height:1.4;min-height:15px;margin-bottom:8px"></div>'
+      +'<div id="_exc-g" style="display:none;margin-bottom:10px"><span class="bpseg" id="_exc-gv" data-v="j" style="display:flex">'+[['h','1 heure'],['dj','½ journée'],['j','journée']].map(function(o){return '<span style="flex:1;text-align:center"'+(o[0]==='j'?' class="on"':'')+' onclick="var g=this.parentNode;g.dataset.v=\''+o[0]+'\';[].forEach.call(g.children,function(c){c.classList.toggle(\'on\',c===this);},this)">'+o[1]+'</span>';}).join('')+'</span>'
+      +'<details style="margin-top:6px;font-size:11px;color:var(--text3);line-height:1.45"><summary style="cursor:pointer;color:var(--blue)">Règles de décompte</summary><div style="margin-top:4px">'+getGreveConf().txt+'</div></details></div>'
       +'<div id="_exc-h" style="display:none;margin-bottom:10px"><div style="font-size:11px;color:var(--text3);margin-bottom:5px">L’autre moitié de la vacation</div>'
       +'<span class="bpseg" id="_exc-r" data-v="work" style="display:flex">'+['work','rend'].map(function(v,i){return '<span style="flex:1;text-align:center"'+(i?'':' class="on"')+' onclick="var g=this.parentNode;g.dataset.v=\''+v+'\';[].forEach.call(g.children,function(c){c.classList.toggle(\'on\',c===this);},this)">'+(v==='work'?'travaillée':'en rendus')+'</span>';}).join('')+'</span></div>';
     window._excYear=_y;}
@@ -4021,12 +4033,14 @@ function openPoseModal(type,fromMenu){
 }
 
 // Fiche du jour : la ½ journée de congé exceptionnel (la journée reste travaillée ou en rendu pour l'autre moitié)
-function _excDayLine(k){var x=_excOf(k);if(!x||!x.half)return '';
+function _excDayLine(k){var x=_excOf(k);if(x&&x.g&&x.g!=='j')return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:var(--text2);margin:-6px 0 10px"><span>Grève · '+(x.g==='h'?'1 heure':'½ journée')+' décomptée</span><a style="color:var(--blue);cursor:pointer;white-space:nowrap" onclick="_excRemove(\''+k+'\')">Retirer</a></div>';
+  if(!x||!x.half)return '';
   return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:var(--text2);margin:-6px 0 10px"><span>½ '+EXC_M[x.m].l.toLowerCase()+' · autre moitié '+(x.rest==='rend'?'en rendu':'travaillée')+'</span>'
     +(x.rest==='rend'?'':'<a style="color:var(--blue);cursor:pointer;white-space:nowrap" onclick="_excRemove(\''+k+'\')">Retirer</a>')+'</div>';}
 function _excRemove(k){pushUndo('Congé exceptionnel retiré');var x=(S.excInfo||{})[k];if(x&&x.rest==='rend'&&S.conges)delete S.conges[k];if(S.excInfo)delete S.excInfo[k];saveState();render();openDay(k);}
 function _excPick(){var m=(document.getElementById('_exc-m')||{}).value,i=document.getElementById('_exc-i'),h=document.getElementById('_exc-h'),X=EXC_M[m];
-  if(h)h.style.display=X&&X.half?'block':'none';
+  if(h)h.style.display=X&&X.half?'block':'none';var gg=document.getElementById('_exc-g');if(gg)gg.style.display=X&&X.greve?'block':'none';
+  if(X&&X.greve){var G=getGreveConf();if(i)i.textContent='Retenue : 1/'+G.h+'ᵉ l’heure · 1/'+G.dj+'ᵉ la ½ journée · 1/'+G.j+'ᵉ la journée du salaire mensuel';return;}
   if(i)i.textContent=X?((X.info||'')+(m!=='autre'?' · déjà pris en '+window._excYear+' : '+String(_excUsed(m,window._excYear)).replace('.',',')+' j':'')):'Ni congé ni rendu : la journée n’est pas comptée.';}
 function calcDispoAtDate(targetDate){
   // Heures disponibles à targetDate :
@@ -4699,7 +4713,7 @@ function applyPose(type,startKey,unique){
 
   }
 
-  var _xm=type==='absent'?((document.getElementById('_exc-m')||{}).value||''):'',_xr=((document.getElementById('_exc-r')||{}).dataset||{}).v||'work',_xh=!!(EXC_M[_xm]&&EXC_M[_xm].half);
+  var _xg=((document.getElementById('_exc-gv')||{}).dataset||{}).v||'j',_xm=type==='absent'?((document.getElementById('_exc-m')||{}).value||''):'',_xr=((document.getElementById('_exc-r')||{}).dataset||{}).v||'work',_xh=!!(EXC_M[_xm]&&EXC_M[_xm].half);
   pushUndo((type==='cg'?(unique?'Congé posé':'Congés posés'):type==='rend'?(unique?'Rendu posé':'Rendus posés'):_xm?'Congé exceptionnel posé':'Absence posée'));
   if(_xm&&!S.excInfo)S.excInfo={};
   if(!S.conges)S.conges={};if(!S.overrides)S.overrides={};
@@ -4710,14 +4724,15 @@ function applyPose(type,startKey,unique){
     const v2=getVac(d);
     const isWorked=v2.vac&&v2.vac!=='RH'&&!v2.absent;
     if(isWorked){
-      if(type==='absent'&&_xh){S.excInfo[k]={m:_xm,half:1,rest:_xr};if(_xr==='rend')S.conges[k]=_rendStatus(k);else delete S.conges[k];}
-      else if(type==='absent'){S.overrides[k]={absent:true};S.conges[k]='absent';if(_xm)S.excInfo[k]={m:_xm};else if(S.excInfo)delete S.excInfo[k];}
+      if(type==='absent'&&_xm==='greve'&&_xg!=='j'){S.excInfo[k]={m:'greve',g:_xg};delete S.conges[k];}
+      else if(type==='absent'&&_xh){S.excInfo[k]={m:_xm,half:1,rest:_xr};if(_xr==='rend')S.conges[k]=_rendStatus(k);else delete S.conges[k];}
+      else if(type==='absent'){S.overrides[k]={absent:true};S.conges[k]='absent';if(_xm)S.excInfo[k]=_xm==='greve'?{m:'greve',g:'j'}:{m:_xm};else if(S.excInfo)delete S.excInfo[k];}
       else if(type==='rend'){S.conges[k]=_rendStatus(k);}
       else{S.conges[k]=type;}
     }
     d.setDate(d.getDate()+1);
   }
-  const label=type==='cg'?'congé':type==='rend'?'rendu':_xm?EXC_M[_xm].l.toLowerCase()+(_xh?' (½'+(_xr==='rend'?' + rendu)':')'):''):'absent';
+  const label=type==='cg'?'congé':type==='rend'?'rendu':_xm?EXC_M[_xm].l.toLowerCase()+(_xm==='greve'?' ('+({h:'1 heure',dj:'½ journée',j:'journée'})[_xg]+')':'')+(_xh?' (½'+(_xr==='rend'?' + rendu)':')'):''):'absent';
   const color=type==='cg'?'#6a9878':type==='rend'?'#A8BF7A':'#c88048';
   logH(fmtDate(start)+' -> '+label+(unique?'':' au '+fmtDate(end)),color,startKey);
   saveState();closeModal();render();
