@@ -2699,7 +2699,7 @@ function _bulMsgLines(onlyB){var D=_bulPayDiffs(),L={ferRendu:'Fériés travaill
   RK={fer:'ferRendu',dim:'dimRendu',rh:'rhRendu',hsLow:'hsRendu',hsHigh:'hsRendu'},out=[],e2=function(x){return fmtEuro(Math.abs(x));};
   var yms=Object.keys(S.bulletins||{}).map(Number);D.keptList.forEach(function(x){if(yms.indexOf(x.ym+1)<0)yms.push(x.ym+1);});
   yms.filter(function(v,i,a){return a.indexOf(v)===i&&(onlyB==null||v===onlyB);}).sort(function(a,b){return a-b;}).forEach(function(ym){
-    var W=ym-1,bl='Bulletin '+_deMois(ym)+' '+Math.floor(ym/12)+' – ',kp=D.keptList.filter(function(x){return x.ym===W&&x.h>0;});
+    var W=ym-1,bl='Bulletin '+_deMois(ym)+' '+Math.floor(ym/12)+', ',kp=D.keptList.filter(function(x){return x.ym===W&&x.h>0;});
     // seulement ce qui manque (payé à tort : pas de rattrapage négatif à demander)
     kp.forEach(function(x){if(x.v)out.push(bl+L[x.k]+' '+_deMois(W)+' ('+fmtMin(x.h)+') : à payer, mis en rendus à tort.');});
     var b=(S.bulletins||{})[ym],c=null;if(!b)return;try{c=_bulCompare(b);}catch(e){return;}if(c.status!=='ecart'||_bulIgn(ym,c))return;
@@ -2713,11 +2713,12 @@ function _bulMsgLines(onlyB){var D=_bulPayDiffs(),L={ferRendu:'Fériés travaill
       out.push(bl+(i.id==='reste'?'Écart non expliqué':i.lbl)+(r?' ('+MC[W%12]+')':'')+' : '+det+'il manque '+e2(i.d)+'.');});});
   return out;}
 function _bulMsgOpen(only,back){
-  var ls=_bulMsgLines(only),txt=ls.join('\n');window._bulMsgTxt=txt;window._bulMsgBack=back||null;
+  var ls=_bulMsgLines(only),txt=ls.join('\n');window._bulMsgTxt=txt;window._modalBack=back||null;
+  // fermer (toucher à côté, glisser) ramène à la page d'avant, comme « Retour »
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="sh"></div><div class="st">Message au gestionnaire</div>'
     +'<div style="font-size:12px;color:var(--text3);line-height:1.45;margin:-4px 0 10px">Lignes à copier : ce qui manque sur les bulletins.</div>'
     +'<div class="hd-card" style="font-size:12.5px;line-height:1.5;white-space:pre-wrap;user-select:text;-webkit-user-select:text">'+(ls.length?txt.replace(/&/g,'&amp;').replace(/</g,'&lt;'):'<span style="color:var(--text3)">Rien à signaler.</span>')+'</div>'
-    +'<div class="mbtns"><button class="mb" onclick="var b=window._bulMsgBack;b?b():closeModal()">Retour</button><button class="mb pri"'+(ls.length?'':' disabled')+' onclick="_bulMsgCopy()">Copier</button></div></div></div>';
+    +'<div class="mbtns"><button class="mb" onclick="closeModal()">Retour</button><button class="mb pri"'+(ls.length?'':' disabled')+' onclick="_bulMsgCopy()">Copier</button></div></div></div>';
 }
 function _bulMsgCopy(){var t=window._bulMsgTxt||'';var ok=function(){_haptic();_infoToast('✓ Copié');};
   try{navigator.clipboard.writeText(t).then(ok,function(){_bulMsgCopyOld(t);ok();});}catch(e){_bulMsgCopyOld(t);ok();}}
@@ -6044,6 +6045,8 @@ function rcgTab(idx){
 function _lockBodyScroll(){var sy=window.scrollY;document.body.style.top='-'+sy+'px';document.body.classList.add('modal-open');}
 function _unlockBodyScroll(){var top=parseInt(document.body.style.top||'0');document.body.classList.remove('modal-open');document.body.style.top='';window.scrollTo(0,-top);}
 function closeModal(){
+  // fenêtre ouverte par-dessus une autre (message au gestionnaire…) : la fermer ramène à la page d'avant
+  if(window._modalBack){var _b=window._modalBack;window._modalBack=null;_b();return;}
   window._svYear=null; // le salaire du Suivi revient à l'année en cours
   // Tableau Gestion ouvert depuis le modal rendus : on y revient à la fermeture
   window._rvFrom=null;window._mmFrom=null;
