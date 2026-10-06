@@ -6803,6 +6803,9 @@ function openSettingsModal(tab){
         +'</div></div>';
     })()
     +'<div class="srow" '+_sr+'><div class="slbl">Suppl. familial'+_inf('SFT mensuel brut')+'</div><div '+_rCol+'><div id="ps-sft-lbl" '+_subV+'>'+(_curSft>0?fmtEuro(_curSft):'—')+'</div><button onclick="window._sMP=true;openSupFamilialModal()" style="'+_selR+';cursor:pointer;text-align:center">Modifier</button></div></div>'
+    // Avantage individuel acquis (salariés embauchés avant l'accord) : saisi ici sans bulletin, sinon proposé par la Vérification
+    +(function(){var av=getPrimesFixesCustomForYM(TODAY_YM).filter(function(p){return /INDIV/i.test(p.label);}).reduce(function(s,p){return s+p.montant;},0);
+      return '<div class="srow" '+_sr+'><div class="slbl">Av. indiv. acquis'+_inf('embauche avant l’accord')+'</div><div '+_rCol+'><div '+_subV+'>'+(av>0?fmtEuro(av):'—')+'</div><button onclick="window._sMP=true;openAddPrimeFixeModal(TODAY_YM,1,1)" style="'+_selR+';cursor:pointer;text-align:center">Modifier</button></div></div>';})()
     +_sh+'Primes fixes</div>'
     +(function(){
       // Primes de la convention (NAO…) : à cocher selon ce que tu touches
@@ -6814,8 +6817,9 @@ function openSettingsModal(tab){
       }).join('');
     })()
     +(function(){
+      // avantage indiv. : sa propre ligne plus haut, pas dans la liste
       var pfc=pr.profile.primesFixesCustom||[];
-      var rows=pfc.filter(function(p){return p.finYM==null||p.finYM>=TODAY_YM;}).map(function(p){
+      var rows=pfc.filter(function(p){return (p.finYM==null||p.finYM>=TODAY_YM)&&!/INDIV/i.test(p.label);}).map(function(p){
         return '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:0.5px solid var(--border)">'
           +'<span style="font-size:12px;color:var(--text2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+p.label+'</span>'
           +'<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">'
@@ -7107,15 +7111,15 @@ function _setSupFamilialResult(v,date){
 function _confirmSupFamilialToujours(){_setSupFamilialResult(parseFloat((document.getElementById('_sft-v')||{}).value)||0,'');}
 function _confirmSupFamilialDate(){var s=_depGetDate();if(s)_setSupFamilialResult(parseFloat((document.getElementById('_sft-v')||{}).value)||0,s);}
 
-function openAddPrimeFixeModal(ym,fromSettings){
-  window._pfFromSettings=!!fromSettings;
+function openAddPrimeFixeModal(ym,fromSettings,av){
+  window._pfFromSettings=!!fromSettings;window._apfAv=!!av; // av : prime d'avantage individuel acquis (remplace la précédente)
   var y=Math.floor(ym/12),m=ym%12;
   _lockBodyScroll();
   document.getElementById('modal-root').innerHTML=
     '<div class="overlay" onclick="if(event.target===this)closeModal()">'
-    +'<div class="sheet"><div class="sh"></div><div class="st">Ajouter une prime</div>'
-    +'<label style="font-size:12px;color:var(--text3);display:block;margin-bottom:4px">Libellé</label>'
-    +'<input id="_apf-label" type="text" placeholder="ex: Prime de nuit fixe" style="width:100%;height:44px;box-sizing:border-box;padding:0 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--bg2);color:var(--text);margin-bottom:12px">'
+    +'<div class="sheet"><div class="sh"></div><div class="st">'+(av?'Avantage individuel acquis':'Ajouter une prime')+'</div>'
+    +(av?'<div style="font-size:12px;color:var(--text3);line-height:1.45;margin:-4px 0 12px">« PRIME AV. INDIV. ACQUIS » sur le bulletin. Montant 0 : plus de prime.</div><input id="_apf-label" type="hidden" value="Prime av. indiv. acquis">':'<label style="font-size:12px;color:var(--text3);display:block;margin-bottom:4px">Libellé</label>')
+    +(av?'':'<input id="_apf-label" type="text" placeholder="ex: Prime de nuit fixe" style="width:100%;height:44px;box-sizing:border-box;padding:0 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--bg2);color:var(--text);margin-bottom:12px">')
     +'<label style="font-size:12px;color:var(--text3);display:block;margin-bottom:4px">Montant (€ / mois)</label>'
     +'<input id="_apf-montant" type="number" min="0" step="0.01" placeholder="0,00" style="width:100%;height:44px;box-sizing:border-box;padding:0 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--bg2);color:var(--text);margin-bottom:12px">'
     +'<label style="font-size:12px;color:var(--text3);display:block;margin-bottom:6px">Début</label>'
@@ -7123,7 +7127,7 @@ function openAddPrimeFixeModal(ym,fromSettings){
     +'<button id="_apf-debut-cem" onclick="document.getElementById(\'_apf-debut-cem\').style.background=\'var(--blue)\';document.getElementById(\'_apf-debut-cem\').style.color=\'#fff\';document.getElementById(\'_apf-debut-tj\').style.background=\'var(--bg3)\';document.getElementById(\'_apf-debut-tj\').style.color=\'var(--text)\';window._apfDebut='+ym+';" style="flex:1;height:36px;font-size:12px;border:0.5px solid var(--border);border-radius:var(--r);cursor:pointer;font-family:var(--font);background:var(--blue);color:#fff">Ce mois</button>'
     +'<button id="_apf-debut-tj" onclick="document.getElementById(\'_apf-debut-tj\').style.background=\'var(--blue)\';document.getElementById(\'_apf-debut-tj\').style.color=\'#fff\';document.getElementById(\'_apf-debut-cem\').style.background=\'var(--bg3)\';document.getElementById(\'_apf-debut-cem\').style.color=\'var(--text)\';window._apfDebut=0;" style="flex:1;height:36px;font-size:12px;border:0.5px solid var(--border);border-radius:var(--r);cursor:pointer;font-family:var(--font);background:var(--bg3);color:var(--text)">Depuis toujours</button>'
     +'</div>'
-    +'<button class="mb" style="width:100%;height:44px;font-size:14px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);margin-bottom:8px" onclick="_confirmAddPrimeFixe('+ym+')">Ajouter</button>'
+    +'<button class="mb" style="width:100%;height:44px;font-size:14px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);margin-bottom:8px" onclick="_confirmAddPrimeFixe('+ym+')">'+(av?'Enregistrer':'Ajouter')+'</button>'
     +'<button class="mcancel" onclick="closeModal()">Annuler</button>'
     +'</div></div>';
   window._apfDebut=ym;
@@ -7132,9 +7136,12 @@ function _confirmAddPrimeFixe(ym){
   var label=(document.getElementById('_apf-label')||{value:''}).value.trim();
   var montant=parseFloat((document.getElementById('_apf-montant')||{value:''}).value);
   if(!label){alert('Libellé requis.');return;}
-  if(isNaN(montant)||montant<=0){alert('Montant invalide.');return;}
+  if(isNaN(montant)||montant<0||(montant===0&&!window._apfAv)){alert('Montant invalide.');return;}
   if(!S.profile.primesFixesCustom)S.profile.primesFixesCustom=[];
-  S.profile.primesFixesCustom.push({id:'pfc_'+Date.now(),label:label,montant:montant,debutYM:window._apfDebut||ym,finYM:null});
+  // avantage individuel : l'ancien montant s'arrête le mois d'avant le début choisi
+  if(window._apfAv){var st=window._apfDebut||0;S.profile.primesFixesCustom=S.profile.primesFixesCustom.filter(function(p){if(!/INDIV/i.test(p.label)||(p.finYM!=null&&p.finYM<st))return true;if(p.debutYM>=st)return false;p.finYM=st-1;return true;});
+    window._apfAv=false;if(montant===0){saveState();render();if(window._pfFromSettings){window._pfFromSettings=false;openSettingsModal(1);}else closeModal();return;}}
+  S.profile.primesFixesCustom.push({id:'pfc_'+Date.now(),label:label,montant:montant,debutYM:window._apfDebut!=null?window._apfDebut:ym,finYM:null});
   saveState();render();
   if(window._pfFromSettings){window._pfFromSettings=false;openSettingsModal(1);}
   else{closeModal();openBulletinModal(ym);}
