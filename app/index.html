@@ -2562,12 +2562,17 @@ function _bulPayDiffs(){
   // Chaque bulletin ne règle que le mois de travail qu'il paie (comme « Ce mois » dans Variables), jamais les suivants
   // Dans les deux sens : payé sur le bulletin mais rangé en rendus par l'app → « payés » ;
   // calculé payé par l'app mais absent du bulletin (et jamais rattrapé) → « en rendus »
-  var RK={fer:'ferRendu',dim:'dimRendu',rh:'rhRendu',hsLow:'hsRendu',hsHigh:'hsRendu'},seen={},PD=[];
-  var put=function(sk,wym,v){var id=sk+':'+wym;if(seen[id])return;seen[id]=1;if(settingsForYM(wym)[sk]!==v)PD.push({k:sk,ym:wym,v:v});};
+  var RK={fer:'ferRendu',dim:'dimRendu',rh:'rhRendu',hsLow:'hsRendu',hsHigh:'hsRendu'},seen={},PD=[],known={};
+  var put=function(sk,wym,v){var id=sk+':'+wym;if(seen[id])return;seen[id]=1;(known[sk]=known[sk]||{})[wym]=v;if(settingsForYM(wym)[sk]!==v)PD.push({k:sk,ym:wym,v:v});};
   bs.forEach(function(ym){var c;try{c=_bulCompare(S.bulletins[ym]);}catch(e){return;}var W=ym-1,g={};
     c.rows.forEach(function(r){var sk=RK[r.k];if(!sk)return;var o=g[sk]||(g[sk]={paid:false,app:false});if(r.bq>0||r.rq>0)o.paid=true;if(r.aq>0)o.app=true;});
     Object.keys(g).forEach(function(sk){var o=g[sk];if(o.paid)put(sk,W,false);else if(o.app)put(sk,W,true);});
     c.late.forEach(function(l){var sk=RK[l.k];if(sk&&l.ym!=null&&!l.info)put(sk,l.ym,false);});});
+  // Mois couverts par un bulletin mais sans aucune heure de ce type : réglage sans effet, aligné sur le mois vérifié le plus proche
+  // (le précédent d'abord) pour que le tableau de génération des rendus reste juste
+  Object.keys(known).forEach(function(sk){var ks=Object.keys(known[sk]).map(Number).sort(function(a,b){return a-b;});
+    bs.forEach(function(ym){var W=ym-1;if(seen[sk+':'+W])return;var pv=null,nx=null;ks.forEach(function(k){if(k<W)pv=k;else if(nx==null&&k>W)nx=k;});
+      var ref=pv!=null?pv:nx;if(ref==null)return;var v=known[sk][ref];seen[sk+':'+W]=1;if(settingsForYM(W)[sk]!==v)PD.push({k:sk,ym:W,v:v,fill:1});});});
   // PFA : mensuelle ou semestrielle d'après le dernier bulletin qui en montre une
   var P=pfa&&!!pr.pfaMensuelle!==pfa.v?pfa:null;
   // Ancienneté : années du dernier bulletin ; mois d'anniversaire si deux bulletins consécutifs passent d'une année à la suivante
@@ -2611,8 +2616,9 @@ function _bulPayPropose(then,all){
     +D.heures.map(function(c){return li('Contrat',Math.round(c.v/151.67*1000)/10+' %',Math.round(c.cur/151.67*1000)/10+' %',c.ym);}).join('')
     +D.groupe.map(function(c){return li('Groupe','Gr. '+c.v,c.cur?'Gr. '+c.cur:'',c.ym);}).join('')
     +['ferRendu','dimRendu','rhRendu','hsRendu'].map(function(k){var L={ferRendu:'Fériés travaillés',dimRendu:'Dimanches',rhRendu:'RH travaillés',hsRendu:'Heures sup'}[k];
-      return [false,true].map(function(v){var ms=D.paid.filter(function(x){return x.k===k&&x.v===v;}).map(function(x){return x.ym;}).sort(function(a,b){return a-b;});if(!ms.length)return '';
-        return '<div class="recap-row" style="font-size:12px;min-height:26px;gap:10px"><span style="color:var(--text3)">'+L+'</span><span style="text-align:right"><b>'+(v?'en rendus':'payés')+'</b><span style="color:var(--text3)"> en '+ms.map(function(y){return MCs[y%12]+' '+String(Math.floor(y/12)).slice(2);}).join(', ')+(v?' (absents du bulletin)':'')+'</span></span></div>';}).join('');}).join('')
+      return [false,true].map(function(v){var xs=D.paid.filter(function(x){return x.k===k&&x.v===v;}),ms=xs.map(function(x){return x.ym;}).sort(function(a,b){return a-b;});if(!ms.length)return '';var abs=v&&xs.some(function(x){return !x.fill;});
+        return '<div class="recap-row" style="font-size:12px;min-height:26px;gap:10px"><span style="color:var(--text3)">'+L+'</span><span style="text-align:right"><b>'+(v?'en rendus':'payés')+'</b><span style="color:var(--text3)"> en '+ms.map(function(y){return MCs[y%12]+' '+String(Math.floor(y/12)).slice(2);}).join(', ')+(abs?' (absents du bulletin)':'')+'</span></span></div>';}).join('');}).join('')
+    +(D.paid.some(function(x){return x.fill;})?'<div style="font-size:10.5px;color:var(--text3);margin-top:2px">Mois sans ces heures : réglage aligné sur les mois voisins, sans effet sur les calculs.</div>':'')
     +(D.pfa?'<div class="recap-row" style="font-size:12px;min-height:26px;gap:10px"><span style="color:var(--text3)">PFA</span><span><b>'+(D.pfa.v?'mensuelle':'semestrielle')+'</b><span style="color:var(--text3)"> · bulletin de '+mo(D.pfa.ym)+'</span></span></div>':'')
     +(D.ask?(function(){var rg=D.ask.rng,inR=function(m){if(!rg)return false;for(var y=rg.a;y<=rg.b;y++)if(y%12===m)return true;return false;};
       return '<div class="recap-row" style="font-size:12px;min-height:34px;gap:10px"><span style="color:var(--text3)">Mois d’anniversaire'+(rg?'<span style="display:block;font-size:10.5px">entre '+MC[rg.a%12]+' et '+MC[rg.b%12]+' d’après les bulletins</span>':'')+'</span>'
