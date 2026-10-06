@@ -696,6 +696,8 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .cp-big{display:flex;align-items:center;gap:26px}.cp-big .ring{opacity:.75}.cp-ls{flex:1;min-width:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px 4px}
 .cp-l{display:flex;flex-direction:column;min-width:0}.cp-n{font-size:11px;font-weight:600}.cp-v{white-space:nowrap}.cp-v b{font-size:12.5px;font-weight:700;color:var(--text)}.cp-v small{font-size:11px;color:var(--text3)}.cp-d{font-size:10.5px;font-weight:400;color:var(--text3);margin-left:5px}
 .tg-hr{display:flex;margin:0 0 10px}.tg-hr>div{flex:1;text-align:center}.tg-hr b{display:block;font-size:20px;font-weight:700;color:var(--text);font-family:var(--font-num)}.tg-hr span{font-size:11px;color:var(--text3)}
+.bpseg{display:inline-flex;flex-shrink:0;padding:2px;border-radius:9px;background:rgba(255,250,243,.11)}.bpseg span{padding:4px 9px;border-radius:7px;font-size:11.5px;color:var(--text3);cursor:pointer}.bpseg span.on{background:var(--blue-l);color:var(--blue);font-weight:600}
+.bpsec{font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text3);margin:2px 2px 5px}
 .hd-card{margin:0 0 10px;padding:8px 12px 10px;background:var(--bg3);border:0.5px solid var(--border);border-radius:14px}.hd-card.out{margin:0 -12px 10px}
 @media(max-width:360px){.pp-n{width:64px}.pp-r{gap:6px}.pp-r>b,.pp-v{min-width:58px}.sv-pr{gap:6px}.sv-pr b{width:58px}.sv-pr .s{width:64px}}
 /* Safari avec ses barres : vh dépasse l'écran visible, dvh suit la hauteur réellement affichée */
@@ -2605,8 +2607,8 @@ function _bulPayApply(){
   put('groupeHistory','groupeClassif',D.groupe,!(pr.groupeClassif>0));
   if(D.pfa)pr.pfaMensuelle=D.pfa.v;
   // heures payées : « en rendus » désactivé pour ce mois-là seulement (réglage du mois, prioritaire, sans toucher aux suivants)
-  var _cb={};[].forEach.call(document.querySelectorAll('input[data-bp]'),function(e){_cb[e.getAttribute('data-bp')]=e.checked;});
-  D.paid.forEach(function(x){if(_cb[x.k+':'+x.ym]===false)return;if(!pr.settingsMonthly)pr.settingsMonthly={};if(!pr.settingsMonthly[x.ym])pr.settingsMonthly[x.ym]={};pr.settingsMonthly[x.ym][x.k]=x.v;});
+  var _cb={};[].forEach.call(document.querySelectorAll('.bpseg[data-bp]'),function(e){_cb[e.getAttribute('data-bp')]=e.dataset.v==='1';});
+  D.paid.forEach(function(x){var c=_cb[x.k+':'+x.ym];if(c!=null)x.v=c;if(settingsForYM(x.ym)[x.k]===x.v)return;if(!pr.settingsMonthly)pr.settingsMonthly={};if(!pr.settingsMonthly[x.ym])pr.settingsMonthly[x.ym]={};pr.settingsMonthly[x.ym][x.k]=x.v;});
   var _an=document.getElementById('_bp-anni');if(_an&&_an.value!=='')pr.ancMoisAnni=parseInt(_an.value); // −2 : « je ne sais pas », ne plus demander
   if(D.anc){pr.ancYears=D.anc.y;pr.ancRefYM=D.anc.ym;if(D.anc.mo!=null)pr.ancMoisAnni=D.anc.mo;pr.primeAnciennete=calcAncPrime(D.anc.y);}
   saveState();render();
@@ -2619,26 +2621,13 @@ function _bulPayPropose(then,all){
   // Vérification complète (Réglages) : la même fenêtre ajoute l'écart avec le tableau Gestion, recalculé ici
   var G='';if(all){var rh=null;try{rh=_rhStored();}catch(e){}if(rh){try{rhCompareShow(rh);}catch(e){}}
     var cm=S.profile&&S.profile.rhCmp,lk='color:var(--blue);cursor:pointer;margin-left:8px;white-space:nowrap';
-    if(!rh)G='<div class="recap-row" style="font-size:12px;min-height:26px;gap:10px"><span style="color:var(--text3)">Tableau Gestion</span><span>aucun importé<a style="'+lk+'" onclick="closeModal();rhImportOpen()">Importer</a></span></div>';
+    if(!rh)G='<div class="recap-row" style="font-size:12px;min-height:26px;gap:10px"><span style="color:var(--text3)">Tableau</span><span>aucun importé<a style="'+lk+'" onclick="closeModal();rhImportOpen()">Importer</a></span></div>';
     else{var e0=cm?-cm.d:0,ok=!cm||Math.abs(e0)<2;
-      G='<div class="recap-row" style="font-size:12px;min-height:26px;gap:10px"><span style="color:var(--text3)">Écart avec le tableau</span><span><b style="color:'+(ok?'var(--green)':e0>0?'var(--green)':'var(--red)')+'">'+(ok?'✓ identique':(e0>0?'+':'−')+fmtMin(Math.abs(e0))+(e0>0?' favorable':' à corriger'))+'</b><a style="'+lk+'" onclick="closeModal();rhOpenFrom(\'recap\')">Détail</a></span></div>';}}
+      G='<div class="recap-row" style="font-size:12px;min-height:26px;gap:10px"><span style="color:var(--text3)">Écart d’heures</span><span><b style="color:'+(ok?'var(--green)':e0>0?'var(--green)':'var(--red)')+'">'+(ok?'✓ identique':(e0>0?'+':'−')+fmtMin(Math.abs(e0))+(e0>0?' favorable':' à corriger'))+'</b><a style="'+lk+'" onclick="closeModal();rhOpenFrom(\'recap\')">Détail</a></span></div>';}}
   var mo=function(ym){return MC[ym%12]+' '+Math.floor(ym/12);},li=function(l,v,c,ym){return '<div class="recap-row" style="font-size:12px;min-height:26px;gap:10px"><span style="color:var(--text3)">'+l+'</span><span><b>'+v+'</b><span style="color:var(--text3)"> · dès '+mo(ym)+(c?' (avant : '+c+')':'')+'</span></span></div>';};
   var rows=D.palier.map(function(c){return li('Palier','P'+c.v,c.cur?'P'+c.cur:'',c.ym);}).join('')
     +D.heures.map(function(c){return li('Contrat',Math.round(c.v/151.67*1000)/10+' %',Math.round(c.cur/151.67*1000)/10+' %',c.ym);}).join('')
     +D.groupe.map(function(c){return li('Groupe','Gr. '+c.v,c.cur?'Gr. '+c.cur:'',c.ym);}).join('')
-    +(function(){if(!D.paid.length)return '';
-      // Génération des rendus : une ligne par mois et par type, dans l'ordre des mois, « actuel → corrigé », à cocher
-      var L={ferRendu:'Fériés',dimRendu:'Dimanches',rhRendu:'RH travaillés',hsRendu:'Heures sup'},O=['ferRendu','dimRendu','rhRendu','hsRendu'];
-      var xs=D.paid.slice().sort(function(p,q){return p.ym-q.ym||O.indexOf(p.k)-O.indexOf(q.k);}),vl=function(v){return v?'rendus':'payés';};
-      return '<div style="font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text3);padding:4px 0 2px">Génération de rendus</div>'
-        +xs.map(function(x){var why=x.fill?'aucune ce mois-ci · comme les mois autour':x.v?'pas payés sur le bulletin':'payés sur le bulletin';
-          return '<label style="display:flex;align-items:center;gap:10px;padding:6px 0;border-top:0.5px solid var(--border);font-size:12px;cursor:pointer">'
-            +'<input type="checkbox" checked data-bp="'+x.k+':'+x.ym+'" style="width:17px;height:17px;accent-color:var(--blue);flex-shrink:0">'
-            +'<span style="flex:1;min-width:0"><span style="color:var(--text)">'+MCs[x.ym%12]+' '+String(Math.floor(x.ym/12)).slice(2)+' · '+L[x.k]+'</span>'
-            +'<span style="display:block;color:var(--text3);font-size:10.5px">'+why+'</span></span>'
-            +'<span style="white-space:nowrap"><span style="color:var(--text3)">'+vl(!x.v)+' → </span><b>'+vl(x.v)+'</b></span></label>';}).join('')
-        +'<div style="height:4px"></div>';})()
-
     +(D.pfa?'<div class="recap-row" style="font-size:12px;min-height:26px;gap:10px"><span style="color:var(--text3)">PFA</span><span><b>'+(D.pfa.v?'mensuelle':'semestrielle')+'</b><span style="color:var(--text3)"> · bulletin de '+mo(D.pfa.ym)+'</span></span></div>':'')
     +(D.ask?(function(){var rg=D.ask.rng,inR=function(m){if(!rg)return false;for(var y=rg.a;y<=rg.b;y++)if(y%12===m)return true;return false;};
       return '<div class="recap-row" style="font-size:12px;min-height:34px;gap:10px"><span style="color:var(--text3)">Mois d’anniversaire'+(rg?'<span style="display:block;font-size:10.5px">entre '+MC[rg.a%12]+' et '+MC[rg.b%12]+' d’après les bulletins</span>':'')+'</span>'
@@ -2646,10 +2635,20 @@ function _bulPayPropose(then,all){
         +ML.map(function(n,m){return {n:n,m:m};}).sort(function(a,b){return inR(b.m)-inR(a.m)||a.m-b.m;}).map(function(o){return '<option value="'+o.m+'">'+o.n+(inR(o.m)?' ·':'')+'</option>';}).join('')
         +'<option value="-2">Je ne sais pas</option></select></div>';})():'')
     +(D.anc?'<div class="recap-row" style="font-size:12px;min-height:26px;gap:10px"><span style="color:var(--text3)">Ancienneté</span><span><b>'+D.anc.y+' ans</b><span style="color:var(--text3)"> en '+MCs[D.anc.ym%12]+' '+Math.floor(D.anc.ym/12)+(D.anc.mo!=null?' · anniv. '+MC[D.anc.mo]:'')+'</span></span></div>':'');
-  if(all&&!D.n)rows='<div class="recap-row" style="font-size:12px;min-height:26px;gap:10px"><span style="color:var(--text3)">Bulletins</span><span>'+(nb?'<b style="color:var(--green)">✓ réglages conformes</b><span style="color:var(--text3)"> · '+nb+' bulletin'+(nb>1?'s':'')+'</span>':'aucun importé<a style="color:var(--blue);cursor:pointer;margin-left:8px" onclick="importBulletins(function(){_bulPayPropose(window._bulPayThen,1);})">Importer</a>')+'</span></div>';
+  // Génération des rendus : une ligne par mois et par type, choix payés | rendus (proposé d'après les bulletins)
+  var RL={ferRendu:'Fériés',dimRendu:'Dimanches',rhRendu:'RH travaillés',hsRendu:'Heures sup'},RO=['ferRendu','dimRendu','rhRendu','hsRendu'];
+  var rend=D.paid.slice().sort(function(p,q){return p.ym-q.ym||RO.indexOf(p.k)-RO.indexOf(q.k);}).map(function(x,i){
+    var why=x.fill?'aucune heure ce mois-ci · comme les mois autour':x.v?'pas payés sur le bulletin':'payés sur le bulletin';
+    return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;'+(i?'border-top:0.5px solid var(--border);':'')+'font-size:12px">'
+      +'<span style="flex:1;min-width:0"><span style="color:var(--text)">'+MCs[x.ym%12]+' '+String(Math.floor(x.ym/12)).slice(2)+' · '+RL[x.k]+'</span>'
+      +'<span style="display:block;color:var(--text3);font-size:10.5px">'+why+' · actuellement '+(x.v?'payés':'rendus')+'</span></span>'
+      +'<span class="bpseg" data-bp="'+x.k+':'+x.ym+'" data-v="'+(x.v?1:0)+'">'+[0,1].map(function(v){return '<span'+((x.v?1:0)===v?' class="on"':'')+' onclick="var g=this.parentNode;g.dataset.v='+v+';[].forEach.call(g.children,function(c,j){c.classList.toggle(\'on\',j==='+v+');})">'+(v?'rendus':'payés')+'</span>';}).join('')+'</span></div>';}).join('');
+  var okR=function(t){return '<div class="recap-row" style="font-size:12px;min-height:26px;gap:10px"><span style="color:var(--text3)">'+t+'</span><span>'+(nb?'<b style="color:var(--green)">✓ conforme</b><span style="color:var(--text3)"> · '+nb+' bulletin'+(nb>1?'s':'')+'</span>':'aucun bulletin<a style="color:var(--blue);cursor:pointer;margin-left:8px" onclick="importBulletins(function(){_bulPayPropose(window._bulPayThen,1);})">Importer</a>')+'</span></div>';};
+  var sec=function(t,h){return '<div class="bpsec">'+t+'</div><div class="hd-card">'+h+'</div>';};
+  var body=((rows||all)?sec('Paie',rows||okR('Réglages')):'')+((rend||all)?sec('Génération de rendus',rend||okR('Payés ou rendus')):'')+(all?sec('Tableau Gestion',G):'');
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)_bulPayDone(0)"><div class="sheet"><div class="sh"></div><div class="st">'+(all?'Vérification':'Réglages lus sur les bulletins')+'</div>'
-    +(D.n?'<div style="font-size:12px;color:var(--text3);line-height:1.45;margin:-4px 0 10px">D’après les bulletins. Décocher ce qui ne doit pas changer :</div>':'')
-    +'<div class="hd-card">'+rows+G+'</div>'
+    +(D.n?'<div style="font-size:12px;color:var(--text3);line-height:1.45;margin:-4px 0 10px">Corrections proposées d’après les bulletins.</div>':'')
+    +body
     +(D.n?'<div class="mbtns"><button class="mb" onclick="_bulPayDone(0)">Plus tard</button><button class="mb pri" onclick="_bulPayDone(1)">Mettre à jour</button></div>':'<div class="mbtns" style="grid-template-columns:1fr"><button class="mb pri" style="width:100%" onclick="_bulPayDone(0)">OK</button></div>')+'</div></div>';
   return true;
 }
