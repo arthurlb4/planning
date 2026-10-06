@@ -1189,7 +1189,19 @@ function getVac(date){
   if(ov&&(ov.vac||ov.fromSV))return{vac:ov.vac||null,ov:true,fromSV:!!ov.fromSV,absent:false,echange:false,ecSelf:false,li,cycleVac};
   return{vac:cycleVac,ov:false,fromSV:false,absent:false,echange:false,ecSelf:false,li,cycleVac};
 }
-function getDur(date){const{vac}=getVac(date);const VAC=getVAC();return(vac&&vac!=='RH'&&VAC[vac])?VAC[vac].dur:0;}
+function getDur(date){const{vac}=getVac(date);const VAC=getVAC();const d=(vac&&vac!=='RH'&&VAC[vac])?VAC[vac].dur:0;
+  // demi-journée de congé exceptionnel complétée par des rendus : le rendu ne compte que l'autre moitié
+  if(d&&S.excInfo){const k=dk(date),x=S.excInfo[k];if(x&&x.half&&x.rest==='rend'&&/^rend/.test((S.conges||{})[k]||''))return Math.round(d/2);}return d;}
+// Congés pour événements familiaux (accord collectif, art. IX.2.4) : rémunérés, ni congés payés ni rendus
+const EXC_M={rentree:{l:'Rentrée scolaire',s:'Rentrée',half:1,info:'½ journée · enfant en maternelle, élémentaire ou 6ᵉ'},enfant:{l:'Enfant malade',s:'Enf.',info:'6 j/an · 9 avec 2 enfants · 12 avec 3+ (avec conjoint ou parent malade)'},
+  proche:{l:'Conjoint ou parent malade',s:'Malad.',info:'compté avec enfant malade : 6 j/an · 9 · 12'},mariage:{l:'Mariage / PACS',s:'Mar.',info:'5 j (2 j pour un enfant ou un parent)'},
+  naissance:{l:'Naissance / adoption',s:'Naiss.',info:'3 j, à prendre dans les 15 jours'},deces:{l:'Décès',s:'Décès',info:'2 à 5 j selon le lien'},demenag:{l:'Déménagement',s:'Démén.',info:'2 j'},autre:{l:'Autre congé exceptionnel',s:'Exc.'}};
+function _excOf(k){var x=(S.excInfo||{})[k];if(!x)return null;var c=(S.conges||{})[k];
+  // valable seulement si le jour est toujours posé comme ça (absence, ou rendu pour la ½ journée complétée)
+  if(x.half?(x.rest==='rend'?(c!=='rend'&&c!=='rend-hist'):!!c):c!=='absent')return null;return x;}
+// Jours pris par motif sur l'année (½ journée = 0,5 ; enfant et proche malades comptés ensemble)
+function _excUsed(m,y){var n=0;Object.keys(S.excInfo||{}).forEach(function(k){if(+k.slice(0,4)!==y)return;var x=_excOf(k);if(!x)return;
+  var same=x.m===m||((m==='enfant'||m==='proche')&&(x.m==='enfant'||x.m==='proche'));if(same)n+=x.half?0.5:1;});return n;}
 // Minutes de nuit d'un jour : formation suivie → la plus grande entre la vacation prévue et la formation
 function getNuitMinDay(date,VAC){VAC=VAC||getVAC(date);const pv=getPayVac(date),v=getVac(date).vac;let n=calcNuitMinShift(VAC[pv])||0;if(v&&v!==pv&&v!=='RH')n=Math.max(n,calcNuitMinShift(VAC[v])||0);return n;}
 function getPayVac(date){const key=dk(date);const ov=(S.overrides||{})[key];if(ov&&ov.formation){const cv=getCycleVac(date).cycleVac;if(cv&&cv!=='RH')return cv;}return getVac(date).vac;}
@@ -1922,13 +1934,13 @@ function renderMonth(el_heads,el_cal){
   for(let i=_totalLeading;i>0;i--){
     const _od=new Date(_prevLast.getFullYear(),_prevLast.getMonth(),_prevLast.getDate()-i+1);
     const _ok=dk(_od),_ost=getState(_od);const {vac:_ov}=getVac(_od);
-    let _ol='';if(_ost==='absent')_ol='abs.';else if(_ost==='rh')_ol='RH';else if(_ost==='fer')_ol=(_ov&&_ov!=='RH')?vLbl(_ov,_VAC):'';else if(_ov&&_ov!=='RH'&&_ost!=='ec2'&&_ost!=='ec2-fer')_ol=vLbl(_ov,_VAC);
+    let _ol='';if(_ost==='absent')_ol=_excOf(_ok)?EXC_M[_excOf(_ok).m].s:'abs.';else if(_ost==='rh')_ol='RH';else if(_ost==='fer')_ol=(_ov&&_ov!=='RH')?vLbl(_ov,_VAC):'';else if(_ov&&_ov!=='RH'&&_ost!=='ec2'&&_ost!=='ec2-fer')_ol=vLbl(_ov,_VAC);
     cells.push({d:_od.getDate(),date:_od,key:_ok,st:_ost,lbl:_ol.length>5?_ol.slice(0,5)+'.':_ol,panDot:'',warnDot:'',today:false,overflow:true});
   }
   for(let d=1;d<=last.getDate();d++){
     const date=new Date(curY,curM,d),key=dk(date),st=getState(date),{vac,ov,fromSV,echange}=getVac(date);
     let lbl='';
-    if(st==='absent')lbl='abs.';
+    if(st==='absent')lbl=_excOf(key)?EXC_M[_excOf(key).m].s:'abs.';
     else if(st==='sv')lbl='';
     else if(st==='rh')lbl='RH';
     else if(st==='fer')lbl=(vac&&vac!=='RH')?vLbl(vac,_VAC):'';
@@ -3541,7 +3553,7 @@ function openDay(key){
   var cR=Math.max(0,computeCongesRest(date.getFullYear()));
   var lbl=fmtDate(date),factor=renduFactor(date),ramee=isSemaineRamenée(getMonday(date)),hsW=calcHSWeek(getMonday(date)),sett=settingsForYM(date.getFullYear()*12+date.getMonth());
   var _ovData=(S.overrides||{})[key];
-  var tt=vac&&vac!=='RH'?vLbl(vac,VAC):'';if(absent)tt='Absent';else if(isFer)tt=vac&&vac!=='RH'?vLbl(vac,VAC):'Férié';else if(!vac)tt='Repos';
+  var tt=vac&&vac!=='RH'?vLbl(vac,VAC):'';if(absent)tt=_excOf(key)?EXC_M[_excOf(key).m].l:'Absent';else if(isFer)tt=vac&&vac!=='RH'?vLbl(vac,VAC):'Férié';else if(!vac)tt='Repos';
   var dw=date.getDay();
   var _dvr=_dayVacRows(date,VAC),rows=_dvr.rows;if(_dvr.sched){window._autreVacsForDay=_dvr.acc;window._cycleVacsShown=_dvr.sched;}
   const gridCols=3; // vacations sur 3 colonnes, semaine comme week-end
@@ -3588,7 +3600,7 @@ function openDay(key){
       <button class="mb grn" onclick="${cR<=0?`showBlockAlert('Solde insuffisant','Plus de congés disponibles pour ${date.getFullYear()}.')`:`openPoseModal('cg')`}"${cR<=0?' style="opacity:.5"':''}>Congé</button>
       <button class="mb" style="background:var(--rend-l);color:var(--rend-text);border-color:transparent" onclick="openPoseModal('rend')"${totalDispo<dur&&_rendStatus(key)==='rend'?' disabled':''}>Rendu</button>
       <button class="mb" style="border:none;background:rgba(165,60,60,.26);color:#b87878" onclick="openExchange('${key}')">Échange</button>
-      <button class="mb" style="background:var(--bg3);color:var(--text)" onclick="openPoseModal('absent')">Absent</button>
+      <button class="mb" style="background:var(--bg3);color:var(--text)" onclick="openPoseModal('absent')">Absence</button>
     </div>`;
   } else if(vac&&vac!=='RH'&&!absent&&hasCg){
     if(_isWarnedRend&&_matelasAvail>0){
@@ -3670,7 +3682,7 @@ function openDay(key){
       +'</div>';
   }
 
-  document.getElementById('modal-root').innerHTML=`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet daymod"><div class="sh"></div>${_dayBox}${vgHtml}<div style="height:16px"></div>${ah}<button class="mcancel mclose" onclick="closeModal()">Fermer</button></div></div>`;
+  document.getElementById('modal-root').innerHTML=`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet daymod"><div class="sh"></div>${_dayBox}${vgHtml}<div style="height:16px"></div>${_excDayLine(key)}${ah}<button class="mcancel mclose" onclick="closeModal()">Fermer</button></div></div>`;
   if(_note){var _ns=document.querySelector('#modal-root .ti-note');if(_ns)_ns.nextElementSibling.textContent=_note;}
   _dayFixH();
   _dayNavSetup(key);
@@ -3958,8 +3970,16 @@ function openPoseModal(type,fromMenu){
   const date=new Date(key+'T12:00:00');
   // Build a list of valid target days from this day forward (worked days, same type logic)
   // Show: Unique | Jusqu'au [date picker equivalent - show next worked days]
-  const lbl=type==='cg'?'Congé':type==='rend'?'Rendu':'Absent';
+  const lbl=type==='cg'?'Congé':type==='rend'?'Rendu':'Absence';
   const color=type==='cg'?'var(--green)':type==='rend'?'var(--rend-text)':'var(--text2)';
+  // Absence : motif (congé exceptionnel de l'accord, ou sans motif) ; rentrée scolaire = ½ journée, l'autre moitié travaillée ou en rendus
+  var excH='';if(type==='absent'){var _y=date.getFullYear(),_sel='width:100%;height:42px;box-sizing:border-box;padding:0 10px;border:0.5px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--bg2);color:var(--text)';
+    excH='<select id="_exc-m" onchange="_excPick()" style="'+_sel+';margin-bottom:6px"><option value="">Absence (sans motif)</option>'
+      +Object.keys(EXC_M).map(function(m){return '<option value="'+m+'">'+EXC_M[m].l+'</option>';}).join('')+'</select>'
+      +'<div id="_exc-i" style="font-size:11px;color:var(--text3);line-height:1.4;min-height:15px;margin-bottom:8px"></div>'
+      +'<div id="_exc-h" style="display:none;margin-bottom:10px"><div style="font-size:11px;color:var(--text3);margin-bottom:5px">L’autre moitié de la vacation</div>'
+      +'<span class="bpseg" id="_exc-r" data-v="work" style="display:flex">'+['work','rend'].map(function(v,i){return '<span style="flex:1;text-align:center"'+(i?'':' class="on"')+' onclick="var g=this.parentNode;g.dataset.v=\''+v+'\';[].forEach.call(g.children,function(c){c.classList.toggle(\'on\',c===this);},this)">'+(v==='work'?'travaillée':'en rendus')+'</span>';}).join('')+'</span></div>';
+    window._excYear=_y;}
   const bg=type==='cg'?'var(--green-l)':type==='rend'?'var(--rend-l)':'var(--bg3)';
 
   // Build list of next worked days for "jusqu'au" picker (next 60 days)
@@ -3982,9 +4002,9 @@ function openPoseModal(type,fromMenu){
   }
 
   document.getElementById('modal-root').innerHTML=
-    '<div class="overlay" onclick="if(event.target===this)'+back+'"><div class="sheet" style="max-height:380px">'
+    '<div class="overlay" onclick="if(event.target===this)'+back+'"><div class="sheet" style="max-height:'+(type==='absent'?560:380)+'px">'
     +'<div class="sh"></div>'
-    +'<div class="st" style="color:#fff;margin-bottom:14px">'+lbl+'</div>'
+    +'<div class="st" style="color:#fff;margin-bottom:14px">'+lbl+'</div>'+excH
     +'<div class="mbtns" style="margin-bottom:10px">'
     +'<button class="mb" style="background:'+bg+';color:'+color+';border:none" onclick="applyPose(\''+type+'\',\''+key+'\',true)">Unique</button>'
     +'<button class="mb" style="background:'+bg+';color:'+color+';border:none" onclick="showPoseSelect()">Multiple</button>'
@@ -3997,8 +4017,17 @@ function openPoseModal(type,fromMenu){
     +'</div>'
     +'<button class="mcancel" onclick="'+back+'">Retour</button>'
     +'</div></div>';
+  if(type==='absent')_excPick();
 }
 
+// Fiche du jour : la ½ journée de congé exceptionnel (la journée reste travaillée ou en rendu pour l'autre moitié)
+function _excDayLine(k){var x=_excOf(k);if(!x||!x.half)return '';
+  return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:var(--text2);margin:-6px 0 10px"><span>½ '+EXC_M[x.m].l.toLowerCase()+' · autre moitié '+(x.rest==='rend'?'en rendu':'travaillée')+'</span>'
+    +(x.rest==='rend'?'':'<a style="color:var(--blue);cursor:pointer;white-space:nowrap" onclick="_excRemove(\''+k+'\')">Retirer</a>')+'</div>';}
+function _excRemove(k){pushUndo('Congé exceptionnel retiré');var x=(S.excInfo||{})[k];if(x&&x.rest==='rend'&&S.conges)delete S.conges[k];if(S.excInfo)delete S.excInfo[k];saveState();render();openDay(k);}
+function _excPick(){var m=(document.getElementById('_exc-m')||{}).value,i=document.getElementById('_exc-i'),h=document.getElementById('_exc-h'),X=EXC_M[m];
+  if(h)h.style.display=X&&X.half?'block':'none';
+  if(i)i.textContent=X?((X.info||'')+(m!=='autre'?' · déjà pris en '+window._excYear+' : '+String(_excUsed(m,window._excYear)).replace('.',',')+' j':'')):'Ni congé ni rendu : la journée n’est pas comptée.';}
 function calcDispoAtDate(targetDate){
   // Heures disponibles à targetDate :
   // - heures réelles dispo aujourd'hui, non expirées à targetDate
@@ -4670,7 +4699,9 @@ function applyPose(type,startKey,unique){
 
   }
 
-  pushUndo((type==='cg'?(unique?'Congé posé':'Congés posés'):type==='rend'?(unique?'Rendu posé':'Rendus posés'):'Absence posée'));
+  var _xm=type==='absent'?((document.getElementById('_exc-m')||{}).value||''):'',_xr=((document.getElementById('_exc-r')||{}).dataset||{}).v||'work',_xh=!!(EXC_M[_xm]&&EXC_M[_xm].half);
+  pushUndo((type==='cg'?(unique?'Congé posé':'Congés posés'):type==='rend'?(unique?'Rendu posé':'Rendus posés'):_xm?'Congé exceptionnel posé':'Absence posée'));
+  if(_xm&&!S.excInfo)S.excInfo={};
   if(!S.conges)S.conges={};if(!S.overrides)S.overrides={};
   const _createdYM_w=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:2026*12;
   var d=new Date(start);
@@ -4679,13 +4710,14 @@ function applyPose(type,startKey,unique){
     const v2=getVac(d);
     const isWorked=v2.vac&&v2.vac!=='RH'&&!v2.absent;
     if(isWorked){
-      if(type==='absent'){S.overrides[k]={absent:true};S.conges[k]='absent';}
+      if(type==='absent'&&_xh){S.excInfo[k]={m:_xm,half:1,rest:_xr};if(_xr==='rend')S.conges[k]=_rendStatus(k);else delete S.conges[k];}
+      else if(type==='absent'){S.overrides[k]={absent:true};S.conges[k]='absent';if(_xm)S.excInfo[k]={m:_xm};else if(S.excInfo)delete S.excInfo[k];}
       else if(type==='rend'){S.conges[k]=_rendStatus(k);}
       else{S.conges[k]=type;}
     }
     d.setDate(d.getDate()+1);
   }
-  const label=type==='cg'?'congé':type==='rend'?'rendu':'absent';
+  const label=type==='cg'?'congé':type==='rend'?'rendu':_xm?EXC_M[_xm].l.toLowerCase()+(_xh?' (½'+(_xr==='rend'?' + rendu)':')'):''):'absent';
   const color=type==='cg'?'#6a9878':type==='rend'?'#A8BF7A':'#c88048';
   logH(fmtDate(start)+' -> '+label+(unique?'':' au '+fmtDate(end)),color,startKey);
   saveState();closeModal();render();
@@ -6309,7 +6341,7 @@ function _wvBodyHtml(data,monKey){
         if(isUser){
           var _dd=new Date(monDate.getTime()+d*864e5);
           var _st=getState(_dd),_dv2=getVac(_dd);
-          var _lbl=_st==='absent'?'abs.':_st==='rh'?'RH':(_dv2.vac&&_dv2.vac!=='RH'?vLbl(_dv2.vac,VAC):'');
+          var _lbl=_st==='absent'?(_excOf(dk(_dd))?EXC_M[_excOf(dk(_dd)).m].s:'abs.'):_st==='rh'?'RH':(_dv2.vac&&_dv2.vac!=='RH'?vLbl(_dv2.vac,VAC):'');
           _cellHtml='<div class="dc s-'+_st+'"><div class="dci"><span class="dv">'+_lbl+'</span></div></div>';
         } else {
           var _wvCode=(hasUser&&users[0].weekVacs)?users[0].weekVacs[d]:null;
