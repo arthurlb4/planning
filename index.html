@@ -91,10 +91,7 @@ input,textarea,select{user-select:text;-webkit-user-select:text;}
       <form id="form-login" autocomplete="on" onsubmit="doLogin();return false;">
         <div class="field"><label>Email</label><input type="email" id="login-email" name="email" autocomplete="email" placeholder="Adresse email"></div>
         <div class="field"><label>Mot de passe</label><div class="pwd-wrap"><input type="password" id="login-pwd" autocapitalize="off" autocorrect="off" spellcheck="false" name="password" autocomplete="current-password" placeholder="••••••••"><button type="button" class="pwd-eye" data-pwd="login" onmousedown="event.preventDefault()" onclick="togglePwd(['login-pwd'],this.dataset.pwd)" tabindex="-1" aria-label="Afficher le mot de passe"><i class="ti ti-eye"></i></button></div></div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;margin-bottom:14px">
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);cursor:pointer">
-            <input type="checkbox" id="remember-me" style="accent-color:var(--blue)"> Se souvenir de moi
-          </label>
+        <div style="display:flex;justify-content:flex-end;align-items:center;margin-top:8px;margin-bottom:14px">
           <div class="forgot" style="margin:0" onclick="showForgot()">Mot de passe oublié ?</div>
         </div>
         <button class="btn" id="login-btn" onclick="doLogin()">Se connecter</button>
@@ -440,13 +437,8 @@ function regTogglePFA() {
   if(lbs[1]){lbs[1].style.fontWeight=m?'400':'600';lbs[1].style.color=m?'var(--text3)':'var(--text)';}
 }
 
-// Pre-fill remembered credentials
-const remembered = JSON.parse(localStorage.getItem('remember_creds') || 'null');
-if (remembered) {
-  document.getElementById('login-email').value = remembered.email || '';
-  document.getElementById('login-pwd').value = remembered.password || '';
-  document.getElementById('remember-me').checked = true;
-}
+// Plus d'identifiants mémorisés par l'app (mot de passe gardé en clair) : effacés s'il en reste ; le gestionnaire de mots de passe du téléphone prend le relais
+try { localStorage.removeItem('remember_creds'); } catch(e) {}
 
 // Check if already logged in
 const stored = localStorage.getItem('auth_token');
@@ -579,11 +571,6 @@ async function doLogin() {
     if (!res.ok) { showErr('login-err', data.error || 'Erreur'); btn.disabled = false; btn.textContent = 'Se connecter'; return; }
     localStorage.setItem('auth_token', data.token);
     localStorage.setItem('auth_user', JSON.stringify({ userId: data.userId, name: data.name, email: data.email }));
-    if (document.getElementById('remember-me').checked) {
-      localStorage.setItem('remember_creds', JSON.stringify({ email, password: pwd }));
-    } else {
-      localStorage.removeItem('remember_creds');
-    }
     setTimeout(function(){ window.location.replace('/planning/app/'); }, 100);
   } catch(e) { showErr('login-err', 'Erreur réseau'); btn.disabled = false; btn.textContent = 'Se connecter'; }
 }
