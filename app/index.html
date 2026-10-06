@@ -2811,12 +2811,13 @@ function _bulCompare(b){
   var y=Math.floor(b.ym/12),m=b.ym%12,P=calcPayeMois(y,m),v=P.vars,W=b.ym-1,r2=function(x){return Math.round(x*100)/100;};
   var rows=[],late=[],alerts=[];
   var app={hsLow:[v.hsLow,v.supHSlow],hsHigh:[v.hsHigh,v.supHShigh],nuit:[v.nuitMin,v.supNuit],fer:[v.ferMin,v.supFer],dim:[v.dimMin,v.supDim],rh:[v.rhMin,v.supRH],antenne:[v.antenne,v.supAntenne],matin:[v.matin,v.supMatin],reel:[v.reel,v.supReal],coord:[v.coord,v.supCoord],absResto:[v.supAbsResto>0?1:0,v.supAbsResto],panier:[v.paniers||0,v.supPaniers||0]};
-  var bq={},bm={};
+  var bq={},bm={},autreW=0;
   // Bulletins importés avant : paniers sans ligne « rap », ils sont ceux du mois de travail
   var _rap=(b.rap||[]).slice();if(b.paniers&&!_rap.some(function(r){return r.k==='panier';}))_rap.push({ym:W,k:'panier',lbl:'PRIME DE PANIERS',q:b.paniers.q,mt:b.paniers.mt});
   _rap.forEach(function(r){
     if(r.k==='cp')return; // retenue / paiement congés payés : se compensent, sans intérêt pour la comparaison
-    if(r.k==='autre'){late.push({lbl:r.lbl,ym:r.ym,mt:r.mt,info:1});return;}
+    // ligne inconnue du mois de travail : comparée aux primes spéciales saisies dans l'app (sinon « il manque » leur montant)
+    if(r.k==='autre'){var sp=r.ym===W&&v.supSpec>0;late.push({lbl:r.lbl,ym:r.ym,mt:r.mt,info:1,spec:sp});if(sp)autreW+=r.mt;return;}
     if(r.ym!==W){late.push({lbl:_BUL_LBL[r.k],ym:r.ym,mt:r.mt,q:r.q,k:r.k});return;}
     var q=_BUL_H[r.k]?Math.round(r.q*60):r.k==='absResto'?1:r.q;
     bq[r.k]=(bq[r.k]||0)+q;bm[r.k]=r2((bm[r.k]||0)+r.mt);
@@ -2837,6 +2838,7 @@ function _bulCompare(b){
   var fix=[['Qualification',b.salQ,P.salQ],['Ancienneté',b.anc,P.salAnc],['Ind. GPE',b.gpe,P.gpe],['PFA',b.pfa,P.pfa],['Mesures NAO',nao||null,P.primesConv.reduce(function(s,p){return s+p.montant;},0)]];
   if(b.epv!=null||P.compCP>0)fix.push(['Complément CP',b.epv||0,r2(P.compCP),'epv']);
   if(b.supFam!=null||P.supFamilial>0)fix.push(['Suppl. familial',b.supFam||0,P.supFamilial]);
+  if(v.supSpec>0)fix.push(['Primes spéciales',r2(autreW),r2(v.supSpec||0)]);
   if(b.absNR||P.greveRet>0)fix.push(['Absence non rémunérée',b.absNR?b.absNR.mt:0,-P.greveRet]);
   // Prime d'avantage individuel acquis : prime fixe personnelle (Réglages → primes fixes, libellé « … indiv. … »)
   var avA=P.primesCustom.filter(function(p){return /INDIV/i.test(p.label);}).reduce(function(s,p){return s+p.montant;},0);
@@ -2845,7 +2847,7 @@ function _bulCompare(b){
   var fixed=fix.filter(function(f){return f[1]!=null||f[2];}).map(function(f){var bv=f[1]||0,av=r2(f[2]||0),red=!!b.absNR&&(f[0]==='PFA'||f[0]==='Mesures NAO')&&bv<av&&av-bv<=av*0.02;
     return{lbl:f[0],bm:bv,am:av,ok:Math.abs(bv-av)<=0.05||red,red:red,key:f[3]};});
   // Paniers hors brut : leur rattrapage n'entre pas dans le brut, leur écart s'ajoute à part
-  var lateSum=r2(late.reduce(function(s,l){return s+(l.k==='panier'?0:l.mt);},0)),diff=r2(b.brut-P.total),PR=_panRappels(),panCov=PR.cover[b.ym]||0,panDiff=r2((bm.panier||0)+(rm.panier||0)-(v.supPaniers||0)+panCov-(PR.used[b.ym]||0));
+  var lateSum=r2(late.reduce(function(s,l){return s+(l.k==='panier'||l.spec?0:l.mt);},0)),diff=r2(b.brut-P.total),PR=_panRappels(),panCov=PR.cover[b.ym]||0,panDiff=r2((bm.panier||0)+(rm.panier||0)-(v.supPaniers||0)+panCov-(PR.used[b.ym]||0));
   // Coordination payée comme antenne (même taux) : le total des deux suffit
   var rA=rows.filter(function(r){return r.k==='antenne';})[0],rC=rows.filter(function(r){return r.k==='coord';})[0];
   if(rA&&rC&&!(rA.ok&&rC.ok)&&rA.bq+rA.rq+rC.bq+rC.rq===rA.aq+rC.aq){rA.ok=rC.ok=true;rA.mix=rC.mix=1;}
@@ -2928,7 +2930,9 @@ function _payPageHtml(ym){
   vr('reel','P. réal ('+v.reel+' × '+_eu(_tx.reel)+')',v.reel,v.supReal,null);
   vr('coord','P. coord ('+v.coord+' × '+_eu(_tx.coord)+')',v.coord,v.supCoord,null);
   vr('absResto','Abs. restauration',v.supAbsResto,v.supAbsResto,null);
-  (v.specList||[]).forEach(function(sp){var d=new Date(sp.key+'T12:00:00');vl+=row(sp.lbl+' ('+d.getDate()+' '+MCs[d.getMonth()]+')',sp.amt,null,c?E:null);});
+  var _spF=fixBy['Primes spéciales'],_spL=(v.specList||[]).length;if(_spF)vb+=_spF.bm;
+  (v.specList||[]).forEach(function(sp,i){var d=new Date(sp.key+'T12:00:00');vl+=row(_h(sp.lbl)+' ('+d.getDate()+' '+MCs[d.getMonth()]+')',sp.amt,null,c?(i===_spL-1&&_spF?fn('Primes spéciales',v.supSpec):E):null);});
+  if(_spF&&!_spL)vl+=row('Autres lignes du mois',0,null,fn('Primes spéciales',0));
   if(!vl)vl='<div style="color:var(--text3);padding:3px 0">Aucune.</div>';
   // En-tête et total brut comme l'ancien onglet Paie ; la colonne bulletin s'ajoute à gauche
   var h='<div class="pp-r" style="font-size:11px;color:var(--text3);padding:0 0 2px"><span style="flex:1"></span>'+(c?'<span class="pp-n">bulletin</span>':'')+'<span class="pp-v">app</span></div>'
