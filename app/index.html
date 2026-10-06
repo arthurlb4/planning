@@ -2502,10 +2502,14 @@ function _bulKey(l){
 }
 // Lignes de texte du bulletin → chiffres utiles (aucune donnée personnelle conservée)
 function _bulParse(lines){
-  var b={rap:[],nao:{}},N='(-?\\d+,\\d+)',m,fx=[['salQ',/^SALAIRE DE QUALIFICATION .*?(-?\d+,\d+)$/],['anc',/^PRIME ANCIENNETE .*?(-?\d+,\d+)$/],['gpe',/^INDEMNITE MENSUELLE.*?(-?\d+,\d+)$/],['pfa',/^P\.?F\.?A\b.*?(-?\d+,\d+)$/],['epv',/^INDEMNITE 10EME EPV .*?(-?\d+,\d+)$/],['supFam',/^SUPPLEMENT FAMILIAL.*?(-?\d+,\d+)$/],['brut',/TOTAL BRUT PAYE (-?\d+,\d+)$/]];
+  var b={rap:[],nao:{}},N='(-?\\d+,\\d+)',m,fx=[['salQ',/^SALAIRE DE QUALIFICATION .*?(-?\d+,\d+)$/],['anc',/^PRIME ANCIENNETE .*?(-?\d+,\d+)$/],['gpe',/^INDEMNITE MENSUELLE.*?(-?\d+,\d+)$/],['pfa',/^P\.?F\.?A\b.*?(-?\d+,\d+)$/],['epv',/^INDEMNITE 10EME EPV .*?(-?\d+,\d+)$/],['supFam',/^SUPPL(?:EMENT|\.)? ?FAMILIAL.*?(-?\d+,\d+)$/],['brut',/TOTAL BRUT PAYE (-?\d+,\d+)$/]];
   var reRap=new RegExp('^RAP (\\d{4})(\\d\\d) (.+?) '+N+' '+N+' '+N+'$'),rePan=new RegExp('^RAP PRIME DE PANIERS '+N+' '+N+' '+N+'$');
   lines.forEach(function(raw){
     var t=String(raw).replace(/\*/g,'').replace(/\s+/g,' ').trim();if(!t)return;
+    // Relevé de présence collé à droite de la ligne (« J 16 JUI 1,00 ») : retiré, il fausserait le dernier montant
+    t=t.replace(/ [A-Z]{1,3} \d{1,2} [A-ZÉÛ]{3,5}\.?(?: -?\d+,\d+){0,2}$/,'');
+    // Groupe écrit dans l'en-tête (« GRILLE DE QUALIFICATION GRP5 ») : repli si l'indemnité GPE n'est pas lue
+    if(b.grp==null&&(m=/GRILLE DE QUALIFICATION.*?\bGRP ?(\d)\b/.exec(t)))b.grp=+m[1];
     if(b.ym==null&&(m=/PERIODE DE PAIE DU (\d\d)\/(\d\d)\/(\d{4})/.exec(t)))b.ym=+m[3]*12+(+m[2]-1);
     if((m=reRap.exec(t))){var k=/PANIER/i.test(m[3])?'panier':_bulKey(m[3]);if(k)b.rap.push({ym:+m[1]*12+(+m[2]-1),k:k,lbl:m[3],q:_bulNum(m[4]),pu:_bulNum(m[5]),mt:_bulNum(m[6])});return;}
     // Paniers sans mois : ceux du mois de travail (mois précédent), comme les primes
@@ -2528,9 +2532,11 @@ function _loadPdfJs(){
 async function _pdfLines(file){
   var lib=await _loadPdfJs(),doc=await lib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise,out=[];
   for(var p=1;p<=doc.numPages;p++){
-    var tc=await (await doc.getPage(p)).getTextContent(),rows={};
-    tc.items.forEach(function(it){if(!it.str||!it.str.trim())return;var y=Math.round(it.transform[5]/2)*2;(rows[y]=rows[y]||[]).push([it.transform[4],it.str]);});
-    Object.keys(rows).map(Number).sort(function(a,b){return b-a;}).forEach(function(y){out.push(rows[y].sort(function(a,b){return a[0]-b[0];}).map(function(r){return r[1];}).join(' '));});
+    var tc=await (await doc.getPage(p)).getTextContent();
+    // Même ligne si la hauteur diffère de moins de 2,5 pt (un arrondi fixe coupait parfois un libellé de son montant)
+    var its=tc.items.filter(function(it){return it.str&&it.str.trim();}).map(function(it){return [it.transform[5],it.transform[4],it.str];}).sort(function(a,b){return b[0]-a[0];}),grp=[];
+    its.forEach(function(it){var g=grp[grp.length-1];if(g&&g.y-it[0]<2.5)g.it.push(it);else grp.push({y:it[0],it:[it]});});
+    grp.forEach(function(g){out.push(g.it.sort(function(a,b){return a[1]-b[1];}).map(function(r){return r[2];}).join(' '));});
   }
   return out;
 }
@@ -2547,6 +2553,7 @@ function _bulPaySet(b){
   if(base>0)for(var n=11;n<=99;n++){if(Math.abs(calcPalierSalaire(n)-base)<0.02){r.palier=n;break;}}
   if(t)r.pct=t;
   if(b.gpe>0)for(var g=1;g<=9;g++){if(near(calcGPE(g,ym),b.gpe)){r.groupe=g;break;}}
+  if(r.groupe==null&&b.grp>=1&&b.grp<=9)r.groupe=b.grp;
   if(b.anc>0)for(var y=1;y<=50;y++){if(near(calcAncPrime(y,ym),b.anc)){r.anc=y;break;}}
   if(b.pfa>0&&b.pfaMens!==undefined)r.pfaMens=!!b.pfaMens;
   return r;

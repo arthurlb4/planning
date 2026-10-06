@@ -105,6 +105,8 @@ function situation(opts) {
   eq('Bulletin : lignes RAP reconnues, cotisations ignorées', a.run('JSON.stringify(_b.rap.map(function(r){return [r.ym,r.k,r.q];}))'),
     JSON.stringify([[YM(2026, 7), 'hsLow', 9.25], [YM(2026, 7), 'nuit', 13.5], [YM(2026, 4), 'reel', 1], [YM(2026, 7), 'panier', 2]]));
   eq('Bulletin : paniers', a.run('_b.paniers.q'), 2);
+  // Format d'un autre bulletin : « SUPPL. FAMILIAL » abrégé, groupe dans l'en-tête, relevé de présence collé à droite
+  eq('Bulletin : suppl. familial abrégé, groupe de l’en-tête, relevé de présence retiré', a.run('(function(){var o=_bulParse(["PERIODE DE PAIE DU 01/08/2026 AU 31/08/2026","GRILLE DE QUALIFICATION GRP5 HEURES CONTRACTUELLES","SALAIRE DE QUALIFICATION 2356,34 100,000 2356,34 J 16 JUI 1,00","SUPPL. FAMILIAL 156,42","**TOTAL BRUT PAYE 3719,74"]);return JSON.stringify([o.supFam,o.grp,o.salQ,_bulPaySet(o).groupe]);})()'), JSON.stringify([156.42, 5, 2356.34, 5]));
   eq('Bulletin : HS en quart d’heure signalées, rattrapage d’avril à part', a.run('(function(){var c=_bulCompare(_b);return JSON.stringify([c.alerts.filter(function(x){return /Heures sup/.test(x);}).length,c.late.length,c.late[0].ym]);})()'), JSON.stringify([1, 1, YM(2026, 4)]));
   // Le rattrapage d'avril (payé en août) complète le bulletin de mai, qui comptait les variables d'avril
   eq('Bulletin : paniers payés différents de l’app signalés', a.run('(function(){var c=_bulCompare(_b),r=c.rows.filter(function(x){return x.k==="panier";})[0];return c.status==="ecart"&&!!r&&!r.ok&&r.bq===2;})()'), true);
