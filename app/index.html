@@ -2558,6 +2558,13 @@ function _bulPayDiffs(){
     chk('groupe',d.groupe,getGroupeForYM(ym),function(a,b){return a===b;});
     if(d.anc!=null)anc.push({ym:ym,y:d.anc});
     if(d.pfaMens!=null)pfa={ym:ym,v:d.pfaMens};});
+  // Heures payées sur le bulletin (fériés, dimanches, RH, HS) alors que l'app les range en rendus : ce type d'heures est payé
+  var RK={fer:'ferRendu',dim:'dimRendu',rh:'rhRendu',hsLow:'hsRendu',hsHigh:'hsRendu'},paid={};
+  bs.forEach(function(ym){var c;try{c=_bulCompare(S.bulletins[ym]);}catch(e){return;}
+    var see=function(k,wym){var sk=RK[k];if(!sk||paid[sk]!=null&&paid[sk]<=wym)return;if(settingsForYM(wym)[sk])paid[sk]=wym;};
+    c.rows.forEach(function(r){if(r.bq>0)see(r.k,ym-1);});
+    c.late.forEach(function(l){if(l.k&&l.ym!=null&&!l.info)see(l.k,l.ym);});});
+  var PD=Object.keys(paid).map(function(k){return{k:k,ym:paid[k]};});
   // PFA : mensuelle ou semestrielle d'après le dernier bulletin qui en montre une
   var P=pfa&&!!pr.pfaMensuelle!==pfa.v?pfa:null;
   // Ancienneté : années du dernier bulletin ; mois d'anniversaire si deux bulletins consécutifs passent d'une année à la suivante
@@ -2567,7 +2574,7 @@ function _bulPayDiffs(){
     // Mois d'anniversaire inconnu (pas deux bulletins consécutifs qui l'encadrent) : demandé, avec l'intervalle déduit des bulletins
     var known=typeof pr.ancMoisAnni==='number'&&pr.ancMoisAnni>=0,skip=pr.ancMoisAnni===-2;
     if(mo==null&&((!known&&!skip)||bad))ask={rng:rng};}
-  return{palier:out.palier,heures:out.heures,groupe:out.groupe,anc:A,ask:ask,pfa:P,n:out.palier.length+out.heures.length+out.groupe.length+(A?1:0)+(P?1:0)+(ask&&!A?1:0)};
+  return{palier:out.palier,heures:out.heures,groupe:out.groupe,anc:A,ask:ask,pfa:P,paid:PD,n:out.palier.length+out.heures.length+out.groupe.length+(A?1:0)+(P?1:0)+(ask&&!A?1:0)+PD.length};
 }
 function _bulPayApply(){
   var D=_bulPayDiffs(),pr=S.profile;if(!D.n)return;pushUndo('Réglages de paie depuis les bulletins');
@@ -2579,6 +2586,9 @@ function _bulPayApply(){
   put('heuresHistory','heuresMensuelles',D.heures,false);
   put('groupeHistory','groupeClassif',D.groupe,!(pr.groupeClassif>0));
   if(D.pfa)pr.pfaMensuelle=D.pfa.v;
+  // heures payées : « en rendus » désactivé à partir du mois de travail montré par le bulletin
+  D.paid.forEach(function(x){if(!pr.settingsMonthlyHistory)pr.settingsMonthlyHistory={};var h=pr.settingsMonthlyHistory[x.k]||(pr.settingsMonthlyHistory[x.k]=[]);
+    var i=h.findIndex(function(e){return e.ym===x.ym;});if(i>=0)h[i].value=false;else h.push({ym:x.ym,value:false});h.sort(function(a,b){return a.ym-b.ym;});});
   var _an=document.getElementById('_bp-anni');if(_an&&_an.value!=='')pr.ancMoisAnni=parseInt(_an.value); // −2 : « je ne sais pas », ne plus demander
   if(D.anc){pr.ancYears=D.anc.y;pr.ancRefYM=D.anc.ym;if(D.anc.mo!=null)pr.ancMoisAnni=D.anc.mo;pr.primeAnciennete=calcAncPrime(D.anc.y);}
   saveState();render();
@@ -2591,6 +2601,8 @@ function _bulPayPropose(then){
   var rows=D.palier.map(function(c){return li('Palier','P'+c.v,c.cur?'P'+c.cur:'',c.ym);}).join('')
     +D.heures.map(function(c){return li('Contrat',Math.round(c.v/151.67*1000)/10+' %',Math.round(c.cur/151.67*1000)/10+' %',c.ym);}).join('')
     +D.groupe.map(function(c){return li('Groupe','Gr. '+c.v,c.cur?'Gr. '+c.cur:'',c.ym);}).join('')
+    +D.paid.map(function(x){var L={ferRendu:'Fériés travaillés',dimRendu:'Dimanches',rhRendu:'RH travaillés',hsRendu:'Heures sup'}[x.k];
+      return '<div class="recap-row" style="font-size:12px;min-height:26px;gap:10px"><span style="color:var(--text3)">'+L+'</span><span><b>payés</b><span style="color:var(--text3)"> (pas en rendus) · dès '+mo(x.ym)+'</span></span></div>';}).join('')
     +(D.pfa?'<div class="recap-row" style="font-size:12px;min-height:26px;gap:10px"><span style="color:var(--text3)">PFA</span><span><b>'+(D.pfa.v?'mensuelle':'semestrielle')+'</b><span style="color:var(--text3)"> · bulletin de '+mo(D.pfa.ym)+'</span></span></div>':'')
     +(D.ask?(function(){var rg=D.ask.rng,inR=function(m){if(!rg)return false;for(var y=rg.a;y<=rg.b;y++)if(y%12===m)return true;return false;};
       return '<div class="recap-row" style="font-size:12px;min-height:34px;gap:10px"><span style="color:var(--text3)">Mois d’anniversaire'+(rg?'<span style="display:block;font-size:10.5px">entre '+MC[rg.a%12]+' et '+MC[rg.b%12]+' d’après les bulletins</span>':'')+'</span>'
