@@ -2502,7 +2502,7 @@ function _bulKey(l){
 }
 // Lignes de texte du bulletin → chiffres utiles (aucune donnée personnelle conservée)
 function _bulParse(lines){
-  var b={rap:[],nao:{}},N='(-?\\d+,\\d+)',m,fx=[['salQ',/^SALAIRE DE QUALIFICATION .*?(-?\d+,\d+)$/],['anc',/^PRIME ANCIENNETE .*?(-?\d+,\d+)$/],['gpe',/^INDEMNITE MENSUELLE.*?(-?\d+,\d+)$/],['pfa',/^P\.?F\.?A\b.*?(-?\d+,\d+)$/],['epv',/^INDEMNITE 10EME EPV .*?(-?\d+,\d+)$/],['supFam',/^SUPPL(?:EMENT|\.)? ?FAMILIAL.*?(-?\d+,\d+)$/],['brut',/TOTAL BRUT PAYE (-?\d+,\d+)$/]];
+  var b={rap:[],nao:{}},N='(-?\\d+,\\d+)',m,fx=[['salQ',/^SALAIRE DE QUALIFICATION .*?(-?\d+,\d+)$/],['anc',/^PRIME ANCIENNETE .*?(-?\d+,\d+)$/],['gpe',/^INDEMNITE MENSUELLE.*?(-?\d+,\d+)$/],['pfa',/^P\.?F\.?A\b.*?(-?\d+,\d+)$/],['epv',/^INDEMNITE 10EME EPV .*?(-?\d+,\d+)$/],['supFam',/^SUPPL(?:EMENT|\.)? ?FAMILIAL.*?(-?\d+,\d+)$/],['avInd',/^PRIME AV\.? ?INDIV.*?(-?\d+,\d+)$/],['brut',/TOTAL BRUT PAYE (-?\d+,\d+)$/]];
   var reRap=new RegExp('^RAP (\\d{4})(\\d\\d) (.+?) '+N+' '+N+' '+N+'$'),rePan=new RegExp('^RAP PRIME DE PANIERS '+N+' '+N+' '+N+'$');
   lines.forEach(function(raw){
     var t=String(raw).replace(/\*/g,'').replace(/\s+/g,' ').trim();if(!t)return;
@@ -2561,14 +2561,16 @@ function _bulPaySet(b){
 }
 // Différences avec les réglages : un changement par valeur nouvelle, daté du premier bulletin qui la montre
 function _bulPayDiffs(){
-  var pr=S.profile||{},bs=Object.keys(S.bulletins||{}).map(Number).sort(function(a,b){return a-b;}),out={palier:[],heures:[],groupe:[]},anc=[],last={},pfa=null;
+  var pr=S.profile||{},bs=Object.keys(S.bulletins||{}).map(Number).sort(function(a,b){return a-b;}),out={palier:[],heures:[],groupe:[]},anc=[],last={},pfa=null,av=null;
   bs.forEach(function(ym){var d=_bulPaySet(S.bulletins[ym]);
     var chk=function(k,v,cur,eq){if(v==null)return;if(!eq(v,cur)&&last[k]!==v)out[k].push({ym:ym,v:v,cur:cur});last[k]=eq(v,cur)?null:v;};
     chk('palier',d.palier,getPalierForYM(ym),function(a,b){return a===b;});
     chk('heures',d.pct!=null?Math.round(d.pct*151.67/100*100)/100:null,getHeuresForYM(ym),function(a,b){return Math.abs(a-b)<0.01;});
     chk('groupe',d.groupe,getGroupeForYM(ym),function(a,b){return a===b;});
     if(d.anc!=null)anc.push({ym:ym,y:d.anc});
-    if(d.pfaMens!=null)pfa={ym:ym,v:d.pfaMens};});
+    if(d.pfaMens!=null)pfa={ym:ym,v:d.pfaMens};
+    var bb=S.bulletins[ym];if(bb.avInd!=null){var aa=getPrimesFixesCustomForYM(ym).filter(function(p){return /INDIV/i.test(p.label);}).reduce(function(s,p){return s+p.montant;},0);
+      av=Math.abs(aa-bb.avInd)>0.02?{ym:ym,v:bb.avInd,cur:aa,first:av&&av.v===bb.avInd?av.first:ym}:null;}});
   // Heures payées sur le bulletin (fériés, dimanches, RH, HS) alors que l'app les range en rendus : ce type d'heures est payé
   // Chaque bulletin ne règle que le mois de travail qu'il paie (comme « Ce mois » dans Variables), jamais les suivants
   // Génération des rendus d'après les bulletins, prudemment (l'app range les heures au mois du dimanche de la semaine,
@@ -2604,7 +2606,7 @@ function _bulPayDiffs(){
     // Mois d'anniversaire inconnu (pas deux bulletins consécutifs qui l'encadrent) : demandé, avec l'intervalle déduit des bulletins
     var known=typeof pr.ancMoisAnni==='number'&&pr.ancMoisAnni>=0,skip=pr.ancMoisAnni===-2;
     if(mo==null&&((!known&&!skip)||bad))ask={rng:rng};}
-  return{kept:KL.length,keptList:KL,palier:out.palier,heures:out.heures,groupe:out.groupe,anc:A,ask:ask,pfa:P,paid:PD,n:out.palier.length+out.heures.length+out.groupe.length+(A?1:0)+(P?1:0)+(ask&&!A?1:0)+PD.length};
+  return{av:av,kept:KL.length,keptList:KL,palier:out.palier,heures:out.heures,groupe:out.groupe,anc:A,ask:ask,pfa:P,paid:PD,n:out.palier.length+out.heures.length+out.groupe.length+(A?1:0)+(P?1:0)+(av?1:0)+(ask&&!A?1:0)+PD.length};
 }
 function _bulPayApply(){
   var D=_bulPayDiffs(),pr=S.profile;if(!D.n)return;pushUndo('Réglages de paie depuis les bulletins');
@@ -2616,6 +2618,9 @@ function _bulPayApply(){
   put('heuresHistory','heuresMensuelles',D.heures,false);
   put('groupeHistory','groupeClassif',D.groupe,!(pr.groupeClassif>0));
   if(D.pfa)pr.pfaMensuelle=D.pfa.v;
+  // Avantage individuel acquis : l'ancienne prime s'arrête le mois d'avant, la nouvelle vaut dès le premier bulletin qui la montre
+  if(D.av){var st=D.av.first;pr.primesFixesCustom=(pr.primesFixesCustom||[]).filter(function(p){if(!/INDIV/i.test(p.label)||(p.finYM!=null&&p.finYM<st))return true;if(p.debutYM>=st)return false;p.finYM=st-1;return true;});
+    if(D.av.v>0)pr.primesFixesCustom.push({id:'pfc_'+Date.now(),label:'Prime av. indiv. acquis',montant:D.av.v,debutYM:st,finYM:null});}
   // heures payées : « en rendus » désactivé pour ce mois-là seulement (réglage du mois, prioritaire, sans toucher aux suivants)
   var _cb={};[].forEach.call(document.querySelectorAll('.bpseg[data-bp]'),function(e){_cb[e.getAttribute('data-bp')]=e.dataset.v==='1';});
   D.paid.forEach(function(x){var c=_cb[x.k+':'+x.ym],id=x.k+':'+x.ym;
@@ -2641,6 +2646,7 @@ function _bulPayPropose(then,all){
   var rows=D.palier.map(function(c){return li('Palier','P'+c.v,c.cur?'P'+c.cur:'',c.ym);}).join('')
     +D.heures.map(function(c){return li('Contrat',Math.round(c.v/151.67*1000)/10+' %',Math.round(c.cur/151.67*1000)/10+' %',c.ym);}).join('')
     +D.groupe.map(function(c){return li('Groupe','Gr. '+c.v,c.cur?'Gr. '+c.cur:'',c.ym);}).join('')
+    +(D.av?li('Av. indiv. acquis',fmtEuro(D.av.v),D.av.cur?fmtEuro(D.av.cur):'',D.av.first):'')
     +(D.pfa?'<div class="recap-row" style="font-size:12px;min-height:26px;gap:10px"><span style="color:var(--text3)">PFA</span><span><b>'+(D.pfa.v?'mensuelle':'semestrielle')+'</b><span style="color:var(--text3)"> · bulletin de '+mo(D.pfa.ym)+'</span></span></div>':'')
     +(D.ask?(function(){var rg=D.ask.rng,inR=function(m){if(!rg)return false;for(var y=rg.a;y<=rg.b;y++)if(y%12===m)return true;return false;};
       return '<div class="recap-row" style="font-size:12px;min-height:34px;gap:10px"><span style="color:var(--text3)">Mois d’anniversaire'+(rg?'<span style="display:block;font-size:10.5px">entre '+MC[rg.a%12]+' et '+MC[rg.b%12]+' d’après les bulletins</span>':'')+'</span>'
@@ -2783,6 +2789,9 @@ function _bulCompare(b){
   var fix=[['Qualification',b.salQ,P.salQ],['Ancienneté',b.anc,P.salAnc],['Ind. GPE',b.gpe,P.gpe],['PFA',b.pfa,P.pfa],['Mesures NAO',nao||null,P.primesConv.reduce(function(s,p){return s+p.montant;},0)]];
   if(b.epv!=null||P.compCP>0)fix.push(['Complément CP',b.epv||0,r2(P.compCP),'epv']);
   if(b.supFam!=null||P.supFamilial>0)fix.push(['Suppl. familial',b.supFam||0,P.supFamilial]);
+  // Prime d'avantage individuel acquis : prime fixe personnelle (Réglages → primes fixes, libellé « … indiv. … »)
+  var avA=P.primesCustom.filter(function(p){return /INDIV/i.test(p.label);}).reduce(function(s,p){return s+p.montant;},0);
+  if(b.avInd!=null||avA>0)fix.push(['Av. indiv. acquis',b.avInd||0,avA]);
   var fixed=fix.filter(function(f){return f[1]!=null||f[2];}).map(function(f){var bv=f[1]||0,av=r2(f[2]||0);return{lbl:f[0],bm:bv,am:av,ok:Math.abs(bv-av)<=0.05,key:f[3]};});
   // Paniers hors brut : leur rattrapage n'entre pas dans le brut, leur écart s'ajoute à part
   var lateSum=r2(late.reduce(function(s,l){return s+(l.k==='panier'?0:l.mt);},0)),diff=r2(b.brut-P.total),PR=_panRappels(),panCov=PR.cover[b.ym]||0,panDiff=r2((bm.panier||0)+(rm.panier||0)-(v.supPaniers||0)+panCov-(PR.used[b.ym]||0));
@@ -2920,8 +2929,9 @@ function _payPageHtml(ym){
     +row('Ind. GPE'+(P.groupeClassif?' (Gr.'+P.groupeClassif+')':''),P.gpe,null,fn('Ind. GPE',P.gpe))
     +row('PFA ('+fmtEuro(P.pfaM)+'/mois)'+(P.pfaMensuelle?'':' (sem.)'),P.pfa,null,fn('PFA',P.pfa))
     +(P.supFamilial>0||fixBy['Suppl. familial']?row('Suppl. familial',P.supFamilial,null,fn('Suppl. familial',P.supFamilial)):'')
-    +P.primesCustom.map(function(p){return row(p.label,p.montant,null);}).join('')
-    +sub('Sous-total',fa,c?cmp(fsum(['Mesures NAO','Ind. GPE','PFA','Suppl. familial']),fa):null);
+    +P.primesCustom.map(function(p){return row(p.label,p.montant,null,/INDIV/i.test(p.label)?fn('Av. indiv. acquis',p.montant):null);}).join('')
+    +(fixBy['Av. indiv. acquis']&&!P.primesCustom.some(function(p){return /INDIV/i.test(p.label);})?row('Av. indiv. acquis',0,null,fn('Av. indiv. acquis',0)):'')
+    +sub('Sous-total',fa,c?cmp(fsum(['Mesures NAO','Ind. GPE','PFA','Suppl. familial','Av. indiv. acquis']),fa):null);
   if(c&&c.late.length)h+=tit('Rattrapages et autres lignes')+c.late.map(function(l){return '<div class="pp-r"><span class="pp-l">'+l.lbl+(l.q!=null?' ('+(_BUL_H[l.k]?fmtMin(Math.round(l.q*60)):l.q)+')':'')+'<span style="display:block;font-size:11px;font-style:italic">'+(l.info?'sans effet sur la comparaison':'travail '+_deMois(l.ym)+' '+Math.floor(l.ym/12)+((S.bulletins||{})[l.ym+1]?', manquait sur le <a onclick="event.stopPropagation();_swipeGo(-1,function(){openBulletinModal('+(l.ym+1)+')})" style="color:var(--blue);cursor:pointer;font-style:normal">bulletin '+_deMois(l.ym+1)+'</a>':''))+'</span></span><span class="pp-n" style="color:var(--text2)">'+fe(l.mt)+'</span><b style="color:var(--text3)">—</b></div>';}).join('');
   if(c)h+=c.alerts.map(function(a){return '<div style="font-size:11px;color:var(--amber);display:flex;gap:5px;padding:10px 0 0;line-height:1.45"><span>⚠</span><span>'+a+'</span></div>';}).join('');
   h+='<div style="font-size:11px;color:var(--text3);text-align:center;margin-top:10px">taux : '+fmtEuro(P.tauxH)+'/h · '+P.heures.toFixed(2)+'h/mois</div>';
