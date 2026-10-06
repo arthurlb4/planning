@@ -4472,7 +4472,7 @@ function rhCompareShow(rh){
   const repTxt=n=>n?n*3+' mois':'aucun';
   Object.values(repGroups).forEach(gr=>{const x=gr[0];const ml=gr.map(y=>MF[y.ym%12]);
     item('Report '+moisDe(gr[0].ym).replace(MF[gr[0].ym%12],ml.length>1?ml.slice(0,-1).join(', ')+' et '+ml[ml.length-1]:ml[0]),repTxt(x.appRep)+' dans l’app, '+repTxt(x.rhRep)+' dans le tableau','',
-      (x.rhRep<x.appRep?'Dans le tableau, ces heures expirent plus tôt.':'Dans le tableau, ces heures expirent plus tard.')
+      (x.rhRep<x.appRep?'Dans le tableau, ces heures expirent plus tôt.':'Dans le tableau, ces heures expirent plus tard.')+' Les reports sont accordés par le gestionnaire : son tableau fait foi.'
       +'<button class="rv-b2" onclick="rhApplyReports('+JSON.stringify(gr.map(y=>[y.ym,y.rhRep]))+')">Faire comme le tableau</button>');});
   // Rendus semaine par semaine (commentaires du gestionnaire)
   const _isoMon=(y,w)=>{const j4=new Date(y,0,4),m=getMonday(j4);m.setDate(m.getDate()+(w-1)*7);return m;};
@@ -4519,7 +4519,13 @@ function rhCompareShow(rh){
   const rest=-dSol-acqBadRows.reduce((t,r)=>t+r.s-r.a,0)-(consOk?0:dCons);
   let whyTxt=!bad(dSol)&&!why.length?'Tout correspond.':why.length?'L’écart vient '+(why.length===1?'d’<b>une seule</b> différence : ':'de : ')+why.join(', ')+'.':'';
   if(!consOk&&_rhCIgn('cons',dCons))ignSum+=dCons;
-  if(bad(rest)){if(_rhCIgn('rest',rest))ignSum+=rest;whyTxt+=(whyTxt?' ':'')+'Il reste '+fmtE(rest)+' liés aux heures expirées ou aux reports. '+_rhIgnLink('rest',rest);}
+  if(bad(rest)){if(_rhCIgn('rest',rest))ignSum+=rest;
+    // Reports différents : c'est presque toujours la cause (heures expirées à d'autres dates) ; le gestionnaire accorde les reports, son tableau fait foi
+    if(repList.length){const rl=repList.map(x=>MF[x.ym%12]+' : '+(x.rhRep?x.rhRep*3+' mois':'aucun')+' au tableau, '+(x.appRep?x.appRep*3+' mois':'aucun')+' dans l’app').join(' ; ');
+      whyTxt+=(whyTxt?' ':'')+'Il reste '+fmtE(rest)+' : les reports diffèrent ('+rl+'). Les reports sont accordés par le gestionnaire : reprendre ceux du tableau.'
+        +'<button class="rv-b2" onclick="rhApplyReports('+JSON.stringify(repList.map(y=>[y.ym,y.rhRep]))+')">Reprendre les reports du tableau</button>'
+        +'<div style="margin-top:6px">'+_rhIgnLink('rest',rest)+'</div>';}
+    else whyTxt+=(whyTxt?' ':'')+'Il reste '+fmtE(rest)+' liés aux heures expirées. '+_rhIgnLink('rest',rest);}
   // Écart une fois les différences ignorées retirées ; c'est lui qui déclenche les alertes
   const eEff=-dSol-ignSum;
   if(S.profile){const _c={ed:dk(asOf),d:Math.round(dSol),de:Math.round(-eEff)};const _o=S.profile.rhCmp;if(!_o||_o.ed!==_c.ed||_o.d!==_c.d||_o.de!==_c.de){S.profile.rhCmp=_c;saveState();try{render();}catch(e){}}}
