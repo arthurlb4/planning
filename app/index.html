@@ -2366,7 +2366,7 @@ function ephBarColor(moLeft,isExp){
 
 function calcPaniersMois(y,m){
   let c=0;const mym=y*12+m,seenW=new Set(),last=new Date(y,m+1,0).getDate();
-  for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd),mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);const sun=new Date(mon);sun.setDate(mon.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mym)continue;for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);const key=dk(d);if(isPanier(d)&&!(S.conges||{})[key])c++;}}
+  for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd),mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);const sun=new Date(mon);sun.setDate(mon.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mym)continue;for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);const key=dk(d);const _g=getVac(d);if(_g.echange&&!_g.ecSelf)continue;if(isPanier(d)&&!(S.conges||{})[key])c++;}}
   return c;
 }
 function calcPrimesMois(y,m){
@@ -2429,7 +2429,7 @@ function calcDayPrimesMois(y,m){
   out.sort(function(a,b){return a.key<b.key?-1:1;});return{list:out,total:Math.round(tot*100)/100};
 }
 function calcVariablesMois(y,m,overrideTauxH){
-  const mym_cv=y*12+m;const pr=S.profile||{};const _pn=getPalierForYM(mym_cv);const salQ=_pn>0?calcPalierSalaire(_pn):(pr.salaireQualif||0);const salAnc=getAncForYM(mym_cv);const heures=getHeuresForYM(mym_cv);const base=salQ+salAnc;const tauxH=overrideTauxH!=null?overrideTauxH:(heures>0?Math.round(base/heures*100)/100:0);
+  const mym_cv=y*12+m;const pr=S.profile||{};const _pn=getPalierForYM(mym_cv);const salQ=_pn>0?calcPalierSalaire(_pn):(pr.salaireQualif||0);const salAnc=getAncForYM(mym_cv);const heures=getHeuresForYM(mym_cv);const base=salQ+salAnc;const tauxH=overrideTauxH!=null?overrideTauxH:(heures>0?Math.round(base/151.67*100)/100:0); // taux horaire : base temps plein / 151,67 (accord VII.3.3), même à temps partiel
   const drf=calcDimRHFerMinsMois(y,m);const hs=calcHSMinsMois(y,m);const nuitMin=calcNuitMois(y,m);const primes=calcPrimesMois(y,m);const paniers=calcPaniersMois(y,m);
   const r2=v=>Math.round(v*100)/100;
   const tx=getTauxForYM(mym_cv);
@@ -2469,18 +2469,22 @@ function _hasCycleMonth(y,m){
   if(typeof _globalCycles==='undefined'||!_globalCycles.length)return true;
   var last=new Date(y,m+1,0).getDate();for(var d=1;d<=last;d++){if(getActiveCycleGrid(new Date(y,m,d,12)))return true;}return false;}
 function calcPayeMois(y,m){
-  const mym_cp=y*12+m;const pr=S.profile||{};const _pn=getPalierForYM(mym_cp);const salQ=_pn>0?calcPalierSalaire(_pn):(pr.salaireQualif||0);const salAnc=getAncForYM(mym_cp);const heures=getHeuresForYM(mym_cp);const base=salQ+salAnc;
-  const tauxH=heures>0?Math.round(base/heures*100)/100:0;
+  const mym_cp=y*12+m;const pr=S.profile||{};const _pn=getPalierForYM(mym_cp);const heures=getHeuresForYM(mym_cp);
+  // Temps partiel : salaire, ancienneté, indemnité mensuelle et PFA au prorata (accord VII.3.1) ; taux horaire sur la base temps plein / 151,67
+  const _k=heures>0?heures/151.67:1,_r2=v=>Math.round(v*100)/100;
+  const _salQf=_pn>0?calcPalierSalaire(_pn):(pr.salaireQualif||0),_salAncf=getAncForYM(mym_cp);
+  const salQ=_k===1?_salQf:_r2(_salQf*_k),salAnc=_k===1?_salAncf:_r2(_salAncf*_k);const base=salQ+salAnc;
+  const tauxH=heures>0?Math.round((_salQf+_salAncf)/151.67*100)/100:0;
   const prevM=m===0?11:m-1,prevY=m===0?y-1:y;
   const _prevMym=prevY*12+prevM,_prevPn=getPalierForYM(_prevMym);
   const _prevSalQ=_prevPn>0?calcPalierSalaire(_prevPn):(pr.salaireQualif||0);
   const _prevBase=_prevSalQ+getAncForYM(_prevMym),_prevHeur=getHeuresForYM(_prevMym);
-  const prevTauxH=_prevHeur>0?Math.round(_prevBase/_prevHeur*100)/100:0;
+  const prevTauxH=_prevHeur>0?Math.round(_prevBase/151.67*100)/100:0;
   const vars=calcVariablesMois(prevY,prevM,prevTauxH);
   const _primesConv=getPrimesConvForYM(mym_cp);const _pcTotal=_primesConv.reduce(function(s,p){return s+p.montant;},0);
-  const gpe=calcGPE(getGroupeForYM(mym_cp),mym_cp);
+  const gpe=_k===1?calcGPE(getGroupeForYM(mym_cp),mym_cp):_r2(calcGPE(getGroupeForYM(mym_cp),mym_cp)*_k);
   const pfaM=_pn>0?calcPFA(_pn,mym_cp):(pr.palierNum?calcPFA(pr.palierNum,mym_cp):190);
-  let pfa=pr.pfaMensuelle?pfaM:(m===5||m===11?pfaM*6:0);
+  let pfa=(pr.pfaMensuelle?pfaM:(m===5||m===11?pfaM*6:0))*_k;if(_k!==1)pfa=_r2(pfa);
   const supFamilial=getSupFamilialForYM(mym_cp);
   const totalFixes=_pcTotal+gpe+pfa+supFamilial;
   const primesCustom=getPrimesFixesCustomForYM(mym_cp);
@@ -2625,7 +2629,8 @@ function _bulPayDiffs(){
   var addB=function(sk,W,min){var o=B[sk]||(B[sk]={});o[W]=(o[W]||0)+min;};
   bs.forEach(function(ym){var c;try{c=_bulCompare(S.bulletins[ym]);}catch(e){return;}cov[ym-1]=1;
     c.rows.forEach(function(r){var sk=RK[r.k];if(sk&&(r.bq>0||r.rq>0))addB(sk,ym-1,(r.bq||0)+(r.rq||0));});
-    c.late.forEach(function(l){var sk=RK[l.k];if(sk&&l.ym!=null&&!l.info&&l.q>0)addB(sk,l.ym,Math.round(l.q*60));});});
+    // rattrapage d'un mois dont le bulletin est importé : déjà compté par ce bulletin (rq), pas une seconde fois
+    c.late.forEach(function(l){var sk=RK[l.k];if(sk&&l.ym!=null&&!l.info&&l.q>0&&!S.bulletins[l.ym+1])addB(sk,l.ym,Math.round(l.q*60));});});
   var bm=function(sk,W){return (B[sk]||{})[W]||0;};
   // Choix gardés contre le bulletin (erreur du gestionnaire à faire corriger) : plus proposés tant que le bulletin dit la même chose
   var KP=pr.bulRendKeep||{},KL=[],add=function(x){x.h=raw(x.k,x.ym);if(KP[x.k+':'+x.ym]===x.v){KL.push(x);return;}PD.push(x);};
@@ -2710,7 +2715,7 @@ function _bulPayPropose(then,all){
   // écart de paie avec les bulletins (comme la tuile Suivi) : souvent dû à la génération de rendus
   var EP='';if(all&&nb){var E=_bulEcart(),eok=!E.nBad;
     EP='<div class="recap-row" style="font-size:12px;min-height:26px;gap:10px"><span style="color:var(--text3)">Écart avec les bulletins</span><span style="white-space:nowrap">'
-      +(eok?'<b style="color:var(--green)">✓ aucun</b>':'<b style="color:'+(E.bal<-0.05?'var(--red)':'var(--green)')+'">'+(E.hasN||E.hasP?(E.bal<0?'−':'+')+fmtEuro(Math.abs(E.bal)):'⚠ '+E.nPb)+'</b><span style="color:var(--text3)"> · '+E.nBad+' mois</span>')
+      +(eok?'<b style="color:var(--green)">✓ aucun</b>':'<b style="color:'+(E.bal<-0.05?'var(--red)':Math.abs(E.bal)<=0.05?'var(--amber)':'var(--green)')+'">'+(Math.abs(E.bal)>0.05?(E.bal<0?'−':'+')+fmtEuro(Math.abs(E.bal)):'⚠ '+E.nPb)+'</b><span style="color:var(--text3)"> · '+E.nBad+' mois</span>')
       +(!eok?'<a style="color:var(--blue);cursor:pointer;margin-left:8px" onclick="_bulMsgOpen(null,function(){_bulPayPropose(window._bulPayThen,1);})">Message</a>':'')
       +'<a style="color:var(--blue);cursor:pointer;margin-left:8px" onclick="closeModal();openBulletinsCal()">Détail</a></span></div>'
       +(!eok&&D.paid.length?'<div style="font-size:10.5px;color:var(--text3);padding:0 0 4px">Corrigé en partie par la génération de rendus ci-dessous</div>':'');}
@@ -2825,7 +2830,7 @@ function _bulCompare(b){
   Object.keys(app).forEach(function(k){
     var aq=app[k][0]||0,am=r2(app[k][1]||0),q=bq[k]||0,mt=bm[k]||0,lq=rq[k]||0;
     if(!aq&&!q&&!lq)return;
-    rows.push({k:k,lbl:_BUL_LBL[k],h:!!_BUL_H[k],eur:k==='absResto',bq:q,aq:aq,bm:mt,am:am,rq:lq,rm:rm[k]||0,rFrom:rFrom[k]||[],ok:q+lq===aq,okEur:Math.abs(mt-am)<=0.05});
+    rows.push({k:k,lbl:_BUL_LBL[k],h:!!_BUL_H[k],eur:k==='absResto',bq:q,aq:aq,bm:mt,am:am,rq:lq,rm:rm[k]||0,rFrom:rFrom[k]||[],ok:q+lq===aq&&(k==='panier'||Math.abs(mt+(rm[k]||0)-am)<=Math.max(0.1,am*0.005)),okEur:Math.abs(mt-am)<=0.05}); // bonne quantité mais mauvais montant : ligne en écart (paniers : rappels de prix traités à part)
     if((k==='hsLow'||k==='hsHigh')&&q%30)alerts.push('Heures sup payées : '+fmtMin(q)+'. Selon l’article VIII.5 de l’accord collectif, « toute demi-heure supplémentaire commencée est acquise » : le total devrait être un multiple de 30 min.');
   });
   var nao=0;Object.keys(b.nao||{}).forEach(function(k){nao+=b.nao[k];});
@@ -2981,8 +2986,10 @@ function _payPageHtml(ym){
     +row('Ind. GPE'+(P.groupeClassif?' (Gr.'+P.groupeClassif+')':''),P.gpe,null,fn('Ind. GPE',P.gpe))
     +row('PFA ('+fmtEuro(P.pfaM)+'/mois)'+(P.pfaMensuelle?'':' (sem.)'),P.pfa,null,fn('PFA',P.pfa))
     +(P.supFamilial>0||fixBy['Suppl. familial']?row('Suppl. familial',P.supFamilial,null,fn('Suppl. familial',P.supFamilial)):'')
+    +(naoF&&!nN?row('Mesures NAO',0,null,bul(false,naoF.bm,'f:Mesures NAO')):'')
     +P.primesCustom.filter(function(p){return !/INDIV/i.test(p.label);}).map(function(p){return row(_h(p.label),p.montant,null);}).join('')
-    +sub('Sous-total',fa,c?cmp(fsum(['Mesures NAO','Ind. GPE','PFA','Suppl. familial']),fa):null);
+    // primes personnelles hors bulletin lu : hors de la comparaison du sous-total (sinon ⚠ permanent)
+    +sub('Sous-total',fa,c?cmp(fsum(['Mesures NAO','Ind. GPE','PFA','Suppl. familial']),fa-P.primesCustom.filter(function(p){return !/INDIV/i.test(p.label);}).reduce(function(t,p){return t+p.montant;},0)):null);
   if(P.greveRet>0||fixBy['Absence non rémunérée'])h+=tit('Absences non rémunérées')
     +P.greveDays.map(function(g,i){var d=new Date(g.k+'T12:00:00');return row(d.getDate()+' '+MCs[d.getMonth()]+' · '+(g.m==='greve'?'grève ':'')+(g.g==='h'?'1 heure':g.g==='dj'?'½ journée':'journée'),-g.r,null,i===P.greveDays.length-1?fn('Absence non rémunérée',-P.greveRet):null);}).join('')
     +(!P.greveDays.length?row('Absence non rémunérée',0,null,fn('Absence non rémunérée',0)):'');
@@ -3183,7 +3190,7 @@ function _suiviSimple(y){
   // Bulletins : ce qui n'a pas été perçu (somme des écarts négatifs, ligne par ligne), le trop perçu, puis le solde des deux
   var E=_bulEcart(),nB=E.nB,nBad=E.nBad,nPb=E.nPb,nOld=E.nOld,nIg=E.nIg,neg=E.neg,pos=E.pos,last=E.last,bal=E.bal,hasN=E.hasN,hasP=E.hasP;
   var _bk=nIg?'<br>'+nIg+' bulletin'+(nIg>1?'s':'')+' ignoré'+(nIg>1?'s':''):'',_bl=last!=null?'<br><span style="white-space:nowrap">Dernier : '+_deMois(last).replace(/^d[e’']\s?/,'')+' '+Math.floor(last/12)+'</span>':'';
-  var big=!nB?'—':!nBad?'✓':hasN?'−'+fmtEuro(-neg):hasP?'+'+fmtEuro(pos):'⚠ '+nPb,bigC=!nB?'var(--text3)':!nBad?'var(--green)':hasN?'var(--red)':'var(--green)';
+  var big=!nB?'—':!nBad?'✓':hasN?'−'+fmtEuro(-neg):hasP?'+'+fmtEuro(pos):'⚠ '+nPb,bigC=!nB?'var(--text3)':!nBad?'var(--green)':hasN?'var(--red)':hasP?'var(--green)':'var(--amber)';
   var det=!nB?'aucun bulletin importé':!nBad?(nB+' bulletin'+(nB>1?'s':'')+' conforme'+(nB>1?'s':''))+_bk+_bl
     :(hasN?'non perçu'+(hasP?'<br><b style="color:var(--green);font-size:13px">+'+fmtEuro(pos)+'</b> trop perçu<br><b style="color:'+(bal<0?'var(--red)':'var(--green)')+';font-size:13px">'+(bal<0?'−':'+')+fmtEuro(Math.abs(bal))+'</b> solde':'')+'<br>':hasP?'trop perçu<br>':'')
       +nPb+' problème'+(nPb>1?'s':'')+' sur '+nBad+' bulletin'+(nBad>1?'s':'')+(nOld?'<br>dont '+nOld+' des années précédentes':'')+_bk+_bl;
