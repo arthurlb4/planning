@@ -2213,7 +2213,8 @@ function _sv2Animate(v2,mym){
 function _recapCol(col,y){
   var bad=0,n=0;
   // un point par problème (ligne en écart non ignorée), comme la case Écart Paie de Suivi, et non un par bulletin
-  Object.keys(S.bulletins||{}).forEach(function(k){if(Math.floor(+k/12)!==y)return;n++;var c;try{c=_bulCompare(S.bulletins[k]);}catch(e){return;}if(c.status==='ecart'&&!_bulIgn(+k,c))bad+=(c.badList&&c.badList.length)||1;});
+  // toutes les années : un écart non corrigé ne disparaît pas au 1er janvier
+  Object.keys(S.bulletins||{}).forEach(function(k){n++;var c;try{c=_bulCompare(S.bulletins[k]);}catch(e){return;}if(c.status==='ecart'&&!_bulIgn(+k,c))bad+=(c.badList&&c.badList.length)||1;});
   var c=S.profile&&S.profile.rhCmp;if(c){n++;if(Math.abs(_rhDe(c))>=2)bad++;} // tableau Gestion : tout écart non ignoré, favorable ou non
   var val=!n?'—':bad?'⚠ '+bad:'✓',color=bad?'var(--amber)':'var(--green)',sub=!n?'bilan':bad?'à vérifier':'conforme';
   return col('Suivi',val,color,sub,'openMergedRenduCgModal(6,2)');
@@ -2981,15 +2982,15 @@ function _suiviSimple(y){
   else{var e0=-c.d,e=-_rhDe(c),ok=Math.abs(e0)<2,ig=!ok&&Math.abs(e)<2,part=!ok&&!ig&&Math.abs(e-e0)>=2;
     g='<button class="sv-tile" onclick="rhOpenFromRecap()"><span class="t">Écart Rendus</span><b style="color:'+(ok||e0>0?'var(--green)':'var(--red)')+'">'+(ok?'✓':(e0>0?'+':'−')+fmtMin(Math.abs(e0)))+'</b><small>'+(ok?'identique':(e0>0?'favorable':'à faire corriger')+(ig?'<br>différences ignorées':part?'<br>en partie ignoré':''))+'<br><span style="white-space:nowrap">Tableau du '+new Date(c.ed+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long'})+'</span>'+'</small></button>';}
   // Bulletins : ce qui n'a pas été perçu (somme des écarts négatifs, ligne par ligne), le trop perçu, puis le solde des deux
-  var nB=0,nBad=0,nPb=0,nIg=0,neg=0,pos=0,last=null;Object.keys(S.bulletins||{}).forEach(function(k){var ym=+k,c;nB++;if(last==null||ym>last)last=ym;
+  var nB=0,nBad=0,nPb=0,nOld=0,nIg=0,neg=0,pos=0,last=null;Object.keys(S.bulletins||{}).forEach(function(k){var ym=+k,c;nB++;if(last==null||ym>last)last=ym;
     try{c=_bulCompare(S.bulletins[k]);}catch(e){return;}if(c.status!=='ecart')return;if(_bulIgn(ym,c)){nIg++;return;}
-    nBad++;nPb+=(c.badList?c.badList.length:0)||1;(c.items||[]).forEach(function(i){if(i.ign)return;if(i.d<0)neg+=i.d;else pos+=i.d;});});
+    nBad++;var _np=(c.badList?c.badList.length:0)||1;nPb+=_np;if(Math.floor(ym/12)<NOW.getFullYear())nOld+=_np;(c.items||[]).forEach(function(i){if(i.ign)return;if(i.d<0)neg+=i.d;else pos+=i.d;});});
   neg=Math.round(neg*100)/100;pos=Math.round(pos*100)/100;var bal=Math.round((neg+pos)*100)/100,hasN=neg<-0.05,hasP=pos>0.05;
   var _bk=nIg?'<br>'+nIg+' bulletin'+(nIg>1?'s':'')+' ignoré'+(nIg>1?'s':''):'',_bl=last!=null?'<br><span style="white-space:nowrap">Dernier : '+_deMois(last).replace(/^d[e’']\s?/,'')+' '+Math.floor(last/12)+'</span>':'';
   var big=!nB?'—':!nBad?'✓':hasN?'−'+fmtEuro(-neg):hasP?'+'+fmtEuro(pos):'⚠ '+nPb,bigC=!nB?'var(--text3)':!nBad?'var(--green)':hasN?'var(--red)':'var(--green)';
   var det=!nB?'aucun bulletin importé':!nBad?(nB+' bulletin'+(nB>1?'s':'')+' conforme'+(nB>1?'s':''))+_bk+_bl
     :(hasN?'non perçu'+(hasP?'<br><b style="color:var(--green);font-size:13px">+'+fmtEuro(pos)+'</b> trop perçu<br><b style="color:'+(bal<0?'var(--red)':'var(--green)')+';font-size:13px">'+(bal<0?'−':'+')+fmtEuro(Math.abs(bal))+'</b> solde':'')+'<br>':hasP?'trop perçu<br>':'')
-      +nPb+' problème'+(nPb>1?'s':'')+' sur '+nBad+' bulletin'+(nBad>1?'s':'')+_bk+_bl;
+      +nPb+' problème'+(nPb>1?'s':'')+' sur '+nBad+' bulletin'+(nBad>1?'s':'')+(nOld?'<br>dont '+nOld+' des années précédentes':'')+_bk+_bl;
   var bl='<button class="sv-tile" onclick="openBulletinsCal()"><span class="t">Écart Paie</span><b style="color:'+bigC+'">'+big+'</b><small>'+det+'</small></button>';
   return '<div class="sv-tiles">'+g+bl+'</div>';
 }
