@@ -2868,14 +2868,18 @@ function _payPageHtml(ym){
   // Colonne bulletin (à gauche du calcul de l'app) : ✓ si pareil, sinon ⚠ et le montant du bulletin
   var E='<span class="pp-n"></span>',OK='<span class="pp-n" style="color:var(--green)"><span class="tk">✓</span></span>';
   var _ig={};if(c)c.items.forEach(function(i){if(i.ign)_ig[i.id]=1;});
-  var bul=function(same,bv,id){return same?OK:'<span class="pp-n" style="color:'+(id&&_ig[id]?'var(--text3)':'var(--amber)')+'">'+(id&&_ig[id]?'':'⚠ ')+fe(bv)+'</span>';};
-  var cmp=function(bv,av){return bul(Math.abs(bv-av)<=0.05,bv);};
+  // id : écart de la ligne ; ignoré (ou id===true) → montant grisé, sans ⚠
+  var bul=function(same,bv,id){var g=id===true||(id&&_ig[id]);return same?OK:'<span class="pp-n" style="color:'+(g?'var(--text3)':'var(--amber)')+'">'+(g?'':'⚠ ')+fe(bv)+'</span>';};
+  // Sous-totaux : grisés quand tous les écarts de la section (f : ligne fixe de la liste, r : variable) sont ignorés
+  var _secIgn=function(test){var its=c?c.items.filter(function(i){return test(i.id);}):[];return its.length>0&&its.every(function(i){return i.ign;});};
+  var cmp=function(bv,av,test){return bul(Math.abs(bv-av)<=0.05,bv,test&&_secIgn(test)?true:null);};
+  var _fT=function(ls){return function(id){return ls.some(function(l){return id==='f:'+l;});};};
   var row=function(lbl,val,col,n){return '<div class="pp-r"><span class="pp-l">'+lbl+'</span>'+(c?(n||E):'')+'<b'+(col?' style="color:'+col+'"':'')+'>'+fe(val)+'</b></div>';};
   var sub=function(lbl,val,n){return '<div class="pp-r pp-s"><span>'+lbl+'</span>'+(c?(n||E):'')+'<span class="pp-v"><b class="stag">'+fe(val)+'</b></span></div>';};
   var tit=function(t,first){return '<div class="btit" style="margin:'+(first?'4px':'14px')+' 0 4px">'+t+'</div>';};
   var vl='',vb=0;
   var vr=function(k,lbl,aq,am,col){var r=rowsBy[k];if(!(aq>0)&&!r)return;var bm=r?r.bm:0;vb+=bm+(r?r.rm:0);
-    vl+=row(lbl,am,col,c?(r?(r.ok?(r.mix?'<span class="pp-n" style="color:var(--green)">'+(k==='coord'?'antenne <span class="tk">✓</span>':'coord <span class="tk">✓</span>')+'</span>':r.rq?'<span class="pp-n" style="color:var(--green)">en '+MCs[r.rFrom[0]%12].toLowerCase()+' <span class="tk">✓</span></span>':OK):bul(false,bm+r.rm,'r:'+k)):bul(false,0)):null);};
+    vl+=row(lbl,am,col,c?(r?(r.ok?(r.mix?'<span class="pp-n" style="color:var(--green)">'+(k==='coord'?'antenne <span class="tk">✓</span>':'coord <span class="tk">✓</span>')+'</span>':r.rq?'<span class="pp-n" style="color:var(--green)">en '+MCs[r.rFrom[0]%12].toLowerCase()+' <span class="tk">✓</span></span>':OK):bul(false,bm+r.rm,'r:'+k)):bul(false,0,'r:'+k)):null);};
   vr('dim','Dim ('+fmtMin(v.dimMin)+' × '+_tx.dim+'%)',v.dimMin,v.supDim,null);
   vr('rh','RH ('+fmtMin(v.rhMin)+' × '+_tx.rh+'%)',v.rhMin,v.supRH,null);
   vr('fer','Fériés ('+fmtMin(v.ferMin)+' × '+_tx.fer+'%)',v.ferMin,v.supFer,null);
@@ -2893,7 +2897,7 @@ function _payPageHtml(ym){
   if(!vl)vl='<div style="color:var(--text3);padding:3px 0">Aucune.</div>';
   // En-tête et total brut comme l'ancien onglet Paie ; la colonne bulletin s'ajoute à gauche
   var h='<div class="pp-r" style="font-size:11px;color:var(--text3);padding:0 0 2px"><span style="flex:1"></span>'+(c?'<span class="pp-n">bulletin</span>':'')+'<span class="pp-v">app</span></div>'
-    +'<div class="hd-card out"><div class="pp-r" style="padding:3px 0;margin-bottom:2px"><span style="flex:1;color:var(--text3)">total brut</span>'+(c?bul(c.status!=='ecart'||Math.abs(c.diff)<=0.05,b.brut):'')+'<b style="font-size:15px;color:var(--gold-pay)">'+fe(P.total)+'</b></div>';
+    +'<div class="hd-card out"><div class="pp-r" style="padding:3px 0;margin-bottom:2px"><span style="flex:1;color:var(--text3)">total brut</span>'+(c?bul(c.status!=='ecart'||Math.abs(c.diff)<=0.05,b.brut,c.allIgn||null):'')+'<b style="font-size:15px;color:var(--gold-pay)">'+fe(P.total)+'</b></div>';
   if(c){var lt=c.later.map(function(f){return '<a onclick="_swipeGo('+(f>ym?1:-1)+',function(){openBulletinModal('+f+')})" style="color:inherit;text-decoration:underline;cursor:pointer">'+MC[f%12]+'</a>';}).join(', '),A=Math.abs(c.adj),msg;
     if(c.status==='ok')msg='✓ Conforme au calcul';
     else if(c.status==='later')msg='✓ Conforme, avec un rattrapage payé en '+lt;
@@ -2907,12 +2911,12 @@ function _payPageHtml(ym){
       +(c.status==='ecart'&&c.items.length?'<a style="font-weight:400;color:var(--blue);cursor:pointer;margin-left:auto;padding-left:8px;flex-shrink:0;white-space:nowrap" onclick="event.stopPropagation();_openBulIgnMenu(this,'+ym+')">Ignorer…</a>':'')+'</div>'
     // Écarts ignorés en partie : combien et leur montant, sur une ligne à part
     +(nI&&!ig&&!/écarts ignorés/.test(msg)?'<div style="font-size:11px;margin:0 0 4px;color:var(--text3)">'+nI+' écart'+(nI>1?'s':'')+' ignoré'+(nI>1?'s':'')+(_iT?' · '+_iT:'')+'</div>':'')
-    // Écart sur fériés, dimanches, RH ou HS dû au réglage de l'app → Vérification ; sinon ce qui manque → message au gestionnaire
-    if(c.status==='ecart'&&!ig){var _D=null,_ms=[];try{_D=_bulPayDiffs();_ms=_bulMsgLines(ym);}catch(e){}
+    // Écart sur fériés, dimanches, RH ou HS dû au réglage de l'app → Vérification (le message au gestionnaire est dans Paie de l'année)
+    if(c.status==='ecart'&&!ig){var _D=null;try{_D=_bulPayDiffs();}catch(e){}
       var _lk='color:var(--blue);cursor:pointer;margin-left:auto;padding-left:8px;white-space:nowrap',_W=ym-1;
       if(_D&&_D.paid.some(function(x){return x.ym===_W;})&&c.items.some(function(i){return !i.ign&&/^r:(fer|dim|rh|hsLow|hsHigh)$/.test(i.id);}))
         h+='<div style="font-size:11px;margin:0 0 4px;display:flex;color:var(--text3)"><span>Génération de rendus à corriger</span><a style="'+_lk+'" onclick="_bulPayPropose(function(){openBulletinModal('+ym+')},1)">Vérifier ›</a></div>';
-      if(_ms.length)h+='<div style="font-size:11px;margin:0 0 4px;display:flex;color:var(--text3)"><span>Écarts à signaler au gestionnaire</span><a style="'+_lk+'" onclick="_bulMsgOpen('+ym+',function(){openBulletinModal('+ym+')})">Message ›</a></div>';}}
+}}
   var pR=(v.panierRate!=null?v.panierRate:getPanierRate());
   // Ligne paniers et ligne de statut toujours présentes : la case garde la même hauteur
   if(!c)h+='<div style="font-size:11px;margin:0 0 4px;color:var(--text3)">Pas de bulletin</div>';
@@ -2931,14 +2935,14 @@ function _payPageHtml(ym){
   (function(){var cum=0,paid=0,nb=0;for(var mm=0;mm<=m;mm++){var pp=calcPayeMois(y,mm);if(pp&&pp.configured)cum+=pp.total;var bb=(S.bulletins||{})[y*12+mm];if(bb){paid+=bb.brut||0;nb++;}}
     h+='<div class="pp-r" style="padding:3px 0"><span class="pp-l">Depuis janvier</span>'+(c?'<span class="pp-n" style="color:var(--text3)">'+(nb?fe(paid):'')+'</span>':'')+'<b style="color:var(--gold-pay)">'+fe(cum)+'</b></div>';})();
   h+='</div>';
-  var fn=function(lbl,av){var f=fixBy[lbl];return c?(f?bul(f.ok,f.bm,'f:'+lbl):cmp(0,av)):null;},fsum=function(ls){return ls.reduce(function(s,l){var f=fixBy[l];return s+(f?f.bm:0);},0);};
+  var fn=function(lbl,av){var f=fixBy[lbl];return c?(f?bul(f.ok,f.bm,'f:'+lbl):bul(Math.abs(av)<=0.05,0,'f:'+lbl)):null;},fsum=function(ls){return ls.reduce(function(s,l){var f=fixBy[l];return s+(f?f.bm:0);},0);};
   // Avantage individuel acquis : complète le salaire de qualification (salariés embauchés avant l'accord), affiché avec le salaire de base
   // mais hors du taux horaire (le bulletin calcule la nuit sur qualification + ancienneté seulement)
   var avP=P.primesCustom.filter(function(p){return /INDIV/i.test(p.label);}),avT=avP.reduce(function(s,p){return s+p.montant;},0),avB=!!fixBy['Av. indiv. acquis'];
   h+=tit('Salaire de base',1)+row('Qualification',P.salQ,null,fn('Qualification',P.salQ))+row('Ancienneté',P.salAnc,null,fn('Ancienneté',P.salAnc))
     +avP.map(function(p){return row('Av. indiv. acquis',p.montant,null,fn('Av. indiv. acquis',p.montant));}).join('')+(avB&&!avP.length?row('Av. indiv. acquis',0,null,fn('Av. indiv. acquis',0)):'')
-    +sub('Sous-total',P.base+avT,c?cmp(fsum(['Qualification','Ancienneté','Av. indiv. acquis']),P.base+avT):null);
-  h+=tit('Variables <span style="font-weight:400;color:var(--text3);font-size:11px">('+MC[P.prevM]+')</span>')+vl+sub('Sous-total',v.total,c?cmp(vb,v.total):null);
+    +sub('Sous-total',P.base+avT,c?cmp(fsum(['Qualification','Ancienneté','Av. indiv. acquis']),P.base+avT,_fT(['Qualification','Ancienneté','Av. indiv. acquis'])):null);
+  h+=tit('Variables <span style="font-weight:400;color:var(--text3);font-size:11px">('+MC[P.prevM]+')</span>')+vl+sub('Sous-total',v.total,c?cmp(vb,v.total,function(id){return id.indexOf('r:')===0;}):null);
   if(m===0){var cf=fixBy['Complément CP'];
     h+=tit('Complément CP')+(P.compCP>0||cf?row(P.compCPManual?'Montant du bulletin':'1/10 variables '+(y-1),P.compCP,null,fn('Complément CP',P.compCP)):'<div style="color:var(--amber);display:flex;gap:5px;padding:4px 0"><span>⚠</span><span>1/10 des variables '+(y-1)+' non calculable : les données de l’année précédente sont incomplètes.</span></div>')
       +'<div style="display:flex;gap:6px;margin-top:4px"><button onclick="editCompCP('+y+','+ym+')" style="'+btn+';color:var(--text2);padding:3px 8px">'+(P.compCPManual?'Modifier le montant':'Saisir le montant du bulletin')+'</button>'+(cf&&!cf.ok&&b.epv!=null?'<button onclick="useBulletinCompCP('+ym+')" style="'+btn+';color:var(--blue);padding:3px 8px">Reprendre le bulletin</button>':'')+'</div>';}
@@ -2946,14 +2950,14 @@ function _payPageHtml(ym){
   if(m!==0&&fixBy['Complément CP'])h+=tit('Complément CP')+row('Indemnité 10e (bulletin)',P.compCP,null,fn('Complément CP',P.compCP));
   // NAO : le bulletin les nomme autrement, comparées en total (sur la dernière ligne si ça diffère)
   var naoF=fixBy['Mesures NAO'],nN=P.primesConv.length,fa=P.totalFixes+P.totalPrimesCustom-avT;
-  h+=tit('Primes fixes')+P.primesConv.map(function(p,i){return row(p.label,p.montant,null,c?(naoF&&naoF.ok?OK:i===nN-1?(naoF?bul(false,naoF.bm,'f:Mesures NAO'):bul(false,0)):E):null);}).join('')
+  h+=tit('Primes fixes')+P.primesConv.map(function(p,i){return row(p.label,p.montant,null,c?(naoF&&naoF.ok?OK:i===nN-1?(naoF?bul(false,naoF.bm,'f:Mesures NAO'):bul(false,0,'f:Mesures NAO')):E):null);}).join('')
     +row('Ind. GPE'+(P.groupeClassif?' (Gr.'+P.groupeClassif+')':''),P.gpe,null,fn('Ind. GPE',P.gpe))
     +row('PFA ('+fmtEuro(P.pfaM)+'/mois)'+(P.pfaMensuelle?'':' (sem.)'),P.pfa,null,fn('PFA',P.pfa))
     +(P.supFamilial>0||fixBy['Suppl. familial']?row('Suppl. familial',P.supFamilial,null,fn('Suppl. familial',P.supFamilial)):'')
     +(naoF&&!nN?row('Mesures NAO',0,null,bul(false,naoF.bm,'f:Mesures NAO')):'')
     +P.primesCustom.filter(function(p){return !/INDIV/i.test(p.label);}).map(function(p){return row(_h(p.label),p.montant,null);}).join('')
     // primes personnelles hors bulletin lu : hors de la comparaison du sous-total (sinon ⚠ permanent)
-    +sub('Sous-total',fa,c?cmp(fsum(['Mesures NAO','Ind. GPE','PFA','Suppl. familial']),fa-P.primesCustom.filter(function(p){return !/INDIV/i.test(p.label);}).reduce(function(t,p){return t+p.montant;},0)):null);
+    +sub('Sous-total',fa,c?cmp(fsum(['Mesures NAO','Ind. GPE','PFA','Suppl. familial']),fa-P.primesCustom.filter(function(p){return !/INDIV/i.test(p.label);}).reduce(function(t,p){return t+p.montant;},0),_fT(['Mesures NAO','Ind. GPE','PFA','Suppl. familial'])):null);
   if(P.greveRet>0||fixBy['Absence non rémunérée'])h+=tit('Absences non rémunérées')
     +P.greveDays.map(function(g,i){var d=new Date(g.k+'T12:00:00');return row(d.getDate()+' '+MCs[d.getMonth()]+' · '+(g.m==='greve'?'grève ':'')+(g.g==='h'?'1 heure':g.g==='dj'?'½ journée':'journée'),-g.r,null,i===P.greveDays.length-1?fn('Absence non rémunérée',-P.greveRet):null);}).join('')
     +(!P.greveDays.length?row('Absence non rémunérée',0,null,fn('Absence non rémunérée',0)):'');
