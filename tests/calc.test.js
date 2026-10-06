@@ -105,6 +105,9 @@ function situation(opts) {
   eq('Bulletin : lignes RAP reconnues, cotisations ignorées', a.run('JSON.stringify(_b.rap.map(function(r){return [r.ym,r.k,r.q];}))'),
     JSON.stringify([[YM(2026, 7), 'hsLow', 9.25], [YM(2026, 7), 'nuit', 13.5], [YM(2026, 4), 'reel', 1], [YM(2026, 7), 'panier', 2]]));
   eq('Bulletin : paniers', a.run('_b.paniers.q'), 2);
+  // Découpage du PDF en lignes : libellé et montant à 1 pt d'écart réunis, mention verticale de la marge écartée
+  eq('PDF : lignes reconstituées, texte pivoté écarté', a.run('JSON.stringify(_pdfRows([{str:"MESURE NAO CDI 2023",transform:[1,0,0,1,90,500]},{str:"130,00",transform:[1,0,0,1,400,499]},{str:"V. 2022",transform:[0,1,-1,0,20,500]},{str:"P.F.A NAC MENS",transform:[1,0,0,1,90,508]},{str:"170,00",transform:[1,0,0,1,400,508.6]}]))'),
+    JSON.stringify(['P.F.A NAC MENS 170,00', 'MESURE NAO CDI 2023 130,00']));
   eq('Bulletin : prime d’avantage individuel acquis lue, proposée puis comparée', a.run('(function(){var o=_bulParse(["PERIODE DE PAIE DU 01/07/2026 AU 31/07/2026","PRIME AV. INDIV. ACQUIS 93,81","**TOTAL BRUT PAYE 3000,00"]),sv=S.bulletins;S.bulletins={};S.bulletins[o.ym]=o;'
     + 'var D=_bulPayDiffs(),f1=_bulCompare(o).fixed.filter(function(f){return f.lbl==="Av. indiv. acquis";})[0];S.profile.primesFixesCustom=[{id:"x",label:"Prime av. indiv. acquis",montant:93.81,debutYM:o.ym,finYM:null}];'
     + 'var f2=_bulCompare(o).fixed.filter(function(f){return f.lbl==="Av. indiv. acquis";})[0],D2=_bulPayDiffs();S.profile.primesFixesCustom=[];S.bulletins=sv;return JSON.stringify([o.avInd,D.av&&D.av.v,f1.ok,f2.ok,D2.av]);})()'), JSON.stringify([93.81, 93.81, false, true, null]));

@@ -2529,15 +2529,20 @@ function _loadPdfJs(){
   var V='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
   return new Promise(function(res,rej){var s=document.createElement('script');s.src=V+'pdf.min.js';s.onload=function(){window.pdfjsLib.GlobalWorkerOptions.workerSrc=V+'pdf.worker.min.js';res(window.pdfjsLib);};s.onerror=function(){rej(new Error('pdfjs'));};document.head.appendChild(s);});
 }
+// Éléments de texte d'une page → lignes. Même ligne si la hauteur diffère de moins de 2,5 pt (un arrondi fixe
+// coupait parfois un libellé de son montant). Texte pivoté (mention verticale dans la marge) écarté : il se collait à une ligne
+function _pdfRows(items){
+  var its=items.filter(function(it){return it.str&&it.str.trim()&&Math.abs(it.transform[1])<0.01&&Math.abs(it.transform[2])<0.01;})
+    .map(function(it){return [it.transform[5],it.transform[4],it.str];}).sort(function(a,b){return b[0]-a[0];}),grp=[];
+  its.forEach(function(it){var g=grp[grp.length-1];if(g&&g.y-it[0]<2.5)g.it.push(it);else grp.push({y:it[0],it:[it]});});
+  return grp.map(function(g){return g.it.sort(function(a,b){return a[1]-b[1];}).map(function(r){return r[2];}).join(' ');});
+}
 // PDF → lignes de texte (regroupées par hauteur, de gauche à droite)
 async function _pdfLines(file){
   var lib=await _loadPdfJs(),doc=await lib.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise,out=[];
   for(var p=1;p<=doc.numPages;p++){
     var tc=await (await doc.getPage(p)).getTextContent();
-    // Même ligne si la hauteur diffère de moins de 2,5 pt (un arrondi fixe coupait parfois un libellé de son montant)
-    var its=tc.items.filter(function(it){return it.str&&it.str.trim()&&Math.abs(it.transform[1])<0.01&&Math.abs(it.transform[2])<0.01;}) // texte pivoté (mention verticale dans la marge) écarté : il se collait à une ligne.map(function(it){return [it.transform[5],it.transform[4],it.str];}).sort(function(a,b){return b[0]-a[0];}),grp=[];
-    its.forEach(function(it){var g=grp[grp.length-1];if(g&&g.y-it[0]<2.5)g.it.push(it);else grp.push({y:it[0],it:[it]});});
-    grp.forEach(function(g){out.push(g.it.sort(function(a,b){return a[1]-b[1];}).map(function(r){return r[2];}).join(' '));});
+    out=out.concat(_pdfRows(tc.items));
   }
   return out;
 }
