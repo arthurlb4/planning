@@ -2646,7 +2646,13 @@ function _bulPayPropose(then,all){
       +'<span class="bpseg" data-bp="'+x.k+':'+x.ym+'" data-v="'+(x.v?1:0)+'">'+[0,1].map(function(v){return '<span'+((x.v?1:0)===v?' class="on"':'')+' onclick="var g=this.parentNode;g.dataset.v='+v+';[].forEach.call(g.children,function(c,j){c.classList.toggle(\'on\',j==='+v+');})">'+(v?'rendus':'payés')+'</span>';}).join('')+'</span></div>';}).join('');
   var okR=function(t){return '<div class="recap-row" style="font-size:12px;min-height:26px;gap:10px"><span style="color:var(--text3)">'+t+'</span><span>'+(nb?'<b style="color:var(--green)">✓ conforme</b><span style="color:var(--text3)"> · '+nb+' bulletin'+(nb>1?'s':'')+'</span>':'aucun bulletin<a style="color:var(--blue);cursor:pointer;margin-left:8px" onclick="importBulletins(function(){_bulPayPropose(window._bulPayThen,1);})">Importer</a>')+'</span></div>';};
   var sec=function(t,h){return '<div class="bpsec">'+t+'</div><div class="hd-card">'+h+'</div>';};
-  var body=((rows||all)?sec('Paie',rows||okR('Réglages')):'')+((rend||all)?sec('Génération de rendus',rend||okR('Payés ou rendus')):'')+(all?sec('Tableau Gestion',G):'');
+  // écart de paie avec les bulletins (comme la tuile Suivi) : souvent dû à la génération de rendus
+  var EP='';if(all&&nb){var E=_bulEcart(),eok=!E.nBad;
+    EP='<div class="recap-row" style="font-size:12px;min-height:26px;gap:10px"><span style="color:var(--text3)">Écart avec les bulletins</span><span style="white-space:nowrap">'
+      +(eok?'<b style="color:var(--green)">✓ aucun</b>':'<b style="color:'+(E.bal<-0.05?'var(--red)':'var(--green)')+'">'+(E.hasN||E.hasP?(E.bal<0?'−':'+')+fmtEuro(Math.abs(E.bal)):'⚠ '+E.nPb)+'</b><span style="color:var(--text3)"> · '+E.nBad+' mois</span>')
+      +'<a style="color:var(--blue);cursor:pointer;margin-left:8px" onclick="closeModal();openBulletinsCal()">Détail</a></span></div>'
+      +(!eok&&D.paid.length?'<div style="font-size:10.5px;color:var(--text3);padding:0 0 4px">Corrigé en partie par la génération de rendus ci-dessous</div>':'');}
+  var body=((rows||all)?sec('Paie',(rows||okR('Palier, contrat, primes'))+EP):'')+((rend||all)?sec('Génération de rendus',rend||okR('Payés ou rendus')):'')+(all?sec('Tableau Gestion',G):'');
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)_bulPayDone(0)"><div class="sheet"><div class="sh"></div><div class="st">'+(all?'Vérification':'Réglages lus sur les bulletins')+'</div>'
     +(D.n?'<div style="font-size:12px;color:var(--text3);line-height:1.45;margin:-4px 0 10px">Corrections proposées d’après les bulletins.</div>':'')
     +body
@@ -3043,6 +3049,14 @@ function _rhAcqCheck(){
   rh.lines.forEach(function(l){if(l.nature)sheet[l.ym]=(sheet[l.ym]||0)+l.acq;});
   var r={asOfYM:asOfYM,ed:ed,sheet:sheet};window._rhAcqC={at:o.at,r:r};return r;
 }
+// Écart des bulletins, tous mois confondus (tuile Suivi et Vérification)
+function _bulEcart(){
+  var nB=0,nBad=0,nPb=0,nOld=0,nIg=0,neg=0,pos=0,last=null;Object.keys(S.bulletins||{}).forEach(function(k){var ym=+k,c;nB++;if(last==null||ym>last)last=ym;
+    try{c=_bulCompare(S.bulletins[k]);}catch(e){return;}if(c.status!=='ecart')return;if(_bulIgn(ym,c)){nIg++;return;}
+    nBad++;var _np=(c.badList?c.badList.length:0)||1;nPb+=_np;if(Math.floor(ym/12)<NOW.getFullYear())nOld+=_np;(c.items||[]).forEach(function(i){if(i.ign)return;if(i.d<0)neg+=i.d;else pos+=i.d;});});
+  neg=Math.round(neg*100)/100;pos=Math.round(pos*100)/100;
+  return{nB:nB,nBad:nBad,nPb:nPb,nOld:nOld,nIg:nIg,neg:neg,pos:pos,last:last,bal:Math.round((neg+pos)*100)/100,hasN:neg<-0.05,hasP:pos>0.05};
+}
 // ── Suivi : vue simple (imports + écarts en bref) ou complète (tous les blocs) ──
 function _suiviSimple(y){
   // Accueil des problèmes : imports, écart avec le tableau Gestion, bulletins à vérifier
@@ -3051,10 +3065,7 @@ function _suiviSimple(y){
   else{var e0=-c.d,e=-_rhDe(c),ok=Math.abs(e0)<2,ig=!ok&&Math.abs(e)<2,part=!ok&&!ig&&Math.abs(e-e0)>=2;
     g='<button class="sv-tile" onclick="rhOpenFromRecap()"><span class="t">Écart Rendus</span><b style="color:'+(ok||e0>0?'var(--green)':'var(--red)')+'">'+(ok?'✓':(e0>0?'+':'−')+fmtMin(Math.abs(e0)))+'</b><small>'+(ok?'identique':(e0>0?'favorable':'à faire corriger')+(ig?'<br>différences ignorées':part?'<br>en partie ignoré':''))+'<br><span style="white-space:nowrap">Tableau du '+new Date(c.ed+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long'})+'</span>'+'</small></button>';}
   // Bulletins : ce qui n'a pas été perçu (somme des écarts négatifs, ligne par ligne), le trop perçu, puis le solde des deux
-  var nB=0,nBad=0,nPb=0,nOld=0,nIg=0,neg=0,pos=0,last=null;Object.keys(S.bulletins||{}).forEach(function(k){var ym=+k,c;nB++;if(last==null||ym>last)last=ym;
-    try{c=_bulCompare(S.bulletins[k]);}catch(e){return;}if(c.status!=='ecart')return;if(_bulIgn(ym,c)){nIg++;return;}
-    nBad++;var _np=(c.badList?c.badList.length:0)||1;nPb+=_np;if(Math.floor(ym/12)<NOW.getFullYear())nOld+=_np;(c.items||[]).forEach(function(i){if(i.ign)return;if(i.d<0)neg+=i.d;else pos+=i.d;});});
-  neg=Math.round(neg*100)/100;pos=Math.round(pos*100)/100;var bal=Math.round((neg+pos)*100)/100,hasN=neg<-0.05,hasP=pos>0.05;
+  var E=_bulEcart(),nB=E.nB,nBad=E.nBad,nPb=E.nPb,nOld=E.nOld,nIg=E.nIg,neg=E.neg,pos=E.pos,last=E.last,bal=E.bal,hasN=E.hasN,hasP=E.hasP;
   var _bk=nIg?'<br>'+nIg+' bulletin'+(nIg>1?'s':'')+' ignoré'+(nIg>1?'s':''):'',_bl=last!=null?'<br><span style="white-space:nowrap">Dernier : '+_deMois(last).replace(/^d[e’']\s?/,'')+' '+Math.floor(last/12)+'</span>':'';
   var big=!nB?'—':!nBad?'✓':hasN?'−'+fmtEuro(-neg):hasP?'+'+fmtEuro(pos):'⚠ '+nPb,bigC=!nB?'var(--text3)':!nBad?'var(--green)':hasN?'var(--red)':'var(--green)';
   var det=!nB?'aucun bulletin importé':!nBad?(nB+' bulletin'+(nB>1?'s':'')+' conforme'+(nB>1?'s':''))+_bk+_bl
