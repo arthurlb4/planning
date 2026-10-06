@@ -4598,11 +4598,17 @@ function rhCompareShow(rh){
     +'<div class="rv-det"><div style="font-size:11px;color:var(--text3);line-height:1.45;margin:2px 0 6px">Les rendus consomment d’abord les heures les plus anciennes : une différence d’heures acquises se reporte sur les mois suivants.</div><table class="rc-t"><tr><th></th><th>Tableau</th><th>App</th><th>Écart</th></tr>'+detRows.join('')+'</table>'
     +(_hasSplit?'<button class="rv-b2" onclick="rhApplySplit(false)">Annuler la répartition du solde de départ</button>':'')
     +'</div>'
-    +(function(){var bk=S.profile&&S.profile.ephBaseDate,ek=dk(asOf);if(!bk||bk===ek)return '';var fd=function(k){return new Date(k+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long'});};
+    // Tableau de référence : de quel tableau part le suivi, celui affiché ici, et les deux actions côte à côte
+    +(function(){var bk=S.profile&&S.profile.ephBaseDate,ek=dk(asOf),fd=function(k){return new Date(k+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'});};
+      var can=!!bk&&bk!==ek,bs='flex:1;height:36px;font-size:12px;border:none;background:var(--btn);color:var(--text);cursor:pointer;font-family:var(--font);white-space:nowrap';
+      var ln=function(l,v){return '<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:3px 0"><span style="color:var(--text3)">'+l+'</span><span>'+v+'</span></div>';};
       window._rhLast=rh;
-      return '<div class="rv-sec">Point de départ</div><div style="font-size:12px;color:var(--text3);line-height:1.45;margin:0 0 8px">Le suivi part du tableau du '+fd(bk)+'. Repartir de celui du '+fd(ek)+' reprend ses soldes, reports et matelas'+(ek<bk?' (il est plus ancien)':'')+'.</div>'
-        +'<button class="rv-b2" onclick="rhImportPreview(window._rhLast)">Repartir de ce tableau</button>';})()
-    +'<div style="display:flex;gap:8px;margin:16px 0 14px"><button onclick="rhCompareOpen()" style="font-size:11px;padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:var(--btn);cursor:pointer;font-family:var(--font);color:var(--text2)"><i class="ti ti-table-import" style="margin-right:4px"></i>Importer un tableau</button></div>'
+      return '<div class="rv-sec">Tableau de référence</div><div class="hd-card" style="padding:10px 12px">'
+        +(bk?ln('Le suivi part du tableau du',fd(bk)):'')+ln('Tableau affiché ici',fd(ek))
+        +(can?'<div style="font-size:11px;color:var(--text3);line-height:1.45;margin:6px 0 0">Repartir de ce tableau : l’app prend ses soldes, reports et matelas comme nouveau point de départ'+(ek<bk?' (il est plus ancien que l’actuel)':'')+'.</div>':'')
+        +'<div style="display:flex;gap:8px;margin-top:10px">'+(can?'<button style="'+bs+'" onclick="rhImportPreview(window._rhLast)">Repartir de ce tableau</button>':'')
+        +'<button style="'+bs+'" onclick="rhCompareOpen()">Importer un autre tableau</button></div></div>';})()
+    +'<div style="height:6px"></div>'
     +'<button class="mcancel mclose" onclick="closeModal()">Fermer</button>'
     +'</div></div>';
   document.getElementById('modal-root').innerHTML=html;
@@ -5337,7 +5343,7 @@ function openMergedRenduCgModal(limit,tab){
       +'<div class="eph-u-exp">'+expLblM+'</div>'
       +'</div>';
   });
-  const moreBtn=hasMore?'<button id="rcg-more" onclick="window._rcgMoreTop=this.getBoundingClientRect().top;openMergedRenduCgModal('+(limit+4)+')" style="display:block;margin:8px auto 0;padding:6px 16px;font-size:12px;color:var(--blue);background:var(--btn);border:none;cursor:pointer;font-family:var(--font)">＋ Voir plus</button>':'';
+  const moreBtn=hasMore?'<button id="rcg-more" onclick="window._rcgMoreTop=this.getBoundingClientRect().top;openMergedRenduCgModal('+(limit+4)+')" style="display:block;margin:8px auto 0;padding:6px 16px;font-size:12px;color:var(--text2);background:var(--btn);border:none;cursor:pointer;font-family:var(--font)">＋ Voir plus</button>':'';
   // === Congés ===
   const nowY=curY;
   const cet=getCETForYear(nowY);
@@ -6829,14 +6835,14 @@ function openSettingsModal(tab){
     +'<div class="srow" '+_sr+'><div class="slbl">Synchroniser manuellement</div><button '+_bS+' id="gcal-sync-icon-btn" onclick="gcalHandleClick()">Synchroniser</button></div>'
     +(function(){
       var _m=S.profile&&S.profile.gcalAutoSync!==false;
-      var _tx=_m?'translateX(0)':'translateX(calc(100% + 4px))';
+      var _tx=_m?'translateX(0)':'translateX(calc(100% + 2px))';
       var _s0=_m?'font-weight:600;color:var(--text)':'font-weight:400;color:var(--text3)';
       var _s1=_m?'font-weight:400;color:var(--text3)':'font-weight:600;color:var(--text)';
       return '<div class="srow" '+_sr+'><div class="slbl">Auto-sync</div>'
         +'<input type="checkbox" id="gcal-as-tgl" '+(_m?'checked':'')+' style="display:none">'
-        +'<div style="width:120px;height:32px;border-radius:var(--r);background:var(--bg3);border:0.5px solid var(--border);position:relative;display:flex;cursor:pointer;flex-shrink:0"'
-        +' onclick="gcalToggleAutoSync();var _m=S.profile&&S.profile.gcalAutoSync!==false,_pl=this.querySelector(\'.as-pill\'),_lb=this.querySelectorAll(\'.as-lbl\');if(_pl)_pl.style.transform=_m?\'translateX(0)\':\'translateX(calc(100% + 4px))\';if(_lb[0]){_lb[0].style.fontWeight=_m?\'600\':\'400\';_lb[0].style.color=_m?\'var(--text)\':\'var(--text3)\';};if(_lb[1]){_lb[1].style.fontWeight=_m?\'400\':\'600\';_lb[1].style.color=_m?\'var(--text3)\':\'var(--text)\';}">'
-        +'<div class="as-pill" style="position:absolute;top:2px;bottom:2px;width:calc(50% - 3px);left:2px;border-radius:calc(var(--r) - 1px);background:var(--bg2);box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform .2s ease;transform:'+_tx+'"></div>'
+        +'<div style="width:120px;height:32px;border-radius:999px;background:var(--bg3);border:0.5px solid var(--border);position:relative;display:flex;cursor:pointer;flex-shrink:0"'
+        +' onclick="gcalToggleAutoSync();var _m=S.profile&&S.profile.gcalAutoSync!==false,_pl=this.querySelector(\'.as-pill\'),_lb=this.querySelectorAll(\'.as-lbl\');if(_pl)_pl.style.transform=_m?\'translateX(0)\':\'translateX(calc(100% + 2px))\';if(_lb[0]){_lb[0].style.fontWeight=_m?\'600\':\'400\';_lb[0].style.color=_m?\'var(--text)\':\'var(--text3)\';};if(_lb[1]){_lb[1].style.fontWeight=_m?\'400\':\'600\';_lb[1].style.color=_m?\'var(--text3)\':\'var(--text)\';}">'
+        +'<div class="as-pill" style="position:absolute;top:2px;bottom:2px;width:calc(50% - 3px);left:2px;border-radius:999px;background:var(--btn);box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform .2s ease;transform:'+_tx+'"></div>'
         +'<span class="as-lbl" style="flex:1;text-align:center;font-size:10px;line-height:32px;position:relative;z-index:1;'+_s0+'">Actif</span>'
         +'<span class="as-lbl" style="flex:1;text-align:center;font-size:10px;line-height:32px;position:relative;z-index:1;'+_s1+'">Inactif</span>'
         +'</div></div>';
@@ -6864,7 +6870,7 @@ function openSettingsModal(tab){
   for(var ai=0;ai<=50;ai++){var al=ai===0?'0 an':(ai===1?'1 an':ai+' ans');ancOpts+='<option value="'+ai+'"'+((_curAncYears!==''&&ai===Math.round(parseFloat(_curAncYears)||0))?' selected':'')+'>'+al+'</option>';}
   var heurOpts='<option value="">—</option>';
   for(var hp=5;hp<=100;hp+=5){heurOpts+='<option value="'+hp+'"'+(hp===Math.round(parseFloat(_curPct)||0)?' selected':'')+'>'+hp+'%</option>';}
-  var _selR='width:120px;height:32px;box-sizing:border-box;padding:0 6px;border:0.5px solid var(--border);border-radius:var(--r);font-size:12px;background:var(--bg0);color:var(--text)';
+  var _selR='width:120px;height:32px;box-sizing:border-box;padding:0 26px 0 12px;border:0.5px solid var(--border);border-radius:999px;font-size:12px;background:var(--bg0) url(&quot;data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2710%27 height=%276%27%3E%3Cpath d=%27M1 1l4 4 4-4%27 fill=%27none%27 stroke=%27%23a8a49c%27 stroke-width=%271.5%27/%3E%3C/svg%3E&quot;) no-repeat right 11px center;-webkit-appearance:none;appearance:none;color:var(--text)';
   var _subV='style="font-size:10px;color:var(--text3);text-align:right;min-width:52px;flex-shrink:0"';
   var _rCol='style="display:flex;align-items:center;gap:6px"';
   var _palLbl=_curPalier?(_curPalier==='christophe'?fmtEuro(100000):fmtEuro(calcPalierSalaire(parseInt(_curPalier)))):'';
@@ -6880,28 +6886,28 @@ function openSettingsModal(tab){
   var _hasBul=Object.keys(S.bulletins||{}).length>0;
   var tab1=''
     // Palier, contrat, groupe et ancienneté lus sur les bulletins (pré-remplissage, augmentations datées)
-    +_verifRow(1,_hasBul?'':'<button class="adj-pill" style="width:auto;padding:0 12px;height:28px;font-size:12px;white-space:nowrap" onclick="importBulletins(function(){openSettingsModal(1);})">+ Bulletin</button>')
+    +_verifRow(1,_hasBul?'':'<button class="adj-pill" style="width:auto;padding:0 14px;height:32px;font-size:12px;white-space:nowrap" onclick="importBulletins(function(){openSettingsModal(1);})">+ Bulletin</button>')
     +'<div class="srow" '+_sr+'><div class="slbl">Palier'+_inf('salaire de qualification')+'</div><div '+_rCol+'><div id="ps-palier-lbl" '+_subV+'>'+_palLbl+'</div><select id="ps-palier" '+_oncPal+' style="'+_selR+'">'+palierOpts+'</select></div></div>'
     +'<div class="srow" '+_sr+'><div class="slbl">Ancienneté'+_inf('prime mensuelle')+'</div><div '+_rCol+'><div id="ps-salanc-lbl" '+_subV+'>'+_ancLbl+'</div><select id="ps-salanc" '+_oncAnc+' style="'+_selR+'">'+ancOpts+'</select></div></div>'
     +'<div class="srow" '+_sr+'><div class="slbl">Contrat'+_inf('taux de travail')+'</div><div '+_rCol+'><div id="ps-heures-lbl" '+_subV+'>'+_heurLbl+'</div><select id="ps-heures" '+_oncHeur+' style="'+_selR+'">'+heurOpts+'</select></div></div>'
     +'<div class="srow" '+_sr+'><div class="slbl">Groupe'+_inf('indemnité GPE')+'</div><div '+_rCol+'><div id="ps-groupe-lbl" '+_subV+'>'+_grpLbl+'</div><select id="ps-groupe" onchange="window._sMP=true;openGroupeModal()" style="'+_selR+'"><option value="">—</option>'+[1,2,3,4,5,6,7,8,9].map(function(g){return '<option value="'+g+'"'+(g===_curGrp?' selected':'')+'>Gr. '+g+'</option>';}).join('')+'</select></div></div>'
     +(function(){
       var _m=!!pr.profile.pfaMensuelle;
-      var _tx=_m?'translateX(0)':'translateX(calc(100% + 4px))';
+      var _tx=_m?'translateX(0)':'translateX(calc(100% + 2px))';
       var _s0=_m?'font-weight:600;color:var(--text)':'font-weight:400;color:var(--text3)';
       var _s1=_m?'font-weight:400;color:var(--text3)':'font-weight:600;color:var(--text)';
       return '<div class="srow" '+_sr+'><div class="slbl">PFA'+_inf('prime de fin d’année')+'</div>'
-        +'<div style="width:120px;height:32px;border-radius:var(--r);background:var(--bg3);border:0.5px solid var(--border);position:relative;display:flex;cursor:pointer;flex-shrink:0"'
-        +' onclick="var _p=_profs[_aid];if(!_p)return;_p.profile.pfaMensuelle=!_p.profile.pfaMensuelle;saveState();var _m=!!_p.profile.pfaMensuelle,_pl=this.querySelector(\'.pfa-pill\'),_lb=this.querySelectorAll(\'.pfa-lbl\');if(_pl)_pl.style.transform=_m?\'translateX(0)\':\' translateX(calc(100% + 4px))\';if(_lb[0]){_lb[0].style.fontWeight=_m?\'600\':\'400\';_lb[0].style.color=_m?\'var(--text)\':\' var(--text3)\';}if(_lb[1]){_lb[1].style.fontWeight=_m?\'400\':\'600\';_lb[1].style.color=_m?\'var(--text3)\':\' var(--text)\';}">'
-        +'<div class="pfa-pill" style="position:absolute;top:2px;bottom:2px;width:calc(50% - 3px);left:2px;border-radius:calc(var(--r) - 1px);background:var(--bg2);box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform .2s ease;transform:'+_tx+'"></div>'
+        +'<div style="width:120px;height:32px;border-radius:999px;background:var(--bg3);border:0.5px solid var(--border);position:relative;display:flex;cursor:pointer;flex-shrink:0"'
+        +' onclick="var _p=_profs[_aid];if(!_p)return;_p.profile.pfaMensuelle=!_p.profile.pfaMensuelle;saveState();var _m=!!_p.profile.pfaMensuelle,_pl=this.querySelector(\'.pfa-pill\'),_lb=this.querySelectorAll(\'.pfa-lbl\');if(_pl)_pl.style.transform=_m?\'translateX(0)\':\' translateX(calc(100% + 2px))\';if(_lb[0]){_lb[0].style.fontWeight=_m?\'600\':\'400\';_lb[0].style.color=_m?\'var(--text)\':\' var(--text3)\';}if(_lb[1]){_lb[1].style.fontWeight=_m?\'400\':\'600\';_lb[1].style.color=_m?\'var(--text3)\':\' var(--text)\';}">'
+        +'<div class="pfa-pill" style="position:absolute;top:2px;bottom:2px;width:calc(50% - 3px);left:2px;border-radius:999px;background:var(--btn);box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform .2s ease;transform:'+_tx+'"></div>'
         +'<span class="pfa-lbl" style="flex:1;text-align:center;font-size:10px;line-height:32px;position:relative;z-index:1;'+_s0+'">Mensuel</span>'
         +'<span class="pfa-lbl" style="flex:1;text-align:center;font-size:10px;line-height:32px;position:relative;z-index:1;'+_s1+'">Semestriel</span>'
         +'</div></div>';
     })()
-    +'<div class="srow" '+_sr+'><div class="slbl">Suppl. familial'+_inf('SFT mensuel brut')+'</div><div '+_rCol+'><div id="ps-sft-lbl" '+_subV+'>'+(_curSft>0?fmtEuro(_curSft):'—')+'</div><button onclick="window._sMP=true;openSupFamilialModal()" style="'+_selR+';cursor:pointer;text-align:center;background:var(--btn)">Modifier</button></div></div>'
+    +'<div class="srow" '+_sr+'><div class="slbl">Suppl. familial'+_inf('SFT mensuel brut')+'</div><div '+_rCol+'><div id="ps-sft-lbl" '+_subV+'>'+(_curSft>0?fmtEuro(_curSft):'—')+'</div><button onclick="window._sMP=true;openSupFamilialModal()" style="'+_selR+';cursor:pointer;text-align:center;background:var(--btn);padding:0 6px">Modifier</button></div></div>'
     // Avantage individuel acquis (salariés embauchés avant l'accord) : saisi ici sans bulletin, sinon proposé par la Vérification
     +(function(){var av=getPrimesFixesCustomForYM(TODAY_YM).filter(function(p){return /INDIV/i.test(p.label);}).reduce(function(s,p){return s+p.montant;},0);
-      return '<div class="srow" '+_sr+'><div class="slbl">Av. indiv. acquis'+_inf('embauche avant l’accord')+'</div><div '+_rCol+'><div '+_subV+'>'+(av>0?fmtEuro(av):'—')+'</div><button onclick="window._sMP=true;openAddPrimeFixeModal(TODAY_YM,1,1)" style="'+_selR+';cursor:pointer;text-align:center;background:var(--btn)">Modifier</button></div></div>';})()
+      return '<div class="srow" '+_sr+'><div class="slbl">Av. indiv. acquis'+_inf('embauche avant l’accord')+'</div><div '+_rCol+'><div '+_subV+'>'+(av>0?fmtEuro(av):'—')+'</div><button onclick="window._sMP=true;openAddPrimeFixeModal(TODAY_YM,1,1)" style="'+_selR+';cursor:pointer;text-align:center;background:var(--btn);padding:0 6px">Modifier</button></div></div>';})()
     +_sh+'Primes fixes</div>'
     +(function(){
       // Primes de la convention (NAO…) : à cocher selon ce que tu touches
@@ -6940,7 +6946,7 @@ function openSettingsModal(tab){
     +'<div class="srow" '+_sr+'><div style="display:flex;gap:20px;align-items:center;flex:1;padding-left:4px">'+_rendDots+'</div><button '+_bS+' onclick="openAnnualSettingsModal('+new Date().getFullYear()+')">Changer</button></div>'
     +_sh+'Soldes initiaux</div>'
     // Tableau Gestion : état de l'import ; importer (ou un plus récent), revenir aux soldes d'avant l'import. La vérification est dans l'onglet Paie
-    +(function(){var has=!!(pr.profile.rhTable||pr.profile.rhImportedAt),b='class="adj-pill" style="width:auto;padding:0 12px;height:28px;font-size:12px;white-space:nowrap"';
+    +(function(){var has=!!(pr.profile.rhTable||pr.profile.rhImportedAt),b='class="adj-pill" style="width:'+(pr.profile._rhImportBackup?'auto;padding:0 14px':'120px')+';height:32px;font-size:12px;white-space:nowrap"';
       return '<div class="srow" '+_sr+'><div class="slbl">Tableau Gestion <span style="color:var(--text3);font-size:10px">'+(pr.profile.rhImportedAt?'suivi depuis le '+new Date(pr.profile.rhImportedAt+'T12:00:00').toLocaleDateString('fr-FR'):'non importé')+'</span></div><div style="display:flex;gap:6px;flex-shrink:0">'
         +(pr.profile._rhImportBackup?'<button '+b+' onclick="if(confirm(\'Revenir aux soldes d’avant l’import du tableau ?\'))rhImportUndo()">Défaire</button>':'')
         +'<button '+b+' onclick="closeModal();rhImportOpen()">Importer</button></div></div>';})()
@@ -7007,7 +7013,7 @@ function openSettingsModal(tab){
 }
 // Une seule vérification, la même dans les onglets Paie et Heures : réglages de paie et rendus d'après les bulletins, écart avec le tableau Gestion
 function _verifRow(tab,extra){return '<div style="display:flex;align-items:center;gap:8px;margin:0 0 10px"><span style="flex:1;min-width:0;font-size:11px;color:var(--text3);line-height:1.35">Bulletins et tableau Gestion</span><div style="display:flex;gap:6px;flex-shrink:0">'+(extra||'')
-  +'<button class="adj-pill" style="width:auto;padding:0 12px;height:28px;font-size:12px;white-space:nowrap" onclick="_bulPayPropose(function(){openSettingsModal('+tab+');},1)"><i class="ti ti-checks" style="margin-right:4px"></i>Vérifier</button></div></div>';}
+  +'<button class="adj-pill" style="width:120px;height:32px;font-size:12px;white-space:nowrap" onclick="_bulPayPropose(function(){openSettingsModal('+tab+');},1)"><i class="ti ti-checks" style="margin-right:4px"></i>Vérifier</button></div></div>';}
 function settingsTab(n){
   var _tx=['translateX(0)','translateX(calc(100% + 2px))','translateX(calc(200% + 4px))'];
   [0,1,2].forEach(function(i){
