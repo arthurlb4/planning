@@ -1198,7 +1198,7 @@ const EXC_M={rentree:{l:'Rentrée scolaire',s:'Rentrée',half:1,info:'½ journé
   naissance:{l:'Naissance / adoption',s:'Naiss.',info:'3 j, à prendre dans les 15 jours'},deces:{l:'Décès',s:'Décès',info:'2 à 5 j selon le lien'},demenag:{l:'Déménagement',s:'Démén.',info:'2 j'},autre:{l:'Autre congé exceptionnel',s:'Exc.'},greve:{l:'Grève',s:'Grève',greve:1},nonrem:{l:'Absence non rémunérée',s:'Abs.NR',greve:1}};
 function _excOf(k){var x=(S.excInfo||{})[k];if(!x)return null;var c=(S.conges||{})[k];
   // valable seulement si le jour est toujours posé comme ça (absence, ou rendu pour la ½ journée complétée)
-  if(x.g&&x.g!=='j')return c?null:x;if(x.half?(x.rest==='rend'?(c!=='rend'&&c!=='rend-hist'):!!c):c!=='absent')return null;return x;}
+  if(x.g&&x.g!=='j')return c?null:x;if(x.half&&x.rest==='rend'&&!c)return Object.assign({},x,{rest:'work'});if(x.half?(x.rest==='rend'?(c!=='rend'&&c!=='rend-hist'):!!c):c!=='absent')return null;return x;}
 // Jours pris par motif sur l'année (½ journée = 0,5 ; enfant et proche malades comptés ensemble)
 function _excUsed(m,y){var n=0;Object.keys(S.excInfo||{}).forEach(function(k){if(+k.slice(0,4)!==y)return;var x=_excOf(k);if(!x)return;
   var same=x.m===m||((m==='enfant'||m==='proche')&&(x.m==='enfant'||x.m==='proche'));if(same)n+=x.half?0.5:1;});return n;}
@@ -2398,8 +2398,9 @@ function calcDimRHFerMinsMois(y,m){
   const mym=y*12+m,sett=settingsForYM(mym),seenW=new Set(),last=new Date(y,m+1,0).getDate();const VAC=getVAC();let dim=0,rh=0,fer=0;
   for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd),mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);const sun=new Date(mon);sun.setDate(mon.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mym)continue;
     for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);const key=dk(d);const cKey=(S.conges||{})[key];if(cKey&&(cKey==='cg'||cKey==='rend'||cKey==='rend-hist'||cKey==='absent'))continue;const{vac:_rawVac,absent,echange,ecSelf}=getVac(d);if(!_rawVac||_rawVac==='RH'||absent)continue;if(echange&&!ecSelf)continue;const dur=VAC[_rawVac]?VAC[_rawVac].dur:0;if(!dur)continue;const isFer=FERIES.has(key),isDim=d.getDay()===0,isRH=isRHDay(d);
+      // férié se cumule avec dimanche ou RH (comme buildGen) ; dimanche et RH, eux, ne se cumulent pas
       if(isFer&&!sett.ferRendu)fer+=dur;
-      else if(isDim&&!sett.dimRendu)dim+=dur;
+      if(isDim&&!sett.dimRendu)dim+=dur;
       else if(isRH&&!echange&&!sett.rhRendu)rh+=dur;}}
   return{dim,rh,fer};
 }
@@ -3599,19 +3600,8 @@ function openDay(key){
   var _inMatelas=!!(S.matelasKeys&&S.matelasKeys[key]!==undefined);
   var _matelasAvail=(S.profile&&S.profile.matelas)||0;
   var _isWarnedRend=false;
-  if(hasCg==='rend'&&!_inMatelas){
-    var _stk2={};
-    Object.keys(cs.realAvail).map(Number).sort().forEach(function(ym){_stk2[ym]=cs.realAvail[ym];});
-    Object.keys(cs.prevEph).map(Number).sort().forEach(function(ym){_stk2[ym]=(_stk2[ym]||0)+cs.prevEph[ym];});
-    var _rks2=Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='rend'&&!(S.matelasKeys&&S.matelasKeys[k]);}).sort();
-    for(var _ri=0;_ri<_rks2.length;_ri++){
-      var _rk=_rks2[_ri];
-      var _rd=new Date(_rk+'T12:00:00'),_rpym=_rd.getFullYear()*12+_rd.getMonth(),_rdur=getDur(_rd);
-      var _rlft=_rdur;
-      Object.keys(_stk2).map(Number).sort().forEach(function(_ym){if(_rlft<=0||_stk2[_ym]<=0||getExpYm(_ym)<_rpym)return;var _rtk=Math.min(_stk2[_ym],_rlft);_stk2[_ym]-=_rtk;_rlft-=_rtk;});
-      if(_rk===key){_isWarnedRend=_rlft>0;break;}
-    }
-  }
+  // rendu sans heures pour le couvrir : même calcul que l'alerte (calcSoldes), pas un second décompte
+  if(hasCg==='rend'&&!_inMatelas)_isWarnedRend=!!(cs.warnKeys&&cs.warnKeys.has(key));
   var ah='';
   if((vac&&vac!=='RH'&&!absent)&&!hasCg){
     ah=`<div class="mbtns" style="grid-template-columns:repeat(4,1fr)">
@@ -3763,9 +3753,9 @@ function removeExtraRendu(key){
   if(S.extraRendus)delete S.extraRendus[key];
   saveState();render();_addBack(key);
 }
-function resetVac(){pushUndo('Jour remis');var _pk=pendingKey;removeHistoryForKey(_pk);if(S.extraRendus)delete S.extraRendus[_pk];if(S.dayPrimes)delete S.dayPrimes[_pk];if(!S.overrides)S.overrides={};delete S.overrides[_pk];if(!S.conges)S.conges={};delete S.conges[_pk];saveState();closeModal();render();popCell(_pk);gcalTrigger();}
+function resetVac(){pushUndo('Jour remis');var _pk=pendingKey;removeHistoryForKey(_pk);if(S.extraRendus)delete S.extraRendus[_pk];if(S.dayPrimes)delete S.dayPrimes[_pk];if(!S.overrides)S.overrides={};delete S.overrides[_pk];if(!S.conges)S.conges={};delete S.conges[_pk];if(S.excInfo)delete S.excInfo[_pk];saveState();closeModal();render();popCell(_pk);gcalTrigger();}
 function setAbsent(){pushUndo('Absence posée');var date=new Date(pendingKey+'T12:00:00');if(!S.overrides)S.overrides={};S.overrides[pendingKey]={absent:true};if(!S.conges)S.conges={};S.conges[pendingKey]='absent';logH(fmtDate(date)+' -> absent','#c88048',pendingKey);saveState();closeModal();render();gcalTrigger();}
-function resetAbsent(){pushUndo('Absence retirée');removeHistoryForKey(pendingKey);if(!S.overrides)S.overrides={};delete S.overrides[pendingKey];if(!S.conges)S.conges={};delete S.conges[pendingKey];saveState();closeModal();render();gcalTrigger();}
+function resetAbsent(){pushUndo('Absence retirée');removeHistoryForKey(pendingKey);if(!S.overrides)S.overrides={};delete S.overrides[pendingKey];if(!S.conges)S.conges={};delete S.conges[pendingKey];if(S.excInfo)delete S.excInfo[pendingKey];saveState();closeModal();render();gcalTrigger();}
 function popCell(key){var el=document.querySelector('.dci[data-key="'+key+'"]');if(el){el.classList.add('pop');el.addEventListener('animationend',function(){el.classList.remove('pop');},{once:true});}}
 function showBlockAlert(title,msg){
   document.getElementById('modal-root').innerHTML='<div class="overlay" style="z-index:400"><div class="sheet" style="max-height:220px"><div class="sh"></div>'
@@ -4327,6 +4317,9 @@ function _rhImportPromptIfNeeded(){
     +'</div></div>';
   return true;
 }
+// Dimanche (fin) de la dernière semaine notée par le gestionnaire. En janvier, une « S50 » est celle de l'année d'avant
+function _rhLastWeekEnd(rh,ed){if(!rh.lastWeek)return null;var y=ed.getFullYear();if(rh.lastWeek>getISOWeek(getMonday(ed))+1)y--;
+  var m=getMonday(new Date(y,0,4,12));m.setDate(m.getDate()+(rh.lastWeek-1)*7+6);m.setHours(23,59,0,0);return m;}
 function _rhImportPlan(rh,keepCounted){
   const ed=new Date(rh.edition.getFullYear(),rh.edition.getMonth(),rh.edition.getDate(),12);
   const baseKey=dk(ed),edYM=ed.getFullYear()*12+ed.getMonth();
@@ -4344,7 +4337,7 @@ function _rhImportPlan(rh,keepCounted){
   const toHist=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='rend'&&(k<=baseKey||new Date(k+'T12:00:00').getFullYear()*12+new Date(k+'T12:00:00').getMonth()<edYM)).sort();
   // Rendus postérieurs à la dernière semaine citée mais antérieurs au tableau : peut-être pas encore déduits par le gestionnaire
   const edY=ed.getFullYear();
-  const maybeLate=rh.lastWeek?toHist.filter(k=>{const d=new Date(k+'T12:00:00');return d.getFullYear()===edY&&getISOWeek(getMonday(d))>rh.lastWeek;}):[];
+  const _lwE=_rhLastWeekEnd(rh,ed),maybeLate=_lwE?toHist.filter(k=>new Date(k+'T12:00:00')>_lwE):[];
   // Rendus douteux que l'utilisateur garde décomptés par l'app (pas encore saisis par le gestionnaire)
   const keep=keepCounted||new Set();
   return{ed,baseKey,edYM,split,reports,total,toHist:toHist.filter(k=>!keep.has(k)),maybeLate,matelas:rh.tot.stockAct};
@@ -4382,8 +4375,9 @@ function rhImportApply(){
   const keep=new Set(_rhImportPlan(rh).maybeLate); // rendus après la dernière semaine notée : décomptés par l'app
   const P=_rhImportPlan(rh,keep),pr=S.profile;
   // Sauvegarde pour pouvoir annuler l'import
-  pr._rhImportBackup={matelas:pr.matelas,ephSolde:pr.ephSolde,ephSoldeCreatedYM:pr.ephSoldeCreatedYM,ephSoldeSplit:pr.ephSoldeSplit?Object.assign({},pr.ephSoldeSplit):null,ephBaseDate:pr.ephBaseDate||null,ephExtend:Object.assign({},S.ephExtend||{}),autoExtend:Object.assign({},S.autoExtend||{}),toHist:P.toHist,at:Date.now()};
-  if(P.matelas!==null&&P.matelas!==undefined)pr.matelas=P.matelas;
+  pr._rhImportBackup={matelas:pr.matelas,ephSolde:pr.ephSolde,ephSoldeCreatedYM:pr.ephSoldeCreatedYM,ephSoldeSplit:pr.ephSoldeSplit?Object.assign({},pr.ephSoldeSplit):null,ephBaseDate:pr.ephBaseDate||null,ephExtend:Object.assign({},S.ephExtend||{}),autoExtend:Object.assign({},S.autoExtend||{}),matelasKeys:Object.assign({},S.matelasKeys||{}),toHist:P.toHist,at:Date.now()};
+  // matelas du tableau = total disponible : les anciennes affectations aux rendus sont refaites dessus (sinon elles s'y ajoutaient)
+  if(P.matelas!==null&&P.matelas!==undefined){S.matelasKeys={};pr.matelas=P.matelas;}
   pr.ephSoldeSplit=P.split;pr.ephSolde=Math.round(P.total/60*100)/100;
   pr.ephSoldeCreatedYM=P.edYM;pr.ephBaseDate=P.baseKey;
   // Reports : ceux du tableau, et aucun pour les mois qu'il ne reporte pas (les anciens reports de l'app ne restent pas)
@@ -4391,7 +4385,7 @@ function rhImportApply(){
   Object.keys(S.ephExtend).map(Number).concat(Object.keys(S.autoExtend).map(Number)).forEach(ym=>{if(ym<P.edYM){delete S.ephExtend[ym];delete S.autoExtend[ym];}});
   Object.keys(P.reports).forEach(ym=>{S.ephExtend[ym]=P.reports[ym];});
   P.toHist.forEach(k=>{S.conges[k]='rend-hist';});
-  pr.rhImportedAt=dk(P.ed);
+  pr.rhImportedAt=dk(P.ed);try{recalcAllMatelas();}catch(e){}
   saveState();render();
   // Pas de page « Import terminé » ni de comparaison ouverte : la comparaison est calculée sans s'afficher (son écart sert à Suivi)
   try{rhCompareShow(rh);}catch(e){}
@@ -4404,7 +4398,7 @@ function rhImportUndo(){
   pr.matelas=b.matelas;pr.ephSolde=b.ephSolde;pr.ephSoldeCreatedYM=b.ephSoldeCreatedYM;
   if(b.ephSoldeSplit)pr.ephSoldeSplit=b.ephSoldeSplit;else delete pr.ephSoldeSplit;
   if(b.ephBaseDate)pr.ephBaseDate=b.ephBaseDate;else delete pr.ephBaseDate;
-  S.ephExtend=b.ephExtend||{};if(b.autoExtend)S.autoExtend=b.autoExtend;
+  S.ephExtend=b.ephExtend||{};if(b.autoExtend)S.autoExtend=b.autoExtend;if(b.matelasKeys)S.matelasKeys=b.matelasKeys;
   (b.toHist||[]).forEach(k=>{if(S.conges[k]==='rend-hist')S.conges[k]='rend';});
   delete pr._rhImportBackup;delete pr.rhImportedAt;
   saveState();closeModal();render();
@@ -4471,7 +4465,7 @@ function rhCompareShow(rh){
   const yms=[...months].filter(ym=>ym<asOfYM).sort((a,b)=>a-b);
   const edY=asOf.getFullYear();
   // Rendus posés après la dernière semaine notée par le gestionnaire : pas encore dans son tableau, mis de côté
-  const isLagged=key=>{if(!rh.lastWeek)return false;const d=new Date(key+'T12:00:00');return d.getFullYear()===edY&&getISOWeek(getMonday(d))>rh.lastWeek;};
+  const _lwE=_rhLastWeekEnd(rh,asOf),isLagged=key=>!!_lwE&&new Date(key+'T12:00:00')>_lwE;
   const items=[],detRows=[],repList=[];let sumSolApp=0,lagTot=0,acqBad=0,ignSum=0;const lagKeys=[];
   const acqIt=[],acqRows=[];let tConsS=0,tConsA=0;
   const item=(t,sub,v,body,neutral,to)=>(to||items).push('<div class="rv-it" onclick="if(event.target.tagName!==\'BUTTON\')this.classList.toggle(\'on\')"><div class="rv-ih"><span class="rv-dot"></span><div class="rv-tt">'+t+'<small>'+sub+'</small></div><b class="rv-v'+(neutral?' n':/^\+/.test(v)?' pos':/^−/.test(v)?' neg':'')+'">'+v+'</b><i class="ti ti-chevron-down rv-ch"></i></div><div class="rv-ib">'+body+'</div></div>');
@@ -4561,7 +4555,8 @@ function rhCompareShow(rh){
   if(_sg.S0>0&&_sgTxt&&!_sgSame&&!_hasSplit&&!(S.profile&&S.profile.rhImportedAt))item('Solde de départ','Rattaché en entier à '+ymL(_sg.createdYM-1)+' dans l’app',fmtMin(_sg.S0),
     'D’après le tableau, ces heures viennent de : '+_sgTxt+'. Chaque part expire à sa date.<button class="rv-b2" onclick="rhApplySplit(true)">Le répartir ainsi</button>',true);
   // Synthèse
-  const solRh=rh.tot.cumSol,dSol=sumSolApp-solRh;
+  // total « Cumul soldes » absent du fichier : somme des soldes des lignes encore valables (sinon tout le solde de l'app passait pour un écart)
+  const solRh=rh.tot.cumSol!=null?rh.tot.cumSol:yms.reduce((t,ym)=>t+((sheet[ym]&&getExpYm(ym)>=asOfYM)?sheet[ym].solde:0),0),dSol=sumSolApp-solRh;
   // Dernier bilan, affiché sur le bouton « Comparer » du modal rendus
   const okParts=[];if(hasMat&&!matBad)okParts.push('matelas');if(!repList.length)okParts.push('reports');
   // Explication de l'écart : seules les vraies différences (acquises par mois, total déduit), le reste est un arrondi
@@ -4619,7 +4614,7 @@ function rhCompareShow(rh){
       window._rhLast=rh;
       return '<div class="rv-sec">Point de départ</div><div style="font-size:12px;color:var(--text3);line-height:1.45;margin:0 0 8px">Le suivi part du tableau du '+fd(bk)+'. Repartir de celui du '+fd(ek)+' reprend ses soldes, reports et matelas'+(ek<bk?' (il est plus ancien)':'')+'.</div>'
         +'<button class="rv-b2" onclick="rhImportPreview(window._rhLast)">Repartir de ce tableau</button>';})()
-    +'<div style="display:flex;gap:8px;margin:16px 0 14px"><button onclick="rhCompareOpen()" style=""font-size:11px;padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:none;cursor:pointer;font-family:var(--font);color:var(--text2)"><i class="ti ti-table-import" style="margin-right:4px"></i>Importer un tableau</button></div>'
+    +'<div style="display:flex;gap:8px;margin:16px 0 14px"><button onclick="rhCompareOpen()" style="font-size:11px;padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:none;cursor:pointer;font-family:var(--font);color:var(--text2)"><i class="ti ti-table-import" style="margin-right:4px"></i>Importer un tableau</button></div>'
     +'<button class="mcancel mclose" onclick="closeModal()">Fermer</button>'
     +'</div></div>';
   document.getElementById('modal-root').innerHTML=html;
@@ -4681,13 +4676,20 @@ function applyPose(type,startKey,unique){
     while(_dCf<=end){const _kCf=dk(_dCf),_vCf=getVac(_dCf);if(_vCf.vac&&_vCf.vac!=='RH'&&!_vCf.absent){const _exCf=(S.conges||{})[_kCf];if(_oppT.indexOf(_exCf)>=0)_cf.push(_kCf);}_dCf.setDate(_dCf.getDate()+1);}
     if(_cf.length>0){const _oppLbl=type==='cg'?'rendu':'congé';showBlockAlert('Conflit',_cf.length+' jour'+(_cf.length>1?'s':'')+' déjà posé'+(_cf.length>1?'s':'')+' comme '+_oppLbl+'. Les supprimer avant de continuer.');return;}
   }
+  // Absence sur des jours déjà en congé ou en rendu : les remplacer seulement après confirmation
+  if(type==='absent'){var _ab=0,_dAb=new Date(start);while(_dAb<=end){const _x=(S.conges||{})[dk(_dAb)];if(_x==='cg'||_x==='rend'||_x==='rend-hist')_ab++;_dAb.setDate(_dAb.getDate()+1);}
+    if(_ab&&!confirm(_ab+' jour'+(_ab>1?'s':'')+' déjà posé'+(_ab>1?'s':'')+' en congé ou en rendu ser'+(_ab>1?'ont':'a')+' remplacé'+(_ab>1?'s':'')+' par l’absence. Continuer ?'))return;}
 
   // Solde check: congés
   if(type==='cg'){
     const _cgByY={};var _dCg=new Date(start);
     while(_dCg<=end){const _kCg=dk(_dCg),_vCg=getVac(_dCg);if(_vCg.vac&&_vCg.vac!=='RH'&&!_vCg.absent&&(S.conges||{})[_kCg]!=='cg'){const _yCg=_dCg.getFullYear();_cgByY[_yCg]=(_cgByY[_yCg]||0)+1;}_dCg.setDate(_dCg.getDate()+1);}
     var _cgShort=0,_cgShortY=null;
-    Object.keys(_cgByY).forEach(function(_y2){const _r=computeCongesRest(Number(_y2));if(_cgByY[_y2]>_r){_cgShort=_cgByY[_y2]-_r;_cgShortY=Number(_y2);}});
+    // Pose simulée puis annulée : le décompte réel (semaine entière = 5 j, jours d'écart) peut dépasser le nombre de jours travaillés
+    var _cgSim=[];_dCg=new Date(start);while(_dCg<=end){const _k=dk(_dCg),_v=getVac(_dCg);if(_v.vac&&_v.vac!=='RH'&&!_v.absent&&(S.conges||{})[_k]!=='cg'){_cgSim.push([_k,(S.conges||{})[_k]]);if(!S.conges)S.conges={};S.conges[_k]='cg';}_dCg.setDate(_dCg.getDate()+1);}
+    var _cgAfter={};Object.keys(_cgByY).forEach(function(_y2){_cgAfter[_y2]=computeCongesRest(Number(_y2));});
+    _cgSim.forEach(function(x){if(x[1]===undefined)delete S.conges[x[0]];else S.conges[x[0]]=x[1];});
+    Object.keys(_cgAfter).forEach(function(_y2){if(_cgAfter[_y2]<0){_cgShort=-_cgAfter[_y2];_cgShortY=Number(_y2);}});
     if(_cgShort>0){showBlockAlert('Solde insuffisant','Il manque '+_cgShort+' jour'+(_cgShort>1?'s':'')+' pour '+_cgShortY+'. Disponible : '+Math.max(0,computeCongesRest(_cgShortY))+' j.');return;}
   }
 
@@ -4701,7 +4703,7 @@ function applyPose(type,startKey,unique){
       const v2=getVac(d0);
       if(v2.vac&&v2.vac!=='RH'&&!v2.absent){
         const _d0ym=d0.getFullYear()*12+d0.getMonth();
-        if(_d0ym>=_createdYM_v){totalRend+=getDur(d0);_newKeys.push(dk(d0));}
+        if(_d0ym>=_createdYM_v&&_rendStatus(dk(d0))==='rend'){totalRend+=getDur(d0);_newKeys.push(dk(d0));}
       }
       d0.setDate(d0.getDate()+1);
     }
@@ -4739,8 +4741,8 @@ function applyPose(type,startKey,unique){
       if(type==='absent'&&EXC_M[_xm]&&EXC_M[_xm].greve&&_xg!=='j'){S.excInfo[k]={m:_xm,g:_xg};delete S.conges[k];}
       else if(type==='absent'&&_xh){S.excInfo[k]={m:_xm,half:1,rest:_xr};if(_xr==='rend')S.conges[k]=_rendStatus(k);else delete S.conges[k];}
       else if(type==='absent'){S.overrides[k]={absent:true};S.conges[k]='absent';if(_xm)S.excInfo[k]=EXC_M[_xm].greve?{m:_xm,g:'j'}:{m:_xm};else if(S.excInfo)delete S.excInfo[k];}
-      else if(type==='rend'){S.conges[k]=_rendStatus(k);}
-      else{S.conges[k]=type;}
+      else if(type==='rend'){S.conges[k]=_rendStatus(k);if(S.excInfo)delete S.excInfo[k];}
+      else{S.conges[k]=type;if(S.excInfo)delete S.excInfo[k];}
     }
     d.setDate(d.getDate()+1);
   }
