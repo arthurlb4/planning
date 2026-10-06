@@ -4330,11 +4330,14 @@ function rhImportApply(){
   const keep=new Set(_rhImportPlan(rh).maybeLate); // rendus après la dernière semaine notée : décomptés par l'app
   const P=_rhImportPlan(rh,keep),pr=S.profile;
   // Sauvegarde pour pouvoir annuler l'import
-  pr._rhImportBackup={matelas:pr.matelas,ephSolde:pr.ephSolde,ephSoldeCreatedYM:pr.ephSoldeCreatedYM,ephSoldeSplit:pr.ephSoldeSplit?Object.assign({},pr.ephSoldeSplit):null,ephBaseDate:pr.ephBaseDate||null,ephExtend:Object.assign({},S.ephExtend||{}),toHist:P.toHist,at:Date.now()};
+  pr._rhImportBackup={matelas:pr.matelas,ephSolde:pr.ephSolde,ephSoldeCreatedYM:pr.ephSoldeCreatedYM,ephSoldeSplit:pr.ephSoldeSplit?Object.assign({},pr.ephSoldeSplit):null,ephBaseDate:pr.ephBaseDate||null,ephExtend:Object.assign({},S.ephExtend||{}),autoExtend:Object.assign({},S.autoExtend||{}),toHist:P.toHist,at:Date.now()};
   if(P.matelas!==null&&P.matelas!==undefined)pr.matelas=P.matelas;
   pr.ephSoldeSplit=P.split;pr.ephSolde=Math.round(P.total/60*100)/100;
   pr.ephSoldeCreatedYM=P.edYM;pr.ephBaseDate=P.baseKey;
-  if(!S.ephExtend)S.ephExtend={};Object.keys(P.reports).forEach(ym=>{S.ephExtend[ym]=P.reports[ym];});
+  // Reports : ceux du tableau, et aucun pour les mois qu'il ne reporte pas (les anciens reports de l'app ne restent pas)
+  if(!S.ephExtend)S.ephExtend={};if(!S.autoExtend)S.autoExtend={};
+  Object.keys(S.ephExtend).map(Number).concat(Object.keys(S.autoExtend).map(Number)).forEach(ym=>{if(ym<P.edYM){delete S.ephExtend[ym];delete S.autoExtend[ym];}});
+  Object.keys(P.reports).forEach(ym=>{S.ephExtend[ym]=P.reports[ym];});
   P.toHist.forEach(k=>{S.conges[k]='rend-hist';});
   pr.rhImportedAt=dk(P.ed);
   saveState();render();
@@ -4349,7 +4352,7 @@ function rhImportUndo(){
   pr.matelas=b.matelas;pr.ephSolde=b.ephSolde;pr.ephSoldeCreatedYM=b.ephSoldeCreatedYM;
   if(b.ephSoldeSplit)pr.ephSoldeSplit=b.ephSoldeSplit;else delete pr.ephSoldeSplit;
   if(b.ephBaseDate)pr.ephBaseDate=b.ephBaseDate;else delete pr.ephBaseDate;
-  S.ephExtend=b.ephExtend||{};
+  S.ephExtend=b.ephExtend||{};if(b.autoExtend)S.autoExtend=b.autoExtend;
   (b.toHist||[]).forEach(k=>{if(S.conges[k]==='rend-hist')S.conges[k]='rend';});
   delete pr._rhImportBackup;delete pr.rhImportedAt;
   saveState();closeModal();render();
@@ -4456,9 +4459,7 @@ function rhCompareShow(rh){
     // Détail mois par mois
     if(cmpSol){
       const tA=Object.values(M.nat).reduce((x,y)=>x+y,0),aA=Object.values(appNat).reduce((x,y)=>x+y,0);
-      if(recent)acqRows.push({ym,s:tA,a:aA});
-      // rendus déduits : aussi ceux pris sur le solde de départ (mois d'avant le suivi), sinon le total ne couvre pas les mêmes rendus des deux côtés
-      if(ym>=asOfYM-12){tConsS+=M.cons;tConsA+=consA;}
+      if(recent){acqRows.push({ym,s:tA,a:aA});tConsS+=M.cons;tConsA+=consA;}
       const r=(l,s,a,cls)=>'<tr'+(cls?' class="'+cls+'"':bad(a-s)?' class="rc-bad"':'')+'><td>'+l+'</td><td>'+(s?fmtMin(s):'—')+'</td><td>'+(a?fmtMin(a):'—')+'</td><td>'+(cls?'':fmtE(a-s))+'</td></tr>';
       detRows.push('<tr class="rc-ym"><td colspan="4">'+ymL(ym)+(valid?'':' <span style="opacity:.6;font-weight:400">(expiré)</span>')+'</td></tr>'
         +(tracked?r('Acquises',tA,aA)+r('Consommées',M.cons,consA):'<tr><td colspan="4" style="opacity:.6">Solde de départ : '+fmtMin(startSolde)+'</td></tr>')
@@ -4478,6 +4479,13 @@ function rhCompareShow(rh){
   const _trkYM=Math.max(createdYM,asOfYM-12),_trkStart=new Date(Math.floor(_trkYM/12),_trkYM%12,1);
   const _appWk=new Set();Object.keys(S.conges||{}).forEach(k=>{if(S.conges[k]!=='rend')return;const d=new Date(k+'T12:00:00');if(d<_trkStart||d>asOf||d.getFullYear()!==edY)return;_appWk.add(getISOWeek(getMonday(d)));});
   const _wk=rh.lastWeek||Object.keys(rh.weeks||{}).length?[...new Set([...Object.keys(rh.weeks||{}).map(Number),..._appWk])].sort((a,b)=>a-b):[];
+  // Rendus déduits comparés depuis le point de départ (import du tableau), semaine par semaine quand le tableau les commente :
+  // le total par mois d'origine mélange des rendus d'avant le départ (déjà soldés) et ne couvre pas les mêmes rendus des deux côtés
+  if(rh.weeks&&Object.keys(rh.weeks).length){
+    const _bd=S.profile&&S.profile.ephBaseDate?new Date(S.profile.ephBaseDate+'T12:00:00'):_trkStart;
+    const _in=w=>{const mon=_isoMon(edY,w);return mon>_bd&&mon<=asOf&&(!rh.lastWeek||w<=rh.lastWeek);};
+    tConsS=Object.keys(rh.weeks).map(Number).filter(_in).reduce((t,w)=>t+rh.weeks[w],0);
+    tConsA=Object.keys(S.conges||{}).filter(k=>{if(S.conges[k]!=='rend')return false;const d=new Date(k+'T12:00:00');return d.getFullYear()===edY&&_in(getISOWeek(getMonday(d)));}).reduce((t,k)=>t+getDur(new Date(k+'T12:00:00')),0);}
   let wkBad=0,wkCmt=0;const consOk=!bad(tConsA-tConsS);
   const wkRows=_wk.map(w=>{const mon=_isoMon(edY,w),sun=new Date(mon);sun.setDate(mon.getDate()+6);
     const days=[];for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);if((S.conges||{})[dk(d)]==='rend'&&d>=_trkStart&&d<=asOf)days.push({k:dk(d),dur:getDur(d)});}
