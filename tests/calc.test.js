@@ -105,6 +105,11 @@ function situation(opts) {
   eq('Bulletin : lignes RAP reconnues, cotisations ignorées', a.run('JSON.stringify(_b.rap.map(function(r){return [r.ym,r.k,r.q];}))'),
     JSON.stringify([[YM(2026, 7), 'hsLow', 9.25], [YM(2026, 7), 'nuit', 13.5], [YM(2026, 4), 'reel', 1], [YM(2026, 7), 'panier', 2]]));
   eq('Bulletin : paniers', a.run('_b.paniers.q'), 2);
+  // Bulletin d'avril 2025 : « ABSENCE NON REMUNEREE 160 1,00 15,548 -15,55 » = (qualification + ancienneté + indemnité mensuelle) / 160, mois du bulletin
+  eq('Absence non rémunérée / grève : ligne lue, retenue de l’app identique (1 heure, 1/160ᵉ)', a.run('(function(){var o=_bulParse(["PERIODE DE PAIE DU 01/04/2025 AU 30/04/2025","ABSENCE NON REMUNEREE 160 1,00 15,548 -15,55","**TOTAL BRUT PAYE 3755,99"]),sv=JSON.stringify([S.profile,S.excInfo||null,S.conges]);'
+    + 'S.profile.palierNum=22;S.profile.ancYears=7;S.profile.ancRefYM=' + YM(2025, 4) + ';S.profile.groupeClassif=5;S.profile.heuresMensuelles=151.67;S.excInfo={"2025-04-10":{m:"greve",g:"h"}};delete S.conges["2025-04-10"];'
+    + 'var P=calcPayeMois(2025,3),f=_bulCompare(o).fixed.filter(function(x){return x.lbl==="Absence non rémunérée";})[0];var r=JSON.stringify([o.absNR,P.greveRet,f&&f.ok]);var z=JSON.parse(sv);S.profile=z[0];S.excInfo=z[1]||undefined;S.conges=z[2];return r;})()'),
+    JSON.stringify([{ q: 1, mt: -15.55, div: 160 }, 15.55, true]));
   // Découpage du PDF en lignes : libellé et montant à 1 pt d'écart réunis, mention verticale de la marge écartée
   eq('PDF : lignes reconstituées, texte pivoté écarté', a.run('JSON.stringify(_pdfRows([{str:"MESURE NAO CDI 2023",transform:[1,0,0,1,90,500]},{str:"130,00",transform:[1,0,0,1,400,499]},{str:"V. 2022",transform:[0,1,-1,0,20,500]},{str:"P.F.A NAC MENS",transform:[1,0,0,1,90,508]},{str:"170,00",transform:[1,0,0,1,400,508.6]}]))'),
     JSON.stringify(['P.F.A NAC MENS 170,00', 'MESURE NAO CDI 2023 130,00']));
