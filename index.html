@@ -349,10 +349,14 @@ function _regPick(accept,multi,key,noteId,lbl){
   inp.onchange=async function(){
     var fs=[].slice.call(inp.files||[]);if(!fs.length)return;
     try{var out=[];for(var i=0;i<fs.length;i++){out.push({name:fs[i].name,data:await new Promise(function(ok,ko){var r=new FileReader();r.onload=function(){ok(r.result);};r.onerror=ko;r.readAsDataURL(fs[i]);})});}
+      // bulletins : les choix successifs s'ajoutent (un même fichier n'est gardé qu'une fois)
+      if(multi){var prev=[];try{prev=JSON.parse(localStorage.getItem(key)||'[]')||[];}catch(_){}out=prev.filter(function(p){return !out.some(function(o){return o.name===p.name;});}).concat(out);}
       localStorage.setItem(key,JSON.stringify(out));
       // le bouton lui-même montre que le fichier est pris
       var bt=document.getElementById(key==='pl_rh_file'?'reg-rh-imp':'reg-pay-bul');if(bt)bt.textContent='✓ '+(key==='pl_rh_file'?'Tableau choisi':(out.length>1?out.length+' bulletins choisis':'Bulletin choisi'));
-      var n=document.getElementById(noteId);if(n)n.innerHTML='<span style="color:#6a9878">✓</span> '+(out.length>1?out.length+' '+lbl+' choisis':out[0].name.replace(/</g,'&lt;'))+' <a style="color:var(--blue);cursor:pointer" onclick="'+(key==='pl_rh_file'?'regRhMode(1)':'regPayMode(1)')+'">Changer</a>';
+      var esc=function(t){return String(t).replace(/</g,'&lt;');},n=document.getElementById(noteId);
+      if(n)n.innerHTML=out.map(function(o){return '<div><span style="color:#6a9878">✓</span> '+esc(o.name)+'</div>';}).join('')
+        +'<a style="color:var(--blue);cursor:pointer" onclick="'+(key==='pl_rh_file'?'regRhMode(1)':'regPayMode(1)')+'">'+(multi?'Ajouter un bulletin':'Changer')+'</a>';
     }catch(e){var n2=document.getElementById(noteId);if(n2)n2.textContent='Fichier trop lourd pour être gardé : l’app le demandera juste après la création.';try{localStorage.removeItem(key);}catch(_){}}
   };
   inp.click();
