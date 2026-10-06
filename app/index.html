@@ -2577,7 +2577,7 @@ function _bulPayDiffs(){
     c.late.forEach(function(l){var sk=RK[l.k];if(sk&&l.ym!=null&&!l.info&&l.q>0)addB(sk,l.ym,Math.round(l.q*60));});});
   var bm=function(sk,W){return (B[sk]||{})[W]||0;};
   // Choix gardés contre le bulletin (erreur du gestionnaire à faire corriger) : plus proposés tant que le bulletin dit la même chose
-  var KP=pr.bulRendKeep||{},nKept=0,add=function(x){if(KP[x.k+':'+x.ym]===x.v){nKept++;return;}PD.push(x);};
+  var KP=pr.bulRendKeep||{},KL=[],add=function(x){x.h=raw(x.k,x.ym);if(KP[x.k+':'+x.ym]===x.v){KL.push(x);return;}PD.push(x);};
   ['ferRendu','dimRendu','rhRendu','hsRendu'].forEach(function(sk){var known={};
     var months=Object.keys(cov).map(Number).concat(Object.keys(B[sk]||{}).map(Number)).filter(function(v,i,a){return a.indexOf(v)===i;}).sort(function(a,b){return a-b;});
     months.forEach(function(W){var b=bm(sk,W),A=raw(sk,W);
@@ -2596,7 +2596,7 @@ function _bulPayDiffs(){
     // Mois d'anniversaire inconnu (pas deux bulletins consécutifs qui l'encadrent) : demandé, avec l'intervalle déduit des bulletins
     var known=typeof pr.ancMoisAnni==='number'&&pr.ancMoisAnni>=0,skip=pr.ancMoisAnni===-2;
     if(mo==null&&((!known&&!skip)||bad))ask={rng:rng};}
-  return{kept:nKept,palier:out.palier,heures:out.heures,groupe:out.groupe,anc:A,ask:ask,pfa:P,paid:PD,n:out.palier.length+out.heures.length+out.groupe.length+(A?1:0)+(P?1:0)+(ask&&!A?1:0)+PD.length};
+  return{kept:KL.length,keptList:KL,palier:out.palier,heures:out.heures,groupe:out.groupe,anc:A,ask:ask,pfa:P,paid:PD,n:out.palier.length+out.heures.length+out.groupe.length+(A?1:0)+(P?1:0)+(ask&&!A?1:0)+PD.length};
 }
 function _bulPayApply(){
   var D=_bulPayDiffs(),pr=S.profile;if(!D.n)return;pushUndo('Réglages de paie depuis les bulletins');
@@ -2649,7 +2649,7 @@ function _bulPayPropose(then,all){
       +'<span style="flex:1;min-width:0"><span style="color:var(--text)">'+MCs[x.ym%12]+' '+String(Math.floor(x.ym/12)).slice(2)+' · '+RL[x.k]+'</span>'
       +'<span style="display:block;color:var(--text3);font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+why+'</span></span>'
       +'<span class="bpseg" data-bp="'+x.k+':'+x.ym+'" data-v="'+(x.v?1:0)+'">'+[0,1].map(function(v){return '<span'+((x.v?1:0)===v?' class="on"':'')+' onclick="var g=this.parentNode;g.dataset.v='+v+';[].forEach.call(g.children,function(c,j){c.classList.toggle(\'on\',j==='+v+');})">'+(v?'rendus':'payés')+'</span>';}).join('')+'</span></div>';}).join('');
-  var KEPT=D.kept?'<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0 2px;border-top:0.5px solid var(--border);font-size:11px;color:var(--text3)"><span>'+D.kept+' mois gardé'+(D.kept>1?'s':'')+' contre le bulletin</span><a style="color:var(--blue);cursor:pointer" onclick="delete S.profile.bulRendKeep;saveState();_bulPayPropose(window._bulPayThen,'+(all?1:0)+')">Revoir</a></div>':'';
+  var KEPT=D.kept?'<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0 2px;border-top:0.5px solid var(--border);font-size:11px;color:var(--text3)"><span>'+D.kept+' mois gardé'+(D.kept>1?'s':'')+' contre le bulletin</span><span style="white-space:nowrap"><a style="color:var(--blue);cursor:pointer" onclick="_bulMsgOpen(null,function(){_bulPayPropose(window._bulPayThen,'+(all?1:0)+');})">Message</a><a style="color:var(--blue);cursor:pointer;margin-left:12px" onclick="delete S.profile.bulRendKeep;saveState();_bulPayPropose(window._bulPayThen,'+(all?1:0)+')">Revoir</a></span></div>':'';
   var okR=function(t){return '<div class="recap-row" style="font-size:12px;min-height:26px;gap:10px"><span style="color:var(--text3)">'+t+'</span><span>'+(nb?'<b style="color:var(--green)">✓ conforme</b><span style="color:var(--text3)"> · '+nb+' bulletin'+(nb>1?'s':'')+'</span>':'aucun bulletin<a style="color:var(--blue);cursor:pointer;margin-left:8px" onclick="importBulletins(function(){_bulPayPropose(window._bulPayThen,1);})">Importer</a>')+'</span></div>';};
   var sec=function(t,h){return '<div class="bpsec">'+t+'</div><div class="hd-card">'+h+'</div>';};
   // écart de paie avec les bulletins (comme la tuile Suivi) : souvent dû à la génération de rendus
@@ -2665,6 +2665,21 @@ function _bulPayPropose(then,all){
     +(D.n?'<div class="mbtns"><button class="mb" onclick="_bulPayDone(0)">Plus tard</button><button class="mb pri" onclick="_bulPayDone(1)">Mettre à jour</button></div>':'<div class="mbtns" style="grid-template-columns:1fr"><button class="mb pri" style="width:100%" onclick="_bulPayDone(0)">OK</button></div>')+'</div></div>';
   return true;
 }
+// Lignes à copier pour le gestionnaire : mois gardés contre le bulletin (génération de rendus mal appliquée)
+function _bulMsgLines(only){var D=_bulPayDiffs(),L={ferRendu:'Fériés travaillés',dimRendu:'Dimanches travaillés',rhRendu:'RH travaillés',hsRendu:'Heures sup'};
+  return D.keptList.filter(function(x){return x.h>0&&(only==null||x.ym===only);}).sort(function(a,b){return a.ym-b.ym;}).map(function(x){var y=Math.floor(x.ym/12),bm=x.ym+1;
+    // x.v : ce que dit le bulletin ; le réglage gardé est l'inverse
+    return ML[x.ym%12]+' '+y+' – '+L[x.k]+' ('+fmtMin(x.h)+') : '+(x.v?'à payer, mis en rendus à tort':'à mettre en rendus, payés à tort')+' (bulletin '+_deMois(bm)+' '+Math.floor(bm/12)+').';});}
+function _bulMsgOpen(only,back){
+  var ls=_bulMsgLines(only),txt=(ls.length>1?'Génération de rendus à corriger :\n':'')+ls.join('\n');window._bulMsgTxt=txt;window._bulMsgBack=back||null;
+  document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="sh"></div><div class="st">Message au gestionnaire</div>'
+    +'<div style="font-size:12px;color:var(--text3);line-height:1.45;margin:-4px 0 10px">Lignes à copier, d’après les mois gardés contre le bulletin.</div>'
+    +'<div class="hd-card" style="font-size:12.5px;line-height:1.5;white-space:pre-wrap;user-select:text;-webkit-user-select:text">'+(ls.length?txt.replace(/&/g,'&amp;').replace(/</g,'&lt;'):'<span style="color:var(--text3)">Aucun mois gardé contre le bulletin.</span>')+'</div>'
+    +'<div class="mbtns"><button class="mb" onclick="var b=window._bulMsgBack;b?b():closeModal()">Retour</button><button class="mb pri"'+(ls.length?'':' disabled')+' onclick="_bulMsgCopy()">Copier</button></div></div></div>';
+}
+function _bulMsgCopy(){var t=window._bulMsgTxt||'';var ok=function(){_haptic();_infoToast('✓ Copié');};
+  try{navigator.clipboard.writeText(t).then(ok,function(){_bulMsgCopyOld(t);ok();});}catch(e){_bulMsgCopyOld(t);ok();}}
+function _bulMsgCopyOld(t){var a=document.createElement('textarea');a.value=t;a.style.position='fixed';a.style.opacity='0';document.body.appendChild(a);a.select();try{document.execCommand('copy');}catch(e){}a.remove();}
 function _bulPayDone(ok){if(ok)_bulPayApply();var t=window._bulPayThen;window._bulPayThen=null;if(t)t();else if(ok)openSettingsModal(1);else closeModal();}
 function importBulletins(after){
   var inp=document.createElement('input');inp.type='file';inp.accept='application/pdf,.pdf';inp.multiple=true;
@@ -2841,7 +2856,12 @@ function _payPageHtml(ym){
     var ig=c.status==='ecart'&&_bulIgn(ym,c),nI=c.nIgn||0;
     if(ig)msg='Écarts ignorés';else if(c.status==='ecart'&&!(A>0.1)&&!c.badList.length)msg='✓ Conforme, écarts ignorés';
     h+='<div style="font-size:11px;font-weight:600;margin:0 0 4px;display:flex;align-items:baseline;color:'+(ig?'var(--text3)':c.status==='ecart'&&c.badList.length?'var(--amber)':'var(--green)')+'"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+msg+(nI&&!ig?'<span style="font-weight:400;color:var(--text3)"> · '+nI+' ignoré'+(nI>1?'s':'')+'</span>':'')+'</span>'
-      +(c.status==='ecart'&&c.items.length?'<a style="font-weight:400;color:var(--blue);cursor:pointer;margin-left:auto;padding-left:8px;flex-shrink:0;white-space:nowrap" onclick="event.stopPropagation();_openBulIgnMenu(this,'+ym+')">Ignorer…</a>':'')+'</div>';}
+      +(c.status==='ecart'&&c.items.length?'<a style="font-weight:400;color:var(--blue);cursor:pointer;margin-left:auto;padding-left:8px;flex-shrink:0;white-space:nowrap" onclick="event.stopPropagation();_openBulIgnMenu(this,'+ym+')">Ignorer…</a>':'')+'</div>'
+    // Écart sur fériés, dimanches, RH ou HS : souvent la génération de rendus du mois de travail → Vérification, ou message si le mois est gardé
+    if(c.status==='ecart'&&!ig&&c.items.some(function(i){return !i.ign&&/^r:(fer|dim|rh|hsLow|hsHigh)$/.test(i.id);})){var _D=null;try{_D=_bulPayDiffs();}catch(e){}
+      if(_D){var _W=ym-1,_pa=_D.paid.some(function(x){return x.ym===_W;}),_kp=_D.keptList.some(function(x){return x.ym===_W&&x.h>0;}),_lk='color:var(--blue);cursor:pointer;margin-left:auto;padding-left:8px;white-space:nowrap';
+        if(_pa)h+='<div style="font-size:11px;margin:0 0 4px;display:flex;color:var(--text3)"><span>Génération de rendus à corriger</span><a style="'+_lk+'" onclick="_bulPayPropose(function(){openBulletinModal('+ym+')},1)">Vérifier ›</a></div>';
+        else if(_kp)h+='<div style="font-size:11px;margin:0 0 4px;display:flex;color:var(--text3)"><span>Gardé contre le bulletin</span><a style="'+_lk+'" onclick="_bulMsgOpen('+_W+',function(){openBulletinModal('+ym+')})">Message ›</a></div>';}}}
   var pR=(v.panierRate!=null?v.panierRate:getPanierRate());
   // Ligne paniers et ligne de statut toujours présentes : la case garde la même hauteur
   if(!c)h+='<div style="font-size:11px;margin:0 0 4px;color:var(--text3)">Pas de bulletin</div>';
