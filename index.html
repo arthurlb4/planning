@@ -177,7 +177,7 @@ input,textarea,select{user-select:text;-webkit-user-select:text;}
             <button type="button" id="reg-pay-bul" class="btn" style="flex:1;margin:0;height:40px;font-size:13px" onclick="regPayMode(1)">Importer un bulletin</button>
             <button type="button" id="reg-pay-man" class="btn" style="flex:1;margin:0;height:40px;font-size:13px;background:rgba(255,250,243,.09);color:var(--text);border:none" onclick="regPayMode(0)">Saisir à la main</button>
           </div>
-          <div id="reg-pay-bulnote" style="font-size:11.5px;color:var(--text3);line-height:1.5;margin-bottom:8px">Recommandé : choisir un ou plusieurs bulletins récents (PDF). Le palier, l’ancienneté, le contrat et le groupe y sont lus à la création ; avec des mois qui se suivent, le mois d’anniversaire aussi. Le fichier est lu sur l’appareil, rien n’est envoyé.</div>
+          <div id="reg-pay-bulnote" style="font-size:11.5px;color:var(--text3);line-height:1.5;margin-bottom:8px">Recommandé : choisir un ou plusieurs bulletins récents (PDF). Le palier, l’ancienneté, le contrat, le groupe et la PFA y sont lus à la création ; avec des mois qui se suivent, le mois d’anniversaire aussi. Le fichier est lu sur l’appareil, rien n’est envoyé.</div>
           <div id="reg-pay-manual" style="display:none">
           <div class="rrow">
             <span class="rrow-lbl">Palier</span>
@@ -211,8 +211,7 @@ input,textarea,select{user-select:text;-webkit-user-select:text;}
               <select id="reg-groupe" onchange="regUpdateLbls()" style="width:120px;height:32px;box-sizing:border-box;padding:0 6px;border:0.5px solid var(--border);border-radius:var(--r);font-size:12px;background:var(--bg);color:var(--text);outline:none;"><option value="">—</option><option value="1">Gr. 1</option><option value="2">Gr. 2</option><option value="3">Gr. 3</option><option value="4">Gr. 4</option><option value="5">Gr. 5</option><option value="6">Gr. 6</option><option value="7">Gr. 7</option><option value="8">Gr. 8</option><option value="9">Gr. 9</option></select>
             </div>
           </div>
-          </div>
-          <div class="rrow" style="border-bottom:none">
+          <div class="rrow" >
             <span class="rrow-lbl">PFA</span>
             <input type="checkbox" id="reg-pfamens" style="display:none">
             <div id="reg-pfa-ctrl" style="position:relative;display:flex;width:140px;height:32px;border:0.5px solid var(--border);border-radius:var(--r);cursor:pointer;user-select:none;overflow:hidden;background:var(--bg)" onclick="regTogglePFA()">
@@ -220,6 +219,9 @@ input,textarea,select{user-select:text;-webkit-user-select:text;}
               <span class="pfa-lbl" style="flex:1;text-align:center;font-size:10px;line-height:32px;position:relative;z-index:1;color:var(--text3);font-weight:400">Mensuel</span>
               <span class="pfa-lbl" style="flex:1;text-align:center;font-size:10px;line-height:32px;position:relative;z-index:1;color:var(--text);font-weight:600">Semestriel</span>
             </div>
+          </div>
+          <div class="rsec">Primes de la convention</div>
+          <div id="reg-primes" style="font-size:11px;color:var(--text3);padding:4px 0">Chargement…</div>
           </div>
           <button class="btn" id="reg-btn" style="margin-top:14px" onclick="doRegister()">Créer mon compte</button>
           <div class="err" id="reg-err"></div>
@@ -358,9 +360,20 @@ function regRhMode(imp){
   var on='',off='background:rgba(255,250,243,.09);color:var(--text);border:none',st='flex:1;margin:0;height:40px;font-size:13px;';
   document.getElementById('reg-rh-imp').style.cssText=st+(imp?on:off);document.getElementById('reg-rh-man').style.cssText=st+(imp?off:on);
 }
+// Primes de la convention (NAO…) en vigueur, depuis la config publique ; chacune avec un interrupteur (cochées par défaut)
+var _regPrimes=[{id:'nao2022',label:'NAO 2022',montant:130},{id:'nao2023',label:'NAO 2023',montant:55}];
+function regLoadPrimes(){
+  var draw=function(){var el=document.getElementById('reg-primes');if(!el)return;
+    el.style.cssText='';el.innerHTML=_regPrimes.map(function(p){return '<div class="rrow"><span class="rrow-lbl">'+String(p.label).replace(/</g,'&lt;')+' <span style="font-size:11px;color:var(--text3)">'+String(p.montant).replace('.',',')+' €</span></span><label class="tgl"><input type="checkbox" class="reg-prime" data-id="'+p.id+'" checked><span class="tgl-s"></span></label></div>';}).join('');};
+  fetch(API+'/get-pay-config',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}).then(function(r){return r.json();}).then(function(d){
+    var c=d&&d.config,now=new Date(),ym=now.getFullYear()*12+now.getMonth();
+    if(c&&c.primes&&c.primes.length)_regPrimes=c.primes.filter(function(p){return p.debutYM<=ym&&(p.finYM==null||ym<=p.finYM);});
+    draw();}).catch(draw);
+}
 // Étape paie : import d'un bulletin (par défaut) ou saisie à la main
 var _regBulImport=true;
 function regPayMode(bul){
+  if(!bul&&!window._regPrimesOk){window._regPrimesOk=1;regLoadPrimes();}
   if(!bul)try{localStorage.removeItem('pl_bul_files');}catch(e){}
   if(bul)_regPick('application/pdf,.pdf',true,'pl_bul_files','reg-pay-bulnote','bulletins');
   _regBulImport=!!bul;
@@ -674,6 +687,7 @@ async function doRegister() {
         ...(!isNaN(regAnc)&&regAnc>=0 ? {ancYears:regAnc, ancRefYM:_todayYM} : {}),
         ...(parseInt(document.getElementById('reg-anc-mois')?.value)>=0 ? {ancMoisAnni:parseInt(document.getElementById('reg-anc-mois').value)} : {}),
         ...(!isNaN(regPct)&&regPct>0 ? {heuresMensuelles:Math.round(regPct*151.67/100*100)/100} : {}),
+        ...(!_regBulImport ? {primesConvOff:[].slice.call(document.querySelectorAll('.reg-prime')).reduce(function(o,c){if(!c.checked)o[c.dataset.id]=true;return o;},{})} : {}),
       },
       settings:{dimRendu:!!document.getElementById('reg-dim')?.checked,rhRendu:!!document.getElementById('reg-rh')?.checked,ferRendu:!!document.getElementById('reg-fer')?.checked,hsRendu:!!document.getElementById('reg-hs')?.checked,theme:'dark'},
       overrides:{},conges:{},history:[],customVacs:{}

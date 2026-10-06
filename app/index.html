@@ -2511,7 +2511,7 @@ function _bulParse(lines){
     if((m=/^MESURE NAO (.+?) (-?\d+,\d+)$/.exec(t))){b.nao[m[1]]=_bulNum(m[2]);return;}
     // « SALAIRE DE QUALIFICATION base taux montant » : base temps plein (→ palier) et taux de travail (→ contrat)
     if(b.salQBase==null&&(m=/^SALAIRE DE QUALIFICATION (\d+,\d+) (\d+,\d+) (-?\d+,\d+)$/.exec(t))){b.salQBase=_bulNum(m[1]);b.taux=_bulNum(m[2]);b.salQ=_bulNum(m[3]);return;}
-    for(var i=0;i<fx.length;i++){if(b[fx[i][0]]==null&&(m=fx[i][1].exec(t))){b[fx[i][0]]=_bulNum(m[1]);return;}}
+    for(var i=0;i<fx.length;i++){if(b[fx[i][0]]==null&&(m=fx[i][1].exec(t))){b[fx[i][0]]=_bulNum(m[1]);if(fx[i][0]==='pfa')b.pfaMens=/\bMENS/i.test(t);return;}} // « P.F.A NAC MENS » : PFA mensuelle
   });
   if(b.ym!=null)b.rap.forEach(function(r){if(r.ym==null)r.ym=b.ym-1;});
   return b.ym!=null&&b.brut!=null?b:null;
@@ -2545,22 +2545,26 @@ function _bulPaySet(b){
   if(t)r.pct=t;
   if(b.gpe>0)for(var g=1;g<=9;g++){if(near(calcGPE(g,ym),b.gpe)){r.groupe=g;break;}}
   if(b.anc>0)for(var y=1;y<=50;y++){if(near(calcAncPrime(y,ym),b.anc)){r.anc=y;break;}}
+  if(b.pfa>0&&b.pfaMens!==undefined)r.pfaMens=!!b.pfaMens;
   return r;
 }
 // Différences avec les réglages : un changement par valeur nouvelle, daté du premier bulletin qui la montre
 function _bulPayDiffs(){
-  var pr=S.profile||{},bs=Object.keys(S.bulletins||{}).map(Number).sort(function(a,b){return a-b;}),out={palier:[],heures:[],groupe:[]},anc=[],last={};
+  var pr=S.profile||{},bs=Object.keys(S.bulletins||{}).map(Number).sort(function(a,b){return a-b;}),out={palier:[],heures:[],groupe:[]},anc=[],last={},pfa=null;
   bs.forEach(function(ym){var d=_bulPaySet(S.bulletins[ym]);
     var chk=function(k,v,cur,eq){if(v==null)return;if(!eq(v,cur)&&last[k]!==v)out[k].push({ym:ym,v:v,cur:cur});last[k]=eq(v,cur)?null:v;};
     chk('palier',d.palier,getPalierForYM(ym),function(a,b){return a===b;});
     chk('heures',d.pct!=null?Math.round(d.pct*151.67/100*100)/100:null,getHeuresForYM(ym),function(a,b){return Math.abs(a-b)<0.01;});
     chk('groupe',d.groupe,getGroupeForYM(ym),function(a,b){return a===b;});
-    if(d.anc!=null)anc.push({ym:ym,y:d.anc});});
+    if(d.anc!=null)anc.push({ym:ym,y:d.anc});
+    if(d.pfaMens!=null)pfa={ym:ym,v:d.pfaMens};});
+  // PFA : mensuelle ou semestrielle d'après le dernier bulletin qui en montre une
+  var P=pfa&&!!pr.pfaMensuelle!==pfa.v?pfa:null;
   // Ancienneté : années du dernier bulletin ; mois d'anniversaire si deux bulletins consécutifs passent d'une année à la suivante
   var A=null;if(anc.length){var L=anc[anc.length-1],mo=null;for(var i=1;i<anc.length;i++)if(anc[i].y===anc[i-1].y+1&&anc[i].ym-anc[i-1].ym===1)mo=anc[i].ym%12;
     var bad=anc.some(function(a){return Math.abs(calcAncPrime(a.y,a.ym)-getAncForYM(a.ym))>0.02;});
     if(bad||(mo!=null&&mo!==pr.ancMoisAnni))A={y:L.y,ym:L.ym,mo:mo};}
-  return{palier:out.palier,heures:out.heures,groupe:out.groupe,anc:A,n:out.palier.length+out.heures.length+out.groupe.length+(A?1:0)};
+  return{palier:out.palier,heures:out.heures,groupe:out.groupe,anc:A,pfa:P,n:out.palier.length+out.heures.length+out.groupe.length+(A?1:0)+(P?1:0)};
 }
 function _bulPayApply(){
   var D=_bulPayDiffs(),pr=S.profile;if(!D.n)return;pushUndo('Réglages de paie depuis les bulletins');
@@ -2571,6 +2575,7 @@ function _bulPayApply(){
   put('palierHistory','palierNum',D.palier,!(pr.palierNum>0));if(pr.palierNum>0)pr.salaireQualif=calcPalierSalaire(pr.palierNum);
   put('heuresHistory','heuresMensuelles',D.heures,false);
   put('groupeHistory','groupeClassif',D.groupe,!(pr.groupeClassif>0));
+  if(D.pfa)pr.pfaMensuelle=D.pfa.v;
   if(D.anc){pr.ancYears=D.anc.y;pr.ancRefYM=D.anc.ym;if(D.anc.mo!=null)pr.ancMoisAnni=D.anc.mo;pr.primeAnciennete=calcAncPrime(D.anc.y);}
   saveState();render();
 }
@@ -2582,6 +2587,7 @@ function _bulPayPropose(then){
   var rows=D.palier.map(function(c){return li('Palier','P'+c.v,c.cur?'P'+c.cur:'',c.ym);}).join('')
     +D.heures.map(function(c){return li('Contrat',Math.round(c.v/151.67*1000)/10+' %',Math.round(c.cur/151.67*1000)/10+' %',c.ym);}).join('')
     +D.groupe.map(function(c){return li('Groupe','Gr. '+c.v,c.cur?'Gr. '+c.cur:'',c.ym);}).join('')
+    +(D.pfa?'<div class="recap-row" style="font-size:12px;min-height:26px;gap:10px"><span style="color:var(--text3)">PFA</span><span><b>'+(D.pfa.v?'mensuelle':'semestrielle')+'</b><span style="color:var(--text3)"> · bulletin de '+mo(D.pfa.ym)+'</span></span></div>':'')
     +(D.anc?'<div class="recap-row" style="font-size:12px;min-height:26px;gap:10px"><span style="color:var(--text3)">Ancienneté</span><span><b>'+D.anc.y+' ans</b><span style="color:var(--text3)"> en '+mo(D.anc.ym)+(D.anc.mo!=null?' · anniversaire en '+MC[D.anc.mo]:'')+'</span></span></div>':'');
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)_bulPayDone(0)"><div class="sheet"><div class="sh"></div><div class="st">Réglages lus sur les bulletins</div>'
     +'<div style="font-size:12px;color:var(--text3);line-height:1.45;margin:-4px 0 10px">Les bulletins ne correspondent pas aux réglages de paie. Chaque valeur s’applique à partir du mois où le bulletin la montre ; les mois d’avant gardent l’ancienne.</div>'
