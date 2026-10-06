@@ -2916,7 +2916,12 @@ function _payPageHtml(ym){
     h+='<div class="pp-r" style="padding:3px 0"><span class="pp-l">Depuis janvier</span>'+(c?'<span class="pp-n" style="color:var(--text3)">'+(nb?fe(paid):'')+'</span>':'')+'<b style="color:var(--gold-pay)">'+fe(cum)+'</b></div>';})();
   h+='</div>';
   var fn=function(lbl,av){var f=fixBy[lbl];return c?(f?bul(f.ok,f.bm,'f:'+lbl):cmp(0,av)):null;},fsum=function(ls){return ls.reduce(function(s,l){var f=fixBy[l];return s+(f?f.bm:0);},0);};
-  h+=tit('Salaire de base',1)+row('Qualification',P.salQ,null,fn('Qualification',P.salQ))+row('Ancienneté',P.salAnc,null,fn('Ancienneté',P.salAnc))+sub('Sous-total',P.base,c?cmp(fsum(['Qualification','Ancienneté']),P.base):null);
+  // Avantage individuel acquis : complète le salaire de qualification (salariés embauchés avant l'accord), affiché avec le salaire de base
+  // mais hors du taux horaire (le bulletin calcule la nuit sur qualification + ancienneté seulement)
+  var avP=P.primesCustom.filter(function(p){return /INDIV/i.test(p.label);}),avT=avP.reduce(function(s,p){return s+p.montant;},0),avB=!!fixBy['Av. indiv. acquis'];
+  h+=tit('Salaire de base',1)+row('Qualification',P.salQ,null,fn('Qualification',P.salQ))+row('Ancienneté',P.salAnc,null,fn('Ancienneté',P.salAnc))
+    +avP.map(function(p){return row('Av. indiv. acquis',p.montant,null,fn('Av. indiv. acquis',p.montant));}).join('')+(avB&&!avP.length?row('Av. indiv. acquis',0,null,fn('Av. indiv. acquis',0)):'')
+    +sub('Sous-total',P.base+avT,c?cmp(fsum(['Qualification','Ancienneté','Av. indiv. acquis']),P.base+avT):null);
   h+=tit('Variables <span style="font-weight:400;color:var(--text3);font-size:11px">('+MC[P.prevM]+')</span>')+vl+sub('Sous-total',v.total,c?cmp(vb,v.total):null);
   if(m===0){var cf=fixBy['Complément CP'];
     h+=tit('Complément CP')+(P.compCP>0||cf?row(P.compCPManual?'Montant du bulletin':'1/10 variables '+(y-1),P.compCP,null,fn('Complément CP',P.compCP)):'<div style="color:var(--amber);display:flex;gap:5px;padding:4px 0"><span>⚠</span><span>1/10 des variables '+(y-1)+' non calculable : les données de l’année précédente sont incomplètes.</span></div>')
@@ -2924,14 +2929,13 @@ function _payPageHtml(ym){
   // Indemnité 10e (complément CP) versée un autre mois que janvier : affichée, sinon elle comptait comme un problème invisible
   if(m!==0&&fixBy['Complément CP'])h+=tit('Complément CP')+row('Indemnité 10e (bulletin)',P.compCP,null,fn('Complément CP',P.compCP));
   // NAO : le bulletin les nomme autrement, comparées en total (sur la dernière ligne si ça diffère)
-  var naoF=fixBy['Mesures NAO'],nN=P.primesConv.length,fa=P.totalFixes+P.totalPrimesCustom;
+  var naoF=fixBy['Mesures NAO'],nN=P.primesConv.length,fa=P.totalFixes+P.totalPrimesCustom-avT;
   h+=tit('Primes fixes')+P.primesConv.map(function(p,i){return row(p.label,p.montant,null,c?(naoF&&naoF.ok?OK:i===nN-1?(naoF?bul(false,naoF.bm,'f:Mesures NAO'):bul(false,0)):E):null);}).join('')
     +row('Ind. GPE'+(P.groupeClassif?' (Gr.'+P.groupeClassif+')':''),P.gpe,null,fn('Ind. GPE',P.gpe))
     +row('PFA ('+fmtEuro(P.pfaM)+'/mois)'+(P.pfaMensuelle?'':' (sem.)'),P.pfa,null,fn('PFA',P.pfa))
     +(P.supFamilial>0||fixBy['Suppl. familial']?row('Suppl. familial',P.supFamilial,null,fn('Suppl. familial',P.supFamilial)):'')
-    +P.primesCustom.map(function(p){return row(p.label,p.montant,null,/INDIV/i.test(p.label)?fn('Av. indiv. acquis',p.montant):null);}).join('')
-    +(fixBy['Av. indiv. acquis']&&!P.primesCustom.some(function(p){return /INDIV/i.test(p.label);})?row('Av. indiv. acquis',0,null,fn('Av. indiv. acquis',0)):'')
-    +sub('Sous-total',fa,c?cmp(fsum(['Mesures NAO','Ind. GPE','PFA','Suppl. familial','Av. indiv. acquis']),fa):null);
+    +P.primesCustom.filter(function(p){return !/INDIV/i.test(p.label);}).map(function(p){return row(p.label,p.montant,null);}).join('')
+    +sub('Sous-total',fa,c?cmp(fsum(['Mesures NAO','Ind. GPE','PFA','Suppl. familial']),fa):null);
   if(c&&c.late.length)h+=tit('Rattrapages et autres lignes')+c.late.map(function(l){return '<div class="pp-r"><span class="pp-l">'+l.lbl+(l.q!=null?' ('+(_BUL_H[l.k]?fmtMin(Math.round(l.q*60)):l.q)+')':'')+'<span style="display:block;font-size:11px;font-style:italic">'+(l.info?'sans effet sur la comparaison':'travail '+_deMois(l.ym)+' '+Math.floor(l.ym/12)+((S.bulletins||{})[l.ym+1]?', manquait sur le <a onclick="event.stopPropagation();_swipeGo(-1,function(){openBulletinModal('+(l.ym+1)+')})" style="color:var(--blue);cursor:pointer;font-style:normal">bulletin '+_deMois(l.ym+1)+'</a>':''))+'</span></span><span class="pp-n" style="color:var(--text2)">'+fe(l.mt)+'</span><b style="color:var(--text3)">—</b></div>';}).join('');
   if(c)h+=c.alerts.map(function(a){return '<div style="font-size:11px;color:var(--amber);display:flex;gap:5px;padding:10px 0 0;line-height:1.45"><span>⚠</span><span>'+a+'</span></div>';}).join('');
   h+='<div style="font-size:11px;color:var(--text3);text-align:center;margin-top:10px">taux : '+fmtEuro(P.tauxH)+'/h · '+P.heures.toFixed(2)+'h/mois</div>';
