@@ -2723,13 +2723,14 @@ function importBulletins(after){
 async function _importBulletinFiles(files,after){{
     if(!files.length)return;
     _infoToast('Lecture du bulletin…');
-    var ok=[],bad=0;
+    var ok=[],bad=0,rep=0;
     for(var i=0;i<files.length;i++){
-      try{var b=_bulParse(await _pdfLines(files[i]));if(b){b.at=Date.now();if(!S.bulletins)S.bulletins={};S.bulletins[b.ym]=b;ok.push(b.ym);}else bad++;}
+      try{var b=_bulParse(await _pdfLines(files[i]));if(b){b.at=Date.now();if(!S.bulletins)S.bulletins={};if(S.bulletins[b.ym])rep++;S.bulletins[b.ym]=b;ok.push(b.ym);}else bad++;}
       catch(e){console.warn('bulletin',e);bad++;}
     }
     if(ok.length)saveState();
-    var msg=ok.length?(ok.length===1?'Bulletin '+_deMois(ok[0])+' '+Math.floor(ok[0]/12)+' importé':ok.length+' bulletins importés'):'';
+    // un bulletin du même mois remplace l'ancien : dit dans le message
+    var msg=ok.length?(ok.length===1?'Bulletin '+_deMois(ok[0])+' '+Math.floor(ok[0]/12)+(rep?' remplacé':' importé'):ok.length+' bulletins importés'+(rep?' ('+rep+' remplacé'+(rep>1?'s':'')+')':'')):'';
     if(bad)msg+=(msg?' · ':'')+(bad===1?'1 fichier illisible':bad+' fichiers illisibles')+(navigator.onLine===false?' (hors ligne)':'');
     _infoToast(msg);
     if(ok.length){ok.sort(function(a,b){return a-b;});render();var _last=ok[ok.length-1];_bulPayPropose(after||function(){openBulletinModal(_last);});}
@@ -2945,7 +2946,7 @@ function _payPageHtml(ym){
   if(c)h+=c.alerts.map(function(a){return '<div style="font-size:11px;color:var(--amber);display:flex;gap:5px;padding:10px 0 0;line-height:1.45"><span>⚠</span><span>'+a+'</span></div>';}).join('');
   h+='<div style="font-size:11px;color:var(--text3);text-align:center;margin-top:10px">taux : '+fmtEuro(P.tauxH)+'/h · '+P.heures.toFixed(2)+'h/mois</div>';
   h+=(b?'':'<div style="font-size:11px;color:var(--text3);line-height:1.5;margin:14px 0 0">Importer le PDF du bulletin pour que l’app compare chaque ligne. Le fichier est lu sur le téléphone et n’est envoyé nulle part ; seuls les montants sont gardés.</div>')
-    +'<div style="display:flex;gap:8px;margin:12px 0 14px"><button onclick="window._bulFrom=\'recap\';importBulletins()" style="'+btn+';color:var(--text2)"><i class="ti ti-file-import" style="margin-right:4px"></i>'+(b?'Importer un autre bulletin':'Importer le bulletin (PDF)')+'</button>'+(b?'<button onclick="deleteBulletin('+ym+')" style="'+btn+';color:var(--text3)">Retirer</button>':'')+'</div>';
+    +'<div style="display:flex;gap:8px;margin:12px 0 14px"><button onclick="window._bulFrom=\'recap\';importBulletins()" style="'+btn+';color:var(--text2)"><i class="ti ti-file-import" style="margin-right:4px"></i>'+(b?'Importer / réimporter':'Importer le bulletin (PDF)')+'</button>'+(b?'<button onclick="deleteBulletin('+ym+')" style="'+btn+';color:var(--text3)">Retirer</button>':'')+'</div>';
   // Contenu en retrait de la largeur d'une case : la case d'en-tête prend toute la largeur, les colonnes restent alignées
   return '<div style="font-size:11px;padding:0 12px">'+h+'</div>';
 }
@@ -3153,7 +3154,7 @@ function openBulletinsCal(y){
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet tabmod"><div class="sh"></div>'
     +'<div class="nav-back" style="'+_navBackCss+'" onclick="openMergedRenduCgModal(6,2)">‹ Suivi</div>'
     +'<div class="st" style="display:flex;align-items:center;justify-content:space-between"><span style="'+arr+'" onclick="_svYearGo('+(y-1)+')">‹</span><span>Paie '+y+'</span><span style="'+arr+'" onclick="_svYearGo('+(y+1)+')">›</span></div><div id="sv-sal" style="padding:0 12px">'+_svSalHtml(y)+'</div>'
-    +'<div style="display:flex;gap:8px;margin:14px 0 14px"><button onclick="window._bulFrom=\'recap\';importBulletins()" style="font-size:11px;padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:none;cursor:pointer;font-family:var(--font);color:var(--text2)"><i class="ti ti-file-import" style="margin-right:4px"></i>Importer des bulletins (PDF)</button></div>'
+    +'<div style="display:flex;gap:8px;margin:14px 0 14px"><button onclick="window._bulFrom=\'recap\';importBulletins()" style="font-size:11px;padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:none;cursor:pointer;font-family:var(--font);color:var(--text2)"><i class="ti ti-file-import" style="margin-right:4px"></i>Importer / réimporter des bulletins</button></div>'
     +'<button class="mcancel mclose" onclick="closeModal()">Fermer</button></div></div>';
   _swipeNav(function(nd){window._svYear=y+nd;openBulletinsCal(y+nd);},function(){openMergedRenduCgModal(6,2);}); // glisser : année voisine ; depuis le bord gauche : retour à Suivi
 }
