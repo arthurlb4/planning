@@ -3,6 +3,13 @@
 
 const CLIENT_ID = '669191513748-a40uvl9k46kqsmjatpqokhnhgvrc7mdt.apps.googleusercontent.com';
 const ALLOWED_ORIGIN = 'https://arthurlb4.github.io';
+// Adresses d'où l'app peut appeler le serveur : l'ancienne (GitHub Pages) et le domaine de l'app
+const ALLOWED_ORIGINS = [ALLOWED_ORIGIN, 'https://franceinfoplanning.com', 'https://www.franceinfoplanning.com'];
+// Adresse de l'app (liens des mails, retour de Google) : celle d'où vient la demande
+function appBase(request) {
+  var o = request.headers.get('Origin') || '';
+  return ALLOWED_ORIGINS.indexOf(o) > 0 ? o + '/' : 'https://arthurlb4.github.io/planning/';
+}
 const ADMIN_PASSWORD_HASH_KEY = 'admin:password_hash'; // stored in KV
 
 const cors = {
@@ -379,7 +386,20 @@ async function pushSendDue(env, userId, rec, today) {
 }
 
 export default {
+  // Réponse autorisée pour l'adresse qui appelle (ancienne ou nouvelle)
   async fetch(request, env, ctx) {
+    var r = await handle(request, env, ctx), o = request.headers.get('Origin');
+    if (o && ALLOWED_ORIGINS.indexOf(o) >= 0 && o !== ALLOWED_ORIGIN) {
+      r = new Response(r.body, r); r.headers.set('Access-Control-Allow-Origin', o); r.headers.set('Vary', 'Origin');
+    }
+    return r;
+  },
+
+  // Tâche quotidienne : envoie les rappels d'expiration arrivés à échéance
+  scheduled: (event, env, ctx) => scheduled(event, env, ctx),
+};
+
+async function handle(request, env, ctx) {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
     try {
     var url = new URL(request.url);
@@ -890,7 +910,7 @@ export default {
       if (!userId) return resp({ ok: true });
       var resetToken = randToken(24);
       await env.PLANNING_DB.put('reset:' + resetToken, userId, { expirationTtl: 3600 });
-      var resetUrl = 'https://arthurlb4.github.io/planning/?reset=' + resetToken;
+      var resetUrl = appBase(request) + '?reset=' + resetToken;
       await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + env.RESEND_API_KEY, 'Content-Type': 'application/json' },
@@ -1169,7 +1189,7 @@ export default {
         var tokenRes = await fetch('https://oauth2.googleapis.com/token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams({ code: code, client_id: CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, redirect_uri: 'https://arthurlb4.github.io/planning/app/', grant_type: 'authorization_code' }),
+          body: new URLSearchParams({ code: code, client_id: CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, redirect_uri: appBase(request) + 'app/', grant_type: 'authorization_code' }),
         });
         var data = await tokenRes.json();
         return resp(data, tokenRes.status);
@@ -1632,10 +1652,9 @@ export default {
     } catch(e) {
       return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: cors });
     }
-  },
+}
 
-  // Tâche quotidienne : envoie les rappels d'expiration arrivés à échéance
-  async scheduled(event, env, ctx) {
+async function scheduled(event, env, ctx) {
     var today = parisToday(), cursor;
     do {
       var page = await env.PLANNING_DB.list({ prefix: 'push:u:', cursor: cursor });
@@ -1647,5 +1666,4 @@ export default {
       }
       cursor = page.list_complete ? null : page.cursor;
     } while (cursor);
-  }
-};
+}
