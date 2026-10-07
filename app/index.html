@@ -7724,20 +7724,16 @@ function _cvWInit(key){var o=(S.overrides||{})[key]||{},d=new Date(key+'T12:00:0
     return{when:'other',role:o.ecSelf?'take':'give',other:o.pair,wOff:Math.round((pm-mon)/(7*864e5)),exVac:o.motif?null:(o.ecSelf?o.vac:((S.overrides||{})[o.pair]||{}).vac)};}
   return{when:'day',role:c&&c!=='RH'?'give':'take',other:null,wOff:0,exVac:o.echange&&!o.motif?o.vac:null};}
 // Sélecteurs du haut : Prévue (ce jour / un autre jour / semaine) ; pour un autre jour : rôle de ce jour et choix de l'autre jour (‹ › pour changer de semaine)
-function _cvWhenHtml(key,W){var b=function(k,l){return '<button type="button" class="'+(W.when===k?'on':'')+'" onclick="_cvSetWhen(\''+k+'\')">'+l+'</button>';};
-  var h='<div style="margin:0 0 10px"><label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Prévue</label><div class="cv-seg" id="cv-when">'+b('day','Ce jour')+b('other','Un autre jour')+b('week','Toute la semaine')+'</div></div>';
-  if(W.when!=='other')return h;
-  var r=function(k,l){return '<button type="button" class="'+(W.role===k?'on':'')+'" onclick="_cvSetRole(\''+k+'\')">'+l+'</button>';};
-  h+='<div style="margin:0 0 10px"><label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Ce jour ('+_cvSd(key)+')</label><div class="cv-seg">'+r('give','Je ne le fais pas')+r('take','Je le fais à la place')+'</div></div>';
-  var mon=getMonday(new Date(key+'T12:00:00'));mon.setDate(mon.getDate()+7*(W.wOff||0));
-  var nb='flex:none;width:36px;height:34px;justify-content:center;border:none;border-radius:10px;background:var(--btn);color:var(--text2);cursor:pointer';
-  h+='<label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">'+(W.role==='give'?'Fait le':'À la place du')+'</label>'
-    +'<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><button type="button" class="ibtn" style="'+nb+'" onclick="_cvWeek(-1)">‹</button>'
-    +'<span style="flex:1;text-align:center;font-size:12.5px;color:'+(W.wOff?'var(--amber)':'var(--text2)')+'">'+(W.wOff?'Semaine du '+fmtDate(mon):'Cette semaine')+'</span>'
-    +'<button type="button" class="ibtn" style="'+nb+'" onclick="_cvWeek(1)">›</button></div><div class="exchange-days" style="margin-bottom:12px">';
-  for(var i=0;i<7;i++){var d=new Date(mon);d.setDate(mon.getDate()+i);var k=dk(d),g=getVac(d),me=k===key,sel=k===W.other;
-    h+='<div class="exchange-day'+(me?' current':sel?' sel':'')+'"'+(me?'':' onclick="_cvPickDay(\''+k+'\')"')+'><div class="exc-day-n">'+['D','L','Ma','Me','J','V','S'][d.getDay()]+' '+d.getDate()+'</div><div class="exc-day-v">'+(g.vac&&g.vac!=='RH'?vLbl(g.vac,getVAC(d)):'–')+'</div></div>';}
-  return h+'</div>';}
+// Rangée des jours (‹ › : autre semaine). Le jour ouvert = ce jour ; un autre jour = déplacement ou échange.
+// Sens déduit du jour ouvert : jour travaillé → « Fait le » (il est cédé) ; repos → « Vacation prévue le » (il est fait à la place)
+function _cvWhenHtml(key,W){var mon=getMonday(new Date(key+'T12:00:00'));mon.setDate(mon.getDate()+7*(W.wOff||0));
+  var nb='flex:none;width:26px;height:44px;display:flex;align-items:center;justify-content:center;border:none;border-radius:10px;background:none;color:var(--text3);font-size:18px;cursor:pointer;padding:0';
+  var h='<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px"><label style="font-size:11px;color:var(--text2)">'+(W.role==='give'?'Fait le':'Vacation prévue le')+'</label>'
+    +(W.wOff?'<span style="font-size:11px;color:var(--amber)">semaine du '+mon.getDate()+' '+MCs[mon.getMonth()]+'</span>':'')+'</div>'
+    +'<div style="display:flex;align-items:center;gap:2px;margin-bottom:12px"><button type="button" style="'+nb+'" onclick="_cvWeek(-1)">‹</button><div class="exchange-days" style="flex:1;min-width:0">';
+  for(var i=0;i<7;i++){var d=new Date(mon);d.setDate(mon.getDate()+i);var k=dk(d),g=getVac(d),me=k===key,sel=me?!W.other:k===W.other;
+    h+='<div class="exchange-day'+(sel?' sel':'')+'" onclick="_cvPickDay(\''+k+'\')"><div class="exc-day-n">'+['D','L','Ma','Me','J','V','S'][d.getDay()]+' '+d.getDate()+'</div><div class="exc-day-v">'+(me?'ce jour':g.vac&&g.vac!=='RH'?vLbl(g.vac,getVAC(d)):'–')+'</div></div>';}
+  return h+'</div><button type="button" style="'+nb+'" onclick="_cvWeek(1)">›</button></div>';}
 function _cvDraftSave(){var g=function(id){var e=document.getElementById(id);return e?e.value:null;};
   window._cvDraft={name:g('custom-name'),deb:g('custom-deb'),fin:g('custom-fin'),pause:g('custom-pause'),prime:g('custom-prime'),amt:g('cv-autre-amt'),note:g('cv-note'),xl:g('cv-exr-lbl'),xd:g('cv-exr-dur')};}
 // Redessine la page (même position, sans animation) en gardant la saisie
@@ -7745,11 +7741,11 @@ function _cvRerender(){_cvDraftSave();window._cvRe=1;var sh=document.querySelect
   var s2=document.querySelector('#modal-root .sheet'),o2=document.querySelector('#modal-root .overlay');if(o2)o2.style.animation='none';if(s2){s2.style.animation='none';s2.scrollTop=st;}}
 function _cvSetWhen(w){var W=window._cvW;if(!W||W.when===w)return;_haptic();W.when=w;_exState.mode=w==='week'?'week':'day';_cvRerender();}
 function _cvSetRole(r){var W=window._cvW;if(!W||W.role===r)return;W.role=r;_cvRerender();}
-function _cvWeek(n){var W=window._cvW;W.wOff=(W.wOff||0)+n;W.other=null;W.exVac=null;_cvRerender();}
-function _cvPickDay(k){var W=window._cvW;_haptic();W.other=k;W.exVac=null;_cvRerender();}
+function _cvWeek(n){var W=window._cvW;W.wOff=(W.wOff||0)+n;_cvRerender();}
+function _cvPickDay(k){var W=window._cvW,key=pendingKey;_haptic();if(k===key){W.other=null;W.when='day';}else{W.other=k;W.when='other';}W.exVac=null;_cvRerender();}
 function _cvPickExVac(b){var W=window._cvW;W.exVac=b.getAttribute('data-exv');_haptic();[].forEach.call(document.querySelectorAll('#cv-exg [data-exv]'),function(x){x.classList.toggle('exsel',x===b);});}
 // Échange : vacations du jour fait (celles du cycle ce jour-là, puis les autres)
-function _cvExGrid(fk){if(!fk)return '<div class="cv-hint" style="margin:6px 2px 10px">Choisir d’abord l’autre jour.</div>';
+function _cvExGrid(fk){
   var W=window._cvW||{},d=new Date(fk+'T12:00:00'),VAC=getVAC(d),all=_cycleVacList(d),sch,acc=[];
   if(all){var ss=_cycleGridScheduledVacs(d);sch=all.filter(function(n){return ss.has(n);});acc=all.filter(function(n){return !ss.has(n);});}
   else sch=_dayVacRows(d,VAC).rows.reduce(function(a,r){return a.concat(r);},[]).filter(function(n){return n!=='SV'&&n!=='Autre';});
@@ -7758,7 +7754,8 @@ function _cvExGrid(fk){if(!fk)return '<div class="cv-hint" style="margin:6px 2px
   var grid=function(l){return '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">'+l.map(bt).join('')+'</div>';};
   var h='<div style="font-size:11px;color:var(--text2);margin:2px 0 6px">Vacation faite le '+_cvSd(fk)+'</div>'+grid(sch.filter(ok));
   acc=acc.filter(ok);if(acc.length)h+='<div style="font-size:11px;color:var(--text3);margin:10px 0 6px">Autres vacations</div>'+grid(acc);
-  return h+'<div class="cv-hint" style="margin:8px 2px 4px">Échange : les heures prévues comptent (pas d’heures sup). Primes de la vacation faite.</div>';}
+  return h+'<div class="cv-hint" style="margin:8px 2px 4px">Les heures prévues comptent (pas d’heures sup). Primes de la vacation faite.</div>'
+    +'<button type="button" class="adj-pill" style="width:auto;padding:0 14px;height:30px;font-size:12px;margin:8px 0 2px" onclick="_cvSetWhen(\'week\')">Échanger toute la semaine…</button>';}
 // Enregistre un déplacement (motif) ou un échange : jour cédé (non travaillé) et jour fait, liés l'un à l'autre
 function _cvSaveMove(){var W=window._cvW||{when:'day'},key=pendingKey,m=window._cvMotif,ex=m==='echange',oKey=key,fKey=key;
   if(W.when==='other'){if(!W.other){alert('Choisir l’autre jour.');return;}if(W.role==='give')fKey=W.other;else oKey=W.other;}
@@ -7786,15 +7783,15 @@ function _cvSaveMove(){var W=window._cvW||{when:'day'},key=pendingKey,m=window._
   saveState();render();gcalTrigger();popCell(fKey);openDay(key);}
 // Échange : la page Modifier, sur « un autre jour » et le motif Échange
 function openExchange(key){pendingKey=key;_lpk=key;_exState={step:1,targetKey:null,targetVac:null};if(!document.body.classList.contains('modal-open'))_lockBodyScroll();
-  window._cvReq={when:'other',motif:'echange'};openCustomVacModal();}
-function renderExchangeModal(){if(!window._cvW)window._cvW=_cvWInit(pendingKey||_lpk);window._cvW.when=_exState&&_exState.mode==='week'?'week':'other';_cvRerender();}
+  window._cvReq={motif:'echange'};openCustomVacModal();}
+function renderExchangeModal(){if(!window._cvW)window._cvW=_cvWInit(pendingKey||_lpk);window._cvW.when=_exState&&_exState.mode==='week'?'week':(window._cvW.other?'other':'day');_cvRerender();}
 function openCustomVacModal(){
   if(!document.body.classList.contains('modal-open'))_lockBodyScroll();
   var key=pendingKey,date=key?new Date(key+'T12:00:00'):new Date(),VAC=getVAC(date),g=key?getVac(date):{},cyc=key?getCycleVac(date).cycleVac:null;
   var cur=g.vac&&g.vac!=='RH'&&!g.absent&&VAC[g.vac]?VAC[g.vac]:null,ov=key?((S.overrides||{})[key]||{}):{};
   // Prévue ce jour / un autre jour (déplacement, échange) / toute la semaine ; redessin (_cvRe) : on garde l'état et la saisie
   var re=!!window._cvRe;window._cvRe=0;var W=window._cvW;
-  if(key&&(!re||!W)){W=window._cvW=_cvWInit(key);var rq=window._cvReq;window._cvReq=null;if(rq){W.when=rq.when;window._cvMotifReq=rq.motif;}}
+  if(key&&(!re||!W)){W=window._cvW=_cvWInit(key);var rq=window._cvReq;window._cvReq=null;if(rq){if(rq.when)W.when=rq.when;window._cvMotifReq=rq.motif;}}
   if(!key)W={when:'day'};
   var oKey=key,fKey=key;if(key&&W.when==='other'){if(W.role==='give')fKey=W.other;else oKey=W.other;}
   var oDate=oKey?new Date(oKey+'T12:00:00'):null,fDate=fKey?new Date(fKey+'T12:00:00'):date,VACo=oDate?getVAC(oDate):VAC;
@@ -7830,8 +7827,9 @@ function openCustomVacModal(){
   var card='margin:0 0 10px;padding:12px';
   if(key&&W.when==='week'){_exState.mode='week';
     document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)openDay(pendingKey)"><div class="sheet"><div class="sh"></div>'
-      +'<div class="st" style="margin-bottom:2px">Modifier</div><div style="font-size:11.5px;color:var(--text3);margin-bottom:12px">'+fmtDate(date)+'</div>'
-      +_cvWhenHtml(key,W)+_exWeekHtml(getMonday(date))+'<button class="mcancel" onclick="openDay(pendingKey)">Fermer</button></div></div>';
+      +'<div class="nav-back" style="'+_navBackCss+'" onclick="_cvSetWhen(window._cvW.other?\'other\':\'day\')">‹ Modifier</div>'
+      +'<div class="st" style="margin-bottom:2px">Échange de semaine</div><div style="font-size:11.5px;color:var(--text3);margin-bottom:12px">'+fmtDate(date)+'</div>'
+      +_exWeekHtml(getMonday(date))+'<button class="mcancel" onclick="openDay(pendingKey)">Fermer</button></div></div>';
     return;}
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this){if(pendingKey)openDay(pendingKey);else closeModal();}"><div class="sheet"><div class="sh"></div>'
     +'<div class="st" style="margin-bottom:2px">'+(key?'Modifier':'Ajouter')+'</div>'
@@ -7863,9 +7861,12 @@ function openCustomVacModal(){
     // Échange : la vacation faite se choisit dans la grille du jour fait
     +(key?'<div id="cv-exg"'+(motif==='echange'?'':' style="display:none"')+'>'+_cvExGrid(fKey)+'</div>':'')
     +'</div>'
+    +(key?'<button type="button" class="adj-pill" id="cv-more-b" style="width:auto;padding:0 14px;height:30px;font-size:12px;margin:0 0 10px;'+((x&&x.dur>0)||n?'display:none':'')+'" onclick="this.style.display=\'none\';document.getElementById(\'cv-more\').style.display=\'\'">+ Rendu acquis, note</button>'
+      +'<div id="cv-more"'+((x&&x.dur>0)||n?'':' style="display:none"')+'>':'')
     +(key?'<div class="hd-card" style="'+card+'"><div class="btit" style="margin:0 0 8px">Heures de rendu acquises</div>'
       +'<div style="display:flex;gap:8px"><input id="cv-exr-lbl" placeholder="Réunion, formation…" value="'+String((x&&x.label)||'').replace(/"/g,'&quot;')+'" style="flex:1;min-width:0;'+fs+'"><select id="cv-exr-dur" onchange="_cvRmSync()" style="width:96px;'+fs+'">'+dO+'</select><button id="cv-exr-rm" class="cv-rm'+(x&&x.dur>0?' on':'')+'" type="button" aria-label="Retirer les heures acquises" onclick="_cvRmClick(this)"><i class="ti ti-trash"></i></button></div></div>'
       +'<div class="mrow" style="margin-bottom:16px"><label>Note</label><input id="cv-note" maxlength="200" autocomplete="off" placeholder="Facultatif" value="'+_h(String(n).replace(/\s*\n\s*/g,' '))+'" style="width:100%;box-sizing:border-box;'+fs+'"></div>':'')
+    +(key?'</div>':'')
     +'<div class="mbtns"><button class="mb" onclick="if(pendingKey)openDay(pendingKey);else closeModal()">Annuler</button><button class="mb pri" onclick="confirmCustomVac()">Valider</button></div>'
     +'</div></div>';
   document.getElementById('custom-name').value=name;
