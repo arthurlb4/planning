@@ -789,6 +789,7 @@ button:not(.sv-tile):not(.dx-mini):not(.sh-x),select,input:not([type=checkbox]):
 .bpseg::before{top:2px;bottom:2px;background:rgba(255,250,243,.16)}
 .seg-anim::before{transition:left .22s ease,width .22s ease}
 .cv-seg button.on{background:none!important;box-shadow:none!important}
+@keyframes vgIn{from{opacity:0;transform:translateY(4px)}}.vg-in{animation:vgIn .18s ease}
 /* Tuiles et cases : coins plus arrondis, dans le style des pilules (pas le calendrier) */
 .bloc,.hd-card,.sv-tile,.sv-card,.fold,.hd3,.ucard,.dx-box,.rv-hero,.rv-it,.rv-ok,.rv-det,.rc-sum,.rc-start,.rc-m,.rc-choice,.dbox,.minfo,.chip-info,.dropdown,#lp-menu{border-radius:22px!important}
 .sv2-col,.dx-mini,.rc-cbtn,.eph-urow.clk,.fold .rc-tap{border-radius:16px!important}
@@ -3548,7 +3549,7 @@ function _dayFixH(){var sh=document.querySelector('#modal-root .sheet.daymod');i
 function _dayHApply(){var sh=document.querySelector('#modal-root .sheet');if(!sh)return;var m=0;try{m=+localStorage.getItem('dayH:'+window.innerWidth)||0;}catch(e){}
   if(m){sh.classList.add('dayh');sh.style.setProperty('--dayh',m+'px');}}
 function openDay(key){
-  if(!key)return;pendingKey=key;_lpk=key;
+  if(!key)return;window._dayVgHtml=null;pendingKey=key;_lpk=key;
   if(!document.body.classList.contains('modal-open'))_lockBodyScroll();
   var date=new Date(key+'T12:00:00'),VAC=getVAC(date),v2=getVac(date),vac=v2.vac,ov=v2.ov,fromSV=v2.fromSV,absent=v2.absent,echange=v2.echange,ecSelf=v2.ecSelf,li=v2.li,cycleVac=v2.cycleVac;
   var isFer=FERIES.has(key),hasCg=(S.conges||{})[key],dur=getDur(date);
@@ -3563,10 +3564,10 @@ function openDay(key){
   var vgHtml='<div style="height:8px"></div>';
   // Flatten all rows into a single grid (same sizing as action buttons)
   var allVns=[];rows.forEach(function(row){row.forEach(function(vn){allVns.push(vn);});});
-  vgHtml+='<div class="mbtns" style="grid-template-columns:repeat('+gridCols+',1fr);margin-bottom:6px">';
+  vgHtml+='<div id="day-vg"><div class="mbtns" style="grid-template-columns:repeat('+gridCols+',1fr);margin-bottom:6px">';
   allVns.forEach(function(vn){
       if(vn==='Autre'){
-        vgHtml+=`<button class="mb vt" style="background:var(--bg0);color:var(--text2);font-weight:700" onclick="openAutreVacModal()">Autre</button>`;
+        vgHtml+=`<button class="mb vt" style="background:var(--bg0);color:var(--text2);font-weight:700" onclick="_dayAutre(1)">Autre</button>`;
       } else {
         var vi=VAC[vn];
         if(vi&&vi.mixte)return;
@@ -3578,7 +3579,7 @@ function openDay(key){
         vgHtml+=`<button class="mb vt" style="border:${bd};background:${bg};color:${cl};" onclick="avw('${vn}')"><div style="font-weight:700">${vLbl(vn,VAC)}</div>${durLbl}</button>`;
       }
   });
-  vgHtml+='</div>';
+  vgHtml+='</div></div>';
 
 
   var _inMatelas=!!(S.matelasKeys&&S.matelasKeys[key]!==undefined);
@@ -3679,6 +3680,13 @@ function openDay(key){
   _dayFixH();
   _dayNavSetup(key);
 }
+// « Autre » dans la fiche du jour : les autres vacations prennent la place de la grille (en-tête et boutons du dessous gardés)
+function _dayAutre(on){var vg=document.getElementById('day-vg');if(!vg)return;_haptic();
+  if(on){if(!window._dayVgHtml)window._dayVgHtml=vg.innerHTML;
+    var h=_autreVacHtml();
+    vg.innerHTML='<div class="vg-in"><div style="display:flex;align-items:center;justify-content:space-between;margin:0 0 2px"><span style="font-size:13px;font-weight:600;color:var(--text)">Autres vacations</span><button class="adj-pill" style="width:auto;padding:0 14px;height:28px;font-size:12px" onclick="_dayAutre(0)">‹ Grille</button></div>'
+      +(h||'<div style="font-size:12px;color:var(--text3);padding:10px 0">Aucune vacation disponible ce jour.</div>')+'</div>';}
+  else if(window._dayVgHtml){vg.innerHTML='<div class="vg-in">'+window._dayVgHtml+'</div>';window._dayVgHtml=null;}}
 function avw(sel){
   if(!sel)return;
   var key=pendingKey||_lpk;if(!key)return;
@@ -4060,7 +4068,8 @@ function openPoseModal(type,fromMenu){
   // Absence : motif (congé exceptionnel de l'accord, ou sans motif) ; rentrée scolaire = ½ journée, l'autre moitié travaillée ou en rendus
   var excH='';if(type==='absent'){var _y=date.getFullYear(),_sel='width:100%;height:42px;box-sizing:border-box;padding:0 10px;border:0.5px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--bg2);color:var(--text)';
     excH='<select id="_exc-m" onchange="_excPick()" style="'+_sel+';margin-bottom:6px"><option value="">Absence (sans motif)</option>'
-      +Object.keys(EXC_M).map(function(m){return '<option value="'+m+'">'+EXC_M[m].l+'</option>';}).join('')+'</select>'
+      // « Absence non rémunérée » n'est plus proposée (même traitement que la grève) ; les jours déjà saisis restent lus
+      +Object.keys(EXC_M).filter(function(m){return m!=='nonrem';}).map(function(m){return '<option value="'+m+'">'+EXC_M[m].l+'</option>';}).join('')+'</select>'
       +'<div id="_exc-i" style="font-size:11px;color:var(--text3);line-height:1.4;min-height:15px;margin-bottom:8px"></div>'
       +'<div id="_exc-g" style="display:none;margin-bottom:10px"><span class="bpseg" id="_exc-gv" data-v="j" style="display:flex">'+[['h','1 heure'],['dj','½ journée'],['j','journée']].map(function(o){return '<span style="flex:1;text-align:center"'+(o[0]==='j'?' class="on"':'')+' onclick="var g=this.parentNode;g.dataset.v=\''+o[0]+'\';[].forEach.call(g.children,function(c){c.classList.toggle(\'on\',c===this);},this)">'+o[1]+'</span>';}).join('')+'</span>'
       +'<details style="margin-top:6px;font-size:11px;color:var(--text3);line-height:1.45"><summary style="cursor:pointer;color:var(--blue)">Règles de décompte</summary><div style="margin-top:4px">'+getGreveConf().txt+'</div></details></div>'
@@ -7797,7 +7806,7 @@ function _cvSetMotif(k){var prev=window._cvMotif;window._cvMotif=k;setTimeout(_c
   var al=document.getElementById('cv-autre-lbl');if(al)al.textContent=k==='formateur'?'Prime de formateur (€)':'Primes du jour';
   var row=document.getElementById('custom-prime');if(row)row.style.visibility=k==='autre'?'visible':'hidden'; // menu des primes : seulement pour « Horaires modifiés »
   var sel=document.getElementById('custom-prime'),I=window._cvInit||{};
-  if(k==='formateur'&&sel&&sel.value!=='autre'){sel.value='autre';_cvPrimeSync(sel);}            // formateur : champ du montant
+  if(k==='formateur'&&sel&&sel.value!=='autre'){sel.value='autre';_cvPrimeSync(sel,1);}            // formateur : champ du montant
   else if(k==='forme'&&sel){sel.value='';_cvPrimeSync(sel);}                                       // formé : rien à saisir
   else if(k==='autre'&&prev!=='autre'&&sel){sel.value=I.sel||'';_cvPrimeSync(sel);}               // retour aux horaires modifiés : prime d'origine
   _cvPrimeLock(k);}
@@ -7806,7 +7815,7 @@ function _cvPrimeLock(k){var sel=document.getElementById('custom-prime');if(!sel
   ['antenne','reel','coord'].forEach(function(v){var o=sel.querySelector('option[value="'+v+'"]');if(o)o.disabled=lk;});
   if(lk&&['antenne','reel','coord'].indexOf(sel.value)>=0){sel.value='';_cvPrimeSync(sel);ch=true;}return ch;}
 // Prime « Autre » : montant saisi à la main (prime du jour)
-function _cvPrimeSync(sel){var a=document.getElementById('cv-autre');if(!a)return;var on=sel.value==='autre';a.style.visibility=on?'visible':'hidden';if(on)document.getElementById('cv-autre-amt').focus();}
+function _cvPrimeSync(sel,noFocus){var a=document.getElementById('cv-autre');if(!a)return;var on=sel.value==='autre';a.style.visibility=on?'visible':'hidden';if(on&&!noFocus)document.getElementById('cv-autre-amt').focus();}
 // Bouton corbeille des heures acquises : visible dès qu'une durée est choisie, vide la case au clic
 function _cvRmSync(){var d=document.getElementById('cv-exr-dur'),b=document.getElementById('cv-exr-rm');if(d&&b)b.classList.toggle('on',(parseInt(d.value)||0)>0);}
 function _cvRmClick(b){document.getElementById('cv-exr-dur').value='0';document.getElementById('cv-exr-lbl').value='';b.classList.remove('on');}
@@ -7864,8 +7873,8 @@ function confirmCustomVac(){
   if(key){popCell(key);openDay(key);}else closeModal();
 }
 
-function openAutreVacModal(){
-  if(!document.body.classList.contains('modal-open'))_lockBodyScroll();
+// Autres vacations du jour, par catégorie (fiche du jour : à la place de la grille ; échange : fenêtre à part)
+function _autreVacHtml(){
   const key=pendingKey||_lpk;
   const date=key?new Date(key+'T12:00:00'):new Date();
   const VAC=getVAC(date);
@@ -7943,6 +7952,11 @@ function openAutreVacModal(){
     html=section('Coordination',coordVacs)+section('Réal',videoVacs)+section('Cadre',cadreVacs);
   }
 
+  return html;
+}
+function openAutreVacModal(){
+  if(!document.body.classList.contains('modal-open'))_lockBodyScroll();
+  const key=pendingKey||_lpk,html=_autreVacHtml();
   document.getElementById('modal-root').innerHTML=
     '<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet">'
     +'<div class="sh"></div><div class="st">Autres vacations</div>'
