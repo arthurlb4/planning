@@ -796,7 +796,8 @@ button:not(.sv-tile):not(.dx-mini):not(.sh-x),select,input:not([type=checkbox]):
 .mb.vt.exsel{box-shadow:inset 0 0 0 1.5px var(--blue)!important}
 /* Tuiles et cases : coins plus arrondis, dans le style des pilules (pas le calendrier) */
 .bloc,.hd-card,.sv-tile,.sv-card,.fold,.hd3,.ucard,.dx-box,.rv-hero,.rv-it,.rv-ok,.rv-det,.rc-sum,.rc-start,.rc-m,.rc-choice,.dbox,.minfo,.chip-info,.dropdown,#lp-menu{border-radius:22px!important}
-.sv2-col,.dx-mini,.rc-cbtn,.eph-urow.clk,.fold .rc-tap{border-radius:16px!important}
+.dx-mbtn{border-radius:999px!important}
+.sv2-col,.dx-mini:not(.dx-mbtn),.rc-cbtn,.eph-urow.clk,.fold .rc-tap{border-radius:16px!important}
 @media(min-width:721px){.sheet{border-radius:26px}}
 </style>
 </head>
@@ -1368,6 +1369,7 @@ var _annualActionManual=false;
 // ================================================================
 // HELPERS EXPIRATION
 function getEphExtensions(ym){
+  if(S.profile&&S.profile.exp12)return 3; // option « valables un an » : comme si les trois reports étaient accordés (fin du 12e mois)
   const m=S.ephExtend&&S.ephExtend[ym];
   const a=S.autoExtend&&S.autoExtend[ym];
   const mv=m===true?1:typeof m==='number'?m:0;
@@ -2716,7 +2718,7 @@ function _bulPayPropose(then,all){
       +'<a style="color:var(--blue);cursor:pointer;margin-left:8px" onclick="closeModal();openBulletinsCal()">Détail</a></span></div>'
       +(!eok&&D.paid.length?'<div style="font-size:10.5px;color:var(--text3);padding:0 0 4px">Corrigé en partie par la génération de rendus ci-dessous</div>':'');}
   var body=((rows||all)?sec('Paie',(rows||okR('Palier, contrat, primes'))+EP):'')+((rend||all)?sec('Génération de rendus',(rend||okR('Payés ou rendus'))+KEPT):'')+(all?sec('Tableau Gestion',G):'')
-    +(all?sec('Documents','<div style="display:flex;align-items:center;gap:10px;padding:4px 0"><span style="flex:1;font-size:12px;color:var(--text3)">Bulletins (PDF) ou tableau Gestion (Excel)</span><button class="adj-pill" style="width:auto;padding:0 16px;height:34px;font-size:12px" onclick="_verifImport()"><i class="ti ti-file-import" style="margin-right:4px"></i>Importer</button></div>'):'');
+    +(all?sec('Documents','<div style="display:flex;align-items:center;gap:10px;padding:4px 0"><span style="flex:1;font-size:12px;color:var(--text3)">Bulletins (PDF) et/ou tableau Gestion (Excel)</span><button class="adj-pill" style="width:auto;padding:0 16px;height:34px;font-size:12px" onclick="_verifImport()"><i class="ti ti-file-import" style="margin-right:4px"></i>Importer</button></div>'):'');
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)_bulPayDone(0)"><div class="sheet"><div class="sh"></div><div class="st">'+(all?'Vérification':'Réglages lus sur les bulletins')+'</div>'
     +(D.n?'<div style="font-size:12px;color:var(--text3);line-height:1.45;margin:-4px 0 10px">Corrections proposées d’après les bulletins'+(all?' et le tableau Gestion':'')+'.</div>':'')
     +body
@@ -5450,7 +5452,7 @@ function openMergedRenduCgModal(limit,tab){
     let expLblM;
     // Heures perdues : le montant ouvre aussi le menu des reports (un report accordé après coup par le gestionnaire les rend)
     if(isExp)expLblM=lostMinM>0?'<button class="rep-pill lost" onclick="event.stopPropagation();_openRepMenu(this,'+ym+','+limit+',-1)">−'+fmtMin(lostMinM)+' <i class="ti ti-chevron-down"></i></button>':'<span style="color:var(--text3)">'+_dl(expYm)+'</span>';
-    else if(isFut||(avail<=0&&!ext))expLblM='<span style="color:var(--text3)">'+_dl(expYm)+'</span>';
+    else if(isFut||(avail<=0&&!ext)||(S.profile&&S.profile.exp12))expLblM='<span style="color:var(--text3)">'+_dl(expYm)+'</span>';
     else{
       expLblM='<button class="rep-pill'+(ext>0?' on':'')+(_urg&&!ext?' urg':'')+(rr>=0&&rr!==ext?' warn':'')+'" onclick="event.stopPropagation();_openRepMenu(this,'+ym+','+limit+','+rr+')">'
         +(rr>=0?(rr===ext?'<span style="color:var(--green)">✓</span> ':'<span style="color:var(--amber)">⚠</span> '):'')
@@ -7069,6 +7071,7 @@ function openSettingsModal(tab){
   var tab2=''
     +_sh+'Génération des rendus</div>'
     +'<div class="srow" '+_sr+'><div style="display:flex;gap:20px;align-items:center;flex:1;padding-left:4px">'+_rendDots+'</div><button '+_bS+' onclick="openAnnualSettingsModal('+new Date().getFullYear()+')">Changer</button></div>'
+    +'<div class="srow" '+_sr+'><div class="slbl">Heures valables un an <span style="color:var(--text3);font-size:10px">reports toujours accordés</span></div><label class="tgl"><input type="checkbox"'+(pr.profile.exp12?' checked':'')+' onchange="exp12Set(this.checked)"><span class="tgl-s"></span></label></div>'
     +_sh+'Soldes initiaux</div>'
     // Tableau Gestion : état de l'import ; importer (ou un plus récent), revenir aux soldes d'avant l'import. La vérification est dans l'onglet Paie
     +(function(){var has=!!(pr.profile.rhTable||pr.profile.rhImportedAt),b='class="adj-pill" style="width:'+(pr.profile._rhImportBackup?'auto;padding:0 14px':'120px')+';height:32px;font-size:12px;white-space:nowrap"';
@@ -7785,6 +7788,8 @@ function _cvSaveMove(){var W=window._cvW||{when:'day'},key=pendingKey,m=window._
   var ML={autre:'horaires',forme:'formation',formateur:'formateur',detache:'détachement'};
   logH(ex?'Échange: '+fmtDate(oD)+' <-> '+fmtDate(fD)+' ('+vLbl(V,VF)+')':fmtDate(oD)+' -> '+fmtDate(fD)+' ('+ML[m]+')',ex?'#c88048':'#62aadc',fKey);
   saveState();render();gcalTrigger();popCell(fKey);openDay(key);}
+// Option « Heures valables un an » : chaque mois de rendus expire à la fin du 12e mois (plus de menu de report)
+function exp12Set(on){pushUndo(on?'Heures valables un an':'Expiration par reports');if(!S.profile)S.profile={};if(on)S.profile.exp12=true;else delete S.profile.exp12;saveState();render();_infoToast(on?'✓ Heures valables un an':'Expiration à 3 mois, avec reports');}
 // Échange : la page Modifier, sur « un autre jour » et le motif Échange
 function openExchange(key){pendingKey=key;_lpk=key;_exState={step:1,targetKey:null,targetVac:null};if(!document.body.classList.contains('modal-open'))_lockBodyScroll();
   window._cvReq={motif:'echange'};openCustomVacModal();}

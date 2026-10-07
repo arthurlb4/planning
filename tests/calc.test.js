@@ -211,6 +211,15 @@ function situation(opts) {
       var w1=calcHSWeek(m).surplus>0;S.overrides[k].motif='detache';return [w1,calcHSWeek(m).surplus,_dayHSMin(d)];}}})()`), [true, 0, 0]);
 }
 
+// Option « Heures valables un an » : chaque mois expire à la fin du 12e mois, juin 2026 n'est plus perdu fin septembre
+{
+  const a = situation({});
+  a.run('S.profile.exp12=true;');
+  eq('Valables un an : juin 2026 expire fin juin 2027', a.run('getExpYm(' + YM(2026, 6) + ')'), YM(2027, 6));
+  eq('Valables un an : rien de perdu au 1/10', a.run('calcSoldes().preExpiry'), {});
+  eq('Valables un an : solde au 1/10 = juin 11h01 + juillet 18h00 + août 3h23', a.run('calcSoldeRH(new Date(2026,9,1,12)).solde'), 661 + 1283);
+}
+
 // Échange entre collègues : les primes suivent la vacation faite, prime du matin comprise
 {
   const a = load('2026-10-01');
