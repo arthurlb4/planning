@@ -2825,9 +2825,9 @@ function _bulCompare(b){
   // L'alerte « demi-heure » des HS décrit le même problème qu'une ligne HS en écart : comptée une seule fois
   var hsBad=rows.some(function(r){return (r.k==='hsLow'||r.k==='hsHigh')&&!r.ok;});if(!hsBad)badList=badList.concat(alerts.map(function(){return 'Heures sup (demi-heure)';}));
   // Lignes en écart, chacune avec son montant (bulletin − app) ; ce que les lignes n'expliquent pas forme un « reste »
-  var items=rows.filter(function(r){return !r.ok;}).map(function(r){return{id:'r:'+r.k,lbl:r.k==='panier'?'Paniers':(_BUL_LBL[r.k]||r.k),d:r2(r.bm+r.rm-r.am)};})
-    .concat(fixed.filter(function(f){return !f.ok;}).map(function(f){return{id:'f:'+f.lbl,lbl:f.lbl,d:r2(f.bm-f.am)};}));
-  if(!hsBad&&alerts.length)items.push({id:'a:hs',lbl:'Heures sup (demi-heure)',d:0});
+  var items=rows.filter(function(r){return !r.ok;}).map(function(r){return{id:'r:'+r.k,lbl:r.k==='panier'?'Paniers':(_BUL_LBL[r.k]||r.k),d:r2(r.bm+r.rm-r.am),row:r};})
+    .concat(fixed.filter(function(f){return !f.ok;}).map(function(f){return{id:'f:'+f.lbl,lbl:f.lbl,d:r2(f.bm-f.am),fx:f};}));
+  if(!hsBad&&alerts.length)items.push({id:'a:hs',lbl:'Heures sup (demi-heure)',d:0,hs:rows.filter(function(r){return (r.k==='hsLow'||r.k==='hsHigh')&&r.bq%30;})});
   var res=r2(adj-items.reduce(function(s,i){return s+i.d;},0));if(Math.abs(res)>0.1)items.push({id:'reste',lbl:'Écart non expliqué par une ligne',d:res});
   // Écarts ignorés ligne par ligne : chacun reste ignoré tant que son montant ne change pas
   var IG=(((S.profile||{}).ignBulL||{})[b.ym])||{},adjI=adj;
@@ -3925,12 +3925,26 @@ function _gmRh(){
     Object.keys(rr).map(Number).sort(function(a,b){return a-b;}).forEach(function(ym){var x=getEphExtensions(ym);if(getExpYm(ym)>=TODAY_YM&&x!==rr[ym])L.push('- heures acquises en '+MF_(ym)+' : '+(x?'report de '+x*3+' mois':'aucun report')+' accordé, '+(rr[ym]?'report de '+rr[ym]*3+' mois':'aucun report')+' dans le tableau');});}
   // fav : seulement un solde en ma faveur (pas coché d'office)
   return L.length?{ed:new Date(c.ed+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}),L:L,fav:L.length===1&&e>=2}:null;}
-// Paie : écarts des bulletins non ignorés, ligne par ligne
+// Paie : écarts des bulletins non ignorés, ligne par ligne, dits concrètement (ce qui est noté sur le bulletin / ce que j'ai fait)
+var _GM_N={hsLow:'d’HS à 125 %',hsHigh:'d’HS à 150 %',nuit:'d’heures de nuit',fer:'d’heures de férié',dim:'d’heures de dimanche',rh:'d’heures de repos hebdo',
+  panier:'paniers',antenne:'indemnités antenne',matin:'indemnités de vacation sup',reel:'indemnités journaux inter',coord:'indemnités de coordination'};
+function _gmItem(i){
+  var eu=function(x){return fmtEuro(Math.abs(x));},amt=i.d<-0.005?' (il manque '+eu(i.d)+')':i.d>0.005?' ('+eu(i.d)+' de trop)':'';
+  var r=i.row,f=i.fx;
+  if(r){var q=r.bq+r.rq,n=_GM_N[r.k]||r.lbl;
+    if(r.eur)return r.lbl+' : '+eu(r.bm+r.rm)+' payés au lieu de '+eu(r.am)+amt;
+    if(q!==r.aq)return r.h?'tu as noté '+fmtMin(q)+' '+n+' alors que j’en ai fait '+fmtMin(r.aq)+amt
+      :'tu as noté '+q+' '+n+' alors que j’en compte '+r.aq+amt;
+    return (r.h?fmtMin(q)+' '+n:q+' '+n)+' : le bon nombre, mais payé'+(r.h?'es':'s')+' '+eu(r.bm+r.rm)+' au lieu de '+eu(r.am)+amt;}
+  if(f)return f.lbl+' : '+eu(f.bm)+' payés au lieu de '+eu(f.am)+amt;
+  if(i.hs)return i.hs.map(function(h){return 'tu as noté '+fmtMin(h.bq)+' '+_GM_N[h.k]+' : toute demi-heure commencée est due (article VIII.5 de l’accord), soit '+fmtMin(Math.ceil(h.bq/30)*30);}).join(' ; ')||'heures sup : toute demi-heure commencée est due (article VIII.5 de l’accord)';
+  if(i.id==='reste')return 'le brut diffère encore de '+eu(i.d)+' sans ligne en cause'+(i.d<0?' (en ma défaveur)':'');
+  return i.lbl+amt;}
 function _gmPaie(){
   var L=[];Object.keys(S.bulletins||{}).map(Number).sort(function(a,b){return a-b;}).forEach(function(ym){var c;try{c=_bulCompare(S.bulletins[ym]);}catch(e){return;}
     if(c.status!=='ecart'||_bulIgn(ym,c))return;
-    var it=(c.items||[]).filter(function(i){return !i.ign;}).map(function(i){return i.lbl+(i.d<-0.005?' : il manque '+fmtEuro(-i.d):i.d>0.005?' : '+fmtEuro(i.d)+' de trop':' : à vérifier');});
-    if(it.length)L.push('- bulletin '+_deMois(ym)+' '+Math.floor(ym/12)+' : '+it.join(' ; '));});
+    var it=(c.items||[]).filter(function(i){return !i.ign;}).map(function(i){return '   • '+_gmItem(i);});
+    if(it.length)L.push('- bulletin '+_deMois(ym)+' '+Math.floor(ym/12)+' (variables '+_deMois(ym-1)+') :\n'+it.join('\n'));});
   return L;}
 function openGestMail(repYms){
   if(!document.body.classList.contains('modal-open'))_lockBodyScroll();
