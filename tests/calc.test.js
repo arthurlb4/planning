@@ -211,15 +211,15 @@ function situation(opts) {
       var w1=calcHSWeek(m).surplus>0;S.overrides[k].motif='detache';return [w1,calcHSWeek(m).surplus,_dayHSMin(d)];}}})()`), [true, 0, 0]);
 }
 
-// Échange entre collègues : la prime du matin n'est pas échangée (elle reste au jour où la vacation du matin était prévue)
+// Échange entre collègues : les primes suivent la vacation faite, prime du matin comprise
 {
   const a = load('2026-10-01');
   const m0 = a.run('calcPrimesMois(2026,9).matin');
   const ex = (give, take, vac) => a.run('S.overrides={};S.overrides["' + give + '"]={vac:getCycleVac(new Date("' + give + 'T12:00:00")).cycleVac,echange:true,ecSelf:false,hs:false,pair:"' + take + '"};'
     + 'S.overrides["' + take + '"]={vac:"' + vac + '",echange:true,ecSelf:true,hs:false,pair:"' + give + '"};calcPrimesMois(2026,9).matin');
-  eq('Échange : je cède un matin (A1 le 14) → la prime du matin reste', ex('2026-10-14', '2026-10-13', 'B1'), m0);
-  eq('Échange : je prends un matin (A2 le 23) contre B1 → pas de prime du matin en plus', ex('2026-10-19', '2026-10-23', 'A2'), m0);
-  eq('Échange le même jour (B1 → A2) → pas de prime du matin en plus', a.run('S.overrides={"2026-10-20":{vac:"A2",echange:true,ecSelf:true,hs:false,pair:"2026-10-20"}};calcPrimesMois(2026,9).matin'), m0);
+  eq('Échange : je cède un matin (A1 le 14) contre B1 → la prime du matin part avec', ex('2026-10-14', '2026-10-13', 'B1'), m0 - 1);
+  eq('Échange : je prends un matin (A2 le 23) contre B1 → une prime du matin en plus', ex('2026-10-19', '2026-10-23', 'A2'), m0 + 1);
+  eq('Échange le même jour (B1 → A2) → une prime du matin en plus', a.run('S.overrides={"2026-10-20":{vac:"A2",echange:true,ecSelf:true,hs:false,pair:"2026-10-20"}};calcPrimesMois(2026,9).matin'), m0 + 1);
   a.run('S.overrides={}');
 }
 
