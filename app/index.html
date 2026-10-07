@@ -2645,9 +2645,15 @@ function _bulPayApply(){
 }
 // Vérification depuis Suivi : on y revient en la fermant
 function openVerif(){_bulPayPropose(function(){openMergedRenduCgModal(6,2);},1);}
-// Vérification : importer des bulletins (on revient à la vérification) ou un tableau Gestion (comparaison, retour à Suivi)
-function _verifImport(t){var th=window._bulPayThen;window._bulPayThen=null;
-  if(t==='bul')importBulletins(function(){_bulPayPropose(th,1);});else{window._rvFrom='recap';rhCompareOpen();}}
+// Vérification : un seul bouton Importer ; les PDF vont aux bulletins (retour à la vérification), le fichier Excel au tableau Gestion
+function _verifImport(){var th=window._bulPayThen;
+  var inp=document.createElement('input');inp.type='file';inp.multiple=true;inp.accept='application/pdf,.pdf,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  inp.onchange=function(){var fs=[].slice.call(inp.files||[]),pdf=fs.filter(function(f){return /\.pdf$/i.test(f.name)||f.type==='application/pdf';}),xl=fs.filter(function(f){return /\.xlsx$/i.test(f.name);});
+    if(!pdf.length&&!xl.length){showBlockAlert('Fichier non reconnu','Choisir des bulletins (PDF) ou le tableau Gestion (Excel).');return;}
+    window._bulPayThen=null;
+    var rh=function(){window._rvFrom='recap';_rhFile(xl[xl.length-1]);};
+    if(pdf.length)_importBulletinFiles(pdf,xl.length?rh:function(){_bulPayPropose(th,1);});else rh();};
+  inp.click();}
 // Fenêtre de proposition (après un import, ou depuis Réglages → Paie)
 function _bulPayPropose(then,all){
   var D=_bulPayDiffs(),nb=Object.keys(S.bulletins||{}).length;
@@ -2656,7 +2662,7 @@ function _bulPayPropose(then,all){
   // Vérification complète (Réglages) : la même fenêtre ajoute l'écart avec le tableau Gestion, recalculé ici
   var G='';if(all){var rh=null;try{rh=_rhStored();}catch(e){}if(rh){try{rhCompareShow(rh);}catch(e){}}
     var cm=S.profile&&S.profile.rhCmp,lk='color:var(--blue);cursor:pointer;margin-left:8px;white-space:nowrap';
-    if(!rh)G='<div class="recap-row" style="font-size:12px;min-height:26px;gap:10px"><span style="color:var(--text3)">Tableau</span><span>aucun importé<a style="'+lk+'" onclick="closeModal();rhImportOpen()">Importer</a></span></div>';
+    if(!rh)G='<div class="recap-row" style="font-size:12px;min-height:26px;gap:10px"><span style="color:var(--text3)">Tableau</span><span>aucun importé</span></div>';
     else{var e0=cm?-cm.d:0,ok=!cm||Math.abs(e0)<2;
       G='<div class="recap-row" style="font-size:12px;min-height:26px;gap:10px"><span style="color:var(--text3)">Écart d’heures</span><span><b style="color:'+(ok?'var(--green)':e0>0?'var(--green)':'var(--red)')+'">'+(ok?'✓ identique':(e0>0?'+':'−')+fmtMin(Math.abs(e0))+(e0>0?' favorable':' à corriger'))+'</b><a style="'+lk+'" onclick="closeModal();rhOpenFrom(\'recap\')">Détail</a></span></div>';}}
   var mo=function(ym){return MC[ym%12]+' '+Math.floor(ym/12);},li=function(l,v,c,ym){return '<div class="recap-row" style="font-size:12px;min-height:26px;gap:10px"><span style="color:var(--text3)">'+l+'</span><span><b>'+v+'</b><span style="color:var(--text3)"> · dès '+mo(ym)+(c?' (avant : '+c+')':'')+'</span></span></div>';};
@@ -2681,7 +2687,7 @@ function _bulPayPropose(then,all){
       +'<span style="display:block;color:var(--text3);font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+why+'</span></span>'
       +'<span class="bpseg" data-bp="'+x.k+':'+x.ym+'" data-v="'+(x.v?1:0)+'">'+[0,1].map(function(v){return '<span'+((x.v?1:0)===v?' class="on"':'')+' onclick="var g=this.parentNode;g.dataset.v='+v+';[].forEach.call(g.children,function(c,j){c.classList.toggle(\'on\',j==='+v+');})">'+(v?'rendus':'payés')+'</span>';}).join('')+'</span></div>';}).join('');
   var KEPT=D.kept?'<div style="display:flex;justify-content:space-between;gap:10px;padding:6px 0 2px;border-top:0.5px solid var(--border);font-size:11px;color:var(--text3)"><span>Bulletin faux, réglage conservé : '+D.kept+' mois</span><span style="white-space:nowrap"><a style="color:var(--blue);cursor:pointer" onclick="delete S.profile.bulRendKeep;saveState();_bulPayPropose(window._bulPayThen,'+(all?1:0)+')">Revoir</a></span></div>':'';
-  var okR=function(t){return '<div class="recap-row" style="font-size:12px;min-height:26px;gap:10px"><span style="color:var(--text3)">'+t+'</span><span>'+(nb?'<b style="color:var(--green)">✓ conforme</b><span style="color:var(--text3)"> · '+nb+' bulletin'+(nb>1?'s':'')+'</span>':'aucun bulletin<a style="color:var(--blue);cursor:pointer;margin-left:8px" onclick="importBulletins(function(){_bulPayPropose(window._bulPayThen,1);})">Importer</a>')+'</span></div>';};
+  var okR=function(t){return '<div class="recap-row" style="font-size:12px;min-height:26px;gap:10px"><span style="color:var(--text3)">'+t+'</span><span>'+(nb?'<b style="color:var(--green)">✓ conforme</b><span style="color:var(--text3)"> · '+nb+' bulletin'+(nb>1?'s':'')+'</span>':'aucun bulletin')+'</span></div>';};
   var sec=function(t,h){return '<div class="bpsec">'+t+'</div><div class="hd-card">'+h+'</div>';};
   // écart de paie avec les bulletins (comme la tuile Suivi) : souvent dû à la génération de rendus
   var EP='';if(all&&nb){var E=_bulEcart(),eok=!E.nBad;
@@ -2690,7 +2696,7 @@ function _bulPayPropose(then,all){
       +'<a style="color:var(--blue);cursor:pointer;margin-left:8px" onclick="closeModal();openBulletinsCal()">Détail</a></span></div>'
       +(!eok&&D.paid.length?'<div style="font-size:10.5px;color:var(--text3);padding:0 0 4px">Corrigé en partie par la génération de rendus ci-dessous</div>':'');}
   var body=((rows||all)?sec('Paie',(rows||okR('Palier, contrat, primes'))+EP):'')+((rend||all)?sec('Génération de rendus',(rend||okR('Payés ou rendus'))+KEPT):'')+(all?sec('Tableau Gestion',G):'')
-    +(all?sec('Importer des documents','<div style="display:flex;gap:8px;padding:4px 0"><button class="adj-pill" style="flex:1;height:34px;font-size:12px" onclick="_verifImport(\'bul\')"><i class="ti ti-file-import" style="margin-right:4px"></i>Bulletins</button><button class="adj-pill" style="flex:1;height:34px;font-size:12px" onclick="_verifImport(\'rh\')"><i class="ti ti-table-import" style="margin-right:4px"></i>Tableau</button></div>'):'');
+    +(all?sec('Documents','<div style="display:flex;align-items:center;gap:10px;padding:4px 0"><span style="flex:1;font-size:12px;color:var(--text3)">Bulletins (PDF) ou tableau Gestion (Excel)</span><button class="adj-pill" style="width:auto;padding:0 16px;height:34px;font-size:12px" onclick="_verifImport()"><i class="ti ti-file-import" style="margin-right:4px"></i>Importer</button></div>'):'');
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)_bulPayDone(0)"><div class="sheet"><div class="sh"></div><div class="st">'+(all?'Vérification':'Réglages lus sur les bulletins')+'</div>'
     +(D.n?'<div style="font-size:12px;color:var(--text3);line-height:1.45;margin:-4px 0 10px">Corrections proposées d’après les bulletins'+(all?' et le tableau Gestion':'')+'.</div>':'')
     +body
@@ -3921,6 +3927,10 @@ function _gmRep(yms){
   if(!yms){var ok=Object.keys(sd.realAvail).map(Number).filter(function(ym){return ym<=TODAY_YM&&getExpYm(ym)>=TODAY_YM&&(sd.realAvail[ym]||0)>0;}).sort(function(a,b){return a-b;});
     yms=ok.filter(function(ym){return getExpYm(ym)===TODAY_YM;});}
   return yms.filter(function(ym){return av(ym)>0;}).map(function(ym){var e=getExpYm(ym);return '- '+fmtMin(av(ym))+' acquises en '+MF_(ym)+(e<TODAY_YM?', expirées fin ':', qui expirent fin ')+MF_(e);});}
+// Heures perdues : expirées il y a moins de 3 mois, avec ce qui restait à l'expiration
+function _gmLost(){var sd=calcSoldes();
+  return Object.keys(sd.preExpiry||{}).map(Number).filter(function(ym){var e=getExpYm(ym);return sd.preExpiry[ym]>0&&e<TODAY_YM&&e>=TODAY_YM-3;}).sort(function(a,b){return a-b;})
+    .map(function(ym){return '- '+fmtMin(sd.preExpiry[ym])+' acquises en '+MF_(ym)+', perdues fin '+MF_(getExpYm(ym));});}
 // Tableau de gestion : écart de solde avec le décompte de l'app, et reports différents
 function _gmRh(){
   var c=S.profile&&S.profile.rhCmp,o=S.profile&&S.profile.rhTable;if(!c||!o)return null;
@@ -3954,7 +3964,7 @@ function _gmPaie(){
   return L;}
 function openGestMail(repYms){
   if(!document.body.classList.contains('modal-open'))_lockBodyScroll();
-  var R=_gmRep(repYms),H=_gmRh(),P=_gmPaie();window._gmRepYms=repYms||null;
+  var R=_gmRep(repYms),X=repYms?[]:_gmLost(),H=_gmRh(),P=_gmPaie();window._gmRepYms=repYms||null;
   var row=function(id,lbl,sub,n,off){return '<div class="srow" style="padding:8px 0;align-items:center"><div style="flex:1;min-width:0"><div style="font-size:14px;color:'+(n?'var(--text)':'var(--text3)')+'">'+lbl+'</div><div style="font-size:11.5px;color:var(--text3);margin-top:2px">'+sub+'</div></div>'
     +'<label class="tgl"><input type="checkbox" id="'+id+'"'+(n?(off?'':' checked'):' disabled')+'><span class="tgl-s"></span></label></div>';};
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="sh"></div>'
@@ -3962,6 +3972,7 @@ function openGestMail(repYms){
     +'<div style="font-size:12px;color:var(--text3);margin-bottom:10px">Choisir ce que le mail demande.</div>'
     +'<div class="hd-card" style="padding:4px 14px">'
     +row('gm-rep','Reports d’heures',R.length?R.length+' mois d’acquisition · '+(repYms?'heures choisies':'expirent en '+ML[TODAY_YM%12].toLowerCase()):'aucune heure n’expire en '+ML[TODAY_YM%12].toLowerCase(),R.length)
+    +row('gm-lost','Heures perdues',X.length?X.length+' mois · expirées il y a moins de 3 mois':'aucune heure perdue ces 3 derniers mois',X.length)
     +row('gm-rh','Corrections du tableau de gestion',H?(H.fav?'écart en ma faveur':H.L.length+' point'+(H.L.length>1?'s':''))+' · tableau du '+H.ed:(S.profile&&S.profile.rhCmp?'tableau identique':'aucun tableau importé'),H,H&&H.fav)
     +row('gm-paie','Corrections de paie',P.length?P.length+' bulletin'+(P.length>1?'s':'')+' à corriger':'aucun écart sur les bulletins',P.length)
     +'</div>'
@@ -3969,14 +3980,15 @@ function openGestMail(repYms){
     +'</div></div>';}
 function gestMailSend(){
   var on=function(id){var e=document.getElementById(id);return !!(e&&e.checked&&!e.disabled);};
-  var R=on('gm-rep')?_gmRep(window._gmRepYms):[],H=on('gm-rh')?_gmRh():null,P=on('gm-paie')?_gmPaie():[];
-  if(!R.length&&!H&&!P.length){alert('Rien à demander : cocher au moins un point.');return;}
-  var m=_gmBuild(R,H,P);_openMail(m.sub,m.body);
+  var R=on('gm-rep')?_gmRep(window._gmRepYms):[],X=on('gm-lost')?_gmLost():[],H=on('gm-rh')?_gmRh():null,P=on('gm-paie')?_gmPaie():[];
+  if(!R.length&&!X.length&&!H&&!P.length){alert('Rien à demander : cocher au moins un point.');return;}
+  var m=_gmBuild(R,H,P,X);_openMail(m.sub,m.body);
   openMergedRenduCgModal(6,2);}
 // Objet et texte du mail (tutoiement, sans signature)
-function _gmBuild(R,H,P){
+function _gmBuild(R,H,P,X){
   var sub=[],B=[];
   if(R.length){sub.push('report d’heures de rendus');B.push('Peux-tu m’accorder un report de mes heures de rendus :\n'+R.join('\n'));}
+  if(X&&X.length){sub.push('heures perdues');B.push('Des heures de rendus ont expiré récemment. Peux-tu m’accorder un report pour les récupérer :\n'+X.join('\n'));}
   if(H){sub.push('corrections du tableau de gestion');B.push('Dans le tableau de gestion du '+H.ed+', je relève :\n'+H.L.join('\n')+'\nPeux-tu le vérifier et le corriger ?');}
   if(P.length){sub.push('corrections de paie');B.push('Sur mes bulletins de paie, je relève les écarts suivants :\n'+P.join('\n')+'\nPeux-tu les faire corriger ?');}
   var subj=sub.join(', ').replace(/, ([^,]*)$/,' et $1');subj=subj.charAt(0).toUpperCase()+subj.slice(1);
@@ -4350,11 +4362,13 @@ var _navBackCss='display:inline-flex;align-items:center;gap:3px;color:var(--blue
 function rhCompareOpen(mode){
   let inp=document.getElementById('rh-file');
   if(!inp){inp=document.createElement('input');inp.type='file';inp.id='rh-file';inp.accept='.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';inp.style.display='none';document.body.appendChild(inp);
-    inp.addEventListener('change',async function(){const f=inp.files&&inp.files[0];inp.value='';if(!f)return;
-      try{const cells=await _xlsxRead(f);const rh=_rhParse(cells,f.name);_rhStore(cells,f.name);if(inp._mode==='import'||!(S.profile&&S.profile.rhImportedAt))rhImportPreview(rh);else rhCompareShow(rh);}
-      catch(e){console.warn(e);showBlockAlert('Lecture impossible',e.message||'Ce fichier n’a pas pu être lu.');}});}
+    inp.addEventListener('change',function(){const f=inp.files&&inp.files[0];inp.value='';if(f)_rhFile(f,inp._mode);});}
   inp._mode=mode||'compare';inp.click();
 }
+// Tableau Gestion lu : premier import (ou demandé) → on en repart ; sinon comparaison
+async function _rhFile(f,mode){
+  try{const cells=await _xlsxRead(f);const rh=_rhParse(cells,f.name);_rhStore(cells,f.name);if(mode==='import'||!(S.profile&&S.profile.rhImportedAt))rhImportPreview(rh);else rhCompareShow(rh);}
+  catch(e){console.warn(e);showBlockAlert('Lecture impossible',e.message||'Ce fichier n’a pas pu être lu.');}}
 // ── Import du tableau RH : un seul bouton. Premier tableau : on en repart ; ensuite : comparaison, avec « Repartir de ce tableau » en bas ──
 function rhImportOpen(){rhCompareOpen();}
 // Après une inscription sans matelas ni rendus saisis : proposer d'importer le tableau RH

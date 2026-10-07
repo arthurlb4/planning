@@ -50,6 +50,12 @@ a.run('calcSoldes=function(){return{realAvail:{' + YM(2026, 7) + ':1080,' + YM(2
   + 'getExpYm=function(ym){return ym+3;};');
 eq('Reports : juillet (expire fin octobre), pas août', a.run('_gmRep()'), ['- 18h00 acquises en juillet 2026, qui expirent fin octobre 2026']);
 
+// 6 bis. Heures perdues : expirées il y a moins de 3 mois (juin, perdu fin septembre), pas avant (mars, perdu fin juin)
+a.run('calcSoldes=function(){return{realAvail:{},preExpiry:{' + YM(2026, 3) + ':300,' + YM(2026, 6) + ':661}};};');
+eq('Heures perdues : juin seulement', a.run('_gmLost()'), ['- 11h01 acquises en juin 2026, perdues fin septembre 2026']);
+eq('Mail : heures perdues', a.run('_gmBuild([],null,[],["- 11h01 acquises en juin 2026, perdues fin septembre 2026"])'),
+  { sub: 'Heures perdues', body: 'Bonjour,\n\nDes heures de rendus ont expiré récemment. Peux-tu m’accorder un report pour les récupérer :\n- 11h01 acquises en juin 2026, perdues fin septembre 2026\n\nMerci d’avance' });
+
 // 7. Objet et texte : tutoiement, sans signature
 const m = a.run('_gmBuild(["- 18h00 acquises en juillet 2026, qui expirent fin octobre 2026"],null,["- bulletin d’août 2026 (variables de juillet) :\\n   • tu as noté 1 panier alors que j’en compte 2"])');
 eq('Objet', m.sub, 'Report d’heures de rendus et corrections de paie');
