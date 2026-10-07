@@ -4924,12 +4924,12 @@ function cancelExchange(key){
   if(!ov1||!ov1.echange)return;
   delete S.overrides[key];
   // Partenaire de l'échange : lien enregistré (pair) ; anciens échanges sans lien : tous ceux de la semaine
-  if(ov1.pair){const p=S.overrides[ov1.pair];if(p&&p.echange&&ov1.pair!==key){gcalClearDateId(ov1.pair);delete S.overrides[ov1.pair];}}
+  if(ov1.pair){const p=S.overrides[ov1.pair];if(p&&p.echange&&ov1.pair!==key){gcalClearDateId(ov1.pair);delete S.overrides[ov1.pair];}if(ov1.pair!==key)removeHistoryForKey(ov1.pair);}
   const date=new Date(key+'T12:00:00'),mon=getMonday(date);
   if(!ov1.pair)for(let i=0;i<7;i++){
     const d=new Date(mon);d.setDate(mon.getDate()+i);const dk2=dk(d);
     const ov2=(S.overrides||{})[dk2];
-    if(ov2&&ov2.echange){gcalClearDateId(dk2);if(dk2!==key)delete S.overrides[dk2];}
+    if(ov2&&ov2.echange){gcalClearDateId(dk2);if(dk2!==key){delete S.overrides[dk2];removeHistoryForKey(dk2);}}
   }
   gcalClearDateId(key);delete S.overrides[key];
   removeHistoryForKey(key);
@@ -6818,7 +6818,8 @@ function _exWeekPick(i){var mon=getMonday(new Date((pendingKey||_lpk)+'T12:00:00
 function _exWeekSet(i){var key=pendingKey||_lpk,mon=getMonday(new Date(key+'T12:00:00')),mk=dk(mon),base=_lineIdxBase(mon);
   pushUndo(i==null||i===base?'Échange de semaine annulé':'Semaine échangée');if(!S.weekLines)S.weekLines={};
   if(i==null||i===base)delete S.weekLines[mk];else S.weekLines[mk]=i;
-  logH('Semaine du '+fmtDate(mon)+(i==null||i===base?' : ligne d\u2019origine':' : échangée avec S'+(i+1)),'#c88048',key);
+  var _wp='Semaine du '+fmtDate(mon)+' : ';if(S.history)S.history=S.history.filter(function(h){return String(h.d||'').indexOf(_wp)!==0;});
+  if(!(i==null||i===base))logH(_wp+'échangée avec S'+(i+1),'#c88048',key);
   saveState();closeModal();render();gcalTrigger();}
 function exSelectDay(dk2){
   // Le même jour est permis : « ce jour-là je fais la vacation de mon collègue »
@@ -7935,7 +7936,7 @@ function _cvCalc(){var el=document.getElementById('cv-calc'),R=window._cvCalcRef
   el.innerHTML=l1;if(xe)xe.innerHTML=ch.length?ch.join(' · '):'—';}
 // Revenir à l'original : retire la modification du jour (et sa prime du jour), l'écran se recharge sur la vacation prévue
 function _cvRevert(){var k=pendingKey;if(!k||!(S.overrides||{})[k])return;pushUndo('Vacation remise');
-  delete S.overrides[k];if(S.dayPrimes)delete S.dayPrimes[k];saveState();render();gcalTrigger();openCustomVacModal();}
+  delete S.overrides[k];if(S.dayPrimes)delete S.dayPrimes[k];removeHistoryForKey(k);saveState();render();gcalTrigger();openCustomVacModal();}
 // Motif : formateur ouvre directement la prime de formateur
 function _cvSetMotif(k){var prev=window._cvMotif;window._cvMotif=k;setTimeout(_cvCalc,0);
   var cf=document.getElementById('cv-fields'),cx=document.getElementById('cv-exg');if(cf)cf.style.display=k==='echange'?'none':'';if(cx)cx.style.display=k==='echange'?'':'none';document.querySelectorAll('#cv-motif button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-m')===k);});
