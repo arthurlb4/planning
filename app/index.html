@@ -3909,36 +3909,64 @@ function _openDayMenu(cell){
   requestAnimationFrame(function(){veil.classList.add('on');m.classList.add('on');});
   return true;
 }
-// Demande de report par mail (Outlook) à la personne qui accorde les reports ; son adresse est demandée une fois puis gardée
-function _repMailTo(force){
-  if(!S.profile)S.profile={};var to=S.profile.repMail||'';
-  if(force||!to){var v=prompt('Adresse mail de la personne qui accorde les reports :',to);if(v===null)return null;v=v.trim();
-    if(!/^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/.test(v)){alert('Adresse mail invalide.');return null;}
-    S.profile.repMail=v;saveState();to=v;}
-  return to;}
-function repMailEdit(){if(_repMailTo(true)!==null&&document.getElementById('rcc-wrap'))openMergedRenduCgModal(window._rcgLimit||6,0);}
-// Mois concernés : ceux passés en argument, sinon les heures qui expirent ce mois-ci ou le suivant (à défaut, toutes celles encore valables)
-function repMail(yms){
+// Mail au gestionnaire (Outlook) : reports, corrections du tableau de gestion et/ou de paie, au choix ; l'adresse est saisie dans Outlook
+// Reports : les mois passés en argument, sinon les heures qui expirent ce mois-ci ou le suivant (à défaut, toutes celles encore valables)
+function _gmRep(yms){
   var sd=calcSoldes(),av=function(ym){return getExpYm(ym)<TODAY_YM?(sd.preExpiry[ym]||0):(sd.realAvail[ym]||0);};
   if(!yms){var ok=Object.keys(sd.realAvail).map(Number).filter(function(ym){return ym<=TODAY_YM&&getExpYm(ym)>=TODAY_YM&&(sd.realAvail[ym]||0)>0;}).sort(function(a,b){return a-b;});
-    yms=ok.filter(function(ym){return getExpYm(ym)<=TODAY_YM+1;});if(!yms.length)yms=ok;}
-  yms=yms.filter(function(ym){return av(ym)>0;});
-  if(!yms.length){alert('Aucune heure de rendu à reporter.');return;}
-  var to=_repMailTo();if(to===null)return;
-  var mf=function(ym){return ML[ym%12].toLowerCase()+' '+Math.floor(ym/12);};
-  var lines=yms.map(function(ym){var e=getExpYm(ym);return '- '+fmtMin(av(ym))+' acquises en '+mf(ym)+(e<TODAY_YM?', expirées fin ':', qui expirent fin ')+mf(e);});
+    yms=ok.filter(function(ym){return getExpYm(ym)<=TODAY_YM+1;});_gmRep.urg=yms.length>0;if(!yms.length)yms=ok;}else _gmRep.urg=false;
+  return yms.filter(function(ym){return av(ym)>0;}).map(function(ym){var e=getExpYm(ym);return '- '+fmtMin(av(ym))+' acquises en '+MF_(ym)+(e<TODAY_YM?', expirées fin ':', qui expirent fin ')+MF_(e);});}
+// Tableau de gestion : écart de solde avec le décompte de l'app, et reports différents
+function _gmRh(){
+  var c=S.profile&&S.profile.rhCmp,o=S.profile&&S.profile.rhTable;if(!c||!o)return null;
+  var L=[],e=-c.d,T=null;try{T=_rhStored();}catch(x){}
+  if(Math.abs(e)>=2)L.push('- solde d’heures : le tableau m’en compte '+fmtMin(Math.abs(e))+' de '+(e>0?'plus':'moins')+' que mon décompte');
+  if(T&&T.lines){var eY=T.edition.getFullYear()*12+T.edition.getMonth(),rr={};T.lines.forEach(function(l){if(l.ym<eY)rr[l.ym]=Math.max(rr[l.ym]||0,l.rep||0);});
+    Object.keys(rr).map(Number).sort(function(a,b){return a-b;}).forEach(function(ym){var x=getEphExtensions(ym);if(getExpYm(ym)>=TODAY_YM&&x!==rr[ym])L.push('- heures acquises en '+MF_(ym)+' : '+(x?'report de '+x*3+' mois':'aucun report')+' accordé, '+(rr[ym]?'report de '+rr[ym]*3+' mois':'aucun report')+' dans le tableau');});}
+  // fav : seulement un solde en ma faveur (pas coché d'office)
+  return L.length?{ed:new Date(c.ed+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}),L:L,fav:L.length===1&&e>=2}:null;}
+// Paie : écarts des bulletins non ignorés, ligne par ligne
+function _gmPaie(){
+  var L=[];Object.keys(S.bulletins||{}).map(Number).sort(function(a,b){return a-b;}).forEach(function(ym){var c;try{c=_bulCompare(S.bulletins[ym]);}catch(e){return;}
+    if(c.status!=='ecart'||_bulIgn(ym,c))return;
+    var it=(c.items||[]).filter(function(i){return !i.ign;}).map(function(i){return i.lbl+(i.d<-0.005?' : il manque '+fmtEuro(-i.d):i.d>0.005?' : '+fmtEuro(i.d)+' de trop':' : à vérifier');});
+    if(it.length)L.push('- bulletin de '+MF_(ym)+' : '+it.join(' ; '));});
+  return L;}
+function openGestMail(repYms){
+  if(!document.body.classList.contains('modal-open'))_lockBodyScroll();
+  var R=_gmRep(repYms),H=_gmRh(),P=_gmPaie();window._gmRepYms=repYms||null;
+  var row=function(id,lbl,sub,n,off){return '<div class="srow" style="padding:8px 0;align-items:center"><div style="flex:1;min-width:0"><div style="font-size:14px;color:'+(n?'var(--text)':'var(--text3)')+'">'+lbl+'</div><div style="font-size:11.5px;color:var(--text3);margin-top:2px">'+sub+'</div></div>'
+    +'<label class="tgl"><input type="checkbox" id="'+id+'"'+(n?(off?'':' checked'):' disabled')+'><span class="tgl-s"></span></label></div>';};
+  document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="sh"></div>'
+    +'<div class="st" style="margin-bottom:2px">Mail au gestionnaire</div>'
+    +'<div style="font-size:12px;color:var(--text3);margin-bottom:10px">Choisir ce que le mail demande. Il s’ouvre dans Outlook, prêt à envoyer : il reste à saisir le destinataire.</div>'
+    +'<div class="hd-card" style="padding:4px 14px">'
+    +row('gm-rep','Reports d’heures',R.length?R.length+' mois · '+(repYms?'heures choisies':_gmRep.urg?'expirent bientôt':'encore valables'):'aucune heure à reporter',R.length)
+    +row('gm-rh','Corrections du tableau de gestion',H?(H.fav?'écart en ma faveur':H.L.length+' point'+(H.L.length>1?'s':''))+' · tableau du '+H.ed:(S.profile&&S.profile.rhCmp?'tableau identique':'aucun tableau importé'),H,H&&H.fav)
+    +row('gm-paie','Corrections de paie',P.length?P.length+' bulletin'+(P.length>1?'s':'')+' à corriger':'aucun écart sur les bulletins',P.length)
+    +'</div>'
+    +'<div class="mbtns" style="margin-top:14px"><button class="mb" onclick="openMergedRenduCgModal(6,2)">Annuler</button><button class="mb pri" onclick="gestMailSend()">Rédiger le mail</button></div>'
+    +'</div></div>';}
+function gestMailSend(){
+  var on=function(id){var e=document.getElementById(id);return !!(e&&e.checked&&!e.disabled);};
+  var R=on('gm-rep')?_gmRep(window._gmRepYms):[],H=on('gm-rh')?_gmRh():null,P=on('gm-paie')?_gmPaie():[];
+  if(!R.length&&!H&&!P.length){alert('Rien à demander : cocher au moins un point.');return;}
+  var sub=[],B=[];
+  if(R.length){sub.push('report d’heures de rendus');B.push('Pourriez-vous m’accorder un report de mes heures de rendus :\n'+R.join('\n'));}
+  if(H){sub.push('corrections du tableau de gestion');B.push('Dans le tableau de gestion du '+H.ed+', je relève :\n'+H.L.join('\n')+'\nPourriez-vous le vérifier et le corriger ?');}
+  if(P.length){sub.push('corrections de paie');B.push('Sur mes bulletins de paie, je relève les écarts suivants :\n'+P.join('\n')+'\nPourriez-vous les faire corriger ?');}
   var nm=S.profile&&S.profile.name?capitalize(S.profile.name):'';
-  var sub='Demande de report d’heures de rendus';
-  var body='Bonjour,\n\nPourriez-vous m’accorder un report de mes heures de rendus :\n'+lines.join('\n')+'\n\nMerci d’avance,\n'+nm;
-  _openMail(to,sub,body);}
-// Outlook sur iPhone / iPad (ms-outlook://), sinon la messagerie par défaut (mailto:, Outlook sur un poste qui l'a par défaut)
-function _openMail(to,sub,body){
-  var q='subject='+encodeURIComponent(sub)+'&body='+encodeURIComponent(body),mt='mailto:'+to+'?'+q;
+  var subj=sub.join(', ').replace(/, ([^,]*)$/,' et $1');subj=subj.charAt(0).toUpperCase()+subj.slice(1);
+  _openMail(subj,'Bonjour,\n\n'+B.join('\n\n')+'\n\nMerci d’avance,\n'+nm);
+  openMergedRenduCgModal(6,2);}
+// Outlook sur iPhone / iPad (ms-outlook://), sinon la messagerie par défaut (mailto:, Outlook sur un poste qui l'a par défaut) ; destinataire saisi dans Outlook
+function _openMail(sub,body){
+  var q='subject='+encodeURIComponent(sub)+'&body='+encodeURIComponent(body),mt='mailto:?'+q;
   var ios=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
   if(!ios){location.href=mt;return;}
   // Outlook pas installé : rien ne se passe, on se rabat sur Mail
   var gone=false,h=function(){if(document.hidden)gone=true;};document.addEventListener('visibilitychange',h);
-  location.href='ms-outlook://compose?to='+encodeURIComponent(to)+'&'+q;
+  location.href='ms-outlook://compose?'+q;
   setTimeout(function(){document.removeEventListener('visibilitychange',h);if(!gone&&!document.hidden)location.href=mt;},1500);}
 // Menu des reports d'un mois de rendus : sans report, +3, +6, +9 mois (dates d'expiration), le choix du tableau Gestion signalé
 function _openRepMenu(btn,ym,limit,rr){
@@ -3952,7 +3980,7 @@ function _openRepMenu(btn,ym,limit,rr){
   veil.addEventListener('touchmove',function(e){e.preventDefault();},{passive:false});
   var m=document.createElement('div');m.id='lp-menu';m.style.zIndex=451;
   var lost=getExpYm(ym)<TODAY_YM?(calcSoldes().preExpiry[ym]||0):0;
-  m.innerHTML='<div class="lp-h">Heures acquises en '+MC[ym%12]+' '+Math.floor(ym/12)+(lost?'<br><span style="color:#e07a6e">'+fmtMin(lost)+' perdues</span>':'')+'</div>'+items+'<button onclick="_haptic();_closeDayMenu();repMail(['+ym+'])"><i class="ti ti-mail" style="color:var(--blue)"></i><span style="color:var(--blue)">Demander par mail</span></button>'+(auto?'<div class="lp-h" style="padding-top:2px">Report automatique (moins de 7h restantes) : ne peut pas être retiré.</div>':'');
+  m.innerHTML='<div class="lp-h">Heures acquises en '+MC[ym%12]+' '+Math.floor(ym/12)+(lost?'<br><span style="color:#e07a6e">'+fmtMin(lost)+' perdues</span>':'')+'</div>'+items+'<button onclick="_haptic();_closeDayMenu();openGestMail(['+ym+'])"><i class="ti ti-mail" style="color:var(--blue)"></i><span style="color:var(--blue)">Demander par mail</span></button>'+(auto?'<div class="lp-h" style="padding-top:2px">Report automatique (moins de 7h restantes) : ne peut pas être retiré.</div>':'');
   document.body.appendChild(veil);document.body.appendChild(m);
   var r=btn.getBoundingClientRect(),mw=m.offsetWidth,mh=m.offsetHeight,vw=window.innerWidth,vh=window.innerHeight;
   var left=Math.min(Math.max(12,r.right-mw),vw-mw-12),below=r.bottom+8+mh<vh-12,top=below?r.bottom+8:Math.max(12,r.top-8-mh);
@@ -5303,7 +5331,7 @@ function openRestantsModal(){
 }
 
 function openMergedRenduCgModal(limit,tab){
-  limit=limit||6;window._rcgLimit=limit;
+  limit=limit||6;
   const _modalWasOpen=document.body.classList.contains('modal-open');
   if(!_modalWasOpen){_lockBodyScroll();_foldOpen={};}
   window._rcgRedraw=!!document.getElementById('rcc-wrap'); // même fenêtre redessinée (+/−, réglage) : pas de nouvelle animation
@@ -5433,6 +5461,8 @@ function openMergedRenduCgModal(limit,tab){
   // Suivi : toujours aujourd'hui (année en cours), quel que soit le mois affiché
   const recapRows=_suiviSimple(NOW.getFullYear())
     +'<div style="height:8px"></div>'
+    // Mail au gestionnaire : reports, corrections du tableau de gestion, de paie
+    +'<div class="ucard rep-mail" style="cursor:pointer" onclick="openGestMail()"><i class="ti ti-mail"></i><div style="flex:1;min-width:0"><div style="font-size:13px;color:var(--text)">Mail au gestionnaire</div><div style="font-size:11px;color:var(--text3)">reports, tableau de gestion, paie</div></div><i class="ti ti-chevron-right" style="font-size:16px;color:var(--text3)"></i></div>'
     +_cptHtml(NOW.getFullYear())
     +_fold('fold-hist','history','var(--text2)','Dernières modifications',(S.history||[]).length?'dernière le '+S.history[0].t:'aucune',(S.history||[]).length||'','<div style="height:6px"></div>'+rcgHistHtml)
     +'<div style="height:12px"></div>';
@@ -5646,10 +5676,6 @@ function openMergedRenduCgModal(limit,tab){
     +'<div id="rcc-0" style="grid-area:1/1">'
     +dispoBoxHtml
     +(rendRows?'<div class="ucard"><div class="ucard-t">Heures par mois d’acquisition</div><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-bottom:4px"><span style="padding-left:54px">acquises → restantes</span><span>expirent</span></div>'+rendRows+moreBtn+'</div>':'<div class="ucard" style="font-size:12px;color:var(--text3)">Aucun rendu disponible.</div>')
-    // Demande de report par mail : envoyée à la personne qui accorde les reports (adresse modifiable)
-    +'<div class="ucard rep-mail"><i class="ti ti-mail"></i><div style="flex:1;min-width:0"><div style="font-size:13px;color:var(--text)">Demande de report</div>'
-    +'<div style="font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+((S.profile&&S.profile.repMail)?'à '+_h(S.profile.repMail)+' · <span style="color:var(--blue);cursor:pointer" onclick="event.stopPropagation();repMailEdit()">modifier</span>':'par mail, via Outlook')+'</div></div>'
-    +'<button class="adj-pill" style="width:auto;padding:0 14px;height:30px;font-size:12px" onclick="repMail()">Envoyer</button></div>'
     +'</div>'
     +'<div id="rcc-1" style="grid-area:1/1;visibility:hidden;pointer-events:none">'
     +cgSoldeHeader
