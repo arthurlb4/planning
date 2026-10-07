@@ -53,8 +53,8 @@ self.addEventListener('push', function(event) {
   event.waitUntil(self.registration.showNotification(d.title || 'Planning', {
     body: d.body || '',
     tag: d.tag || undefined,
-    icon: './apple-touch-icon-v9.png',
-    badge: './favicon10.png',
+    icon: './apple-touch-icon-v10.png',
+    badge: './favicon11.png',
     data: { url: d.url || './' }
   }));
 });
