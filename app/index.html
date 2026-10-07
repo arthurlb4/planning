@@ -2309,22 +2309,22 @@ function _renderSideV2(d){
 // que baisser : dès qu'il en reste 7h ou moins, ces reports sont acquis et appliqués tout de suite (prévisions comprises).
 function autoReportEph(){
   if(!S.autoExtend)S.autoExtend={};
-  const saved=Object.assign({},S.autoExtend);
+  const saved=Object.assign({},S.autoExtend),manExt=S.ephExtend||{};
+  const manOf=function(ym){return typeof manExt[ym]==='number'?manExt[ym]:(manExt[ym]?1:0);};
+  // 1. reports automatiques déjà déclenchés (échéance passée) : acquis, même si le restant a changé depuis
   Object.keys(S.autoExtend).forEach(function(k){delete S.autoExtend[k];});
-  const{preExpiry,realAvail}=calcSoldes(); // sans reports automatiques
-  let changed=false;
-  const manExt=S.ephExtend||{};
+  Object.keys(saved).map(Number).forEach(function(ym){var man=manOf(ym),L=man;for(var i=man+1;i<=(saved[ym]||0);i++)if(ym+3+3*(i-1)<=TODAY_YM)L=i;if(L>man)S.autoExtend[ym]=L;});
+  // 2. restant actuel avec ces reports : 7h ou moins → reporté à chaque échéance, jusqu'à 12 mois
+  const{preExpiry,realAvail}=calcSoldes();
   const allYms=new Set([...Object.keys(saved),...Object.keys(preExpiry),...Object.keys(manExt),...Object.keys(realAvail)].map(Number));
   allYms.forEach(function(ym){
     if(ym>TODAY_YM)return;
-    const man=typeof manExt[ym]==='number'?manExt[ym]:(manExt[ym]?1:0);
-    // niveaux automatiques déjà déclenchés (échéance passée) : gardés
-    let L=man;for(let i=man+1;i<=(saved[ym]||0);i++)if(ym+3+3*(i-1)<=TODAY_YM)L=i;
-    const avail=ym+3+3*man<TODAY_YM?(preExpiry[ym]||0):(realAvail[ym]||0);
+    const man=manOf(ym);let L=Math.max(man,S.autoExtend[ym]||0);
+    const avail=ym+3+3*L<TODAY_YM?(preExpiry[ym]||0):(realAvail[ym]||0);
     if(avail>0&&avail<=420)L=3;
-    if(L>man)S.autoExtend[ym]=L;
-    if((S.autoExtend[ym]||0)!==(saved[ym]||0))changed=true;
+    if(L>man)S.autoExtend[ym]=L;else delete S.autoExtend[ym];
   });
+  const changed=JSON.stringify(saved)!==JSON.stringify(S.autoExtend);
   if(changed){recalcAllMatelas();saveState();}
 }
 // Reports d'un mois tels qu'ils étaient à une date (tableau Gestion) : les reports automatiques pas encore déclenchés ne comptent pas

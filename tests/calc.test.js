@@ -219,6 +219,18 @@ function situation(opts) {
   eq('Report auto : juillet (18h00) inchangé, fin octobre', a.run('getExpYm(' + YM(2026, 7) + ')'), YM(2026, 10));
   eq('Report auto : juin (11h01 à l’échéance) toujours perdu', a.run('calcSoldes().preExpiry'), { [YM(2026, 6)]: 661 });
   eq('Report auto : pas encore compté à la date d’un tableau de septembre', a.run('getEphExtAt(' + YM(2026, 8) + ',' + YM(2026, 9) + ')'), 0);
+  // heures ajoutées sur août avant son échéance (8h23) : plus de report automatique
+  a.run('S.extraRendus={"2026-08-12":{dur:300}};S.profile.ephSoldeSplit[' + YM(2026, 8) + ']=503;autoReportEph();');
+  eq('Report auto : août repasse au-dessus de 7h avant l’échéance → expire fin novembre', a.run('getExpYm(' + YM(2026, 8) + ')'), YM(2026, 11));
+}
+// Report auto déjà déclenché (échéance de novembre passée) : acquis, même si des heures sont ajoutées ensuite
+{
+  const b = load('2026-12-10');
+  b.run('S.profile={ephSoldeCreatedYM:' + YM(2026, 9) + ',matelas:0,ephSoldeSplit:{' + YM(2026, 8) + ':203}};S.ephExtend={};S.conges={};S.extraRendus={};'
+    + 'getVac=function(){return {vac:"",absent:false};};recalcAllMatelas=function(){};saveState=function(){};S.autoExtend={};autoReportEph();');
+  b.run('S.profile.ephSoldeSplit[' + YM(2026, 8) + ']=503;autoReportEph();');
+  eq('Report auto acquis à l’échéance, gardé ensuite', b.run('getExpYm(' + YM(2026, 8) + ')') >= YM(2027, 2), true);
+
 }
 
 // Option « Heures valables un an » : chaque mois expire à la fin du 12e mois, juin 2026 n'est plus perdu fin septembre
