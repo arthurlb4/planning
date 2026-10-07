@@ -827,6 +827,8 @@ button:not(.sv-tile):not(.dx-mini):not(.sh-x),select,input:not([type=checkbox]):
 @keyframes suSpin{to{transform:rotate(360deg)}}
 #setup .su-feat{display:flex;gap:12px;padding:9px 0;border-bottom:.5px solid var(--border2)}#setup .su-feat:last-of-type{border-bottom:none}
 #setup .su-feat i{font-size:20px;color:var(--blue);width:22px;flex-shrink:0;margin-top:1px}#setup .su-feat b{display:block;font-size:13.5px;font-weight:600;color:var(--text);margin-bottom:2px}#setup .su-feat span{font-size:12px;color:var(--text2);line-height:1.45}
+#setup .su-foot{text-align:center;font-size:12px;color:var(--text3);margin-top:16px}#setup .su-foot a{cursor:pointer;color:var(--text3);text-decoration:underline;text-underline-offset:2px}
+body.su-on .overlay{z-index:1100} /* confirmation de suppression du compte : par-dessus l'écran de l'inscription */
 #setup table.su-prev{width:100%;border-collapse:collapse;table-layout:fixed;margin-top:10px}#setup .su-prev td{text-align:center;padding:4px 0;font-size:11.5px}
 </style>
 </head>
@@ -4485,7 +4487,7 @@ function _suOpen(){
   if(document.getElementById('setup'))return;
   var g=getActiveCycleGrid(NOW)||CYCLE,n=g.length,diff=Math.round((getMonday(NOW)-ANCHOR)/(7*864e5)),al=S.profile.anchorLine!=null?S.profile.anchorLine:ANCHOR_L;
   SU={step:0,rh:null,rhMode:null,bul:{},bulMode:null,v:{line:((al+diff)%n+n)%n,dimRendu:true,rhRendu:true,ferRendu:true,hsRendu:true,pfa:0,pct:100}};
-  var el=document.createElement('div');el.id='setup';document.body.appendChild(el);
+  var el=document.createElement('div');el.id='setup';document.body.appendChild(el);document.body.classList.add('su-on');
   _suDraw();
 }
 // Valeurs des champs gardées avant chaque redessin (import, retour, étape suivante)
@@ -4493,7 +4495,9 @@ function _suRead(){[].forEach.call(document.querySelectorAll('#setup [data-k]'),
 function _suGo(n){_suRead();SU.step=n;_suDraw();}
 function _suDraw(){
   var el=document.getElementById('setup');if(!el||!SU)return;
-  el.innerHTML='<div class="su-card">'+[_suStep0,_suStep1,_suStep2][SU.step]()+'</div>';el.scrollTop=0;
+  // en bas de chaque écran : se déconnecter, ou supprimer le compte sans aller au bout
+  el.innerHTML='<div class="su-card">'+[_suStep0,_suStep1,_suStep2][SU.step]()
+    +'<div class="su-foot"><a onclick="signOut()">Se déconnecter</a> · <a onclick="deleteCurrentProfile()">Supprimer mon compte</a></div></div>';el.scrollTop=0;
   if(SU.step===1)_suLinePrev();if(SU.step===2)_suPayLbls();
 }
 function _suDots(){return '<div class="su-dots">'+[0,1,2].map(function(i){return '<i class="'+(i===SU.step?'on':i<SU.step?'done':'')+'"></i>';}).join('')+'</div>';}
@@ -4646,7 +4650,7 @@ function _suDone(){
   if(yms.length){if(!S.bulletins)S.bulletins={};yms.forEach(function(ym){S.bulletins[ym]=SU.bul[ym];});try{_bulPayApply();}catch(e){console.warn(e);}}
   delete pr.setupPending;pr.hasSeenPayPrompt=true;
   _profs[_aid]=S;saveState();try{cloudSave(_aid);}catch(e){}
-  var el=document.getElementById('setup');if(el)el.remove();SU=null;
+  var el=document.getElementById('setup');if(el)el.remove();SU=null;document.body.classList.remove('su-on');
   render();_infoToast('✓ C’est prêt');
 }
 // Après une inscription sans matelas ni rendus saisis : proposer d'importer le tableau RH
