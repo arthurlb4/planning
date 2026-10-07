@@ -220,6 +220,22 @@ function situation(opts) {
   eq('Valables un an : solde au 1/10 = juin 11h01 + juillet 18h00 + août 3h23', a.run('calcSoldeRH(new Date(2026,9,1,12)).solde'), 661 + 1283);
 }
 
+// Monétisation (hypothèses par défaut) : HS, dimanche, férié, RH monétisables à partir de 6 mois, payés le mois suivant
+{
+  const a = load('2026-10-01'), A = YM(2026, 4);
+  a.run('S.profile.ephSoldeCreatedYM=' + YM(2026, 1) + ';S.profile.palierNum=20;S.profile.heuresMensuelles=151.67;S.ephExtend={' + A + ':1};S.monet={};'
+    + 'var _bg=buildGen;buildGen=function(w){var g=_bg(w);g[' + A + ']=g[' + A + ']||{dim:0,rh:0,fer:0,hs:0,ram:0,extra:0,solde:0,monet:0};g[' + A + '].hs+=600;g[' + A + '].dim+=240;g[' + A + '].ram+=120;return g;};');
+  const before = a.run('calcSoldes().realAvail[' + A + ']'), info = a.run('JSON.stringify(monetInfo(' + A + '))');
+  const I = JSON.parse(info);
+  eq('Monétisation : ouverte à 6 mois (avril → octobre)', I.open, true);
+  eq('Monétisation : montant estimé non nul', I.eur > 0 && I.min > 0, true);
+  eq('Monétisation : semaine ramenée exclue', I.min <= before - 120, true);
+  a.run('render=function(){};saveState=function(){};monetSet(' + A + ',true)');
+  eq('Monétisation : heures retirées du solde', a.run('calcSoldes().realAvail[' + A + ']'), before - I.min);
+  eq('Monétisation : payée le mois suivant (variables d’octobre) au taux de base', a.run('calcVariablesMois(2026,9).supMonet'), Math.round(I.min / 60 * a.run('_tauxHYM(TODAY_YM)') * 100) / 100);
+  eq('Monétisation : pas avant 6 mois (juin)', a.run('monetInfo(' + YM(2026, 6) + ').open'), false);
+}
+
 // Échange entre collègues : les primes suivent la vacation faite, prime du matin comprise
 {
   const a = load('2026-10-01');

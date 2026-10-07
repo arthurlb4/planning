@@ -76,6 +76,10 @@ eq('Heures perdues : juin seulement', a.run('_gmLost()'), ['- 11h01 acquises en 
 eq('Mail : heures perdues', a.run('_gmBuild([],null,[],["- 11h01 acquises en juin 2026, perdues fin septembre 2026"])'),
   { sub: 'Report d’heures déjà expirées', body: 'Bonjour,\n\nDes heures de rendus ont expiré récemment. Peux-tu m’accorder un report pour les récupérer :\n- 11h01 acquises en juin 2026, perdues fin septembre 2026\n\nMerci d’avance' });
 
+// 6 ter. Monétisation demandée
+eq('Mail : monétisation', a.run('_gmBuild([],null,[],[],["- 9h15 acquises en mars 2026, qui expirent fin mars 2027"])'),
+  { sub: 'Monétisation d’heures de rendus', body: 'Bonjour,\n\nJe n’ai pas pu poser ces heures de rendus. Peux-tu me les monétiser :\n- 9h15 acquises en mars 2026, qui expirent fin mars 2027\n\nMerci d’avance' });
+
 // 7. Objet et texte : tutoiement, sans signature
 const m = a.run('_gmBuild(["- 18h00 acquises en juillet 2026, qui expirent fin octobre 2026"],null,["- bulletin d’août 2026 (variables de juillet) :\\n   • tu as noté 1 panier alors que j’en compte 2"])');
 eq('Objet', m.sub, 'Report d’heures qui vont expirer et corrections de paie');

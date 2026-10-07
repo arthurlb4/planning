@@ -1385,7 +1385,7 @@ function getExpYm(ym){return ym+3+getEphExtensions(ym)*3;}
 // withDetail : renvoie aussi le détail jour par jour / semaine par semaine (comparaison avec le tableau RH)
 function buildGen(withDetail){
   const det=withDetail?{}:null;
-  const gen={};function add(ym,k,v,lbl){if(!gen[ym])gen[ym]={dim:0,rh:0,fer:0,hs:0,ram:0,extra:0,solde:0};gen[ym][k]+=v;if(det&&lbl){const dkk=ym+':'+k;(det[dkk]=det[dkk]||[]).push({lbl:lbl,v:v});}}
+  const gen={};function add(ym,k,v,lbl){if(!gen[ym])gen[ym]={dim:0,rh:0,fer:0,hs:0,ram:0,extra:0,solde:0,monet:0};gen[ym][k]+=v;if(det&&lbl){const dkk=ym+':'+k;(det[dkk]=det[dkk]||[]).push({lbl:lbl,v:v});}}
   const START=2026*12,maxYM=CUR_YEAR*12+11,maxYMDisplay=(CUR_YEAR+2)*12+11,VAC=getVAC();
   const createdYM=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:START;
   const solde=(S.profile&&S.profile.ephSolde)||0,split=S.profile&&S.profile.ephSoldeSplit;
@@ -1410,6 +1410,8 @@ const dur=VAC[vac]?VAC[vac].dur:0;
       if(dimF>0)add(_dSunYm,'dim',Math.round(dur*dimF/60*100)/100*60,key);
       if(rhF>0)add(_dSunYm,'rh',Math.round(dur*rhF/60*100)/100*60,key);}
   }
+  // Heures monétisées : retirées du mois d'acquisition (elles ne sont plus à poser)
+  Object.keys(S.monet||{}).forEach(function(k){var x=S.monet[k];if(x&&x.min>0)add(Number(k),'monet',-x.min,'monétisées');});
   const seenHS=new Set();
   for(let y=2025;y<=2030;y++)for(let m=0;m<12;m++){
     const ym=y*12+m;if(ym<createdYM||ym>TODAY_YM&&ym>maxYM)continue;
@@ -2433,8 +2435,10 @@ function calcVariablesMois(y,m,overrideTauxH){
   }
   const panierRate=getPanierRate(mym_cv),supPaniers=r2(paniers*panierRate),supAntenne=r2(primes.antenne*tx.antenne),supMatin=r2(primes.matin*tx.matin),supReal=r2(primes.reel*tx.reel),supCoord=r2(primes.coord*tx.coord);
   const dpr=calcDayPrimesMois(y,m),supSpec=dpr.total;
-  const total=supDim+supRH+supFer+supHSlow+supHShigh+supNuit+supAbsResto+supAntenne+supMatin+supReal+supCoord+supSpec;
-  return{total,supSpec,specList:dpr.list,tauxH,supDim,supRH,supFer,supHSlow,supHShigh,supNuit,supPaniers,panierRate,tx,supAbsResto,absRestoRate,supAntenne,supMatin,supReal,supCoord,dimMin:drf.dim,rhMin:drf.rh,ferMin:drf.fer,hsLow:hs.low,hsHigh:hs.high,nuitMin,paniers,antenne:primes.antenne,matin:primes.matin,reel:primes.reel,coord:primes.coord};
+  // Rendus monétisés ce mois-ci (payés sur le bulletin suivant) : heures × taux horaire de base
+  let monetMin=0;Object.keys(S.monet||{}).forEach(function(k){var x=S.monet[k];if(x&&x.req===mym_cv)monetMin+=x.min;});const supMonet=r2(monetMin/60*tauxH);
+  const total=supDim+supRH+supFer+supHSlow+supHShigh+supNuit+supAbsResto+supAntenne+supMatin+supReal+supCoord+supSpec+supMonet;
+  return{total,supSpec,supMonet,monetMin,specList:dpr.list,tauxH,supDim,supRH,supFer,supHSlow,supHShigh,supNuit,supPaniers,panierRate,tx,supAbsResto,absRestoRate,supAntenne,supMatin,supReal,supCoord,dimMin:drf.dim,rhMin:drf.rh,ferMin:drf.fer,hsLow:hs.low,hsHigh:hs.high,nuitMin,paniers,antenne:primes.antenne,matin:primes.matin,reel:primes.reel,coord:primes.coord};
 }
 function getPrimesFixesCustomForYM(ym){
   const primes=(S.profile&&S.profile.primesFixesCustom)||[];
@@ -2809,6 +2813,7 @@ function _bulCompare(b){
   if(b.epv!=null||P.compCP>0)fix.push(['Complément CP',b.epv||0,r2(P.compCP),'epv']);
   if(b.supFam!=null||P.supFamilial>0)fix.push(['Suppl. familial',b.supFam||0,P.supFamilial]);
   if(v.supSpec>0)fix.push(['Primes spéciales',r2(autreW),r2(v.supSpec||0)]);
+  if(v.supMonet>0)fix.push(['Monétisation rendus',b.monet||0,r2(v.supMonet)]); // libellé du bulletin encore inconnu : à vérifier
   if(b.absNR||P.greveRet>0)fix.push(['Absence non rémunérée',b.absNR?b.absNR.mt:0,-P.greveRet]);
   // Prime d'avantage individuel acquis : prime fixe personnelle (Réglages → primes fixes, libellé « … indiv. … »)
   var avA=P.primesCustom.filter(function(p){return /INDIV/i.test(p.label);}).reduce(function(s,p){return s+p.montant;},0);
@@ -2910,6 +2915,7 @@ function _payPageHtml(ym){
   var _spF=fixBy['Primes spéciales'],_spL=(v.specList||[]).length;if(_spF)vb+=_spF.bm;
   (v.specList||[]).forEach(function(sp,i){var d=new Date(sp.key+'T12:00:00');vl+=row(_h(sp.lbl)+' ('+d.getDate()+' '+MCs[d.getMonth()]+')',sp.amt,null,c?(i===_spL-1&&_spF?fn('Primes spéciales',v.supSpec):E):null);});
   if(_spF&&!_spL)vl+=row('Autres lignes du mois',0,null,fn('Primes spéciales',0));
+  if(v.supMonet>0){var _mF=fixBy['Monétisation rendus'];if(_mF)vb+=_mF.bm;vl+=row('Monétisation rendus ('+fmtMin(v.monetMin)+')',v.supMonet,null,c?fn('Monétisation rendus',v.supMonet):null);}
   if(!vl)vl='<div style="color:var(--text3);padding:3px 0">Aucune.</div>';
   // En-tête et total brut comme l'ancien onglet Paie ; la colonne bulletin s'ajoute à gauche
   var h='<div class="pp-r" style="font-size:11px;color:var(--text3);padding:0 0 2px"><span style="flex:1"></span>'+(c?'<span class="pp-n">bulletin</span>':'')+'<span class="pp-v">app</span></div>'
@@ -3951,6 +3957,9 @@ function _gmRep(yms){
 function _gmLost(){var sd=calcSoldes();
   return Object.keys(sd.preExpiry||{}).map(Number).filter(function(ym){var e=getExpYm(ym);return sd.preExpiry[ym]>0&&e<TODAY_YM&&e>=TODAY_YM-3;}).sort(function(a,b){return a-b;})
     .map(function(ym){return '- '+fmtMin(sd.preExpiry[ym])+' acquises en '+MF_(ym)+', perdues fin '+MF_(getExpYm(ym));});}
+// Monétisation : heures monétisées dans l'app ce mois-ci ou le mois dernier (demande à faire au gestionnaire)
+function _gmMonet(){return Object.keys(S.monet||{}).map(Number).filter(function(ym){var x=S.monet[ym];return x&&x.min>0&&x.req>=TODAY_YM-1;}).sort(function(a,b){return a-b;})
+  .map(function(ym){return '- '+fmtMin(S.monet[ym].min)+' acquises en '+MF_(ym)+(getExpYm(ym)>=TODAY_YM?', qui expirent fin '+MF_(getExpYm(ym)):'');});}
 // Tableau de gestion : écart de solde avec le décompte de l'app, et reports différents
 function _gmRh(){
   var c=S.profile&&S.profile.rhCmp,o=S.profile&&S.profile.rhTable;if(!c||!o)return null;
@@ -3994,7 +4003,7 @@ function _gmPaie(){
   return L;}
 function openGestMail(repYms){
   if(!document.body.classList.contains('modal-open'))_lockBodyScroll();
-  var R=_gmRep(repYms),X=repYms?[]:_gmLost(),H=_gmRh(),P=_gmPaie();window._gmRepYms=repYms||null;
+  var R=_gmRep(repYms),X=repYms?[]:_gmLost(),Mo=repYms?[]:_gmMonet(),H=_gmRh(),P=_gmPaie();window._gmRepYms=repYms||null;
   var row=function(id,lbl,sub,n,off){return '<div class="srow" style="padding:8px 0;align-items:center"><div style="flex:1;min-width:0"><div style="font-size:14px;color:'+(n?'var(--text)':'var(--text3)')+'">'+lbl+'</div><div style="font-size:11.5px;color:var(--text3);margin-top:2px">'+sub+'</div></div>'
     +'<label class="tgl"><input type="checkbox" id="'+id+'"'+(n?(off?'':' checked'):' disabled')+'><span class="tgl-s"></span></label></div>';};
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="sh"></div>'
@@ -4003,6 +4012,7 @@ function openGestMail(repYms){
     +'<div class="hd-card" style="padding:4px 14px">'
     +row('gm-lost','Reports d’heures déjà expirées',X.length?X.length+' mois · expirées il y a moins de 3 mois':'aucune heure perdue ces 3 derniers mois',X.length)
     +row('gm-rep','Reports d’heures qui vont expirer',R.length?R.length+' mois d’acquisition · '+(repYms?'heures choisies':'expirent en '+ML[TODAY_YM%12].toLowerCase()):'aucune heure n’expire en '+ML[TODAY_YM%12].toLowerCase(),R.length)
+    +row('gm-mon','Monétisation',Mo.length?Mo.length+' mois · heures monétisées dans l’app':'aucune heure monétisée',Mo.length)
     +row('gm-rh','Corrections du tableau de gestion',H?(H.fav?'écart en ma faveur':H.L.length+' point'+(H.L.length>1?'s':''))+' · tableau du '+H.ed:(S.profile&&S.profile.rhCmp?(Math.abs(S.profile.rhCmp.d)>=2?'différences ignorées':'tableau identique'):'aucun tableau importé'),H,H&&H.fav)
     +row('gm-paie','Corrections de paie',P.length?P.length+' bulletin'+(P.length>1?'s':'')+' à corriger':'aucun écart sur les bulletins',P.length)
     +'</div>'
@@ -4011,15 +4021,16 @@ function openGestMail(repYms){
     +'</div></div>';}
 function gestMailSend(){
   var on=function(id){var e=document.getElementById(id);return !!(e&&e.checked&&!e.disabled);};
-  var R=on('gm-rep')?_gmRep(window._gmRepYms):[],X=on('gm-lost')?_gmLost():[],H=on('gm-rh')?_gmRh():null,P=on('gm-paie')?_gmPaie():[];
-  if(!R.length&&!X.length&&!H&&!P.length){alert('Rien à demander : cocher au moins un point.');return;}
-  var m=_gmBuild(R,H,P,X);_openMail(m.sub,m.body);
+  var R=on('gm-rep')?_gmRep(window._gmRepYms):[],X=on('gm-lost')?_gmLost():[],Mo=on('gm-mon')?_gmMonet():[],H=on('gm-rh')?_gmRh():null,P=on('gm-paie')?_gmPaie():[];
+  if(!R.length&&!X.length&&!Mo.length&&!H&&!P.length){alert('Rien à demander : cocher au moins un point.');return;}
+  var m=_gmBuild(R,H,P,X,Mo);_openMail(m.sub,m.body);
   openMergedRenduCgModal(6,2);}
 // Objet et texte du mail (tutoiement, sans signature)
-function _gmBuild(R,H,P,X){
+function _gmBuild(R,H,P,X,Mo){
   var sub=[],B=[];
   if(X&&X.length){sub.push('report d’heures déjà expirées');B.push('Des heures de rendus ont expiré récemment. Peux-tu m’accorder un report pour les récupérer :\n'+X.join('\n'));}
   if(R.length){sub.push('report d’heures qui vont expirer');B.push('Peux-tu m’accorder un report de mes heures de rendus qui vont expirer :\n'+R.join('\n'));}
+  if(Mo&&Mo.length){sub.push('monétisation d’heures de rendus');B.push('Je n’ai pas pu poser ces heures de rendus. Peux-tu me les monétiser :\n'+Mo.join('\n'));}
   if(H){sub.push('corrections du tableau de gestion');B.push('Dans le tableau de gestion du '+H.ed+', je relève :\n'+H.L.join('\n')+'\nPeux-tu le vérifier et le corriger ?');}
   if(P.length){sub.push('corrections de paie');B.push('Sur mes bulletins de paie, je relève les écarts suivants :\n'+P.join('\n')+'\nPeux-tu les faire corriger ?');}
   var subj=sub.join(', ').replace(/, ([^,]*)$/,' et $1');subj=subj.charAt(0).toUpperCase()+subj.slice(1);
@@ -4033,6 +4044,23 @@ function _openMail(sub,body){
   var gone=false,h=function(){if(document.hidden)gone=true;};document.addEventListener('visibilitychange',h);
   location.href='ms-outlook://compose?'+q;
   setTimeout(function(){document.removeEventListener('visibilitychange',h);if(!gone&&!document.hidden)location.href=mt;},1500);}
+// ── Monétisation des rendus (règles RH 2026) ──
+// Possible à partir de 6 mois après le mois d'acquisition, tant que les heures n'ont pas expiré (au plus tard à 12 mois).
+// Hypothèses par défaut, à confirmer avec le gestionnaire : monétisables = HS, dimanche, férié, RH ; non = semaine ramenée,
+// heures en plus ; heures reprises du tableau = à confirmer (non comptées) ; montant = heures de rendu × taux horaire de base ;
+// le mois entier (pas de monétisation partielle) ; payé sur le bulletin du mois suivant la demande.
+var _MONET_NAT=['hs','dim','fer','rh'];
+function _tauxHYM(ym){var pr=S.profile||{},pn=getPalierForYM(ym),q=pn>0?calcPalierSalaire(pn):(pr.salaireQualif||0),h=getHeuresForYM(ym);return h>0?Math.round((q+getAncForYM(ym))/151.67*100)/100:0;}
+function monetInfo(ym,G,SD){G=G||buildGen();SD=SD||calcSoldes();var g=G[ym]||{},done=((S.monet||{})[ym]||{}).min||0;
+  var nat=_MONET_NAT.reduce(function(t,k){return t+(g[k]||0);},0),av=Math.max(0,SD.realAvail[ym]||0),exp=getExpYm(ym);
+  var ok=Math.max(0,Math.min(av,nat-done)),open=TODAY_YM>=ym+6&&exp>=TODAY_YM;
+  return{ym:ym,open:open,min:Math.round(ok),toConfirm:Math.round(Math.min(Math.max(0,av-ok),g.solde||0)),done:done,eur:Math.round(ok/60*_tauxHYM(TODAY_YM)*100)/100,exp:exp};}
+function monetSet(ym,on){var m=monetInfo(ym);if(on&&!(m.open&&m.min>0))return;
+  pushUndo(on?'Rendus monétisés':'Monétisation annulée');if(!S.monet)S.monet={};
+  if(on){S.monet[ym]={min:m.min,req:TODAY_YM,at:dk(NOW)};logH('Rendus de '+MF_(ym)+' : '+fmtMin(m.min)+' monétisées','#e0b050',dk(NOW));}
+  else{delete S.monet[ym];if(S.history)S.history=S.history.filter(function(h){return String(h.d||'').indexOf('Rendus de '+MF_(ym)+' :')!==0;});}
+  saveState();render();}
+function _monetAct(ym,on,limit){_haptic();_closeDayMenu();monetSet(ym,on);openMergedRenduCgModal(limit,0);}
 // Menu des reports d'un mois de rendus : sans report, +3, +6, +9 mois (dates d'expiration), le choix du tableau Gestion signalé
 function _openRepMenu(btn,ym,limit,rr){
   var ext=getEphExtensions(ym),auto=(S.autoExtend&&S.autoExtend[ym])||0,dl=function(e){return MCs[e%12]+' '+String(Math.floor(e/12)).slice(2);};
@@ -4045,6 +4073,10 @@ function _openRepMenu(btn,ym,limit,rr){
   veil.addEventListener('touchmove',function(e){e.preventDefault();},{passive:false});
   var m=document.createElement('div');m.id='lp-menu';m.style.zIndex=451;
   var lost=getExpYm(ym)<TODAY_YM?(calcSoldes().preExpiry[ym]||0):0;
+  var mi=monetInfo(ym),mon=(S.monet||{})[ym];
+  if(mon)items+='<button onclick="_monetAct('+ym+',0,'+limit+')"><i class="ti ti-coin-euro" style="color:#e0b050"></i><span>'+fmtMin(mon.min)+' monétisées</span><span class="rep-tag">annuler</span></button>';
+  else if(mi.open&&mi.min>0)items+='<button onclick="_monetAct('+ym+',1,'+limit+')"><i class="ti ti-coin-euro" style="color:#e0b050"></i><span>Monétiser '+fmtMin(mi.min)+'</span><span class="rep-tag">≈ '+fmtEuro(mi.eur)+'</span></button>';
+  if(!mon&&mi.open&&mi.toConfirm>0)items+='<div class="lp-h" style="padding-top:2px">'+fmtMin(mi.toConfirm)+' reprises du tableau : monétisables à confirmer.</div>';
   m.innerHTML='<div class="lp-h">Heures acquises en '+MC[ym%12]+' '+Math.floor(ym/12)+(lost?'<br><span style="color:#e07a6e">'+fmtMin(lost)+' perdues</span>':'')+'</div>'+items+'<button onclick="_haptic();_closeDayMenu();openGestMail(['+ym+'])"><i class="ti ti-mail" style="color:var(--blue)"></i><span style="color:var(--blue)">Demander par mail</span></button>'+(auto?'<div class="lp-h" style="padding-top:2px">Report automatique (moins de 7h restantes) : ne peut pas être retiré.</div>':'');
   document.body.appendChild(veil);document.body.appendChild(m);
   var r=btn.getBoundingClientRect(),mw=m.offsetWidth,mh=m.offsetHeight,vw=window.innerWidth,vh=window.innerHeight;
@@ -5473,7 +5505,7 @@ function openMergedRenduCgModal(limit,tab){
     rendRows+='<div class="eph-urow clk'+(isExp?' expired':'')+(isFut?' fut':'')+'" onclick="_rdOpenMonth('+ym+')">'
       +'<div class="eph-u-mc">'+ML2[m]+' '+String(y).slice(2)+'</div>'
       +'<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">'
-      +'<div class="eph-u-flow" style="display:flex;align-items:center;justify-content:space-between"><div><span style="color:var(--blue);font-size:11px">'+fmtMin(orig)+'</span><span style="color:var(--text3);font-size:11px;margin:0 2px">→</span><span style="font-weight:500;color:'+availColor+'">'+fmtMin(avail)+'</span></div></div>'
+      +'<div class="eph-u-flow" style="display:flex;align-items:center;justify-content:space-between"><div>'+((S.monet||{})[ym]?'<span style="color:#e0b050;font-size:11px;margin-right:4px">€ '+fmtMin(S.monet[ym].min)+'</span>':'')+'<span style="color:var(--blue);font-size:11px">'+fmtMin(orig)+'</span><span style="color:var(--text3);font-size:11px;margin:0 2px">→</span><span style="font-weight:500;color:'+availColor+'">'+fmtMin(avail)+'</span></div></div>'
       // Une seule barre : longueur = heures acquises ; partie déjà utilisée en gris, reste coloré selon l'urgence
       // (vert : a le temps, y compris fin du mois prochain ; orange : expire ce mois-ci ; rouge : perdu ; pâle : mois à venir)
       +'<div class="eph-bw"><div class="eph-b2" style="width:'+origPct+'%;background:rgba(255,250,243,.16)"></div><div class="eph-b" style="width:'+(isExp&&lostMinM>0?Math.round(lostMinM/maxV*100):barPct)+'%;background:'+_urgC+'"></div></div>'
