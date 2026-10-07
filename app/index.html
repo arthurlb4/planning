@@ -2608,7 +2608,8 @@ function _bulPayDiffs(){
     var ks=Object.keys(known).map(Number).sort(function(a,b){return a-b;});
     ks.forEach(function(W){if(settingsForYM(W)[sk]!==known[W])add({k:sk,ym:W,v:known[W]});});
     Object.keys(cov).map(Number).forEach(function(W){if(known[W]!=null||raw(sk,W)>0)return;var pv=null,nx=null;ks.forEach(function(k){if(k<W)pv=k;else if(nx==null&&k>W)nx=k;});
-      if(pv==null||nx==null||known[pv]!==known[nx])return;if(settingsForYM(W)[sk]!==known[pv])add({k:sk,ym:W,v:known[pv],fill:1});});});
+      if(bm(sk,W)>0)return; // payé sur le bulletin mais rattaché au mois voisin (heures comptées à cheval)
+      if(pv==null&&nx==null)return;if(pv!=null&&nx!=null&&known[pv]!==known[nx])return;var kv=known[pv!=null?pv:nx];if(settingsForYM(W)[sk]!==kv)add({k:sk,ym:W,v:kv,fill:1});});});
   // PFA : mensuelle ou semestrielle d'après le dernier bulletin qui en montre une
   var P=pfa&&!!pr.pfaMensuelle!==pfa.v?pfa:null;
   // Ancienneté : années du dernier bulletin ; mois d'anniversaire si deux bulletins consécutifs passent d'une année à la suivante
@@ -2660,7 +2661,7 @@ function _bulPayPropose(then,all){
   if(!D.n&&!all){_haptic();_infoToast('✓ Réglages conformes '+(nb>1?'aux '+nb+' bulletins':'au bulletin'));if(then)then();return false;}
   window._bulPayThen=then||null;
   // Vérification complète (Réglages) : la même fenêtre ajoute l'écart avec le tableau Gestion, recalculé ici
-  var G='';if(all){var rh=null;try{rh=_rhStored();}catch(e){}if(rh){try{rhCompareShow(rh);}catch(e){}}
+  var G='';if(all){var rh=null;try{rh=_rhStored();}catch(e){}if(rh){try{rhCompareShow(rh,true);}catch(e){}}
     var cm=S.profile&&S.profile.rhCmp,lk='color:var(--blue);cursor:pointer;margin-left:8px;white-space:nowrap';
     if(!rh)G='<div class="recap-row" style="font-size:12px;min-height:26px;gap:10px"><span style="color:var(--text3)">Tableau</span><span>aucun importé</span></div>';
     else{var e0=cm?-cm.d:0,ok=!cm||Math.abs(e0)<2;
@@ -4343,6 +4344,8 @@ function rhCompareOpen(mode){
     inp.addEventListener('change',function(){const f=inp.files&&inp.files[0];inp.value='';if(f)_rhFile(f,inp._mode);});}
   inp._mode=mode||'compare';inp.click();
 }
+// Écart avec le dernier tableau Gestion importé, recalculé d'après l'état actuel (tuiles Écart Rendus à jour)
+function _rhCmpRefresh(){try{var rh=_rhStored();if(rh)rhCompareShow(rh,true);}catch(e){}}
 // Tableau Gestion lu : premier import (ou demandé) → on en repart ; sinon comparaison
 async function _rhFile(f,mode){
   try{const cells=await _xlsxRead(f);const rh=_rhParse(cells,f.name);_rhStore(cells,f.name);if(mode==='import'||!(S.profile&&S.profile.rhImportedAt))rhImportPreview(rh);else rhCompareShow(rh);}
@@ -4511,7 +4514,7 @@ function rhApplyReports(list){
   list.forEach(([ym,n])=>{const auto=(S.autoExtend&&typeof S.autoExtend[ym]==='number')?S.autoExtend[ym]:0;if(n<auto)return;if(n>0)S.ephExtend[ym]=n;else delete S.ephExtend[ym];});
   saveState();render();if(window._rhLast)rhCompareShow(window._rhLast);
 }
-function rhCompareShow(rh){
+function rhCompareShow(rh,silent){
   window._rhLast=rh;
   const asOf=new Date(rh.edition.getFullYear(),rh.edition.getMonth(),rh.edition.getDate(),12);
   const asOfYM=asOf.getFullYear()*12+asOf.getMonth();
@@ -4645,7 +4648,8 @@ function rhCompareShow(rh){
     else whyTxt+=(whyTxt?' ':'')+'Il reste '+fmtE(rest)+' liés aux heures expirées. '+_rhIgnLink('rest',rest);}
   // Écart une fois les différences ignorées retirées ; c'est lui qui déclenche les alertes
   const eEff=-dSol-ignSum;
-  if(S.profile){const _c={ed:dk(asOf),d:Math.round(dSol),de:Math.round(-eEff)};const _o=S.profile.rhCmp;if(!_o||_o.ed!==_c.ed||_o.d!==_c.d||_o.de!==_c.de){S.profile.rhCmp=_c;saveState();try{render();}catch(e){}}}
+  if(S.profile){const _c={ed:dk(asOf),d:Math.round(dSol),de:Math.round(-eEff)};const _o=S.profile.rhCmp;if(!_o||_o.ed!==_c.ed||_o.d!==_c.d||_o.de!==_c.de){S.profile.rhCmp=_c;saveState();if(!silent)try{render();}catch(e){}}}
+  if(silent)return; // seulement l'écart (tuiles Écart Rendus), sans ouvrir la comparaison
   if(bad(dSol))whyTxt+=' '+(dSol<0?'':'Le tableau laisse moins d’heures que l’app : demander au gestionnaire de corriger.');
   const acqTbl='<table class="rc-t"><tr><th></th><th>Tableau</th><th>App</th><th>Écart</th></tr>'
     +acqRows.map(r=>{const e=r.s-r.a;return '<tr'+(bad(e)?' class="rc-hl"':'')+'><td>'+MFc(r.ym)+'</td><td>'+(r.s?fmtMin(r.s):'—')+'</td><td>'+(r.a?fmtMin(r.a):'—')+'</td>'+(bad(e)?'<td class="'+(e>0?'rc-pos':'rc-neg')+'">'+fmtE(e)+'</td>':'<td><span class="rc-ok">✓</span></td>')+'</tr>';}).join('')+'</table>';
@@ -5348,6 +5352,7 @@ function openMergedRenduCgModal(limit,tab){
   limit=limit||6;
   const _modalWasOpen=document.body.classList.contains('modal-open');
   if(!_modalWasOpen){_lockBodyScroll();_foldOpen={};}
+  _rhCmpRefresh(); // tuiles Écart Rendus (Suivi, Rendus) à jour
   window._rcgRedraw=!!document.getElementById('rcc-wrap'); // même fenêtre redessinée (+/−, réglage) : pas de nouvelle animation
   // même fenêtre redessinée (Voir plus, +/−) : on garde la position de défilement
   var _rcgTop=window._rcgRedraw?((document.querySelector('#modal-root .sheet')||{}).scrollTop||0):0;
