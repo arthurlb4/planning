@@ -854,7 +854,7 @@ async function handle(request, env, ctx) {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + env.RESEND_API_KEY, 'Content-Type': 'application/json' },
         body: JSON.stringify({ from: env.MAIL_FROM, to: sc, subject: 'Code de vérification : ' + code,
-          html: '<p>Votre code pour créer votre compte planning franceinfo :</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">' + code + '</p><p>Il est valable 10 minutes.</p>' }),
+          html: '<p>Votre code pour créer votre compte franceinfo planning :</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">' + code + '</p><p>Il est valable 10 minutes.</p>' }),
       });
       if (!mr.ok) return resp({ error: 'Envoi du mail impossible, réessayez' }, 502);
       await env.PLANNING_DB.put('regcode:' + sc, JSON.stringify({ h: await sha256(sc + ':' + code), tries: 0, sentAt: Date.now(), sends: (prev ? prev.sends : 0) + 1 }), { expirationTtl: 600 });
@@ -915,7 +915,7 @@ async function handle(request, env, ctx) {
       await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + env.RESEND_API_KEY, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from: env.MAIL_FROM || 'Planning France Info <onboarding@resend.dev>', to: email, subject: 'Reinitialisation mot de passe', html: '<p>Lien pour réinitialiser le mot de passe (valable 1h) :</p><p><a href="' + resetUrl + '">' + resetUrl + '</a></p>' }),
+        body: JSON.stringify({ from: env.MAIL_FROM || 'franceinfo planning <onboarding@resend.dev>', to: email, subject: 'Reinitialisation mot de passe', html: '<p>Lien pour réinitialiser le mot de passe (valable 1h) :</p><p><a href="' + resetUrl + '">' + resetUrl + '</a></p>' }),
       });
       return resp({ ok: true });
     }
