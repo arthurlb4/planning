@@ -797,6 +797,13 @@ export default {
     // AUTH
     // ============================================================
 
+    // Vérifie pendant la saisie de l'inscription si l'email a déjà un compte
+    if (path === '/auth/check-email') {
+      var ce = String(body.email || '').trim().toLowerCase();
+      if (!ce || ce.length > 120 || !/^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']+$/.test(ce)) return resp({ exists: false, valid: false });
+      return resp({ exists: !!(await env.PLANNING_DB.get('user:email:' + ce)), valid: true });
+    }
+
     if (path === '/auth/register') {
       var email = body.email, password = body.password, name = cleanName(body.name);
       if (!email || !password || !name) return resp({ error: 'Champs manquants' }, 400);
