@@ -969,7 +969,7 @@ const ML=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Se
 const JN=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi']; // jours en toutes lettres (abréviations seulement dans les colonnes étroites : en-têtes du calendrier, échanges, tableau des lignes)
 
 const DEFAULT_PD=()=>({
-  profile:{name:'Lebreton',anchorLine:8,matelas:162*60+27,congesInit:25,ephSolde:0,ephSoldeCreatedYM:TODAY_YM},
+  profile:{name:'',anchorLine:0,matelas:0,congesInit:25,ephSolde:0,ephSoldeCreatedYM:TODAY_YM},
   settings:{dimRendu:true,rhRendu:true,ferRendu:true,hsRendu:true,settingsHistory:[],theme:'dark'},
   overrides:{},conges:{},history:[],customVacs:{},
 });
@@ -4175,11 +4175,12 @@ function openPoseModal(type,fromMenu){
     +'<div class="sh"></div>'
     +'<div class="st" style="color:#fff;margin-bottom:14px">'+lbl+'</div>'+excH
     +'<div class="mbtns" style="margin-bottom:10px">'
-    +'<button class="mb" style="background:'+bg+';color:'+color+';border:none" onclick="applyPose(\''+type+'\',\''+key+'\',true)">Unique</button>'
-    +'<button class="mb" style="background:'+bg+';color:'+color+';border:none" onclick="showPoseSelect()">Multiple</button>'
+    +'<button class="mb" style="background:'+bg+';color:'+color+';border:none" onclick="applyPose(\''+type+'\',\''+key+'\',true)">Ce jour seulement</button>'
+    +'<button class="mb" style="background:'+bg+';color:'+color+';border:none" onclick="showPoseSelect()">Plusieurs jours…</button>'
     +'</div>'
     +'<div id="pose-select-wrap" style="display:none;margin-bottom:10px">'
     +'<div style="display:flex;gap:8px;align-items:center">'
+    +'<span style="font-size:13px;color:var(--text2);flex-shrink:0">Jusqu’au</span>'
     +'<select id="pose-until" style="flex:1;padding:10px 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--bg2);color:var(--text)">'+opts+'</select>'
     +'<button class="mb pri" style="flex-shrink:0;white-space:nowrap" onclick="applyPose(\''+type+'\',\''+key+'\',false)">Valider</button>'
     +'</div>'
@@ -5757,7 +5758,11 @@ function openMergedRenduCgModal(limit,tab){
   const _mi=function(l,v,c){return '<div class="dx-mini"><span>'+l+'</span><b style="color:'+c+'">'+v+'</b></div>';};
   const _expTxt=_expAmt>0?_mi((_viewedYM<TODAY_YM?'Perdu fin ':'Expire en ')+_vm,fmtMin(_expAmt),'var(--red)'):_repAmt>0?_mi('Reporté en '+_vm,fmtMin(_repAmt),'var(--green)'):_mi('Expire en '+_vm,'—','var(--text3)');
   const _hdC=function(l,v,c){return '<div class="hd3-c"><span>'+l+'</span><b style="color:'+c+'">'+v+'</b></div>';};
-  const dispoBoxHtml='<div class="hd3"><div class="hd3-cs">'
+  // Nouvel utilisateur sans tableau Gestion ni solde de départ : le 0 affiché ne veut rien dire, on le dit
+  const _pf=S.profile||{},_noStart=!(_pf.rhTable||_pf.rhImportedAt)&&!(_pf.ephSolde>0)&&!(_pf.matelas>0);
+  const _noStartHtml=_noStart?'<div class="rv-ok" style="margin-bottom:10px;align-items:flex-start"><i class="ti ti-info-circle" style="color:var(--blue);margin-top:1px"></i><div style="flex:1">Aucun solde de départ : les heures ci-dessous partent de zéro. Importez votre tableau Gestion pour partir de vos vraies heures.'
+    +'<button class="mb pri" style="display:block;margin-top:8px;padding:7px 14px;font-size:12px" onclick="event.stopPropagation();rhOpenFrom(\'rendus\')">Importer le tableau Gestion</button></div></div>':'';
+  const dispoBoxHtml=_noStartHtml+'<div class="hd3"><div class="hd3-cs">'
     +_hdC(_viewedYM===TODAY_YM?'libres à poser':'libres '+_enVm,fmtMin(dispoMois)+(_resAmt>1?'<small style="display:block;font-size:10.5px;font-weight:500;color:var(--amber);margin-top:1px">+'+fmtMin(_resAmt)+' sous réserve</small>':''),dispoColor)
     +(_expAmt>0?_hdC((_viewedYM<TODAY_YM?'perdu fin ':'expire en ')+_MSd[_viewedYM%12],fmtMin(_expAmt),'var(--red)'):_repAmt>0?_hdC('reporté en '+_MSd[_viewedYM%12],fmtMin(_repAmt),'var(--green)'):_hdC('expire en '+_MSd[_viewedYM%12],'—','var(--text3)'))
     +_hdC('matelas',matelasVal>0?fmtMin(matelasVal):'—',matelasVal>0?'var(--blue)':'var(--text3)')

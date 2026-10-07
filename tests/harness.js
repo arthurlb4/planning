@@ -65,6 +65,8 @@ function load(today) {
   vm.runInContext(code, ctx, { filename: 'app/index.html' });
   // Évalue une expression dans la portée de l'app (accès à S, aux fonctions et aux constantes)
   ctx.run = src => vm.runInContext(src, ctx);
+  // Profil de test : les cas ont été écrits pour la ligne 8 avec un matelas de 162h27 (l'app part d'un profil vide)
+  ctx.run('S.profile.anchorLine=8;S.profile.matelas=162*60+27;');
   return ctx;
 }
 
