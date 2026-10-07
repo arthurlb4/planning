@@ -552,6 +552,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 /* Motif du changement (Modifier le jour) */
 .cv-seg{display:flex;background:var(--bg2);border:0.5px solid var(--border);border-radius:10px;padding:3px;gap:2px}.cv-seg button{flex:1;white-space:nowrap;border:none;background:none;color:var(--text2);font:inherit;font-size:12.5px;padding:7px 4px;border-radius:8px;cursor:pointer;transition:background .15s,color .15s}.cv-seg button.on{background:var(--bg0);color:var(--text);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.25)}
 .cv-hint{font-size:11.5px;color:var(--text3);line-height:1.4;margin:5px 2px 0}
+.cv-sec{font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.07em;margin:0 0 6px}
 .cv-sum{margin:6px 0 2px;padding:8px 12px;border-radius:14px;background:rgba(255,250,243,.05)}.cv-r{display:flex;gap:10px;align-items:baseline;padding:4px 0;min-height:22px}.cv-r>span:first-child{width:56px;flex:none;font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.04em}.cv-v{flex:1;min-width:0;font-size:12.5px;color:var(--text2);line-height:1.4}#cv-prime-row{align-items:center;height:40px;box-sizing:border-box}#cv-calc{min-height:2.8em}
 /* Corbeille des heures acquises : sa largeur s'anime, les cases à sa gauche s'allongent ou se rétrécissent avec elle */
 .cv-rm{flex:none;width:0;margin-left:-8px;overflow:hidden;border:none;border-radius:var(--r);background:rgba(192,57,43,.14);color:var(--red);font-size:17px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;opacity:0;pointer-events:none;transition:width .25s ease,margin-left .25s ease,opacity .2s ease}.cv-rm i{transform:scale(.4) rotate(-30deg);transition:transform .25s ease}
@@ -7728,7 +7729,7 @@ function _cvWInit(key){var o=(S.overrides||{})[key]||{},d=new Date(key+'T12:00:0
 // Sens déduit du jour ouvert : jour travaillé → « Fait le » (il est cédé) ; repos → « Vacation prévue le » (il est fait à la place)
 function _cvWhenHtml(key,W){var mon=getMonday(new Date(key+'T12:00:00'));mon.setDate(mon.getDate()+7*(W.wOff||0));
   var nb='flex:none;width:26px;height:44px;display:flex;align-items:center;justify-content:center;border:none;border-radius:10px;background:none;color:var(--text3);font-size:18px;cursor:pointer;padding:0';
-  var h='<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:3px"><label style="font-size:11px;color:var(--text2)">'+(W.role==='give'?'Fait le':'Vacation prévue le')+'</label>'
+  var h='<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px"><div class="cv-sec" style="margin:0">Quand <span style="text-transform:none;letter-spacing:0;font-weight:400;color:var(--text3)">· '+(W.role==='give'?'fait le':'vacation prévue le')+'</span></div>'
     +(W.wOff?'<span style="font-size:11px;color:var(--amber)">semaine du '+mon.getDate()+' '+MCs[mon.getMonth()]+'</span>':'')+'</div>'
     +'<div style="display:flex;align-items:center;gap:2px;margin-bottom:12px"><button type="button" style="'+nb+'" onclick="_cvWeek(-1)">‹</button><div class="exchange-days" style="flex:1;min-width:0">';
   for(var i=0;i<7;i++){var d=new Date(mon);d.setDate(mon.getDate()+i);var k=dk(d),g=getVac(d),me=k===key,sel=me?!W.other:k===W.other;
@@ -7742,7 +7743,7 @@ function _cvRerender(){_cvDraftSave();window._cvRe=1;var sh=document.querySelect
 function _cvSetWhen(w){var W=window._cvW;if(!W||W.when===w)return;_haptic();W.when=w;_exState.mode=w==='week'?'week':'day';_cvRerender();}
 function _cvSetRole(r){var W=window._cvW;if(!W||W.role===r)return;W.role=r;_cvRerender();}
 function _cvWeek(n){var W=window._cvW;W.wOff=(W.wOff||0)+n;_cvRerender();}
-function _cvPickDay(k){var W=window._cvW,key=pendingKey;_haptic();if(k===key){W.other=null;W.when='day';}else{W.other=k;W.when='other';}W.exVac=null;_cvRerender();}
+function _cvPickDay(k){var W=window._cvW,key=pendingKey;_haptic();if(k===key){W.other=null;W.when='day';}else{W.other=k;W.when='other';if(window._cvMotif==='autre')window._cvMotif='echange';}W.exVac=null;_cvRerender();}
 function _cvPickExVac(b){var W=window._cvW;W.exVac=b.getAttribute('data-exv');_haptic();[].forEach.call(document.querySelectorAll('#cv-exg [data-exv]'),function(x){x.classList.toggle('exsel',x===b);});}
 // Échange : vacations du jour fait (celles du cycle ce jour-là, puis les autres)
 function _cvExGrid(fk){
@@ -7820,7 +7821,8 @@ function openCustomVacModal(){
   window._cvHints={forme:cN?'celles de '+cN+(cP.length?' ('+cP.join(', ')+')':''):'aucune',formateur:cN?'pas celles de '+cN:'aucune',detache:'',autre:'',echange:''};
   var mB=function(k,l){return '<button type="button" data-m="'+k+'" class="'+(motif===k?'on':'')+'" onclick="_cvSetMotif(\''+k+'\')">'+l+'</button>';};
   // « Pourquoi ce changement ? » : chaque choix montre directement ce qu'il implique pour les primes
-  var opts=(key?'<div style="margin:0 0 8px"><label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Raison du changement</label><div class="cv-seg" id="cv-motif">'+mB('autre','Horaires')+mB('forme','Formation')+mB('formateur','Formateur')+mB('detache','Détaché')+mB('echange','Échange')+'</div></div>':'')
+  if(key&&W.when==='other'&&motif==='autre'){motif='echange';window._cvMotif=motif;}
+  var opts=(key?'<div class="cv-sec">Pourquoi</div><div class="cv-seg" id="cv-motif" style="margin-bottom:14px">'+(W.when==='other'?'':mB('autre','Horaires'))+mB('forme','Formation')+mB('formateur','Formateur')+mB('detache','Détaché')+mB('echange','Échange')+'</div>':'')
     ;
   window._cvCalcRef=cI&&!cI.mixte?{n:cN,dur:cI.dur||0,nuit:calcNuitMinShift(cI),deb:cI.deb}:(cI?{n:'',dur:-1}:{n:'',dur:0});
   var dO='<option value="0">—</option>';for(var d=15;d<=600;d+=15)dO+='<option value="'+d+'"'+(x&&x.dur===d?' selected':'')+'>'+fmtMin(d)+'</option>';
@@ -7835,11 +7837,11 @@ function openCustomVacModal(){
     +'<div class="st" style="margin-bottom:2px">'+(key?'Modifier':'Ajouter')+'</div>'
     +(key?'<div style="font-size:11.5px;color:var(--text3);margin-bottom:12px">'+fmtDate(date)+'</div>':'')
     +(key&&(S.overrides||{})[key]&&(S.overrides||{})[key].echange?_exCurHtml(key):'')
-    +(key?_cvWhenHtml(key,W):'')
-    // Jour déjà modifié (hors échange) : retour à la vacation prévue au cycle
-    +'<div class="hd-card" style="'+card+'"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 8px"><div class="btit" style="margin:0">Vacation</div>'
-    +(key&&ov.vac&&!ov.echange?'<button type="button" class="adj-pill" style="width:auto;padding:0 12px;height:28px;font-size:12px" onclick="_cvRevert()">Revenir à l’original</button>':'')+'</div>'
-    +(key?opts:'')
+    +(key?_cvWhenHtml(key,W)+opts:'')
+    // Quoi : horaires (ou vacation de l'échange) ; jour déjà modifié (hors échange) : retour à la vacation prévue au cycle
+    +(key?'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div class="cv-sec">Quoi</div>'
+      +(ov.vac&&!ov.echange?'<button type="button" class="adj-pill" style="width:auto;padding:0 12px;height:26px;font-size:12px;margin-bottom:6px" onclick="_cvRevert()">Revenir à l’original</button>':'')+'</div>':'')
+    +'<div class="hd-card" style="'+card+'">'
     +'<div id="cv-fields"'+(motif==='echange'?' style="display:none"':'')+'>'
     +'<div class="mrow"><label>Nom</label><input id="custom-name" list="cv-vac-list" autocomplete="off" placeholder="B1, formation, renfort…" style="width:100%;'+fs+'"><datalist id="cv-vac-list">'+_cvVacOpts(fDate,getVAC(fDate))+'</datalist></div>'
     // Début | Fin | Pause sur une ligne
