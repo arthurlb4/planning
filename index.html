@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>franceinfo planning</title>
+<style>html{background:#161615}body{opacity:0}</style>
+<link rel="apple-touch-icon" href="app/apple-touch-icon-v10.png">
+<link rel="icon" type="image/png" href="app/favicon11.png">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+/* Mêmes couleurs et formes que l'app (toujours en sombre) */
+:root{--bg:#161615;--bg0:#191918;--bg2:#222221;--bg3:#343331;--text:#f3f2ef;--text2:#d8d6d2;--text3:#a9a7a1;--blue:#62aadc;--green:#6a9878;--border:rgba(255,250,242,.11);--r:999px;--font:-apple-system,BlinkMacSystemFont,'SF Pro Text','Inter','Segoe UI',sans-serif;}
+body,input,button{transition:background-color .25s ease,color .25s ease,border-color .25s ease;}
+body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;user-select:none;-webkit-user-select:none;}
+input,textarea,select,button{font-family:var(--font);}
+input,textarea,select{user-select:text;-webkit-user-select:text;}
+.card{background:var(--bg2);border:0.5px solid var(--border);border-radius:22px;box-shadow:0 2px 6px rgba(0,0,0,.25),0 6px 20px rgba(0,0,0,.18);padding:28px 24px;width:100%;max-width:380px;}
+.logo{text-align:center;margin-bottom:20px;}
+.logo h1{font-size:20px;font-weight:600;margin-bottom:4px;}
+.logo p{font-size:12px;color:var(--text3);}
+.tabs{display:flex;gap:4px;margin-bottom:20px;background:var(--bg);border-radius:var(--r);padding:3px;}
+.tab{flex:1;padding:7px;text-align:center;font-size:13px;border-radius:999px;cursor:pointer;color:var(--text2);transition:all .15s;}
+.tab.active{background:var(--bg3);box-shadow:0 1px 3px rgba(0,0,0,.25);color:var(--text);font-weight:500;}
+.field{margin-bottom:12px;}
+.field label{display:block;font-size:11px;color:var(--text3);margin-bottom:4px;padding-left:12px;text-transform:uppercase;letter-spacing:.05em;}
+.field input,.field select{width:100%;padding:10px 16px;background:var(--bg0);border:0.5px solid var(--border);border-radius:var(--r);color:var(--text);font-size:16px;outline:none;transition:border-color .15s;}
+.field input:focus,.field select:focus{border-color:var(--blue);}
+.rrow{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:0.5px solid var(--border);}
+.rrow-lbl{font-size:13px;color:var(--text2);}
+.rrow input{width:150px;padding:7px 12px;background:var(--bg0);border:0.5px solid var(--border);border-radius:var(--r);color:var(--text);font-size:13px;outline:none;transition:border-color .15s;}
+.rrow input:focus{border-color:var(--blue);}
+.rsec{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;padding-top:14px;padding-bottom:2px;}
+.btn{width:100%;padding:12px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);font-size:14px;font-weight:500;cursor:pointer;margin-top:4px;transition:opacity .15s;}
+.btn:hover{opacity:.9;}
+.btn:disabled{opacity:.5;cursor:not-allowed;}
+.err{color:#e24b4a;font-size:12px;margin-top:8px;display:none;}
+.ok{color:var(--green);font-size:12px;margin-top:8px;display:none;}
+.forgot{text-align:right;font-size:11px;color:var(--text3);cursor:pointer;margin-top:-8px;margin-bottom:14px;}
+.forgot:hover{color:var(--blue);}
+#reset-section{display:none;}
+.back{font-size:12px;color:var(--text3);cursor:pointer;margin-bottom:16px;display:inline-flex;align-items:center;gap:4px;}
+.back:hover{color:var(--blue);}
+.tgl{position:relative;display:inline-block;width:36px;height:20px;flex-shrink:0;}
+.tgl input{opacity:0;width:0;height:0;}
+.tgl-s{position:absolute;inset:0;background:var(--bg3);border-radius:20px;transition:.2s;}
+.tgl-s:before{content:'';position:absolute;width:14px;height:14px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.2s;}
+.tgl input:checked+.tgl-s{background:var(--blue);}
+.tgl input:checked+.tgl-s:before{transform:translateX(16px);}
+/* ── Liquid Glass, comme dans l'app : carte translucide et floue, liseré de lumière plus vif aux coins opposés ;
+   champs, onglets et boutons en verre avec un reflet fin (haut-gauche plus lumineux) ── */
+.card{position:relative;background:rgba(255,250,242,.04);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:1px solid transparent;box-shadow:0 12px 32px rgba(0,0,0,.5);}
+.card::after{content:"";position:absolute;inset:-1px;border-radius:inherit;padding:.5px;pointer-events:none;
+  background:linear-gradient(135deg,rgba(255,250,243,0.133),rgba(255,250,243,0.027) 28%,rgba(255,250,243,0.014) 50%,rgba(255,250,243,0.027) 72%,rgba(255,250,243,0.094));
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0)}
+.field input,.field select,.rrow input,.card select,.tabs,#reg-pwd-reqs{background:rgba(255,250,243,.03)!important;border-color:transparent!important;box-shadow:inset .5px .5px 0 rgba(255,250,243,.13),inset -.5px -.5px 0 rgba(255,250,243,.045);}
+.field input:focus,.field select:focus,.rrow input:focus{box-shadow:inset 0 0 0 1px var(--blue);}
+.tab.active{background:rgba(255,250,243,.1);box-shadow:inset .5px .5px 0 rgba(255,250,243,.16),inset -.5px -.5px 0 rgba(255,250,243,.05),0 1px 3px rgba(0,0,0,.25);}
+.btn{box-shadow:inset .5px .5px 0 rgba(255,255,255,.3),inset -.5px -.5px 0 rgba(255,255,255,.1),0 4px 14px rgba(98,170,220,.18);}
+#form-slider{position:relative;overflow:hidden;transition:height .4s cubic-bezier(.4,0,.2,1);}
+.pwd-req{font-size:11px;color:var(--text3);padding:1px 0;display:flex;align-items:center;gap:5px;}
+.pwd-req::before{content:'○';font-size:9px;flex-shrink:0;}
+.pwd-req.met{color:var(--green);}
+.pwd-req.met::before{content:'●';}
+#reg-pwd-reqs{max-height:0;opacity:0;overflow:hidden;margin-top:-6px;margin-bottom:0;transition:max-height .3s ease,opacity .2s ease,margin-bottom .3s ease;}
+#reg-pwd-reqs.open{max-height:150px;opacity:1;margin-bottom:12px;}
+.pwd-wrap{position:relative;}
+.pwd-wrap input{padding-right:40px;}
+.pwd-eye{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text3);padding:4px;line-height:1;width:auto;margin:0;font-size:17px;}
+.pwd-eye:hover{color:var(--text2);}
+
+</style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+</head>
+<body>
+<div class="card">
+  <div class="logo">
+    <h1>franceinfo planning</h1>
+  </div>
+
+  <!-- Reset password section -->
+  <div id="reset-section">
+    <div class="back" onclick="showReset(false)">← Retour</div>
+    <div class="field"><label>Nouveau mot de passe</label><input type="password" id="new-pwd" placeholder="Minimum 6 caractères"></div>
+    <button class="btn" onclick="doReset()">Enregistrer le mot de passe</button>
+    <div class="err" id="reset-err"></div>
+    <div class="ok" id="reset-ok"></div>
+  </div>
+
+  <!-- Login/Register section -->
+  <div id="auth-section">
+    <div class="tabs">
+      <div class="tab active" id="tab-login" onclick="switchTab('login')">Connexion</div>
+      <div class="tab" id="tab-register" onclick="switchTab('register')">Créer un compte</div>
+    </div>
+
+    <!-- Login / Register slider -->
+    <div id="form-slider">
+
+      <!-- Login form -->
+      <form id="form-login" autocomplete="on" onsubmit="doLogin();return false;">
+        <div class="field"><label>Email</label><input type="email" id="login-email" name="email" autocomplete="email" placeholder="Adresse email"></div>
+        <div class="field"><label>Mot de passe</label><div class="pwd-wrap"><input type="password" id="login-pwd" autocapitalize="off" autocorrect="off" spellcheck="false" name="password" autocomplete="current-password" placeholder="••••••••"><button type="button" class="pwd-eye" data-pwd="login" onmousedown="event.preventDefault()" onclick="togglePwd(['login-pwd'],this.dataset.pwd)" tabindex="-1" aria-label="Afficher le mot de passe"><i class="ti ti-eye"></i></button></div></div>
+        <div style="display:flex;justify-content:flex-end;align-items:center;margin-top:8px;margin-bottom:14px">
+          <div class="forgot" style="margin:0" onclick="showForgot()">Mot de passe oublié ?</div>
+        </div>
+        <button class="btn" id="login-btn" onclick="doLogin()">Se connecter</button>
+        <div class="err" id="login-err"></div>
+      </form>
+
+      <!-- Register form -->
+      <div id="form-register" style="display:none">
+        <!-- Step dots -->
+
+        <!-- Étape 1 : identifiants -->
+        <div id="reg-s1">
+          <div class="field"><label>Nom</label><input type="text" id="reg-name" name="name" autocomplete="name" placeholder="Nom"></div>
+          <div class="field"><label>Email</label><input type="email" id="reg-email" name="email" autocomplete="email" placeholder="Adresse email" oninput="regEmailCheck()" onblur="regEmailCheck(true)"><div class="err" id="reg-email-err" style="margin-top:6px;padding-left:12px"></div></div>
+          <div class="field"><label>Mot de passe</label><div class="pwd-wrap"><input type="password" id="reg-pwd" autocapitalize="off" autocorrect="off" spellcheck="false" name="password" autocomplete="new-password" placeholder="••••••••" oninput="checkPwdReqs()" onkeydown="if(event.key==='Enter')regGoStep2()"><button type="button" class="pwd-eye" data-pwd="reg" onmousedown="event.preventDefault()" onclick="togglePwd(['reg-pwd','reg-pwd2'],this.dataset.pwd)" tabindex="-1" aria-label="Afficher le mot de passe"><i class="ti ti-eye"></i></button></div></div>
+          <div id="reg-pwd-reqs" style="padding:8px 14px;background:var(--bg0);border-radius:16px;border:0.5px solid var(--border)">
+            <div class="pwd-req" id="rq-len">8 caractères minimum</div>
+            <div class="pwd-req" id="rq-upper">1 majuscule (A–Z)</div>
+            <div class="pwd-req" id="rq-lower">1 minuscule (a–z)</div>
+            <div class="pwd-req" id="rq-digit">1 chiffre (0–9)</div>
+            <div class="pwd-req" id="rq-special">1 caractère spécial (!@#$…)</div>
+          </div>
+          <div class="field"><label>Confirmer le mot de passe</label><div class="pwd-wrap"><input type="password" id="reg-pwd2" autocapitalize="off" autocorrect="off" spellcheck="false" name="password2" autocomplete="new-password" placeholder="••••••••" onkeydown="if(event.key==='Enter')regGoStep2()"><button type="button" class="pwd-eye" data-pwd="reg" onmousedown="event.preventDefault()" onclick="togglePwd(['reg-pwd','reg-pwd2'],this.dataset.pwd)" tabindex="-1" aria-label="Afficher le mot de passe"><i class="ti ti-eye"></i></button></div></div>
+          <button class="btn" id="reg-btn" onclick="regGoStep2()">Créer mon compte</button>
+          <div class="err" id="reg-err1"></div>
+        </div>
+
+        <!-- Étape 1 bis : code reçu par email -->
+        <div id="reg-s1b" style="display:none">
+          <div class="back" onclick="regCodeBack()" style="margin-bottom:10px">← Modifier l'adresse</div>
+          <p style="font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:14px">Un code à 6 chiffres a été envoyé à <b id="reg-code-to" style="color:var(--text)"></b>. Pensez à regarder dans les spams.</p>
+          <div class="field"><label>Code reçu</label><input type="text" id="reg-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" style="letter-spacing:6px;font-size:20px;text-align:center" oninput="this.value=this.value.replace(/\D/g,'');if(this.value.length===6)regVerifyCode()" onkeydown="if(event.key==='Enter')regVerifyCode()"></div>
+          <button class="btn" id="reg-code-btn" onclick="regVerifyCode()">Valider</button>
+          <div class="err" id="reg-code-err"></div>
+          <div class="ok" id="reg-code-ok"></div>
+          <div class="forgot" style="text-align:center;margin:14px 0 0" onclick="regSendCode(true)" id="reg-code-resend">Renvoyer le code</div>
+        </div>
+
+      </div>
+
+      <!-- Forgot password form -->
+      <div id="form-forgot" style="display:none">
+        <div class="back" onclick="showForgot(false)">← Retour</div>
+        <div class="field"><label>Email</label><input type="email" id="forgot-email" placeholder="nom@email.com"></div>
+        <button class="btn" onclick="doForgot()">Envoyer le lien</button>
+        <div class="err" id="forgot-err"></div>
+        <div class="ok" id="forgot-ok"></div>
+      </div>
+
+    </div><!-- /#form-slider -->
+
+  </div>
+</div>
+
+<script>
+const API = 'https://planning-gcal.arthur-lebreton94.workers.dev';
+var BASE=location.pathname.indexOf('/planning/')===0?'/planning/':'/'; // ancienne adresse (GitHub Pages, sous /planning/) ou domaine de l'app (à la racine)
+
+
+// Check if reset token in URL
+const urlParams = new URLSearchParams(window.location.search);
+const resetToken = urlParams.get('reset');
+if (resetToken) {
+  document.getElementById('auth-section').style.display = 'none';
+  document.getElementById('reset-section').style.display = 'block';
+}
+
+// Auto-switch to register tab if coming from account deletion
+if (urlParams.get('tab') === 'register') {
+  switchTab('register');
+}
+
+function _animRegSlider(fn) {
+  var sl = document.getElementById('form-slider');
+  if (sl) sl.style.height = sl.offsetHeight + 'px';
+  fn();
+  requestAnimationFrame(function() {
+    var reg = document.getElementById('form-register');
+    if (sl && reg) sl.style.height = reg.scrollHeight + 'px';
+    setTimeout(function() { if (sl) sl.style.height = 'auto'; }, 420);
+  });
+}
+
+// Œil : bascule afficher / masquer (et non plus maintenir appuyé) ; à l'inscription, les deux champs ensemble
+function togglePwd(ids,grp){
+  var first=document.getElementById(ids[0]),show=first&&first.type==='password';
+  ids.forEach(function(id){var i=document.getElementById(id);if(i)i.type=show?'text':'password';});
+  document.querySelectorAll('.pwd-eye[data-pwd="'+grp+'"]').forEach(function(b){var ic=b.querySelector('i');if(ic)ic.className='ti '+(show?'ti-eye-off':'ti-eye');b.setAttribute('aria-label',show?'Masquer le mot de passe':'Afficher le mot de passe');});
+}
+function showPwd(id) {
+  var inp = document.getElementById(id);
+  if (inp) inp.type = 'text';
+}
+function hidePwd(id) {
+  var inp = document.getElementById(id);
+  if (inp) inp.type = 'password';
+}
+
+function checkPwdReqs() {
+  var v = document.getElementById('reg-pwd').value;
+  var box = document.getElementById('reg-pwd-reqs');
+  if (box) box.classList.toggle('open', !!v);
+  function setMet(id, ok) { var el = document.getElementById(id); if (el) el.classList.toggle('met', ok); }
+  setMet('rq-len', v.length >= 8);
+  setMet('rq-upper', /[A-Z]/.test(v));
+  setMet('rq-lower', /[a-z]/.test(v));
+  setMet('rq-digit', /[0-9]/.test(v));
+  setMet('rq-special', /[^A-Za-z0-9]/.test(v));
+}
+
+// Email déjà utilisé : vérifié pendant la saisie, pas seulement à la création du compte
+var _regEmailT = null, _regEmailTaken = '';
+function regEmailCheck(now) {
+  clearTimeout(_regEmailT);
+  var email = document.getElementById('reg-email').value.trim().toLowerCase();
+  if (email !== _regEmailTaken) showErr('reg-email-err', '');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return;
+  _regEmailT = setTimeout(async function() {
+    try {
+      var r = await fetch(API + '/auth/check-email', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email }) });
+      var d = await r.json();
+      if (document.getElementById('reg-email').value.trim().toLowerCase() !== email) return;
+      if (d && d.exists) { _regEmailTaken = email; showErr('reg-email-err', 'Adresse mail déjà utilisée'); }
+      else if (_regEmailTaken === email) { _regEmailTaken = ''; showErr('reg-email-err', ''); }
+    } catch (e) {}
+  }, now ? 0 : 600);
+}
+
+function regGoStep2() {
+  const name = document.getElementById('reg-name').value.trim();
+  const email = document.getElementById('reg-email').value.trim();
+  const pwd = document.getElementById('reg-pwd').value;
+  const pwd2 = document.getElementById('reg-pwd2').value;
+  showErr('reg-err1', '');
+  if (!name) return showErr('reg-err1', 'Saisir un nom.');
+  if (!email || !email.includes('@')) return showErr('reg-err1', 'Email invalide.');
+  if (email.toLowerCase() === _regEmailTaken) return showErr('reg-err1', 'Adresse mail déjà utilisée');
+  if (pwd.length < 8) return showErr('reg-err1', 'Mot de passe : 8 caractères minimum.');
+  if (!/[A-Z]/.test(pwd)) return showErr('reg-err1', 'Mot de passe : au moins une majuscule.');
+  if (!/[a-z]/.test(pwd)) return showErr('reg-err1', 'Mot de passe : au moins une minuscule.');
+  if (!/[0-9]/.test(pwd)) return showErr('reg-err1', 'Mot de passe : au moins un chiffre.');
+  if (!/[^A-Za-z0-9]/.test(pwd)) return showErr('reg-err1', 'Mot de passe : au moins un caractère spécial.');
+  if (pwd !== pwd2) return showErr('reg-err1', 'Les mots de passe ne correspondent pas.');
+  if (_regCodeOk !== email.toLowerCase()) return regSendCode(false);
+  regShowStep2();
+}
+
+// Code de vérification : demandé une fois par adresse ; si le serveur ne l'exige pas (envoi non configuré), on passe directement
+var _regCodeOk = '';
+async function regSendCode(resend) {
+  var email = document.getElementById('reg-email').value.trim().toLowerCase();
+  var btn = resend ? document.getElementById('reg-code-resend') : document.querySelector('#reg-s1 .btn');
+  var errId = resend ? 'reg-code-err' : 'reg-err1';
+  showErr(errId, '');
+  if (resend) showOk('reg-code-ok', '');
+  if (btn.dataset.busy) return; btn.dataset.busy = '1'; var lbl = btn.textContent; btn.textContent = 'Envoi…';
+  try {
+    var r = await fetch(API + '/auth/send-code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email }) });
+    var d = await r.json().catch(function(){ return {}; });
+    if (!r.ok) { if (r.status === 409) _regEmailTaken = email; showErr(errId, d.error || 'Envoi du code impossible'); return; }
+    if (d.required === false) { _regCodeOk = email; delete btn.dataset.busy; btn.textContent = lbl; await regShowStep2(); return; }
+    if (resend) { document.getElementById('reg-code').value = ''; document.getElementById('reg-code').focus(); delete btn.dataset.busy; showOk('reg-code-ok', 'Nouveau code envoyé : le précédent ne marche plus.'); _regResendWait(); return; }
+    document.getElementById('reg-code-to').textContent = email;
+    document.getElementById('reg-code').value = '';
+    _animRegSlider(function() {
+      document.getElementById('reg-s1').style.display = 'none';
+      document.getElementById('reg-s1b').style.display = '';
+      setTimeout(function(){ document.getElementById('reg-code').focus(); }, 50);
+    });
+    _regResendWait();
+  } catch (e) { showErr(errId, 'Connexion impossible, réessayez'); }
+  finally { if (btn.dataset.busy) { delete btn.dataset.busy; btn.textContent = lbl; } }
+}
+
+// « Renvoyer le code » grisé 30 s après chaque envoi, avec le décompte (le serveur refuse un nouvel envoi avant)
+var _regResendT = null;
+function _regResendWait() {
+  var el = document.getElementById('reg-code-resend'), t = 30;
+  clearInterval(_regResendT);
+  var tick = function() { if (t <= 0) { clearInterval(_regResendT); el.textContent = 'Renvoyer le code'; el.style.pointerEvents = ''; el.style.opacity = ''; return; }
+    el.textContent = 'Renvoyer le code dans ' + t + ' s'; el.style.pointerEvents = 'none'; el.style.opacity = '.6'; t--; };
+  tick(); _regResendT = setInterval(tick, 1000);
+}
+
+async function regVerifyCode() {
+  var email = document.getElementById('reg-email').value.trim().toLowerCase();
+  var code = document.getElementById('reg-code').value.trim(), btn = document.getElementById('reg-code-btn');
+  showErr('reg-code-err', ''); showOk('reg-code-ok', '');
+  if (!/^\d{6}$/.test(code)) return showErr('reg-code-err', 'Saisir les 6 chiffres du code.');
+  if (btn.disabled) return; btn.disabled = true;
+  try {
+    var r = await fetch(API + '/auth/verify-code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email, code: code }) });
+    var d = await r.json().catch(function(){ return {}; });
+    if (!r.ok) return showErr('reg-code-err', d.error || 'Code incorrect');
+    _regCodeOk = email; btn.disabled = false; await regShowStep2(); return;
+  } catch (e) { showErr('reg-code-err', 'Connexion impossible, réessayez'); }
+  finally { btn.disabled = false; }
+}
+
+function regCodeBack() {
+  _animRegSlider(function() {
+    document.getElementById('reg-s1b').style.display = 'none';
+    document.getElementById('reg-s1').style.display = '';
+  });
+}
+
+// Adresse vérifiée (ou vérification non requise) : création du compte ; la suite (ligne, heures, paie) se fait dans l'app
+function regShowStep2() {
+  var onCode = document.getElementById('reg-s1b').style.display !== 'none';
+  return doRegister(onCode ? 'reg-code-err' : 'reg-err1', onCode ? document.getElementById('reg-code-btn') : document.getElementById('reg-btn'));
+}
+
+// fichiers d'une inscription précédente non aboutie : oubliés à l'ouverture de la page
+try{localStorage.removeItem('pl_rh_file');localStorage.removeItem('pl_bul_files');}catch(e){} // fichiers de l'ancienne inscription en 3 étapes
+function regGoStep1() {
+  _animRegSlider(function() {
+    var s1 = document.getElementById('reg-s1');
+    if (s1) s1.style.display = '';
+    var s1b = document.getElementById('reg-s1b'); if (s1b) s1b.style.display = 'none';
+  });
+}
+
+// Plus d'identifiants mémorisés par l'app (mot de passe gardé en clair) : effacés s'il en reste ; le gestionnaire de mots de passe du téléphone prend le relais
+try { localStorage.removeItem('remember_creds'); } catch(e) {}
+
+// Check if already logged in
+const stored = localStorage.getItem('auth_token');
+if (stored && !resetToken) {
+  window.location.replace(BASE + 'app/');
+} else {
+  document.body.style.opacity = '1';
+}
+
+function switchTab(tab) {
+  const isReg = tab === 'register';
+  if (document.getElementById(isReg ? 'tab-register' : 'tab-login').classList.contains('active')) return;
+  document.body.classList.toggle('reg-active', isReg);
+  document.getElementById('tab-login').classList.toggle('active', !isReg);
+  document.getElementById('tab-register').classList.toggle('active', isReg);
+  document.getElementById('form-forgot').style.display = 'none';
+
+  const slider = document.getElementById('form-slider');
+  const out = document.getElementById(isReg ? 'form-login' : 'form-register');
+  const inn = document.getElementById(isReg ? 'form-register' : 'form-login');
+  const dir = isReg ? 1 : -1;
+
+  if (isReg) { regGoStep1(); }
+  else { var _s1=document.getElementById('reg-s1'); if(_s1)_s1.style.display=''; var _s1b=document.getElementById('reg-s1b'); if(_s1b)_s1b.style.display='none'; }
+
+  // Fix slider at current height so transition has a start point
+  slider.style.height = out.offsetHeight + 'px';
+
+  // Show incoming off-screen (absolute so it doesn't stretch the slider)
+  inn.style.cssText = 'display:block;position:absolute;top:0;left:0;right:0;opacity:0;transform:translateX(' + (dir * 28) + 'px);pointer-events:none';
+
+  const targetH = inn.offsetHeight;
+
+  requestAnimationFrame(function() {
+    // Animate slider height
+    slider.style.height = targetH + 'px';
+    // Outgoing slides & fades out
+    out.style.transition = 'opacity .22s ease, transform .34s cubic-bezier(.4,0,.2,1)';
+    out.style.opacity = '0';
+    out.style.transform = 'translateX(' + (-dir * 28) + 'px)';
+    // Incoming slides & fades in (slight delay for overlap feel)
+    requestAnimationFrame(function() {
+      inn.style.transition = 'opacity .28s ease .06s, transform .36s cubic-bezier(.4,0,.2,1)';
+      inn.style.opacity = '1';
+      inn.style.transform = 'translateX(0)';
+      inn.style.pointerEvents = '';
+    });
+  });
+
+  setTimeout(function() {
+    out.removeAttribute('style');
+    out.style.display = 'none';
+    inn.removeAttribute('style');
+    slider.style.height = 'auto';
+  }, 400);
+}
+
+function _measureHidden(el) {
+  var prev = el.style.cssText;
+  el.style.cssText += ';position:absolute!important;visibility:hidden!important;display:block!important;';
+  var h = el.offsetHeight;
+  el.style.cssText = prev;
+  return h;
+}
+
+function showForgot(show = true) {
+  var slider = document.getElementById('form-slider');
+  var loginEl = document.getElementById('form-login');
+  var forgotEl = document.getElementById('form-forgot');
+  if (!slider || !loginEl || !forgotEl) return;
+  if (show) {
+    // Reprendre l'e-mail déjà saisi sur l'écran de connexion
+    var loginEmail = document.getElementById('login-email').value.trim();
+    if (loginEmail) document.getElementById('forgot-email').value = loginEmail;
+    var fromH = slider.offsetHeight;
+    var toH = _measureHidden(forgotEl);
+    loginEl.style.display = 'none';
+    forgotEl.style.display = '';
+    slider.style.height = fromH + 'px';
+    slider.getBoundingClientRect(); // force reflow — commits fromH before transition
+    slider.style.height = toH + 'px';
+    setTimeout(function() { slider.style.height = 'auto'; }, 420);
+  } else {
+    var fromH = slider.offsetHeight;
+    var toH = _measureHidden(loginEl);
+    forgotEl.style.display = 'none';
+    loginEl.style.display = '';
+    document.getElementById('form-register').style.display = 'none';
+    document.getElementById('tab-login').classList.add('active');
+    document.getElementById('tab-register').classList.remove('active');
+    showErr('forgot-err', ''); showOk('forgot-ok', '');
+    slider.style.height = fromH + 'px';
+    slider.getBoundingClientRect();
+    slider.style.height = toH + 'px';
+    setTimeout(function() { slider.style.height = 'auto'; }, 420);
+  }
+}
+
+function showReset(show = true) {
+  document.getElementById('reset-section').style.display = show ? 'block' : 'none';
+  document.getElementById('auth-section').style.display = show ? 'none' : '';
+}
+
+function showErr(id, msg) {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.style.display = msg ? 'block' : 'none';
+}
+
+function showOk(id, msg) {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.style.display = msg ? 'block' : 'none';
+}
+
+async function doLogin() {
+  const email = document.getElementById('login-email').value.trim();
+  const pwd = document.getElementById('login-pwd').value;
+  showErr('login-err', '');
+  if (!email || !pwd) return showErr('login-err', 'Remplir tous les champs.');
+  const btn = document.getElementById('login-btn');
+  btn.disabled = true; btn.textContent = 'Connexion...';
+  try {
+    const res = await fetch(API + '/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: pwd }),
+    });
+    const data = await res.json();
+    if (!res.ok) { showErr('login-err', data.error || 'Erreur'); btn.disabled = false; btn.textContent = 'Se connecter'; return; }
+    localStorage.setItem('auth_token', data.token);
+    localStorage.setItem('auth_user', JSON.stringify({ userId: data.userId, name: data.name, email: data.email }));
+    setTimeout(function(){ window.location.replace(BASE + 'app/'); }, 100);
+  } catch(e) { showErr('login-err', 'Erreur réseau'); btn.disabled = false; btn.textContent = 'Se connecter'; }
+}
+
+async function doRegister(errId, btn) {
+  errId = errId || 'reg-err1'; btn = btn || document.getElementById('reg-btn');
+  const name = document.getElementById('reg-name').value.trim();
+  const email = document.getElementById('reg-email').value.trim();
+  const pwd = document.getElementById('reg-pwd').value;
+  showErr(errId, '');
+  if (!name || !email || !pwd) return showErr(errId, 'Remplir tous les champs.');
+  const lbl = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Création…';
+  try {
+    const res = await fetch(API + '/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: pwd, name, code: (document.getElementById('reg-code') || {}).value || '' }),
+    });
+    const data = await res.json();
+    if (!res.ok) { showErr(errId, res.status === 409 ? 'Adresse mail déjà utilisée' : (data.error || 'Erreur')); btn.disabled = false; btn.textContent = lbl; return; }
+    localStorage.setItem('auth_token', data.token);
+    localStorage.setItem('auth_user', JSON.stringify({ userId: data.userId, name: data.name, email: data.email }));
+    localStorage.removeItem('remember_creds'); // identifiants d'un autre compte : plus préremplis ni réutilisés
+    // Profil de départ ; la ligne, les heures et la paie sont demandées juste après
+    const _todayYM = new Date().getFullYear()*12+new Date().getMonth();
+    const profileData = {
+      profile:{ name, anchorLine:0, matelas:0, congesInit:25, ephSolde:0, ephSoldeCreatedYM:_todayYM, gcalAutoSync:false, pfaMensuelle:false, hasSeenPayPrompt:true, setupPending:true },
+      settings:{dimRendu:true,rhRendu:true,ferRendu:true,hsRendu:true,theme:'dark'},
+      overrides:{},conges:{},history:[],customVacs:{}
+    };
+    // Données du compte utilisé avant sur cet appareil : rangées à part (retrouvées en s'y reconnectant)
+    try { const _old = JSON.parse(localStorage.getItem('pl_v8') || 'null'); if (_old && _old.u && _old.u !== data.userId) localStorage.setItem('pl_v8_' + _old.u, JSON.stringify(_old)); } catch(e) {}
+    localStorage.setItem('pl_v8', JSON.stringify({p:{default:profileData},a:'default',u:data.userId}));
+    // Suite de l'inscription (présentation, ligne et heures, paie) : dans l'app, qui sait lire le tableau et les bulletins.
+    // setupPending reste dans le profil (synchronisé) : quitter et se reconnecter ramène à cette suite
+    localStorage.setItem('planning_aid', 'default');
+    window.location.href = BASE + 'app/';
+  } catch(e) { showErr(errId, 'Erreur réseau'); btn.disabled = false; btn.textContent = lbl; }
+}
+
+async function doForgot() {
+  const email = document.getElementById('forgot-email').value.trim();
+  showErr('forgot-err', ''); showOk('forgot-ok', '');
+  if (!email) return showErr('forgot-err', 'Saisir l’email.');
+  try {
+    await fetch(API + '/auth/forgot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
+    showOk('forgot-ok', 'Si cet email existe, un lien y a été envoyé.');
+  } catch(e) { showErr('forgot-err', 'Erreur réseau'); }
+}
+
+async function doReset() {
+  const pwd = document.getElementById('new-pwd').value;
+  showErr('reset-err', ''); showOk('reset-ok', '');
+  if (!pwd || pwd.length < 6) return showErr('reset-err', 'Mot de passe trop court (min 6 caractères).');
+  try {
+    const res = await fetch(API + '/auth/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: resetToken, password: pwd }) });
+    const data = await res.json();
+    if (!res.ok) return showErr('reset-err', data.error || 'Lien invalide ou expiré.');
+    showOk('reset-ok', 'Mot de passe mis à jour ! Redirection...');
+    setTimeout(() => { history.replaceState({}, '', BASE); window.location.href = BASE; }, 2000);
+  } catch(e) { showErr('reset-err', 'Erreur réseau'); }
+}
+
+
+</script>
+<script>
+function toggleLoginTheme(){
+  const isDark=document.documentElement.getAttribute('data-theme')!=='light';
+  const newTheme=isDark?'light':'dark';
+  document.documentElement.setAttribute('data-theme',newTheme);
+  const icon=document.getElementById('login-theme-icon');
+  if(icon){icon.className=newTheme==='light'?'ti ti-sun':'ti ti-moon';}
+  localStorage.setItem('theme',newTheme);
+}
+// Apply saved theme immediately (before DOMContentLoaded)
+(function(){
+  const saved='dark'; // mode clair retiré, comme dans l'app
+  document.documentElement.setAttribute('data-theme',saved);
+  document.addEventListener('DOMContentLoaded',function(){
+    const icon=document.getElementById('login-theme-icon');
+    if(icon)icon.className=saved==='light'?'ti ti-sun':'ti ti-moon';
+  });
+})();
+</script>
+</body>
+</html>
