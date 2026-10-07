@@ -7746,16 +7746,17 @@ function _cvWeek(n){var W=window._cvW;W.wOff=(W.wOff||0)+n;_cvRerender();}
 function _cvPickDay(k){var W=window._cvW,key=pendingKey;_haptic();if(k===key){W.other=null;W.when='day';}else{W.other=k;W.when='other';if(window._cvMotif==='autre')window._cvMotif='echange';}W.exVac=null;_cvRerender();}
 function _cvPickExVac(b){var W=window._cvW;W.exVac=b.getAttribute('data-exv');_haptic();[].forEach.call(document.querySelectorAll('#cv-exg [data-exv]'),function(x){x.classList.toggle('exsel',x===b);});}
 // Échange : vacations du jour fait (celles du cycle ce jour-là, puis les autres)
-function _cvExGrid(fk){
-  var W=window._cvW||{},d=new Date(fk+'T12:00:00'),VAC=getVAC(d),all=_cycleVacList(d),sch,acc=[];
-  if(all){var ss=_cycleGridScheduledVacs(d);sch=all.filter(function(n){return ss.has(n);});acc=all.filter(function(n){return !ss.has(n);});}
-  else sch=_dayVacRows(d,VAC).rows.reduce(function(a,r){return a.concat(r);},[]).filter(function(n){return n!=='SV'&&n!=='Autre';});
-  var ok=function(n){var v=VAC[n];return v&&!v.mixte&&v.dur>0&&n!=='RH';};
+function _cvExGrid(fk){var W=window._cvW||{},d=new Date(fk+'T12:00:00'),VAC=getVAC(d);
+  var dv=_dayVacRows(d,VAC),typ=dv.rows.reduce(function(a,r){return a.concat(r);},[]).filter(function(n){var v=VAC[n];return n!=='SV'&&n!=='Autre'&&v&&!v.mixte&&v.dur>0;});
   var bt=function(n){return '<button type="button" class="mb vt'+(n===W.exVac?' exsel':'')+'" data-exv="'+n+'" onclick="_cvPickExVac(this)" style="background:var(--blue-l);color:var(--text)"><div style="font-weight:700">'+vLbl(n,VAC)+'</div><div style="font-size:9px;opacity:.7;font-weight:400">'+fmtMin(VAC[n].dur)+'</div></button>';};
-  var grid=function(l){return '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">'+l.map(bt).join('')+'</div>';};
-  var h='<div style="font-size:11px;color:var(--text2);margin:2px 0 6px">Vacation faite le '+_cvSd(fk)+'</div>'+grid(sch.filter(ok));
-  acc=acc.filter(ok);if(acc.length)h+='<div style="font-size:11px;color:var(--text3);margin:10px 0 6px">Autres vacations</div>'+grid(acc);
-  return h+'<div class="cv-hint" style="margin:8px 2px 4px">Les heures prévues comptent (pas d’heures sup). Primes de la vacation faite.</div>'
+  // « Autres » : celles du jour hors grille, rangées par catégorie (comme la fiche du jour) ; ouvert si la vacation choisie en fait partie
+  if(dv.sched){window._autreVacsForDay=dv.acc;window._cycleVacsShown=dv.sched;}
+  var oth=_autreVacHtml(fk,1),open=!!(W.exVac&&typ.indexOf(W.exVac)<0);
+  return '<div style="font-size:11px;color:var(--text2);margin:2px 0 6px">Vacation faite le '+_cvSd(fk)+'</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">'+typ.map(bt).join('')
+    +(oth?'<button type="button" class="mb vt" style="background:var(--bg0);color:var(--text2);font-weight:700" onclick="var o=document.getElementById(\'cv-exo\');o.style.display=o.style.display?\'\':\'none\'">Autres</button>':'')+'</div>'
+    +(oth?'<div id="cv-exo"'+(open?'':' style="display:none"')+'>'+oth+'</div>':'')
+    +'<div class="cv-hint" style="margin:8px 2px 4px">Les heures prévues comptent (pas d’heures sup). Primes de la vacation faite.</div>'
     +'<button type="button" class="adj-pill" style="width:auto;padding:0 14px;height:30px;font-size:12px;margin:8px 0 2px" onclick="_cvSetWhen(\'week\')">Échanger toute la semaine…</button>';}
 // Enregistre un déplacement (motif) ou un échange : jour cédé (non travaillé) et jour fait, liés l'un à l'autre
 function _cvSaveMove(){var W=window._cvW||{when:'day'},key=pendingKey,m=window._cvMotif,ex=m==='echange',oKey=key,fKey=key;
@@ -8004,8 +8005,8 @@ function confirmCustomVac(){
 }
 
 // Autres vacations du jour, par catégorie (fiche du jour : à la place de la grille ; échange : fenêtre à part)
-function _autreVacHtml(){
-  const key=pendingKey||_lpk;
+function _autreVacHtml(k,ex){
+  const key=k||pendingKey||_lpk;
   const date=key?new Date(key+'T12:00:00'):new Date();
   const VAC=getVAC(date);
   const dw=date.getDay();
@@ -8013,7 +8014,7 @@ function _autreVacHtml(){
 
   function vacBtn(vn){
     const vi=VAC[vn];const dur=vi?vi.dur:0;
-    return '<button class="mb vt" style="background:var(--blue-l);color:var(--text);border:0.5px solid var(--border);width:100%;" onclick="avw(\''+vn+'\')">'
+    return '<button class="mb vt'+(ex&&vn===(window._cvW||{}).exVac?' exsel':'')+'" style="background:var(--blue-l);color:var(--text);border:0.5px solid var(--border);width:100%;" '+(ex?'data-exv="'+vn+'" onclick="_cvPickExVac(this)"':'onclick="avw(\''+vn+'\')"')+'>'
       +'<div style="font-weight:700">'+(vi&&vi.label?vi.label:vn)+'</div>'
       +'<div style="font-size:9px;opacity:.7;font-weight:400">'+fmtMin(dur)+'</div>'
       +'</button>';
