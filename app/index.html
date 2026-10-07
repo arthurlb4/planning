@@ -2603,12 +2603,14 @@ function _bulPayDiffs(){
   ['ferRendu','dimRendu','rhRendu','hsRendu'].forEach(function(sk){var known={};
     var months=Object.keys(cov).map(Number).concat(Object.keys(B[sk]||{}).map(Number)).filter(function(v,i,a){return a.indexOf(v)===i;}).sort(function(a,b){return a-b;});
     months.forEach(function(W){var b=bm(sk,W),A=raw(sk,W);
-      if(b>0){var t=A>0?W:(raw(sk,W+1)>0&&!bm(sk,W+1)?W+1:(raw(sk,W-1)>0&&!bm(sk,W-1)?W-1:null));if(t!=null)known[t]=false;}
-      else if(A>0&&cov[W]){var shift=[W-1,W+1].some(function(N){return bm(sk,N)>raw(sk,N)+30;});if(!shift&&known[W]==null)known[W]=true;}});
+      // payé sur le bulletin : même mois que l'app (semaine rangée dans le mois de son dimanche, comme la paie)
+      if(b>0){if(A>0)known[W]=false;}
+      // heures dans l'app, rien sur le bulletin du mois : mises en rendus
+      else if(A>0&&cov[W]){if(known[W]==null)known[W]=true;}});
     var ks=Object.keys(known).map(Number).sort(function(a,b){return a-b;});
     ks.forEach(function(W){if(settingsForYM(W)[sk]!==known[W])add({k:sk,ym:W,v:known[W]});});
     Object.keys(cov).map(Number).forEach(function(W){if(known[W]!=null||raw(sk,W)>0)return;var pv=null,nx=null;ks.forEach(function(k){if(k<W)pv=k;else if(nx==null&&k>W)nx=k;});
-      if(bm(sk,W)>0)return; // payé sur le bulletin mais rattaché au mois voisin (heures comptées à cheval)
+      if(bm(sk,W)>0)return; // payé sur le bulletin sans heures dans l'app : écart d'heures, rien à déduire du réglage
       if(pv==null&&nx==null)return;if(pv!=null&&nx!=null&&known[pv]!==known[nx])return;var kv=known[pv!=null?pv:nx];if(settingsForYM(W)[sk]!==kv)add({k:sk,ym:W,v:kv,fill:1});});});
   // PFA : mensuelle ou semestrielle d'après le dernier bulletin qui en montre une
   var P=pfa&&!!pr.pfaMensuelle!==pfa.v?pfa:null;
