@@ -3926,20 +3926,21 @@ function _gmRh(){
   // fav : seulement un solde en ma faveur (pas coché d'office)
   return L.length?{ed:new Date(c.ed+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}),L:L,fav:L.length===1&&e>=2}:null;}
 // Paie : écarts des bulletins non ignorés, ligne par ligne, dits concrètement (ce qui est noté sur le bulletin / ce que j'ai fait)
-var _GM_N={hsLow:'d’HS à 125 %',hsHigh:'d’HS à 150 %',nuit:'d’heures de nuit',fer:'d’heures de férié',dim:'d’heures de dimanche',rh:'d’heures de repos hebdo',
-  panier:'paniers',antenne:'indemnités antenne',matin:'indemnités de vacation sup',reel:'indemnités journaux inter',coord:'indemnités de coordination'};
+// Heures : « 9h15 d’HS à 125 % » / « rien noté en HS à 125 % » ; nombres : singulier à 0 et 1 (« 0 panier », « 2 paniers »)
+var _GM_H={hsLow:['d’HS à 125 %','HS à 125 %'],hsHigh:['d’HS à 150 %','HS à 150 %'],nuit:['d’heures de nuit','heures de nuit'],fer:['d’heures de férié','heures de férié'],dim:['d’heures de dimanche','heures de dimanche'],rh:['d’heures de repos hebdo','repos hebdo']};
+var _GM_C={panier:['panier','paniers','m'],antenne:['indemnité antenne','indemnités antenne','f'],matin:['indemnité de vacation sup','indemnités de vacation sup','f'],reel:['indemnité journaux inter','indemnités journaux inter','f'],coord:['indemnité de coordination','indemnités de coordination','f']};
 function _gmItem(i){
-  var eu=function(x){return fmtEuro(Math.abs(x));},amt=i.d<-0.005?' (il manque '+eu(i.d)+')':i.d>0.005?' ('+eu(i.d)+' de trop)':'';
-  var r=i.row,f=i.fx;
-  if(r){var q=r.bq+r.rq,n=_GM_N[r.k]||r.lbl;
-    if(r.eur)return r.lbl+' : '+eu(r.bm+r.rm)+' payés au lieu de '+eu(r.am)+amt;
-    if(q!==r.aq)return r.h?'tu as noté '+fmtMin(q)+' '+n+' alors que j’en ai fait '+fmtMin(r.aq)+amt
-      :'tu as noté '+q+' '+n+' alors que j’en compte '+r.aq+amt;
-    return (r.h?fmtMin(q)+' '+n:q+' '+n)+' : le bon nombre, mais payé'+(r.h?'es':'s')+' '+eu(r.bm+r.rm)+' au lieu de '+eu(r.am)+amt;}
-  if(f)return f.lbl+' : '+eu(f.bm)+' payés au lieu de '+eu(f.am)+amt;
-  if(i.hs)return i.hs.map(function(h){return 'tu as noté '+fmtMin(h.bq)+' '+_GM_N[h.k]+' : toute demi-heure commencée est due (article VIII.5 de l’accord), soit '+fmtMin(Math.ceil(h.bq/30)*30);}).join(' ; ')||'heures sup : toute demi-heure commencée est due (article VIII.5 de l’accord)';
+  var eu=function(x){return fmtEuro(Math.abs(x));},r=i.row,f=i.fx;
+  if(r){var q=r.bq+r.rq,H=_GM_H[r.k],C=_GM_C[r.k]||[r.lbl,r.lbl,'f'],nb=function(x){return x+' '+(x>1?C[1]:C[0]);};
+    if(r.eur)return r.lbl+' : '+eu(r.bm+r.rm)+' payés au lieu de '+eu(r.am);
+    if(q!==r.aq){
+      if(H)return (q?'tu as noté '+fmtMin(q)+' '+H[0]:'tu n’as rien noté en '+H[1])+(r.aq?' alors que j’en ai fait '+fmtMin(r.aq):' alors que je n’en ai pas fait');
+      return (q?'tu as noté '+nb(q):'tu n’as noté '+(C[2]==='f'?'aucune ':'aucun ')+C[0])+(r.aq?' alors que j’en compte '+r.aq:' alors que je n’en compte '+(C[2]==='f'?'aucune':'aucun'));}
+    return (H?fmtMin(q)+' '+H[0]:nb(q))+' : le bon nombre, mais '+eu(r.bm+r.rm)+' payés au lieu de '+eu(r.am);}
+  if(f)return f.lbl+' : '+eu(f.bm)+' payés au lieu de '+eu(f.am);
+  if(i.hs)return i.hs.map(function(h){return 'tu as noté '+fmtMin(h.bq)+' '+_GM_H[h.k][0]+' : toute demi-heure commencée est due (article VIII.5 de l’accord), soit '+fmtMin(Math.ceil(h.bq/30)*30);}).join(' ; ')||'heures sup : toute demi-heure commencée est due (article VIII.5 de l’accord)';
   if(i.id==='reste')return 'le brut diffère encore de '+eu(i.d)+' sans ligne en cause'+(i.d<0?' (en ma défaveur)':'');
-  return i.lbl+amt;}
+  return i.lbl;}
 function _gmPaie(){
   var L=[];Object.keys(S.bulletins||{}).map(Number).sort(function(a,b){return a-b;}).forEach(function(ym){var c;try{c=_bulCompare(S.bulletins[ym]);}catch(e){return;}
     if(c.status!=='ecart'||_bulIgn(ym,c))return;
