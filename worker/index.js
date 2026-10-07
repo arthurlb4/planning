@@ -4,7 +4,8 @@
 const CLIENT_ID = '669191513748-a40uvl9k46kqsmjatpqokhnhgvrc7mdt.apps.googleusercontent.com';
 const ALLOWED_ORIGIN = 'https://arthurlb4.github.io';
 // Adresses d'où l'app peut appeler le serveur : l'ancienne (GitHub Pages) et le domaine de l'app
-const ALLOWED_ORIGINS = [ALLOWED_ORIGIN, 'https://franceinfoplanning.com', 'https://www.franceinfoplanning.com'];
+const ALLOWED_ORIGINS = [ALLOWED_ORIGIN, 'https://franceinfoplanning.com', 'https://www.franceinfoplanning.com',
+  'http://franceinfoplanning.com', 'http://www.franceinfoplanning.com']; // http : le temps que le certificat HTTPS soit prêt
 // Adresse de l'app (liens des mails, retour de Google) : celle d'où vient la demande
 function appBase(request) {
   var o = request.headers.get('Origin') || '';
