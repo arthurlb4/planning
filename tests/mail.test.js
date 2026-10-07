@@ -48,8 +48,13 @@ eq('Bulletin de septembre, variables d’août', a.run('_gmPaie()'), ['- bulleti
 // 5 bis. Heures à payer mises en rendus par le bulletin (réglage gardé) : une seule ligne, sans répéter l'écart de la même ligne
 a.run('_bulPayDiffs=function(){return{keptList:[{ym:' + YM(2026, 8) + ',k:"dimRendu",h:450,v:1}]};};'
   + '_bulCompare=function(){return{status:"ecart",items:[{id:"r:dim",d:-50,row:' + JSON.stringify(row('dim', true, 0, 450, 0, 50).row) + '}]};};');
-eq('Dimanche mis en rendus à tort', a.run('_gmPaie()'), ['- bulletin de septembre 2026 (variables d’août) :\n   • tu as mis 7h30 d’heures de dimanche en rendus alors qu’elles doivent être payées']);
-a.run('_bulPayDiffs=function(){return{keptList:[]};};');
+eq('Dimanche mis en rendus à tort', a.run('_gmPaie()'), ['- bulletin de septembre 2026 (variables d’août) :\n   • génération de rendus : tu as mis 7h30 d’heures de dimanche en rendus alors qu’elles doivent être payées']);
+// Réglage qui diffère encore du bulletin (non tranché) : signalé comme un problème de génération de rendus
+a.run('_bulPayDiffs=function(){return{keptList:[],paid:[{ym:' + YM(2026, 8) + ',k:"dimRendu",h:405,v:true}]};};');
+eq('Dimanche : réglage différent du bulletin', a.run('_gmPaie()'), ['- bulletin de septembre 2026 (variables d’août) :\n   • génération de rendus : tu as mis 6h45 d’heures de dimanche en rendus alors que je les compte payées']);
+a.run('_bulPayDiffs=function(){return{keptList:[],paid:[{ym:' + YM(2026, 8) + ',k:"dimRendu",h:405,v:false}]};};');
+eq('Dimanche payé, compté en rendus', a.run('_gmPaie()'), ['- bulletin de septembre 2026 (variables d’août) :\n   • génération de rendus : tu as payé 6h45 d’heures de dimanche alors que je les compte en rendus']);
+a.run('_bulPayDiffs=function(){return{keptList:[],paid:[]};};');
 
 // 6. Reports : uniquement les heures qui expirent ce mois-ci
 a.run('calcSoldes=function(){return{realAvail:{' + YM(2026, 7) + ':1080,' + YM(2026, 8) + ':203},preExpiry:{}};};'

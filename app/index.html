@@ -3927,11 +3927,14 @@ function _gmItem(i){
   return i.lbl;}
 function _gmPaie(){
   var KL={ferRendu:'d’heures de férié',dimRendu:'d’heures de dimanche',rhRendu:'d’heures de repos hebdo',hsRendu:'d’HS'},RK={fer:'ferRendu',dim:'dimRendu',rh:'rhRendu',hsLow:'hsRendu',hsHigh:'hsRendu'};
-  var kept=[];try{kept=_bulPayDiffs().keptList||[];}catch(e){}
-  var yms=Object.keys(S.bulletins||{}).map(Number);kept.forEach(function(x){if(yms.indexOf(x.ym+1)<0)yms.push(x.ym+1);});
+  // génération de rendus : choix gardés contre le bulletin (kept) et réglages qui diffèrent encore du bulletin (paid) ; v : ce que dit le bulletin (vrai = rendus)
+  var kept=[],pd=[];try{var D=_bulPayDiffs();kept=D.keptList||[];pd=D.paid||[];}catch(e){}
+  var yms=Object.keys(S.bulletins||{}).map(Number);kept.concat(pd).forEach(function(x){if(yms.indexOf(x.ym+1)<0)yms.push(x.ym+1);});
   var L=[];yms.filter(function(v,i,a){return a.indexOf(v)===i;}).sort(function(a,b){return a-b;}).forEach(function(ym){
     // heures à payer que le bulletin a mises en rendus (seulement ce qui manque)
-    var kp=kept.filter(function(x){return x.ym===ym-1&&x.h>0&&x.v;}),it=kp.map(function(x){return '   • tu as mis '+fmtMin(x.h)+' '+KL[x.k]+' en rendus alors qu’elles doivent être payées';});
+    var kp=kept.filter(function(x){return x.ym===ym-1&&x.h>0&&x.v;}).map(function(x){return{k:x.k,t:'tu as mis '+fmtMin(x.h)+' '+KL[x.k]+' en rendus alors qu’elles doivent être payées'};})
+      .concat(pd.filter(function(x){return x.ym===ym-1&&x.h>0;}).map(function(x){return{k:x.k,t:x.v?'tu as mis '+fmtMin(x.h)+' '+KL[x.k]+' en rendus alors que je les compte payées':'tu as payé '+fmtMin(x.h)+' '+KL[x.k]+' alors que je les compte en rendus'};}));
+    var it=kp.map(function(x){return '   • génération de rendus : '+x.t;});
     var c=null;try{c=S.bulletins[ym]?_bulCompare(S.bulletins[ym]):null;}catch(e){}
     if(c&&c.status==='ecart'&&!_bulIgn(ym,c))(c.items||[]).forEach(function(i){if(i.ign)return;var sk=RK[String(i.id||'').slice(2)];if(sk&&kp.some(function(x){return x.k===sk;}))return;it.push('   • '+_gmItem(i));});
     if(it.length)L.push('- bulletin '+_deMois(ym)+' '+Math.floor(ym/12)+' (variables '+_deMois(ym-1)+') :\n'+it.join('\n'));});
@@ -3950,6 +3953,7 @@ function openGestMail(repYms){
     +row('gm-rh','Corrections du tableau de gestion',H?(H.fav?'écart en ma faveur':H.L.length+' point'+(H.L.length>1?'s':''))+' · tableau du '+H.ed:(S.profile&&S.profile.rhCmp?'tableau identique':'aucun tableau importé'),H,H&&H.fav)
     +row('gm-paie','Corrections de paie',P.length?P.length+' bulletin'+(P.length>1?'s':'')+' à corriger':'aucun écart sur les bulletins',P.length)
     +'</div>'
+    +(function(){var n=0;try{n=(_bulPayDiffs().paid||[]).length;}catch(e){}return n?'<div style="display:flex;gap:8px;align-items:flex-start;font-size:12px;color:var(--text2);line-height:1.4;margin-top:10px"><span style="color:var(--amber)">⚠</span><span style="flex:1">Génération de rendus : '+n+' mois où tes réglages diffèrent des bulletins. Le mail le signale ; vérifier d’abord tes réglages. <a style="color:var(--blue);cursor:pointer" onclick="_bulPayPropose(function(){openGestMail();},1)">Vérifier</a></span></div>':'';})()
     +'<div class="mbtns" style="margin-top:14px"><button class="mb" onclick="openMergedRenduCgModal(6,2)">Annuler</button><button class="mb pri" onclick="gestMailSend()">Rédiger le mail</button></div>'
     +'</div></div>';}
 function gestMailSend(){
