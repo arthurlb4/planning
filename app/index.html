@@ -1010,6 +1010,7 @@ function loadState(){
   if(!S.profile)S.profile={};
   if(S.profile.ephSoldeCreatedYM===undefined)S.profile.ephSoldeCreatedYM=TODAY_YM;
   delete S.profile.repMail;
+  try{_histClean();}catch(e){}
   // Échanges entre collègues : jamais d'heures sup (anciens échanges marqués HS remis à la vacation prévue)
   Object.keys(S.overrides||{}).forEach(function(k){var o=S.overrides[k];if(o&&o.echange&&o.hs)o.hs=false;}); // adresse de l'ancienne demande de report par mail (le destinataire est saisi dans Outlook)
   // Migrate: old autoReportEph incorrectly incremented ephExtend — undo it
@@ -3316,6 +3317,14 @@ function logH(detail,color,key){
   if(!S.history)S.history=[];S.history.unshift({t:nowHHMM(),d:detail,c:color,key});
   if(S.history.length>8)S.history.pop();saveState();
 }
+// Historique : retire les lignes dont le jour n'a plus aucune modification (changement annulé depuis)
+function _histClean(){if(!S.history||!S.history.length)return false;var n=S.history.length;
+  S.history=S.history.filter(function(h){var k=h&&h.key;if(!k||!/^\d{4}-\d{2}-\d{2}$/.test(k))return true;
+    if(/^Semaine du /.test(String(h.d||''))){var mon=getMonday(new Date(k+'T12:00:00'));if(S.weekLines&&S.weekLines[dk(mon)]!=null)return true;
+      for(var i=0;i<7;i++){var d=new Date(mon);d.setDate(mon.getDate()+i);var o=(S.overrides||{})[dk(d)];if(o&&o.echange)return true;}return false;}
+    if(/ au /.test(String(h.d||''))){var d0=new Date(k+'T12:00:00');for(var j=0;j<62;j++){var x=new Date(d0);x.setDate(d0.getDate()+j);if((S.conges||{})[dk(x)])return true;}} // période posée : un de ses jours garde un congé ou un rendu
+    return !!((S.overrides||{})[k]||(S.conges||{})[k]||(S.excInfo||{})[k]||(S.extraRendus||{})[k]||(S.dayPrimes||{})[k]);});
+  return S.history.length!==n;}
 function removeHistoryForKey(key){if(!S.history)return;S.history=S.history.filter(h=>h.key!==key);saveState();}
 function _rhMonthSections(keys,type){
   const MC2=MC;
@@ -5520,6 +5529,7 @@ function openMergedRenduCgModal(limit,tab){
     +'</div></div>';
   const _viewedYM=(typeof curY!=='undefined'&&typeof curM!=='undefined')?curY*12+curM:TODAY_YM;
   const {total:dispoMois,stockActif,reserved,reservedMonths,afterStep1,reservedDetail,genSnapshot}=calcTrueDispo(_viewedYM);
+  try{if(_histClean())saveState();}catch(e){}
   const rcgHistHtml=(S.history||[]).slice(0,8).map(function(e){return '<div class="hrow"><div class="hdot" style="background:'+e.c+'"></div><span class="htime">'+e.t+'</span><span class="hdesc">'+_histTxt(e.d)+'</span></div>';}).join('')||'<span style="font-size:11px;color:var(--text3)">Aucune modification.</span>';
   // Suivi : toujours aujourd'hui (année en cours), quel que soit le mois affiché
   const recapRows=_suiviSimple(NOW.getFullYear())
