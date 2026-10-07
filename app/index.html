@@ -1370,7 +1370,8 @@ var _annualActionManual=false;
 // ================================================================
 // HELPERS EXPIRATION
 function getEphExtensions(ym){
-  if(S.profile&&S.profile.exp12)return 3; // option « valables un an » : comme si les trois reports étaient accordés (fin du 12e mois)
+  if(S.profile&&S.profile.exp12)return 3;
+  if(window._projAuto&&window._autoPlan&&window._autoPlan[ym])return 3; // calcul « sous réserve » : report auto prévu // option « valables un an » : comme si les trois reports étaient accordés (fin du 12e mois)
   const m=S.ephExtend&&S.ephExtend[ym];
   const a=S.autoExtend&&S.autoExtend[ym];
   const mv=m===true?1:typeof m==='number'?m:0;
@@ -1938,8 +1939,8 @@ function renderMonth(el_heads,el_cal){
     else if(st==='rh')lbl='RH';
     else if(st==='fer')lbl=(vac&&vac!=='RH')?vLbl(vac,_VAC):'';
     else if(vac&&vac!=='RH'&&st!=='ec2'&&st!=='ec2-fer')lbl=vLbl(vac,_VAC);
-    const _inWarn=_warnKeys.has(key);
-    const warnDot=_inWarn?'<span class="wdot">⚠️</span>':'';
+    const _inRes=!!(window._resvKeys||{})[key],_inWarn=_warnKeys.has(key)&&!_inRes;
+    const warnDot=_inWarn?'<span class="wdot">⚠️</span>':_inRes?'<span class="wdot" style="font-size:8px;color:var(--amber)">●</span>':'';
     const _lbl=_inWarn?'':lbl;
     const _dn=_inWarn?'':d;
     const _lbl2=_lbl.length>5?_lbl.slice(0,5)+'.':_lbl;
@@ -2305,27 +2306,36 @@ function _renderSideV2(d){
 }
 
 // Report automatique (règle du gestionnaire) : un mois dont il reste 7h ou moins à son échéance est reporté de 3 mois,
-// et de nouveau à chaque échéance tant qu'il en reste 7h ou moins, jusqu'à 12 mois. Les heures restantes d'un mois ne font
-// que baisser : dès qu'il en reste 7h ou moins, ces reports sont acquis et appliqués tout de suite (prévisions comprises).
+// de nouveau à chaque échéance tant qu'il en reste 7h ou moins, jusqu'à 12 mois. Appliqué à l'échéance, comme le gestionnaire.
+// Avant l'échéance, un mois à 7h ou moins est « report auto prévu » (window._autoPlan) : ses heures ne sont pas comptées comme
+// libres, mais un rendu posé après l'échéance qui en dépend est « couvert sous réserve » (pas basculé sur le matelas).
+function _withProj(fn){var p=window._projAuto;window._projAuto=1;try{return fn();}finally{window._projAuto=p;}}
 function autoReportEph(){
   if(!S.autoExtend)S.autoExtend={};
   const saved=Object.assign({},S.autoExtend),manExt=S.ephExtend||{};
   const manOf=function(ym){return typeof manExt[ym]==='number'?manExt[ym]:(manExt[ym]?1:0);};
-  // 1. reports automatiques déjà déclenchés (échéance passée) : acquis, même si le restant a changé depuis
+  // 1. reports déjà déclenchés (échéance passée) : acquis
   Object.keys(S.autoExtend).forEach(function(k){delete S.autoExtend[k];});
-  Object.keys(saved).map(Number).forEach(function(ym){var man=manOf(ym),L=man;for(var i=man+1;i<=(saved[ym]||0);i++)if(ym+3+3*(i-1)<=TODAY_YM)L=i;if(L>man)S.autoExtend[ym]=L;});
-  // 2. restant actuel avec ces reports : 7h ou moins → reporté à chaque échéance, jusqu'à 12 mois
-  const{preExpiry,realAvail}=calcSoldes();
-  const allYms=new Set([...Object.keys(saved),...Object.keys(preExpiry),...Object.keys(manExt),...Object.keys(realAvail)].map(Number));
-  allYms.forEach(function(ym){
-    if(ym>TODAY_YM)return;
-    const man=manOf(ym);let L=Math.max(man,S.autoExtend[ym]||0);
-    const avail=ym+3+3*L<TODAY_YM?(preExpiry[ym]||0):(realAvail[ym]||0);
-    if(avail>0&&avail<=420)L=3;
-    if(L>man)S.autoExtend[ym]=L;else delete S.autoExtend[ym];
-  });
-  const changed=JSON.stringify(saved)!==JSON.stringify(S.autoExtend);
-  if(changed){recalcAllMatelas();saveState();}
+  Object.keys(saved).map(Number).forEach(function(ym){var man=manOf(ym),L=man;for(var i=man+1;i<=(saved[ym]||0);i++)if(ym+3+3*(i-1)<TODAY_YM)L=i;if(L>man)S.autoExtend[ym]=L;});
+  // 2. échéances passées avec 7h ou moins : report (répété si plusieurs échéances sont passées depuis)
+  for(var pass=0;pass<3;pass++){var ch=false,c0=calcSoldes();
+    Object.keys(c0.preExpiry).map(Number).forEach(function(ym){if(ym>TODAY_YM)return;var L=Math.max(manOf(ym),S.autoExtend[ym]||0),av=c0.preExpiry[ym]||0;
+      if(L<3&&ym+3+3*L<TODAY_YM&&av>0&&av<=420){S.autoExtend[ym]=L+1;ch=true;}});
+    if(!ch)break;}
+  // 3. reports prévus : mois pas encore à échéance, 7h ou moins restantes
+  var cs=calcSoldes(),plan={};
+  Object.keys(cs.realAvail).map(Number).forEach(function(ym){if(ym>TODAY_YM)return;var L=Math.max(manOf(ym),S.autoExtend[ym]||0),av=cs.realAvail[ym]||0;
+    if(L<3&&getExpYm(ym)>=TODAY_YM&&av>0&&av<=420)plan[ym]=1;});
+  var planCh=JSON.stringify(plan)!==JSON.stringify(window._autoPlan||{});window._autoPlan=plan;
+  var changed=JSON.stringify(saved)!==JSON.stringify(S.autoExtend);
+  if(changed||planCh)recalcAllMatelas();
+  // 4. rendus couverts seulement par un report prévu : « sous réserve » ; s'ils n'y sont plus et passent sur le matelas, on le dit
+  var cA=calcSoldes(),cP=_withProj(calcSoldes),res={};cA.warnKeys.forEach(function(k){if(!cP.warnKeys.has(k))res[k]=1;});
+  var old=S.resvKeys||{},lost=Object.keys(old).filter(function(k){return !res[k]&&S.matelasKeys&&S.matelasKeys[k]!==undefined;});
+  window._resvKeys=res;
+  if(JSON.stringify(old)!==JSON.stringify(res)){S.resvKeys=res;changed=true;}
+  if(lost.length)setTimeout(function(){_infoToast('Plus de report automatique : '+lost.map(function(k){return fmtDate(new Date(k+'T12:00:00')).replace(/ \d{4}$/,'');}).join(', ')+' passé'+(lost.length>1?'s':'')+' sur le matelas');},400);
+  if(changed)saveState();
 }
 // Reports d'un mois tels qu'ils étaient à une date (tableau Gestion) : les reports automatiques pas encore déclenchés ne comptent pas
 function getEphExtAt(ym,refYM){if(S.profile&&S.profile.exp12)return 3;var m=S.ephExtend&&S.ephExtend[ym],man=m===true?1:typeof m==='number'?m:0,a=(S.autoExtend&&S.autoExtend[ym])||0,L=man;
@@ -3608,7 +3618,8 @@ function openDay(key){
   var _matelasAvail=(S.profile&&S.profile.matelas)||0;
   var _isWarnedRend=false;
   // rendu sans heures pour le couvrir : même calcul que l'alerte (calcSoldes), pas un second décompte
-  if(hasCg==='rend'&&!_inMatelas)_isWarnedRend=!!(cs.warnKeys&&cs.warnKeys.has(key));
+  var _isResv=hasCg==='rend'&&!_inMatelas&&!!(window._resvKeys||{})[key];
+  if(hasCg==='rend'&&!_inMatelas)_isWarnedRend=!!(cs.warnKeys&&cs.warnKeys.has(key))&&!_isResv;
   var ah='';
   if((vac&&vac!=='RH'&&!absent)&&!hasCg){
     ah=`<div class="mbtns" style="grid-template-columns:repeat(4,1fr)">
@@ -3685,14 +3696,14 @@ function openDay(key){
       +(echange?'<div style="font-size:12px;color:#e09a9a;margin-top:3px;display:flex;align-items:center;gap:5px"><i class="ti ti-arrows-exchange" style="font-size:14px"></i>'+_mvTxt(key,_given)+'</div>':'')
       +(epvHtml&&!_given?'<div style="margin-top:3px">'+epvHtml+'</div>':'')
       +(_given?'':_restWarn(key))
-      +_wlHtml
+      +_wlHtml+(_isResv?'<div style="font-size:12px;color:var(--amber);margin-top:3px">● Couvert sous réserve d’un report automatique (7h ou moins restantes)</div>':'')
       +_exrHtml
       +_noteHtml
       +'</div>';
   } else {
     _dayBox='<div class="dbox" onclick="openCustomVacModal()" style="cursor:pointer;background:var(--bg3);border-radius:10px;padding:10px 14px;margin-bottom:12px">'
       +_renduBtn+'<div style="display:flex;align-items:center;gap:8px;height:22px;overflow:hidden"><div style="font-size:15px;font-weight:600;color:var(--text);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(date.getFullYear()===NOW.getFullYear()?lbl.replace(' '+date.getFullYear(),''):lbl)+(tt?' — '+tt:'')+'</div></div>'
-      +_wlHtml
+      +_wlHtml+(_isResv?'<div style="font-size:12px;color:var(--amber);margin-top:3px">● Couvert sous réserve d’un report automatique (7h ou moins restantes)</div>':'')
       +_exrHtml
       +_noteHtml
       +'</div>';
@@ -3807,7 +3818,8 @@ function rendToggleHist(key){
   logH(fmtDate(d)+' -> '+(c==='rend'?'rendu déjà déduit par le gestionnaire':'rendu décompté par l’app')+' '+fmtMin(getDur(d)),'#A8BF7A',key);
   saveState();openDay(key);render();
 }
-function recalcAllMatelas(){
+function recalcAllMatelas(){return _withProj(_recalcAllMatelasRaw);}
+function _recalcAllMatelasRaw(){
   // Return all current matelas allocations to balance
   if(S.matelasKeys){Object.values(S.matelasKeys).forEach(function(v){if(S.profile)S.profile.matelas=(S.profile.matelas||0)+v;});S.matelasKeys={};}
   var _avail=(S.profile&&S.profile.matelas)||0;if(_avail<=0)return;
@@ -3944,7 +3956,7 @@ function _openDayMenu(cell){
 function _gmRep(yms){
   var sd=calcSoldes(),av=function(ym){return getExpYm(ym)<TODAY_YM?(sd.preExpiry[ym]||0):(sd.realAvail[ym]||0);};
   if(!yms){var ok=Object.keys(sd.realAvail).map(Number).filter(function(ym){return ym<=TODAY_YM&&getExpYm(ym)>=TODAY_YM&&(sd.realAvail[ym]||0)>0;}).sort(function(a,b){return a-b;});
-    yms=ok.filter(function(ym){return getExpYm(ym)===TODAY_YM;});}
+    yms=ok.filter(function(ym){return getExpYm(ym)===TODAY_YM&&!(window._autoPlan||{})[ym];});}
   return yms.filter(function(ym){return av(ym)>0;}).map(function(ym){var e=getExpYm(ym);return '- '+fmtMin(av(ym))+' acquises en '+MF_(ym)+(e<TODAY_YM?', expirées fin ':', qui expirent fin ')+MF_(e);});}
 // Heures perdues : expirées il y a moins de 3 mois, avec ce qui restait à l'expiration
 function _gmLost(){var sd=calcSoldes();
@@ -5482,7 +5494,8 @@ function openMergedRenduCgModal(limit,tab){
     // Expiration : simple date, ou pastille « date › » qui ouvre le menu des reports quand un report a un sens
     // (heures restantes ou report déjà posé, mois pas encore expiré). Le tableau Gestion : ✓ s'il donne la même date, ⚠ sinon.
     const rr=_rhRep[ym]!==undefined&&!isExp?_rhRep[ym]:-1,extT=getEphExtAt(ym,_rhEY); // reports à la date du tableau
-    const _mLeft=expYm-TODAY_YM,_urg=!isExp&&!isFut&&avail>0&&_mLeft<=0;
+    const _plan=!!(window._autoPlan||{})[ym],_auto=!!(S.autoExtend&&S.autoExtend[ym]>0);
+    const _mLeft=expYm-TODAY_YM,_urg=!isExp&&!isFut&&avail>0&&_mLeft<=0&&!_plan;
     const _urgC=isExp?(lostMinM>0?'rgba(214,72,56,.75)':'transparent'):isFut?'rgba(150,180,100,.4)':_urg?'var(--orange)':'var(--rend-text)';
     let expLblM;
     // Heures perdues : le montant ouvre aussi le menu des reports (un report accordé après coup par le gestionnaire les rend)
@@ -5491,7 +5504,7 @@ function openMergedRenduCgModal(limit,tab){
     else{
       expLblM='<button class="rep-pill'+(ext>0?' on':'')+(_urg&&!ext?' urg':'')+(rr>=0&&rr!==extT?' warn':'')+'" onclick="event.stopPropagation();_openRepMenu(this,'+ym+','+limit+','+rr+')">'
         +(rr>=0?(rr===extT?'<span style="color:var(--green)">✓</span> ':'<span style="color:var(--amber)">⚠</span> '):'')
-        +_dl(expYm)+' <i class="ti ti-chevron-down"></i></button>'
+        +_dl(expYm)+(_plan?' <span style="font-size:10px;opacity:.75">auto prévu</span>':_auto?' <span style="font-size:10px;opacity:.75">auto</span>':'')+' <i class="ti ti-chevron-down"></i></button>'
         // pas d'annotation sous la date (le report et l'écart avec le tableau se voient dans la couleur et le menu)
         +'';
     }
@@ -5719,12 +5732,14 @@ function openMergedRenduCgModal(limit,tab){
       return '<button class="dx-mini dx-mbtn" style="'+bs+'" onclick="event.stopPropagation();rhOpenFrom(\'rendus\')"><span style="font-size:11px">Écart Rendus</span><b style="font-size:14px;color:'+(ok?'var(--green)':'var(--red)')+'">'+txt+'</b></button>';})()
     +'</div>';
   let _expAmt=0,_repAmt=0;
+  // heures d'un report automatique prévu : libres « sous réserve » (pas encore accordé)
+  const _resAmt=Math.max(0,_withProj(function(){return calcTrueDispo(_viewedYM).total;})-dispoMois);
   // Mois déjà expirés : realAvail est à 0, on prend ce qui restait juste avant l'expiration (preExpiry)
   const _avAt=function(ym){return getExpYm(ym)<TODAY_YM?(preExpiry[ym]||0):(realAvail[ym]||0);};
   [...new Set(Object.keys(realAvail).concat(Object.keys(preExpiry)))].map(Number).forEach(function(ym){
     const av=_avAt(ym);
     if(av>0){
-      if(getExpYm(ym)===_viewedYM){if(getEphExtensions(ym)>0)_repAmt+=av;else _expAmt+=av;}
+      if(getExpYm(ym)===_viewedYM){if(getEphExtensions(ym)>0||(window._autoPlan||{})[ym])_repAmt+=av;else _expAmt+=av;}
       else if(getBaseExpYm(ym)===_viewedYM&&getEphExtensions(ym)>0&&getExpYm(ym)>=TODAY_YM){_repAmt+=av;}
     }
   });
@@ -5737,7 +5752,7 @@ function openMergedRenduCgModal(limit,tab){
   const _expTxt=_expAmt>0?_mi((_viewedYM<TODAY_YM?'Perdu fin ':'Expire en ')+_vm,fmtMin(_expAmt),'var(--red)'):_repAmt>0?_mi('Reporté en '+_vm,fmtMin(_repAmt),'var(--green)'):_mi('Expire en '+_vm,'—','var(--text3)');
   const _hdC=function(l,v,c){return '<div class="hd3-c"><span>'+l+'</span><b style="color:'+c+'">'+v+'</b></div>';};
   const dispoBoxHtml='<div class="hd3"><div class="hd3-cs">'
-    +_hdC(_viewedYM===TODAY_YM?'libres à poser':'libres '+_enVm,fmtMin(dispoMois),dispoColor)
+    +_hdC(_viewedYM===TODAY_YM?'libres à poser':'libres '+_enVm,fmtMin(dispoMois)+(_resAmt>1?'<small style="display:block;font-size:10.5px;font-weight:500;color:var(--amber);margin-top:1px">+'+fmtMin(_resAmt)+' sous réserve</small>':''),dispoColor)
     +(_expAmt>0?_hdC((_viewedYM<TODAY_YM?'perdu fin ':'expire en ')+_MSd[_viewedYM%12],fmtMin(_expAmt),'var(--red)'):_repAmt>0?_hdC('reporté en '+_MSd[_viewedYM%12],fmtMin(_repAmt),'var(--green)'):_hdC('expire en '+_MSd[_viewedYM%12],'—','var(--text3)'))
     +_hdC('matelas',matelasVal>0?fmtMin(matelasVal):'—',matelasVal>0?'var(--blue)':'var(--text3)')
     +'</div></div>'
@@ -8677,7 +8692,7 @@ function cloudHeaders(){return{'Content-Type':'application/json','Authorization'
 function _pushIsOn(){try{return localStorage.getItem('pl_push_on')==='1';}catch(e){return false;}}
 function _pushAlerts(){
   var cs=calcSoldes(),byE={},out=[];
-  Object.keys(cs.realAvail).map(Number).forEach(function(ym){var av=cs.realAvail[ym],e=getExpYm(ym);if(av>0&&e>=TODAY_YM&&e<=TODAY_YM+2)byE[e]=(byE[e]||0)+av;});
+  Object.keys(cs.realAvail).map(Number).forEach(function(ym){var av=cs.realAvail[ym],e=getExpYm(ym);if(av>0&&e>=TODAY_YM&&e<=TODAY_YM+2&&!(window._autoPlan||{})[ym])byE[e]=(byE[e]||0)+av;});
   var today=dk(NOW);
   Object.keys(byE).map(Number).sort().forEach(function(e){
     var last=new Date(Math.floor(e/12),e%12+1,0),mois=ML[e%12].toLowerCase(),h=fmtMin(byE[e]);

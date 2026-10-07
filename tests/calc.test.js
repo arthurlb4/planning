@@ -211,17 +211,21 @@ function situation(opts) {
       var w1=calcHSWeek(m).surplus>0;S.overrides[k].motif='detache';return [w1,calcHSWeek(m).surplus,_dayHSMin(d)];}}})()`), [true, 0, 0]);
 }
 
-// Report automatique : 7h ou moins restantes → reporté jusqu'à 12 mois, dès maintenant (prévisions comprises)
+// Report automatique : appliqué à l'échéance ; avant, « prévu » (7h ou moins restantes) et compté seulement « sous réserve »
 {
-  const a = situation({});
-  a.run('recalcAllMatelas=function(){};saveState=function(){};autoReportEph();');
-  eq('Report auto : août (3h23) valable jusqu’à fin août 2027', a.run('getExpYm(' + YM(2026, 8) + ')'), YM(2027, 8));
-  eq('Report auto : juillet (18h00) inchangé, fin octobre', a.run('getExpYm(' + YM(2026, 7) + ')'), YM(2026, 10));
+  const a = situation({ extraRendus: { '2026-12-03': 180 } });
+  a.run('saveState=function(){};_infoToast=function(m){window._toast=m;};autoReportEph();');
+  eq('Report auto : août (3h23) expire encore fin novembre', a.run('getExpYm(' + YM(2026, 8) + ')'), YM(2026, 11));
+  eq('Report auto : août « report auto prévu »', a.run('!!window._autoPlan[' + YM(2026, 8) + ']'), true);
+  eq('Report auto : juillet (18h00) pas prévu', a.run('!!window._autoPlan[' + YM(2026, 7) + ']'), false);
+  eq('Report auto : sous réserve, août valable jusqu’à fin août 2027', a.run('_withProj(function(){return getExpYm(' + YM(2026, 8) + ');})'), YM(2027, 8));
   eq('Report auto : juin (11h01 à l’échéance) toujours perdu', a.run('calcSoldes().preExpiry'), { [YM(2026, 6)]: 661 });
   eq('Report auto : pas encore compté à la date d’un tableau de septembre', a.run('getEphExtAt(' + YM(2026, 8) + ',' + YM(2026, 9) + ')'), 0);
-  // heures ajoutées sur août avant son échéance (8h23) : plus de report automatique
-  a.run('S.extraRendus={"2026-08-12":{dur:300}};S.profile.ephSoldeSplit[' + YM(2026, 8) + ']=503;autoReportEph();');
-  eq('Report auto : août repasse au-dessus de 7h avant l’échéance → expire fin novembre', a.run('getExpYm(' + YM(2026, 8) + ')'), YM(2026, 11));
+  eq('Rendu du 3 décembre : couvert sous réserve (pas sur le matelas)', a.run('!!window._resvKeys["2026-12-03"]&&!(S.matelasKeys||{})["2026-12-03"]'), true);
+  // HS ajoutées sur août avant l'échéance (8h23) : plus de report prévu, le rendu passe sur le matelas, avec un message
+  a.run('S.profile.matelas=9720;S.profile.ephSoldeSplit[' + YM(2026, 8) + ']=503;autoReportEph();');
+  eq('HS sur août : plus de report prévu', a.run('!!window._autoPlan[' + YM(2026, 8) + ']'), false);
+  eq('HS sur août : rendu du 3 décembre sur le matelas, message affiché', a.run('(S.matelasKeys||{})["2026-12-03"]!==undefined'), true);
 }
 // Report auto déjà déclenché (échéance de novembre passée) : acquis, même si des heures sont ajoutées ensuite
 {
