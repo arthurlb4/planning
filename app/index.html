@@ -3910,11 +3910,11 @@ function _openDayMenu(cell){
   return true;
 }
 // Mail au gestionnaire (Outlook) : reports, corrections du tableau de gestion et/ou de paie, au choix ; l'adresse est saisie dans Outlook
-// Reports : les mois passés en argument, sinon les heures qui expirent ce mois-ci ou le suivant (à défaut, toutes celles encore valables)
+// Reports : les mois passés en argument, sinon uniquement les heures qui expirent ce mois-ci
 function _gmRep(yms){
   var sd=calcSoldes(),av=function(ym){return getExpYm(ym)<TODAY_YM?(sd.preExpiry[ym]||0):(sd.realAvail[ym]||0);};
   if(!yms){var ok=Object.keys(sd.realAvail).map(Number).filter(function(ym){return ym<=TODAY_YM&&getExpYm(ym)>=TODAY_YM&&(sd.realAvail[ym]||0)>0;}).sort(function(a,b){return a-b;});
-    yms=ok.filter(function(ym){return getExpYm(ym)<=TODAY_YM+1;});_gmRep.urg=yms.length>0;if(!yms.length)yms=ok;}else _gmRep.urg=false;
+    yms=ok.filter(function(ym){return getExpYm(ym)===TODAY_YM;});}
   return yms.filter(function(ym){return av(ym)>0;}).map(function(ym){var e=getExpYm(ym);return '- '+fmtMin(av(ym))+' acquises en '+MF_(ym)+(e<TODAY_YM?', expirées fin ':', qui expirent fin ')+MF_(e);});}
 // Tableau de gestion : écart de solde avec le décompte de l'app, et reports différents
 function _gmRh(){
@@ -3941,7 +3941,7 @@ function openGestMail(repYms){
     +'<div class="st" style="margin-bottom:2px">Mail au gestionnaire</div>'
     +'<div style="font-size:12px;color:var(--text3);margin-bottom:10px">Choisir ce que le mail demande. Il s’ouvre dans Outlook, prêt à envoyer : il reste à saisir le destinataire.</div>'
     +'<div class="hd-card" style="padding:4px 14px">'
-    +row('gm-rep','Reports d’heures',R.length?R.length+' mois · '+(repYms?'heures choisies':_gmRep.urg?'expirent bientôt':'encore valables'):'aucune heure à reporter',R.length)
+    +row('gm-rep','Reports d’heures',R.length?R.length+' mois d’acquisition · '+(repYms?'heures choisies':'expirent en '+ML[TODAY_YM%12].toLowerCase()):'aucune heure n’expire en '+ML[TODAY_YM%12].toLowerCase(),R.length)
     +row('gm-rh','Corrections du tableau de gestion',H?(H.fav?'écart en ma faveur':H.L.length+' point'+(H.L.length>1?'s':''))+' · tableau du '+H.ed:(S.profile&&S.profile.rhCmp?'tableau identique':'aucun tableau importé'),H,H&&H.fav)
     +row('gm-paie','Corrections de paie',P.length?P.length+' bulletin'+(P.length>1?'s':'')+' à corriger':'aucun écart sur les bulletins',P.length)
     +'</div>'
