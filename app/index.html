@@ -704,7 +704,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .cp-big{display:flex;align-items:center;gap:16px}.cp-big .ring{opacity:.75}.cp-ls{flex:1;min-width:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px 4px}
 .cp-l{display:flex;flex-direction:column;min-width:0}.cp-n{font-size:11px;font-weight:600}.cp-v b,.cp-v small{white-space:nowrap}.cp-v b{font-size:12.5px;font-weight:700;color:var(--text)}.cp-v small{font-size:11px;color:var(--text3)}
 .tg-hr{display:flex;margin:0 0 10px}.tg-hr>div{flex:1;text-align:center}.tg-hr b{display:block;font-size:20px;font-weight:700;color:var(--text);font-family:var(--font-num)}.tg-hr span{font-size:11px;color:var(--text3)}
-.bpseg{display:inline-flex;flex-shrink:0;padding:2px;border-radius:9px;background:rgba(255,250,243,.11)}.bpseg span{padding:4px 9px;border-radius:7px;font-size:11.5px;color:var(--text3);cursor:pointer}.bpseg span.on{background:var(--blue-l);color:var(--blue);font-weight:600}
+.bpseg{display:inline-flex;flex-shrink:0;padding:2px;border-radius:9px;background:rgba(255,250,243,.11)}.bpseg span{padding:4px 9px;border-radius:7px;font-size:11.5px;color:var(--text3);cursor:pointer}.bpseg span.on{color:var(--text);font-weight:600}
 .bpsec{font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text3);margin:2px 2px 5px}
 .hd-card{margin:0 0 10px;padding:8px 12px 10px;background:var(--bg3);border:0.5px solid var(--border);border-radius:14px}.hd-card.out{margin:0 -12px 10px}
 @media(max-width:360px){.pp-n{width:64px}.pp-r{gap:6px}.pp-r>b,.pp-v{min-width:58px}.sv-pr{gap:6px}.sv-pr b{width:58px}.sv-pr .s{width:64px}}
@@ -783,6 +783,12 @@ body.modal-open{overflow:hidden;position:fixed;width:100%;left:0;right:0;overscr
 }
 /* Pilule partout : boutons, champs, menus, sélecteurs à onglets (pas le calendrier, les tuiles ni les zones de texte) */
 button:not(.sv-tile):not(.dx-mini):not(.sh-x),select,input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]),.cv-seg,.bpseg,.bpseg span,.stabs-bar,#mtp-pill,#rcp-pill,#stp-pill,.stag{border-radius:999px!important}
+/* Sélecteurs (motifs de Modifier, payés / rendus) : pastille grise qui glisse sous le choix, comme les onglets */
+.cv-seg,.bpseg{position:relative;isolation:isolate}
+.cv-seg::before,.bpseg::before{content:"";position:absolute;top:3px;bottom:3px;left:var(--sx,0);width:var(--sw,0);opacity:var(--so,0);border-radius:999px;background:var(--bg0);box-shadow:0 1px 3px rgba(0,0,0,.25);z-index:-1;pointer-events:none}
+.bpseg::before{top:2px;bottom:2px;background:rgba(255,250,243,.16)}
+.seg-anim::before{transition:left .22s ease,width .22s ease}
+.cv-seg button.on{background:none!important;box-shadow:none!important}
 /* Tuiles et cases : coins plus arrondis, dans le style des pilules (pas le calendrier) */
 .bloc,.hd-card,.sv-tile,.sv-card,.fold,.hd3,.ucard,.dx-box,.rv-hero,.rv-it,.rv-ok,.rv-det,.rc-sum,.rc-start,.rc-m,.rc-choice,.dbox,.minfo,.chip-info,.dropdown,#lp-menu{border-radius:22px!important}
 .sv2-col,.dx-mini,.rc-cbtn,.eph-urow.clk,.fold .rc-tap{border-radius:16px!important}
@@ -7946,7 +7952,13 @@ function openAutreVacModal(){
   if(key)_dayHApply();
 }
 
+// Pastille des sélecteurs : placée sous le choix « on », elle glisse quand il change (première pose sans animation)
+function _segSync(){document.querySelectorAll('#modal-root .cv-seg,#modal-root .bpseg').forEach(function(g){var on=g.querySelector('.on');
+  if(!on||!on.offsetWidth){g.style.setProperty('--so',0);return;}
+  g.style.setProperty('--sx',on.offsetLeft+'px');g.style.setProperty('--sw',on.offsetWidth+'px');g.style.setProperty('--so',1);
+  if(!g.classList.contains('seg-anim'))requestAnimationFrame(function(){g.classList.add('seg-anim');});});}
 function init(){
+  (function(){var mr=document.getElementById('modal-root');if(mr&&window.MutationObserver)new MutationObserver(function(){requestAnimationFrame(_segSync);}).observe(mr,{childList:true,subtree:true,attributes:true,attributeFilter:['class']});window.addEventListener('resize',_segSync);})();
   _applyBigScreenZoom();
   // Detect touch device and disable hover effects
   if('ontouchstart' in window){
