@@ -3906,9 +3906,9 @@ function _gmLost(){var sd=calcSoldes();
 // Tableau de gestion : écart de solde avec le décompte de l'app, et reports différents
 function _gmRh(){
   var c=S.profile&&S.profile.rhCmp,o=S.profile&&S.profile.rhTable;if(!c||!o)return null;
-  var L=[],e=-c.d,T=null;try{T=_rhStored();}catch(x){}
+  var L=[],e=-_rhDe(c),igRest=((S.profile||{}).ignRhC||{}).rest!=null,T=null;try{T=_rhStored();}catch(x){} // différences ignorées retirées
   if(Math.abs(e)>=2)L.push('- solde d’heures : le tableau m’en compte '+fmtMin(Math.abs(e))+' de '+(e>0?'plus':'moins')+' que mon décompte');
-  if(T&&T.lines){var eY=T.edition.getFullYear()*12+T.edition.getMonth(),rr={};T.lines.forEach(function(l){if(l.ym<eY)rr[l.ym]=Math.max(rr[l.ym]||0,l.rep||0);});
+  if(T&&T.lines&&!igRest){var eY=T.edition.getFullYear()*12+T.edition.getMonth(),rr={};T.lines.forEach(function(l){if(l.ym<eY)rr[l.ym]=Math.max(rr[l.ym]||0,l.rep||0);});
     Object.keys(rr).map(Number).sort(function(a,b){return a-b;}).forEach(function(ym){var x=getEphExtensions(ym);if(getExpYm(ym)>=TODAY_YM&&x!==rr[ym])L.push('- heures acquises en '+MF_(ym)+' : '+(x?'report de '+x*3+' mois':'aucun report')+' accordé, '+(rr[ym]?'report de '+rr[ym]*3+' mois':'aucun report')+' dans le tableau');});}
   // fav : seulement un solde en ma faveur (pas coché d'office)
   return L.length?{ed:new Date(c.ed+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}),L:L,fav:L.length===1&&e>=2}:null;}
@@ -3937,9 +3937,11 @@ function _gmPaie(){
     // heures à payer que le bulletin a mises en rendus (seulement ce qui manque)
     var kp=kept.filter(function(x){return x.ym===ym-1&&x.h>0&&x.v;}).map(function(x){return{k:x.k,t:'tu as mis '+fmtMin(x.h)+' '+KL[x.k]+' en rendus alors qu’elles doivent être payées'};})
       .concat(pd.filter(function(x){return x.ym===ym-1&&x.h>0;}).map(function(x){return{k:x.k,t:x.v?'tu as mis '+fmtMin(x.h)+' '+KL[x.k]+' en rendus alors que je les compte payées':'tu as payé '+fmtMin(x.h)+' '+KL[x.k]+' alors que je les compte en rendus'};}));
-    var it=kp.map(function(x){return '   • génération de rendus : '+x.t;});
     var c=null;try{c=S.bulletins[ym]?_bulCompare(S.bulletins[ym]):null;}catch(e){}
-    if(c&&c.status==='ecart'&&!_bulIgn(ym,c))(c.items||[]).forEach(function(i){if(i.ign)return;var sk=RK[String(i.id||'').slice(2)];if(sk&&kp.some(function(x){return x.k===sk;}))return;it.push('   • '+_gmItem(i));});
+    var ignAll=!!(c&&c.status==='ecart'&&_bulIgn(ym,c)),ignK=function(sk){return (c&&c.items||[]).some(function(i){return i.ign&&RK[String(i.id||'').slice(2)]===sk;});};
+    kp=kp.filter(function(x){return !ignAll&&!ignK(x.k);}); // écarts ignorés : pas dans le mail
+    var it=kp.map(function(x){return '   • génération de rendus : '+x.t;});
+    if(c&&c.status==='ecart'&&!ignAll)(c.items||[]).forEach(function(i){if(i.ign)return;var sk=RK[String(i.id||'').slice(2)];if(sk&&kp.some(function(x){return x.k===sk;}))return;it.push('   • '+_gmItem(i));});
     if(it.length)L.push('- bulletin '+_deMois(ym)+' '+Math.floor(ym/12)+' (variables '+_deMois(ym-1)+') :\n'+it.join('\n'));});
   return L;}
 function openGestMail(repYms){
@@ -3953,7 +3955,7 @@ function openGestMail(repYms){
     +'<div class="hd-card" style="padding:4px 14px">'
     +row('gm-lost','Reports d’heures déjà expirées',X.length?X.length+' mois · expirées il y a moins de 3 mois':'aucune heure perdue ces 3 derniers mois',X.length)
     +row('gm-rep','Reports d’heures qui vont expirer',R.length?R.length+' mois d’acquisition · '+(repYms?'heures choisies':'expirent en '+ML[TODAY_YM%12].toLowerCase()):'aucune heure n’expire en '+ML[TODAY_YM%12].toLowerCase(),R.length)
-    +row('gm-rh','Corrections du tableau de gestion',H?(H.fav?'écart en ma faveur':H.L.length+' point'+(H.L.length>1?'s':''))+' · tableau du '+H.ed:(S.profile&&S.profile.rhCmp?'tableau identique':'aucun tableau importé'),H,H&&H.fav)
+    +row('gm-rh','Corrections du tableau de gestion',H?(H.fav?'écart en ma faveur':H.L.length+' point'+(H.L.length>1?'s':''))+' · tableau du '+H.ed:(S.profile&&S.profile.rhCmp?(Math.abs(S.profile.rhCmp.d)>=2?'différences ignorées':'tableau identique'):'aucun tableau importé'),H,H&&H.fav)
     +row('gm-paie','Corrections de paie',P.length?P.length+' bulletin'+(P.length>1?'s':'')+' à corriger':'aucun écart sur les bulletins',P.length)
     +'</div>'
     +(function(){var n=0;try{n=(_bulPayDiffs().paid||[]).length;}catch(e){}return n?'<div style="display:flex;gap:8px;align-items:flex-start;font-size:12px;color:var(--text2);line-height:1.4;margin-top:10px"><span style="color:var(--amber)">⚠</span><span style="flex:1">Génération de rendus : '+n+' mois où les réglages diffèrent des bulletins. Le mail le signale. Vérifier d’abord les réglages. <a style="color:var(--blue);cursor:pointer" onclick="_bulPayPropose(function(){openGestMail();},1)">Vérifier</a></span></div>':'';})()

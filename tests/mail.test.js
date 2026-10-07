@@ -54,7 +54,16 @@ a.run('_bulPayDiffs=function(){return{keptList:[],paid:[{ym:' + YM(2026, 8) + ',
 eq('Dimanche : réglage différent du bulletin', a.run('_gmPaie()'), ['- bulletin de septembre 2026 (variables d’août) :\n   • génération de rendus : tu as mis 6h45 d’heures de dimanche en rendus alors que je les compte payées']);
 a.run('_bulPayDiffs=function(){return{keptList:[],paid:[{ym:' + YM(2026, 8) + ',k:"dimRendu",h:405,v:false}]};};');
 eq('Dimanche payé, compté en rendus', a.run('_gmPaie()'), ['- bulletin de septembre 2026 (variables d’août) :\n   • génération de rendus : tu as payé 6h45 d’heures de dimanche alors que je les compte en rendus']);
+// … sauf si la ligne du bulletin est ignorée
+a.run('_bulCompare=function(){return{status:"ecart",items:[{id:"r:dim",d:-50,ign:true}]};};');
+eq('Génération de rendus ignorée : pas dans le mail', a.run('_gmPaie()'), []);
 a.run('_bulPayDiffs=function(){return{keptList:[],paid:[]};};');
+
+// 5 ter. Tableau : différences ignorées retirées (écart brut 1h00, 0 après ignorées)
+a.run('S.profile.rhCmp={ed:"2026-09-18",d:-60,de:0};S.profile.rhTable={};S.profile.ignRhC={rest:60};_rhStored=function(){return null;};');
+eq('Tableau : écart ignoré absent du mail', a.run('_gmRh()'), null);
+a.run('S.profile.rhCmp={ed:"2026-09-18",d:-60,de:-60};S.profile.ignRhC={};');
+eq('Tableau : écart non ignoré', a.run('_gmRh().L'), ['- solde d’heures : le tableau m’en compte 1h00 de plus que mon décompte']);
 
 // 6. Reports : uniquement les heures qui expirent ce mois-ci
 a.run('calcSoldes=function(){return{realAvail:{' + YM(2026, 7) + ':1080,' + YM(2026, 8) + ':203},preExpiry:{}};};'
