@@ -3312,7 +3312,7 @@ function openRecapModal(){
 // ================================================================
 function renderHistory(){}// No side panel history — use modal
 // Texte d'une ligne d'historique (corrige aussi les anciennes entrées : identifiants internes des vacations modifiées)
-function _histTxt(d){return String(d||'').replace(/_p_(.+?)_\d{10,}/g,'$1').replace(/ <-> /g,' ⇄ ').replace(/ -> /g,' → ').replace(/ \(HS\)/g,' · HS').replace(/ \(Formation\)/g,' · EPV gardés');}
+function _histTxt(d){var t=String(d||'').replace(/^(.+?) -> (.+?) au (\S+ \d{1,2} \S+ \d{4})$/,'$1 au $3 -> $2');t=t.charAt(0).toUpperCase()+t.slice(1);return t.replace(/_p_(.+?)_\d{10,}/g,'$1').replace(/ <-> /g,' ⇄ ').replace(/ -> /g,' → ').replace(/ \(HS\)/g,' · HS').replace(/ \(Formation\)/g,' · EPV gardés');}
 function logH(detail,color,key){
   if(!S.history)S.history=[];S.history.unshift({t:nowHHMM(),d:detail,c:color,key});
   if(S.history.length>8)S.history.pop();saveState();
@@ -3322,7 +3322,7 @@ function _histClean(){if(!S.history||!S.history.length)return false;var n=S.hist
   S.history=S.history.filter(function(h){var k=h&&h.key;if(!k||!/^\d{4}-\d{2}-\d{2}$/.test(k))return true;
     if(/^Semaine du /.test(String(h.d||''))){var mon=getMonday(new Date(k+'T12:00:00'));if(S.weekLines&&S.weekLines[dk(mon)]!=null)return true;
       for(var i=0;i<7;i++){var d=new Date(mon);d.setDate(mon.getDate()+i);var o=(S.overrides||{})[dk(d)];if(o&&o.echange)return true;}return false;}
-    if(/ au /.test(String(h.d||''))){var d0=new Date(k+'T12:00:00');for(var j=0;j<62;j++){var x=new Date(d0);x.setDate(d0.getDate()+j);if((S.conges||{})[dk(x)])return true;}} // période posée : un de ses jours garde un congé ou un rendu
+    if(/ au \S+ \d{1,2} \S+ \d{4}/.test(String(h.d||''))){var d0=new Date(k+'T12:00:00');for(var j=0;j<62;j++){var x=new Date(d0);x.setDate(d0.getDate()+j);if((S.conges||{})[dk(x)])return true;}} // période posée : un de ses jours garde un congé ou un rendu
     return !!((S.overrides||{})[k]||(S.conges||{})[k]||(S.excInfo||{})[k]||(S.extraRendus||{})[k]||(S.dayPrimes||{})[k]);});
   return S.history.length!==n;}
 function removeHistoryForKey(key){if(!S.history)return;S.history=S.history.filter(h=>h.key!==key);saveState();}
@@ -4792,7 +4792,7 @@ function _applyPoseMatelas(type,startKey,endKey){
   var _createdYM_m=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:2026*12;
   while(_d<=_e){var k=dk(_d);var v2=getVac(_d);if(v2.vac&&v2.vac!=='RH'&&!v2.absent){var _mym=_d.getFullYear()*12+_d.getMonth();S.conges[k]=type==='rend'?_rendStatus(k):type;}_d.setDate(_d.getDate()+1);}
   if(type==='rend')recalcAllMatelas();
-  logH(fmtDate(_s)+' -> '+_label+(_s<_e?' au '+fmtDate(_e):''),'#88b862',startKey);
+  logH(fmtDate(_s)+(_s<_e?' au '+fmtDate(_e):'')+' -> '+_label,'#88b862',startKey);
   saveState();closeModal();render();gcalTrigger();
 }
 function applyPose(type,startKey,unique){
@@ -4879,7 +4879,7 @@ function applyPose(type,startKey,unique){
   }
   const label=type==='cg'?'congé':type==='rend'?'rendu':_xm?EXC_M[_xm].l.toLowerCase()+(EXC_M[_xm]&&EXC_M[_xm].greve?' ('+({h:'1 heure',dj:'½ journée',j:'journée'})[_xg]+')':'')+(_xh?' (½'+(_xr==='rend'?' + rendu)':')'):''):'absent';
   const color=type==='cg'?'#6a9878':type==='rend'?'#A8BF7A':'#c88048';
-  logH(fmtDate(start)+' -> '+label+(unique?'':' au '+fmtDate(end)),color,startKey);
+  logH(fmtDate(start)+(unique?'':' au '+fmtDate(end))+' -> '+label,color,startKey);
   saveState();closeModal();render();
   gcalTrigger();
 }
