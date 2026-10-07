@@ -2304,39 +2304,32 @@ function _renderSideV2(d){
   _sv2Animate(v2,d.mym);
 }
 
-// Auto-report: at the start of the expiry month, if remaining balance ≤7h,
-// silently extend by 1 month. Warning phase (month before): green color only.
+// Report automatique (règle du gestionnaire) : un mois dont il reste 7h ou moins à son échéance est reporté de 3 mois,
+// et de nouveau à chaque échéance tant qu'il en reste 7h ou moins, jusqu'à 12 mois. Les heures restantes d'un mois ne font
+// que baisser : dès qu'il en reste 7h ou moins, ces reports sont acquis et appliqués tout de suite (prévisions comprises).
 function autoReportEph(){
   if(!S.autoExtend)S.autoExtend={};
   const saved=Object.assign({},S.autoExtend);
   Object.keys(S.autoExtend).forEach(function(k){delete S.autoExtend[k];});
-  const{preExpiry}=calcSoldes();
+  const{preExpiry,realAvail}=calcSoldes(); // sans reports automatiques
   let changed=false;
   const manExt=S.ephExtend||{};
-  const allYms=new Set([...Object.keys(saved).map(Number),...Object.keys(preExpiry).map(Number),...Object.keys(manExt).map(Number)]);
+  const allYms=new Set([...Object.keys(saved),...Object.keys(preExpiry),...Object.keys(manExt),...Object.keys(realAvail)].map(Number));
   allYms.forEach(function(ym){
     if(ym>TODAY_YM)return;
-    const prevAuto=saved[ym]||0;
-    const manLevel=typeof manExt[ym]==='number'?manExt[ym]:(manExt[ym]?1:0);
-    const currentLevel=Math.max(prevAuto,manLevel);
-    const expAtLevel=ym+3+currentLevel*3;
-    if(expAtLevel>=TODAY_YM){
-      // Not yet expired at current level — preserve existing auto level
-      if(prevAuto>0){S.autoExtend[ym]=prevAuto;if(saved[ym]!==prevAuto)changed=true;}
-      return;
-    }
-    // Past expiry at current level — try to escalate
-    const avail=preExpiry[ym]||0;
-    if(avail>0&&avail<=420&&currentLevel<3){
-      S.autoExtend[ym]=currentLevel+1;
-      if(saved[ym]!==currentLevel+1)changed=true;
-    } else if(avail>0&&avail<=420&&currentLevel>=3){
-      S.autoExtend[ym]=3;
-      if(saved[ym]!==3)changed=true;
-    }
+    const man=typeof manExt[ym]==='number'?manExt[ym]:(manExt[ym]?1:0);
+    // niveaux automatiques déjà déclenchés (échéance passée) : gardés
+    let L=man;for(let i=man+1;i<=(saved[ym]||0);i++)if(ym+3+3*(i-1)<=TODAY_YM)L=i;
+    const avail=ym+3+3*man<TODAY_YM?(preExpiry[ym]||0):(realAvail[ym]||0);
+    if(avail>0&&avail<=420)L=3;
+    if(L>man)S.autoExtend[ym]=L;
+    if((S.autoExtend[ym]||0)!==(saved[ym]||0))changed=true;
   });
   if(changed){recalcAllMatelas();saveState();}
 }
+// Reports d'un mois tels qu'ils étaient à une date (tableau Gestion) : les reports automatiques pas encore déclenchés ne comptent pas
+function getEphExtAt(ym,refYM){if(S.profile&&S.profile.exp12)return 3;var m=S.ephExtend&&S.ephExtend[ym],man=m===true?1:typeof m==='number'?m:0,a=(S.autoExtend&&S.autoExtend[ym])||0,L=man;
+  for(var i=man+1;i<=a;i++)if(ym+3+3*(i-1)<=refYM)L=i;return Math.max(L,man);}
 function ephBarColor(moLeft,isExp){
   if(isExp)return'#555';
   if(moLeft<=0)return'#E24B4A';
@@ -3966,7 +3959,7 @@ function _gmRh(){
   var L=[],e=-_rhDe(c),igRest=((S.profile||{}).ignRhC||{}).rest!=null,T=null;try{T=_rhStored();}catch(x){} // différences ignorées retirées
   if(Math.abs(e)>=2)L.push('- solde d’heures : le tableau m’en compte '+fmtMin(Math.abs(e))+' de '+(e>0?'plus':'moins')+' que mon décompte');
   if(T&&T.lines&&!igRest){var eY=T.edition.getFullYear()*12+T.edition.getMonth(),rr={};T.lines.forEach(function(l){if(l.ym<eY)rr[l.ym]=Math.max(rr[l.ym]||0,l.rep||0);});
-    Object.keys(rr).map(Number).sort(function(a,b){return a-b;}).forEach(function(ym){var x=getEphExtensions(ym);if(getExpYm(ym)>=TODAY_YM&&x!==rr[ym])L.push('- heures acquises en '+MF_(ym)+' : '+(x?'report de '+x*3+' mois':'aucun report')+' accordé, '+(rr[ym]?'report de '+rr[ym]*3+' mois':'aucun report')+' dans le tableau');});}
+    Object.keys(rr).map(Number).sort(function(a,b){return a-b;}).forEach(function(ym){var x=getEphExtAt(ym,eY);if(getExpYm(ym)>=TODAY_YM&&x!==rr[ym])L.push('- heures acquises en '+MF_(ym)+' : '+(x?'report de '+x*3+' mois':'aucun report')+' accordé, '+(rr[ym]?'report de '+rr[ym]*3+' mois':'aucun report')+' dans le tableau');});}
   // fav : seulement un solde en ma faveur (pas coché d'office)
   return L.length?{ed:new Date(c.ed+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}),L:L,fav:L.length===1&&e>=2}:null;}
 // Paie : écarts des bulletins non ignorés, ligne par ligne, dits concrètement (ce qui est noté sur le bulletin / ce que j'ai fait)
@@ -4656,7 +4649,7 @@ function rhCompareShow(rh,silent){
           cmp(x.s,x.a)+(dl.length?'Dans l’app : '+dl.join(' · '):'')+'<div style="margin-top:6px">'+_rhIgnLink(ik,-x.d)+'</div>',ig,acqIt);});
     }
     // Reports
-    const rhRep=Math.max(0,...(rh.lines.filter(l=>l.ym===ym).map(l=>l.rep)),0),appRep=getEphExtensions(ym);
+    const rhRep=Math.max(0,...(rh.lines.filter(l=>l.ym===ym).map(l=>l.rep)),0),appRep=getEphExtAt(ym,asOfYM);
     if((tracked||startSolde>0)&&sheet[ym]&&rhRep!==appRep&&!(M.solde<2&&pm.reste<2))repList.push({ym,rhRep,appRep});
     // Détail mois par mois
     if(cmpSol){
@@ -5464,7 +5457,8 @@ function openMergedRenduCgModal(limit,tab){
   const maxV=Math.max(...yms.map(ym=>{const o=gen[ym]?Object.values(gen[ym]).reduce(function(s,v){return s+v;},0):0;return Math.max(o,ym>TODAY_YM?(prevEph[ym]||0):(realAvail[ym]||0));}),1);
   // Reports d'après le dernier tableau Gestion : comparés mois par mois à ceux de l'app
   const _rhT=(function(){try{return _rhStored();}catch(e){return null;}})(),_rhRep={};
-  if(_rhT&&_rhT.lines){const _eY=_rhT.edition.getFullYear()*12+_rhT.edition.getMonth();_rhT.lines.forEach(function(l){if(l.ym<_eY)_rhRep[l.ym]=Math.max(_rhRep[l.ym]||0,l.rep||0);});}
+  const _rhEY=_rhT&&_rhT.edition?_rhT.edition.getFullYear()*12+_rhT.edition.getMonth():TODAY_YM;
+  if(_rhT&&_rhT.lines){const _eY=_rhEY;_rhT.lines.forEach(function(l){if(l.ym<_eY)_rhRep[l.ym]=Math.max(_rhRep[l.ym]||0,l.rep||0);});}
   let rendRows='';
   const btnS='font-size:11px;padding:4px 8px;border:0.5px solid var(--border);border-radius:6px;background:var(--btn);cursor:pointer;min-width:36px;';
   yms.forEach(function(ym){
@@ -5487,7 +5481,7 @@ function openMergedRenduCgModal(limit,tab){
     const _dl=function(e){return ML2[e%12]+' '+String(Math.floor(e/12)).slice(2);};
     // Expiration : simple date, ou pastille « date › » qui ouvre le menu des reports quand un report a un sens
     // (heures restantes ou report déjà posé, mois pas encore expiré). Le tableau Gestion : ✓ s'il donne la même date, ⚠ sinon.
-    const rr=_rhRep[ym]!==undefined&&!isExp?_rhRep[ym]:-1;
+    const rr=_rhRep[ym]!==undefined&&!isExp?_rhRep[ym]:-1,extT=getEphExtAt(ym,_rhEY); // reports à la date du tableau
     const _mLeft=expYm-TODAY_YM,_urg=!isExp&&!isFut&&avail>0&&_mLeft<=0;
     const _urgC=isExp?(lostMinM>0?'rgba(214,72,56,.75)':'transparent'):isFut?'rgba(150,180,100,.4)':_urg?'var(--orange)':'var(--rend-text)';
     let expLblM;
@@ -5495,8 +5489,8 @@ function openMergedRenduCgModal(limit,tab){
     if(isExp)expLblM=lostMinM>0?'<button class="rep-pill lost" onclick="event.stopPropagation();_openRepMenu(this,'+ym+','+limit+',-1)">−'+fmtMin(lostMinM)+' <i class="ti ti-chevron-down"></i></button>':'<span style="color:var(--text3)">'+_dl(expYm)+'</span>';
     else if(isFut||(avail<=0&&!ext)||(S.profile&&S.profile.exp12))expLblM='<span style="color:var(--text3)">'+_dl(expYm)+'</span>';
     else{
-      expLblM='<button class="rep-pill'+(ext>0?' on':'')+(_urg&&!ext?' urg':'')+(rr>=0&&rr!==ext?' warn':'')+'" onclick="event.stopPropagation();_openRepMenu(this,'+ym+','+limit+','+rr+')">'
-        +(rr>=0?(rr===ext?'<span style="color:var(--green)">✓</span> ':'<span style="color:var(--amber)">⚠</span> '):'')
+      expLblM='<button class="rep-pill'+(ext>0?' on':'')+(_urg&&!ext?' urg':'')+(rr>=0&&rr!==extT?' warn':'')+'" onclick="event.stopPropagation();_openRepMenu(this,'+ym+','+limit+','+rr+')">'
+        +(rr>=0?(rr===extT?'<span style="color:var(--green)">✓</span> ':'<span style="color:var(--amber)">⚠</span> '):'')
         +_dl(expYm)+' <i class="ti ti-chevron-down"></i></button>'
         // pas d'annotation sous la date (le report et l'écart avec le tableau se voient dans la couleur et le menu)
         +'';

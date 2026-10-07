@@ -211,6 +211,16 @@ function situation(opts) {
       var w1=calcHSWeek(m).surplus>0;S.overrides[k].motif='detache';return [w1,calcHSWeek(m).surplus,_dayHSMin(d)];}}})()`), [true, 0, 0]);
 }
 
+// Report automatique : 7h ou moins restantes → reporté jusqu'à 12 mois, dès maintenant (prévisions comprises)
+{
+  const a = situation({});
+  a.run('recalcAllMatelas=function(){};saveState=function(){};autoReportEph();');
+  eq('Report auto : août (3h23) valable jusqu’à fin août 2027', a.run('getExpYm(' + YM(2026, 8) + ')'), YM(2027, 8));
+  eq('Report auto : juillet (18h00) inchangé, fin octobre', a.run('getExpYm(' + YM(2026, 7) + ')'), YM(2026, 10));
+  eq('Report auto : juin (11h01 à l’échéance) toujours perdu', a.run('calcSoldes().preExpiry'), { [YM(2026, 6)]: 661 });
+  eq('Report auto : pas encore compté à la date d’un tableau de septembre', a.run('getEphExtAt(' + YM(2026, 8) + ',' + YM(2026, 9) + ')'), 0);
+}
+
 // Option « Heures valables un an » : chaque mois expire à la fin du 12e mois, juin 2026 n'est plus perdu fin septembre
 {
   const a = situation({});
