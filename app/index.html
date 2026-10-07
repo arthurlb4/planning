@@ -1005,7 +1005,9 @@ function loadState(){
   // Ensure profile fields exist
   if(!S.profile)S.profile={};
   if(S.profile.ephSoldeCreatedYM===undefined)S.profile.ephSoldeCreatedYM=TODAY_YM;
-  delete S.profile.repMail; // adresse de l'ancienne demande de report par mail (le destinataire est saisi dans Outlook)
+  delete S.profile.repMail;
+  // Échanges entre collègues : jamais d'heures sup (anciens échanges marqués HS remis à la vacation prévue)
+  Object.keys(S.overrides||{}).forEach(function(k){var o=S.overrides[k];if(o&&o.echange&&o.hs)o.hs=false;}); // adresse de l'ancienne demande de report par mail (le destinataire est saisi dans Outlook)
   // Migrate: old autoReportEph incorrectly incremented ephExtend — undo it
   if(S.autoReported&&S.ephExtend){Object.keys(S.autoReported).forEach(function(ym){if(S.ephExtend[ym]>0){S.ephExtend[ym]--;if(S.ephExtend[ym]<=0)delete S.ephExtend[ym];}});delete S.autoReported;}
   // Migrate: autoReport1m → autoExtend level 1
@@ -2343,9 +2345,13 @@ function calcPaniersMois(y,m){
   for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd),mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);const sun=new Date(mon);sun.setDate(mon.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mym)continue;for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);const key=dk(d);const _g=getVac(d);if(_g.echange&&!_g.ecSelf)continue;if(isPanier(d)&&!(S.conges||{})[key])c++;}}
   return c;
 }
+// Prime du matin d'un jour échangé : elle n'est pas échangée, elle reste au jour où la vacation du matin était prévue
+// (jour cédé : comptée si la vacation prévue commençait avant 4h ; jour pris : jamais, sauf échange sur le même jour)
+function _ecMatin(d){var key=dk(d),o=(S.overrides||{})[key]||{},cv=getCycleVac(d).cycleVac,V=getVAC(d)[cv],am=!!(cv&&cv!=='RH'&&V&&V.deb&&_toMinApp(V.deb)<240);
+  if(o.ecSelf)return (!o.pair||o.pair===key)?am:false;return o.pair&&o.pair!==key?am:false;}
 function calcPrimesMois(y,m){
   let antenne=0,reel=0,coord=0,matin=0;const mym=y*12+m,seenW=new Set(),last=new Date(y,m+1,0).getDate();const VAC=getVAC();
-  for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd),mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);const sun=new Date(mon);sun.setDate(mon.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mym)continue;for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);const key=dk(d);if((S.conges||{})[key])continue;const{vac,absent,echange,ecSelf}=getVac(d);if(absent)continue;if(echange&&!ecSelf)continue;if(!vac||vac==='RH')continue;const pvac=getPayVac(d);const v=VAC[pvac];if(!v)continue;if(v.deb&&_toMinApp(v.deb)<240)matin++;if(!v.primes)continue;if(v.primes.antenne)antenne++;if(v.primes.reel)reel++;if(v.primes.coord)coord++;}}
+  for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd),mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);const sun=new Date(mon);sun.setDate(mon.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mym)continue;for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);const key=dk(d);if((S.conges||{})[key])continue;const{vac,absent,echange,ecSelf}=getVac(d);if(absent)continue;if(echange&&!ecSelf){if(_ecMatin(d))matin++;continue;}if(!vac||vac==='RH')continue;const pvac=getPayVac(d);const v=VAC[pvac];if(!v)continue;if(echange?_ecMatin(d):(v.deb&&_toMinApp(v.deb)<240))matin++;if(!v.primes)continue;if(v.primes.antenne)antenne++;if(v.primes.reel)reel++;if(v.primes.coord)coord++;}}
   return{antenne,reel,coord,matin};
 }
 function fmtEuro(n){if(!isFinite(n)||isNaN(n))n=0;const abs=Math.abs(n).toFixed(2);const[int,dec]=abs.split('.');const intFmt=int.replace(/\B(?=(\d{3})+(?!\d))/g,' ');return(n<0?'-':'')+intFmt+','+dec+' €';}
@@ -6849,7 +6855,7 @@ function confirmExchange(){
   // Read my original vac BEFORE any override changes
   var myOrigVac=getVac(date);
   var myOrigVacName=myOrigVac.vac||myCycle;
-  var hsEx=document.getElementById('hs-toggle-ex')?document.getElementById('hs-toggle-ex').checked:false;
+  var hsEx=false; // un échange entre collègues ne crée pas d'heures sup : la semaine garde ses heures prévues
   pushUndo('Échange enregistré');
   if(!S.overrides)S.overrides={};
   // myKey: mon jour original que je DONNE au collègue → je suis absent (gris)
