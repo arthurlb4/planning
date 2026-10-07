@@ -4446,7 +4446,60 @@ async function _rhFile(f,mode){
   catch(e){console.warn(e);showBlockAlert('Lecture impossible',e.message||'Ce fichier n’a pas pu être lu.');}}
 // ── Import du tableau RH : un seul bouton. Premier tableau : on en repart ; ensuite : comparaison, avec « Repartir de ce tableau » en bas ──
 function rhImportOpen(){rhCompareOpen();}
-// Après une inscription sans matelas ni rendus saisis : proposer d'importer le tableau RH
+// ── Accueil d'un nouveau compte (l'inscription ne demande plus que nom, email et mot de passe) : ligne → matelas et rendus → paie ──
+// 1. Ligne de cette semaine, avec l'aperçu des semaines suivantes qui suit le choix
+function _onbLinePrompt(){
+  var f=null;try{f=localStorage.getItem('pl_onb_line');}catch(e){}
+  if(!f||document.getElementById('modal-root').innerHTML)return false;
+  var grid=getActiveCycleGrid(NOW)||CYCLE,n=grid.length,diff=Math.round((getMonday(NOW)-ANCHOR)/(7*864e5));
+  var al=S.profile.anchorLine!==undefined?S.profile.anchorLine:ANCHOR_L,cur=((al+diff)%n+n)%n;
+  var sum=function(w){return (w||[]).map(function(v){return(!v||v==='RH')?'—':v;}).join(' ');};
+  var opts=grid.map(function(w,i){return '<option value="'+i+'"'+(i===cur?' selected':'')+'>'+sum(w)+'</option>';}).join('');
+  _lockBodyScroll();
+  document.getElementById('modal-root').innerHTML='<div class="overlay"><div class="sheet tabmod">'
+    +'<div class="sh"></div><div class="st">Votre ligne</div>'
+    +'<div style="font-size:13px;color:var(--text2);line-height:1.5;margin:8px 0 12px">Choisissez la ligne que vous faites cette semaine : le planning des semaines suivantes en découle.</div>'
+    +'<select id="onb-line" onchange="_onbLineShow()" style="width:100%;height:46px;padding:0 16px;font-size:15px;background:var(--bg2);color:var(--text);border:0.5px solid var(--border)">'+opts+'</select>'
+    +'<div id="onb-line-prev" style="margin:12px 0 14px"></div>'
+    +'<button class="rc-btn" style="height:42px" onclick="_onbLineOk()">Continuer</button>'
+    +'</div></div>';
+  _onbLineShow();
+  return true;
+}
+// Aperçu : cette semaine et les 3 suivantes pour la ligne choisie
+function _onbLineShow(){
+  var sel=document.getElementById('onb-line'),box=document.getElementById('onb-line-prev');if(!sel||!box)return;
+  var grid=getActiveCycleGrid(NOW)||CYCLE,n=grid.length,i=+sel.value,mon=getMonday(NOW);
+  var cell=function(v){var off=!v||v==='RH';return '<td style="text-align:center;padding:5px 0;font-size:12px;font-weight:'+(off?400:600)+';color:'+(off?'var(--text3)':'var(--text)')+'">'+(off?'—':v)+'</td>';};
+  var rows='';
+  for(var k=0;k<4;k++){var d=new Date(mon);d.setDate(d.getDate()+7*k);
+    rows+='<tr><td style="font-size:11px;color:var(--text3);padding:5px 8px 5px 0;white-space:nowrap">'+(k?'sem. du '+d.getDate()+' '+MCs[d.getMonth()]:'cette sem.')+'</td>'+(grid[(i+k)%n]||[]).map(cell).join('')+'</tr>';}
+  box.innerHTML='<table style="width:100%;border-collapse:collapse;table-layout:fixed"><tr><td style="width:27%"></td>'+['L','M','M','J','V','S','D'].map(function(x){return '<td style="text-align:center;font-size:10px;color:var(--text3)">'+x+'</td>';}).join('')+'</tr>'+rows+'</table>';
+}
+function _onbLineOk(){
+  var sel=document.getElementById('onb-line');
+  if(sel){var n=getCycleLen(NOW),diff=Math.round((getMonday(NOW)-ANCHOR)/(7*864e5));S.profile.anchorLine=((+sel.value-diff)%n+n)%n;}
+  try{localStorage.removeItem('pl_onb_line');}catch(e){}
+  _profs[_aid]=S;saveState();try{cloudSave(_aid);}catch(e){}
+  closeModal();render();
+  setTimeout(function(){if(!_rhImportPromptIfNeeded())_bulImportPromptIfNeeded();},300);
+}
+// 2. Matelas et rendus saisis à la main (sinon : tableau Gestion), et génération des rendus
+function _onbRhManual(){var b=document.getElementById('onb-rh-man');if(b)b.style.display=b.style.display==='none'?'':'none';}
+function _onbRhSave(){
+  var m=document.getElementById('onb-mat'),e=document.getElementById('onb-eph');
+  if(m&&m.value.trim())S.profile.matelas=parseHM(m.value);
+  if(e&&e.value.trim()){S.profile.ephSolde=Math.round(parseHM(e.value)/60*100)/100;S.profile.ephSoldeCreatedYM=TODAY_YM;}
+  _onbRhNext();
+}
+function _onbRhKeep(){
+  if(!S.settings)S.settings={};
+  ['dimRendu','rhRendu','ferRendu','hsRendu'].forEach(function(k){var c=document.getElementById('onb-'+k);if(c)S.settings[k]=c.checked;});
+  _profs[_aid]=S;saveState();try{cloudSave(_aid);}catch(e){}
+}
+function _onbRhNext(){_onbRhKeep();closeModal();render();setTimeout(_bulImportPromptIfNeeded,300);}
+// Tableau choisi ici : la paie est demandée à la fermeture de l'aperçu de l'import
+function _onbRhImport(){_onbRhKeep();closeModal();window._onbAfterClose=_bulImportPromptIfNeeded;rhImportOpen();}
 // Après une inscription « avec un bulletin » : le demander d'abord (palier, ancienneté, contrat, groupe), puis le tableau Gestion
 function _bulImportPromptIfNeeded(){
   let f=null;try{f=localStorage.getItem('pl_bul_import_prompt');}catch(e){}
@@ -4464,7 +4517,7 @@ function _bulImportPromptIfNeeded(){
     +'<div style="font-size:13px;color:var(--text2);line-height:1.5;margin:8px 0 14px">Pour estimer votre salaire et vérifier vos bulletins, l’app a besoin de votre palier, de votre ancienneté, de votre contrat et de votre groupe.</div>'
     +'<button class="rc-btn" style="height:42px" onclick="closeModal();importBulletins(window._bulOnbNext)">Importer un bulletin</button>'
     +'<div style="font-size:11.5px;color:var(--text3);line-height:1.45;margin:6px 4px 12px"><b style="color:var(--text2);font-weight:600">Recommandé</b> · tout est lu sur le bulletin (PDF), sur l’appareil : rien n’est envoyé. Avec plusieurs bulletins de mois qui se suivent, l’app trouve aussi le mois d’anniversaire de l’ancienneté.</div>'
-    +'<button class="rc-btn rc-btn2" style="height:40px" onclick="closeModal();window._onbAfterSettings=_rhImportPromptIfNeeded;setTimeout(function(){openSettingsModal(1);},250)">Saisir à la main</button>'
+    +'<button class="rc-btn rc-btn2" style="height:40px" onclick="closeModal();window._onbAfterClose=_rhImportPromptIfNeeded;setTimeout(function(){openSettingsModal(1);},250)">Saisir à la main</button>'
     +'<button class="rc-btn rc-btn2" style="margin-top:8px;height:38px;background:none" onclick="'+later+'">Plus tard (Réglages → Paie)</button>'
     +'</div></div>';
   return true;
@@ -4480,11 +4533,25 @@ function _rhImportPromptIfNeeded(){
     return true;}
   if(!f||document.getElementById('modal-root').innerHTML)return false;
   try{localStorage.removeItem('pl_rh_import_prompt');}catch(e){}
-  document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet tabmod">'
-    +'<div class="sh"></div><div class="st">Importer le tableau Gestion ?</div>'
-    +'<div style="font-size:13px;color:var(--text2);line-height:1.5;margin:8px 0 14px">Choisir le fichier Excel envoyé par le gestionnaire : l’app reprend le matelas et le solde d’heures mois par mois, avec leurs dates d’expiration et leurs reports. Le fichier est lu sur l’appareil, rien n’est envoyé.</div>'
-    +'<button class="rc-btn" style="height:42px" onclick="closeModal();rhImportOpen()">Choisir le tableau Gestion</button>'
-    +'<button class="rc-btn rc-btn2" style="margin-top:8px;height:38px" onclick="closeModal()">Plus tard (Réglages → Tableau Gestion)</button>'
+  _lockBodyScroll();
+  var inp='width:110px;height:36px;padding:0 14px;font-size:14px;background:var(--bg2);color:var(--text);border:0.5px solid var(--border);text-align:right';
+  document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)_onbRhNext()"><div class="sheet tabmod">'
+    +'<div class="sh"></div><div class="st">Matelas et rendus</div>'
+    +'<div style="font-size:13px;color:var(--text2);line-height:1.5;margin:8px 0 14px">Le tableau Gestion (fichier Excel envoyé par le gestionnaire) donne le matelas et les heures mois par mois, avec leurs dates d’expiration et leurs reports.</div>'
+    +'<button class="rc-btn" style="height:42px" onclick="_onbRhImport()">Importer le tableau Gestion</button>'
+    +'<div style="font-size:11.5px;color:var(--text3);line-height:1.45;margin:6px 4px 12px"><b style="color:var(--text2);font-weight:600">Recommandé</b> · lu sur l’appareil, rien n’est envoyé.</div>'
+    +'<button class="rc-btn rc-btn2" style="height:40px" onclick="_onbRhManual()">Saisir à la main</button>'
+    +'<div id="onb-rh-man" style="display:none;margin-top:10px">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 2px"><span style="font-size:13px;color:var(--text2)">Matelas</span><input id="onb-mat" placeholder="00h00" style="'+inp+'"></div>'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 2px"><span style="font-size:13px;color:var(--text2)">Rendus à poser</span><input id="onb-eph" placeholder="00h00" style="'+inp+'"></div>'
+      +'<button class="rc-btn" style="height:40px;margin-top:8px" onclick="_onbRhSave()">Enregistrer</button>'
+    +'</div>'
+    +'<div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin:16px 2px 4px">Génération des rendus</div>'
+    +'<div class="rrow" style="display:flex;justify-content:space-between;align-items:center;padding:7px 2px"><span style="font-size:13px;color:var(--text2)">Dimanches</span><label class="tgl"><input type="checkbox" id="onb-dimRendu"'+(S.settings&&S.settings.dimRendu===false?'':' checked')+'><span class="tgl-s"></span></label></div>'
+    +'<div class="rrow" style="display:flex;justify-content:space-between;align-items:center;padding:7px 2px"><span style="font-size:13px;color:var(--text2)">RH travaillés</span><label class="tgl"><input type="checkbox" id="onb-rhRendu"'+(S.settings&&S.settings.rhRendu===false?'':' checked')+'><span class="tgl-s"></span></label></div>'
+    +'<div class="rrow" style="display:flex;justify-content:space-between;align-items:center;padding:7px 2px"><span style="font-size:13px;color:var(--text2)">Fériés</span><label class="tgl"><input type="checkbox" id="onb-ferRendu"'+(S.settings&&S.settings.ferRendu===false?'':' checked')+'><span class="tgl-s"></span></label></div>'
+    +'<div class="rrow" style="display:flex;justify-content:space-between;align-items:center;padding:7px 2px"><span style="font-size:13px;color:var(--text2)">Heures sup.</span><label class="tgl"><input type="checkbox" id="onb-hsRendu"'+(S.settings&&S.settings.hsRendu===false?'':' checked')+'><span class="tgl-s"></span></label></div>'
+    +'<button class="rc-btn rc-btn2" style="margin-top:12px;height:38px;background:none" onclick="_onbRhNext()">Plus tard (Réglages → Heures)</button>'
     +'</div></div>';
   return true;
 }
@@ -6307,8 +6374,8 @@ function closeModal(){
   // Tableau Gestion ouvert depuis le modal rendus : on y revient à la fermeture
   window._rvFrom=null;window._mmFrom=null;
   if(window._settingsPid){try{saveProfileFromDD(window._settingsPid);}catch(e){}window._settingsPid=null;}
-  // Accueil d'un nouveau compte : paie saisie à la main dans Réglages → à la fermeture, étape suivante (tableau Gestion)
-  if(window._onbAfterSettings){var _onb=window._onbAfterSettings;window._onbAfterSettings=null;setTimeout(_onb,300);}
+  // Accueil d'un nouveau compte : étape faite dans une autre fenêtre (Réglages, import du tableau) → à sa fermeture, étape suivante
+  if(window._onbAfterClose){var _onb=window._onbAfterClose;window._onbAfterClose=null;setTimeout(_onb,300);}
   document.getElementById('modal-root').innerHTML='';pendingKey=null;document.querySelectorAll('.bloc.active,.ctr.active').forEach(el=>el.classList.remove('active'));_unlockBodyScroll();
   // Kill sticky hover on touch devices
   if(document.documentElement.classList.contains('touch')){
@@ -8330,7 +8397,7 @@ function init(){
     if(hpn&&S&&S.profile)hpn.textContent=S.profile.name||'Profil';
     _revealBody();
     // imports de l'inscription d'abord (le bulletin remplit palier, ancienneté, contrat, groupe) ; saisie à la main seulement sans import
-    setTimeout(function(){if(_bulImportPromptIfNeeded())return;if(_rhImportPromptIfNeeded())return;showPayPromptIfNeeded();},700);
+    setTimeout(function(){if(_onbLinePrompt())return;if(_rhImportPromptIfNeeded())return;if(_bulImportPromptIfNeeded())return;showPayPromptIfNeeded();},700); // accueil d'un nouveau compte : ligne → heures → paie
     // Pousse au chargement les modifs locales qui n'auraient pas encore été synchronisées (pas celles d'un compte inconnu)
     if(S&&S.profile&&window._authToken&&!window._plLegacy)cloudSave(_aid);
   }).catch(function(){
