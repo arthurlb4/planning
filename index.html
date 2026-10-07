@@ -135,6 +135,16 @@ input,textarea,select{user-select:text;-webkit-user-select:text;}
           <div class="err" id="reg-err1"></div>
         </div>
 
+        <!-- Étape 1 bis : code reçu par email -->
+        <div id="reg-s1b" style="display:none">
+          <div class="back" onclick="regCodeBack()" style="margin-bottom:10px">← Modifier l'adresse</div>
+          <p style="font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:14px">Un code à 6 chiffres a été envoyé à <b id="reg-code-to" style="color:var(--text)"></b>. Pensez à regarder dans les spams.</p>
+          <div class="field"><label>Code reçu</label><input type="text" id="reg-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" style="letter-spacing:6px;font-size:20px;text-align:center" oninput="this.value=this.value.replace(/\D/g,'');if(this.value.length===6)regVerifyCode()" onkeydown="if(event.key==='Enter')regVerifyCode()"></div>
+          <button class="btn" id="reg-code-btn" onclick="regVerifyCode()">Valider</button>
+          <div class="err" id="reg-code-err"></div>
+          <div class="forgot" style="text-align:center;margin:14px 0 0" onclick="regSendCode(true)" id="reg-code-resend">Renvoyer le code</div>
+        </div>
+
         <!-- Étape 2 : profil -->
         <div id="reg-s2" style="display:none">
           <div class="back" onclick="regGoStep1()" style="margin-bottom:10px">← Retour</div>
@@ -351,8 +361,61 @@ function regGoStep2() {
   if (!/[0-9]/.test(pwd)) return showErr('reg-err1', 'Mot de passe : au moins un chiffre.');
   if (!/[^A-Za-z0-9]/.test(pwd)) return showErr('reg-err1', 'Mot de passe : au moins un caractère spécial.');
   if (pwd !== pwd2) return showErr('reg-err1', 'Les mots de passe ne correspondent pas.');
+  if (_regCodeOk !== email.toLowerCase()) return regSendCode(false);
+  regShowStep2();
+}
+
+// Code de vérification : demandé une fois par adresse ; si le serveur ne l'exige pas (envoi non configuré), on passe directement
+var _regCodeOk = '';
+async function regSendCode(resend) {
+  var email = document.getElementById('reg-email').value.trim().toLowerCase();
+  var btn = resend ? document.getElementById('reg-code-resend') : document.querySelector('#reg-s1 .btn');
+  var errId = resend ? 'reg-code-err' : 'reg-err1';
+  showErr(errId, '');
+  if (btn.dataset.busy) return; btn.dataset.busy = '1'; var lbl = btn.textContent; btn.textContent = 'Envoi…';
+  try {
+    var r = await fetch(API + '/auth/send-code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email }) });
+    var d = await r.json().catch(function(){ return {}; });
+    if (!r.ok) { if (r.status === 409) _regEmailTaken = email; showErr(errId, d.error || 'Envoi du code impossible'); return; }
+    if (d.required === false) { _regCodeOk = email; regShowStep2(); return; }
+    if (resend) { document.getElementById('reg-code').focus(); btn.textContent = 'Code renvoyé'; setTimeout(function(){ btn.textContent = 'Renvoyer le code'; }, 3000); delete btn.dataset.busy; return; }
+    document.getElementById('reg-code-to').textContent = email;
+    document.getElementById('reg-code').value = '';
+    _animRegSlider(function() {
+      document.getElementById('reg-s1').style.display = 'none';
+      document.getElementById('reg-s1b').style.display = '';
+      setTimeout(function(){ document.getElementById('reg-code').focus(); }, 50);
+    });
+  } catch (e) { showErr(errId, 'Connexion impossible, réessayez'); }
+  finally { if (btn.dataset.busy) { delete btn.dataset.busy; btn.textContent = lbl; } }
+}
+
+async function regVerifyCode() {
+  var email = document.getElementById('reg-email').value.trim().toLowerCase();
+  var code = document.getElementById('reg-code').value.trim(), btn = document.getElementById('reg-code-btn');
+  showErr('reg-code-err', '');
+  if (!/^\d{6}$/.test(code)) return showErr('reg-code-err', 'Saisir les 6 chiffres du code.');
+  if (btn.disabled) return; btn.disabled = true;
+  try {
+    var r = await fetch(API + '/auth/verify-code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email, code: code }) });
+    var d = await r.json().catch(function(){ return {}; });
+    if (!r.ok) return showErr('reg-code-err', d.error || 'Code incorrect');
+    _regCodeOk = email; regShowStep2();
+  } catch (e) { showErr('reg-code-err', 'Connexion impossible, réessayez'); }
+  finally { btn.disabled = false; }
+}
+
+function regCodeBack() {
+  _animRegSlider(function() {
+    document.getElementById('reg-s1b').style.display = 'none';
+    document.getElementById('reg-s1').style.display = '';
+  });
+}
+
+function regShowStep2() {
   _animRegSlider(function() {
     document.getElementById('reg-s1').style.display = 'none';
+    document.getElementById('reg-s1b').style.display = 'none';
     document.getElementById('reg-s2').style.display = '';
     setRegDots(1);
   });
@@ -441,6 +504,7 @@ function regGoStep1() {
     if (s2) s2.style.display = 'none';
     if (s3) s3.style.display = 'none';
     if (s1) s1.style.display = '';
+    var s1b = document.getElementById('reg-s1b'); if (s1b) s1b.style.display = 'none';
     setRegDots(0);
   });
 }
@@ -492,7 +556,7 @@ function switchTab(tab) {
   const dir = isReg ? 1 : -1;
 
   if (isReg) { regGoStep1(); populateRegPalier(); }
-  else { var _s2=document.getElementById('reg-s2'),_s3=document.getElementById('reg-s3'),_s1=document.getElementById('reg-s1'); if(_s2)_s2.style.display='none'; if(_s3)_s3.style.display='none'; if(_s1)_s1.style.display=''; setRegDots(0); }
+  else { var _s2=document.getElementById('reg-s2'),_s3=document.getElementById('reg-s3'),_s1=document.getElementById('reg-s1'); if(_s2)_s2.style.display='none'; if(_s3)_s3.style.display='none'; if(_s1)_s1.style.display=''; var _s1b=document.getElementById('reg-s1b'); if(_s1b)_s1b.style.display='none'; setRegDots(0); }
 
   // Fix slider at current height so transition has a start point
   slider.style.height = out.offsetHeight + 'px';
@@ -703,7 +767,7 @@ async function doRegister() {
     const res = await fetch(API + '/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password: pwd, name }),
+      body: JSON.stringify({ email, password: pwd, name, code: (document.getElementById('reg-code') || {}).value || '' }),
     });
     const data = await res.json();
     if (!res.ok) { showErr('reg-err', res.status === 409 ? 'Adresse mail déjà utilisée' : (data.error || 'Erreur')); btn.disabled = false; btn.textContent = 'Créer mon compte'; return; }

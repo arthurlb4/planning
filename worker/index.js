@@ -60,6 +60,18 @@ async function verifyPassword(password, userId, stored) {
   return { ok: safeEqual(await sha256(password + userId), stored), legacy: true };
 }
 
+// Vérifie le code envoyé à l'inscription : true, ou le message d'erreur
+async function checkRegCode(env, email, code) {
+  var e = String(email || '').trim().toLowerCase(), k = 'regcode:' + e;
+  var rec = await env.PLANNING_DB.get(k, { type: 'json' });
+  if (!rec) return 'Code expiré : demandez-en un nouveau';
+  if (rec.tries >= 5) return 'Trop d’essais : demandez un nouveau code';
+  if (await sha256(e + ':' + String(code || '').trim()) === rec.h) return true;
+  rec.tries++;
+  await env.PLANNING_DB.put(k, JSON.stringify(rec), { expirationTtl: 600 });
+  return 'Code incorrect';
+}
+
 function randToken(len) {
   const arr = new Uint8Array(len || 32);
   crypto.getRandomValues(arr);
@@ -804,6 +816,35 @@ export default {
       return resp({ exists: !!(await env.PLANNING_DB.get('user:email:' + ce)), valid: true });
     }
 
+    // Code de vérification de l'email à l'inscription (6 chiffres, valable 10 min, 5 essais).
+    // Actif seulement quand MAIL_FROM (adresse d'un domaine vérifié chez Resend) est configuré :
+    // l'adresse de test de Resend n'envoie qu'au propriétaire du compte.
+    if (path === '/auth/send-code') {
+      var sc = String(body.email || '').trim().toLowerCase();
+      if (!sc || sc.length > 120 || !/^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']+$/.test(sc)) return resp({ error: 'Email invalide' }, 400);
+      if (!env.MAIL_FROM) return resp({ ok: true, required: false });
+      if (await env.PLANNING_DB.get('user:email:' + sc)) return resp({ error: 'Adresse mail déjà utilisée' }, 409);
+      var prev = await env.PLANNING_DB.get('regcode:' + sc, { type: 'json' });
+      if (prev && Date.now() - prev.sentAt < 30000) return resp({ error: 'Patientez quelques secondes avant de redemander un code' }, 429);
+      if (prev && prev.sends >= 5) return resp({ error: 'Trop de codes demandés : réessayez plus tard' }, 429);
+      var rnd = new Uint32Array(1); crypto.getRandomValues(rnd);
+      var code = String(rnd[0] % 1000000).padStart(6, '0');
+      var mr = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from: env.MAIL_FROM, to: sc, subject: 'Code de vérification : ' + code,
+          html: '<p>Votre code pour créer votre compte planning franceinfo :</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">' + code + '</p><p>Il est valable 10 minutes.</p>' }),
+      });
+      if (!mr.ok) return resp({ error: 'Envoi du mail impossible, réessayez' }, 502);
+      await env.PLANNING_DB.put('regcode:' + sc, JSON.stringify({ h: await sha256(sc + ':' + code), tries: 0, sentAt: Date.now(), sends: (prev ? prev.sends : 0) + 1 }), { expirationTtl: 600 });
+      return resp({ ok: true, required: true });
+    }
+
+    if (path === '/auth/verify-code') {
+      var vc = await checkRegCode(env, body.email, body.code);
+      return vc === true ? resp({ ok: true }) : resp({ error: vc }, 400);
+    }
+
     if (path === '/auth/register') {
       var email = body.email, password = body.password, name = cleanName(body.name);
       if (!email || !password || !name) return resp({ error: 'Champs manquants' }, 400);
@@ -811,9 +852,11 @@ export default {
       var emailKey = 'user:email:' + email.toLowerCase();
       var existing = await env.PLANNING_DB.get(emailKey);
       if (existing) return resp({ error: 'Email deja utilise' }, 409);
+      if (env.MAIL_FROM) { var rc = await checkRegCode(env, email, body.code); if (rc !== true) return resp({ error: rc }, 400); }
       var userId = randToken(16);
       var pwHash = await hashPassword(password);
       var user = { userId: userId, email: email.toLowerCase(), name: name, pwHash: pwHash, createdAt: Date.now(), profiles: {} };
+      if (env.MAIL_FROM) { user.emailVerified = true; await env.PLANNING_DB.delete('regcode:' + email.toLowerCase()); }
       await env.PLANNING_DB.put(emailKey, userId);
       await env.PLANNING_DB.put('user:' + userId, JSON.stringify(user));
       var token = randToken();
@@ -851,7 +894,7 @@ export default {
       await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + env.RESEND_API_KEY, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from: 'Planning France Info <onboarding@resend.dev>', to: email, subject: 'Reinitialisation mot de passe', html: '<p>Lien pour réinitialiser le mot de passe (valable 1h) :</p><p><a href="' + resetUrl + '">' + resetUrl + '</a></p>' }),
+        body: JSON.stringify({ from: env.MAIL_FROM || 'Planning France Info <onboarding@resend.dev>', to: email, subject: 'Reinitialisation mot de passe', html: '<p>Lien pour réinitialiser le mot de passe (valable 1h) :</p><p><a href="' + resetUrl + '">' + resetUrl + '</a></p>' }),
       });
       return resp({ ok: true });
     }
