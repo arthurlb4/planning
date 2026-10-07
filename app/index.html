@@ -3539,15 +3539,17 @@ function _dayFixH(){var sh=document.querySelector('#modal-root .sheet.daymod');i
   var bs=sh.querySelectorAll('.mbtns'),g=bs[0],d=new Date((pendingKey||_lpk)+'T12:00:00'),cur=Math.ceil(_dayVacCount(d)/3),mx=cur;
   // grille la plus haute sur 3 semaines autour du jour (le passage d'une semaine à l'autre ne change rien)
   for(var i=-10;i<=10;i++){var x=new Date(d);x.setDate(d.getDate()+i);mx=Math.max(mx,Math.ceil(_dayVacCount(x)/3));}
-  if(g&&mx>cur){var gap=parseFloat(getComputedStyle(g).rowGap)||0;base+=(mx-cur)*(g.offsetHeight+gap)/cur;}
+  // la zone des vacations est déjà à la hauteur de la plus grande vue du jour (grille ou Autre) : on n'ajoute que ce qui dépasse
+  var vg=sh.querySelector('#day-vg');if(g&&mx>cur){var gap=parseFloat(getComputedStyle(g).rowGap)||0,gh=mx*(g.offsetHeight+gap)/cur-gap;base+=Math.max(0,gh-(vg?vg.offsetHeight:g.offsetHeight));}
   // jour sans boutons Congé / Rendu / Échange / Absent (repos…) : on compte leur place quand même
   if(g&&bs.length<2)base+=(g.firstElementChild?g.firstElementChild.offsetHeight:42)+16;
-  var h=Math.ceil((base+160)/8)*8,k='dayH:'+window.innerWidth,m=0;try{m=+localStorage.getItem(k)||0;}catch(e){}
+  // en-tête : sa hauteur réelle, au moins 96 px (titre, horaires, nuit / primes)
+  var h=Math.ceil((base+Math.max(db?db.offsetHeight:0,96))/8)*8,k='dayH2:'+window.innerWidth,m=0;try{m=+localStorage.getItem(k)||0;}catch(e){}
   // la plus grande hauteur déjà vue est gardée : la fiche ne rétrécit jamais d'un jour à l'autre
   if(h>m){m=h;try{localStorage.setItem(k,h);}catch(e){}}
   sh.style.setProperty('--dayh',m+'px');}
 // Fenêtre Autre (ouverte depuis la fiche du jour) : même hauteur que la fiche
-function _dayHApply(){var sh=document.querySelector('#modal-root .sheet');if(!sh)return;var m=0;try{m=+localStorage.getItem('dayH:'+window.innerWidth)||0;}catch(e){}
+function _dayHApply(){var sh=document.querySelector('#modal-root .sheet');if(!sh)return;var m=0;try{m=+localStorage.getItem('dayH2:'+window.innerWidth)||0;}catch(e){}
   if(m){sh.classList.add('dayh');sh.style.setProperty('--dayh',m+'px');}}
 function openDay(key){
   if(!key)return;window._dayVgHtml=null;pendingKey=key;_lpk=key;
@@ -7723,7 +7725,7 @@ function openCustomVacModal(){
   window._cvHints={forme:cN?'celles de '+cN+(cP.length?' ('+cP.join(', ')+')':''):'aucune',formateur:cN?'pas celles de '+cN:'aucune',detache:'',autre:''};
   var mB=function(k,l){return '<button type="button" data-m="'+k+'" class="'+(motif===k?'on':'')+'" onclick="_cvSetMotif(\''+k+'\')">'+l+'</button>';};
   // « Pourquoi ce changement ? » : chaque choix montre directement ce qu'il implique pour les primes
-  var opts=(key?'<div style="margin:0 0 8px"><label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Raison du changement</label><div class="cv-seg" id="cv-motif">'+mB('autre','Horaires')+(cI?mB('forme','Formation')+mB('formateur','Formateur'):'')+mB('detache','Détachement')+'</div></div>':'')
+  var opts=(key?'<div style="margin:0 0 8px"><label style="font-size:11px;color:var(--text2);display:block;margin-bottom:3px">Raison du changement</label><div class="cv-seg" id="cv-motif">'+mB('autre','Horaires')+mB('forme','Formation')+mB('formateur','Formateur')+mB('detache','Détachement')+'</div></div>':'')
     ;
   window._cvCalcRef=cI&&!cI.mixte?{n:cN,dur:cI.dur||0,nuit:calcNuitMinShift(cI),deb:cI.deb}:(cI?{n:'',dur:-1}:{n:'',dur:0});
   var dO='<option value="0">—</option>';for(var d=15;d<=600;d+=15)dO+='<option value="'+d+'"'+(x&&x.dur===d?' selected':'')+'>'+fmtMin(d)+'</option>';
