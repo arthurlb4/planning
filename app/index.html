@@ -817,7 +817,14 @@ button:not(.sv-tile):not(.dx-mini):not(.sh-x),select,input:not([type=checkbox]):
 #setup .su-line{width:100%;height:46px;font-size:15px;padding:0 16px}
 #setup .su-btn{width:100%;height:46px;border:none;background:var(--blue);color:#fff;font:500 15px var(--font);cursor:pointer;margin-top:18px;box-shadow:inset .5px .5px 0 rgba(255,255,255,.3),inset -.5px -.5px 0 rgba(255,255,255,.1)}
 #setup .su-btn:disabled{opacity:.5}
-#setup .su-back{font-size:12px;color:var(--text3);cursor:pointer;display:inline-flex;align-items:center;gap:4px;margin-bottom:6px}
+#setup .su-hd{position:relative}#setup .su-hd h1{padding:0 30px}
+#setup .su-back{position:absolute;left:-6px;top:50%;transform:translateY(-55%);font-size:30px;line-height:1;padding:2px 10px;color:var(--blue);cursor:pointer}
+/* apparition des champs (matelas et rendus, paie) */
+#setup .su-in{animation:suIn .35s cubic-bezier(.2,.8,.3,1)}
+@keyframes suIn{from{opacity:0;transform:translateY(-6px)}}
+#setup .su-txt p{font-size:13px;color:var(--text2);line-height:1.55;margin:0 0 10px}#setup .su-txt ul{margin:0 0 10px 18px;font-size:13px;color:var(--text2);line-height:1.6}#setup .su-txt b{color:var(--text);font-weight:600}
+#setup .su-calc{border-radius:16px;background:rgba(255,250,243,.04);padding:6px 14px;margin-bottom:12px}#setup .su-calc div{display:flex;justify-content:space-between;align-items:center;padding:7px 0;font-size:13px;color:var(--text2)}#setup .su-calc b{font-size:15px;color:var(--text3);width:18px;text-align:center}
+#setup .su-calc .su-calc-t{border-top:.5px solid var(--border);color:var(--text);font-weight:600}
 /* choix import / à la main : deux boutons sans ombre portée */
 #setup .su-seg{display:flex;gap:8px;margin:2px 0 8px}#setup .su-seg button{flex:1;height:40px;border:none;font:500 13px var(--font);cursor:pointer;background:rgba(255,250,243,.09);color:var(--text);box-shadow:inset .5px .5px 0 rgba(255,250,243,.14),inset -.5px -.5px 0 rgba(255,250,243,.05);display:flex;align-items:center;justify-content:center;gap:7px}
 #setup .su-seg button.on{background:var(--blue);color:#fff}
@@ -4485,8 +4492,7 @@ var SU=null;
 function _suEsc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 function _suOpen(){
   if(document.getElementById('setup'))return;
-  var g=getActiveCycleGrid(NOW)||CYCLE,n=g.length,diff=Math.round((getMonday(NOW)-ANCHOR)/(7*864e5)),al=S.profile.anchorLine!=null?S.profile.anchorLine:ANCHOR_L;
-  SU={step:0,rh:null,rhMode:null,bul:{},bulMode:null,v:{line:((al+diff)%n+n)%n,dimRendu:true,rhRendu:true,ferRendu:true,hsRendu:true,pfa:0,pct:100}};
+  SU={step:0,rh:null,rhMode:null,bul:{},bulMode:null,v:{line:'',dimRendu:true,rhRendu:true,ferRendu:true,hsRendu:true,pfa:0,pct:100}};
   var el=document.createElement('div');el.id='setup';document.body.appendChild(el);document.body.classList.add('su-on');
   _suDraw();
 }
@@ -4496,11 +4502,13 @@ function _suGo(n){_suRead();SU.step=n;_suDraw();}
 function _suDraw(){
   var el=document.getElementById('setup');if(!el||!SU)return;
   // en bas de chaque écran : se déconnecter, ou supprimer le compte sans aller au bout
-  el.innerHTML='<div class="su-card">'+[_suStep0,_suStep1,_suStep2][SU.step]()
+  el.innerHTML='<div class="su-card">'+[_suStep0,_suStep1,_suStep2,_suStep3][SU.step]()
     +'<div class="su-foot"><a onclick="signOut()">Se déconnecter</a> · <a onclick="deleteCurrentProfile()">Supprimer mon compte</a></div></div>';el.scrollTop=0;
-  if(SU.step===1)_suLinePrev();if(SU.step===2)_suPayLbls();
+  if(SU.step===1)_suLinePrev();if(SU.step===2)_suPayLbls();SU.anim=null;
 }
-function _suDots(){return '<div class="su-dots">'+[0,1,2].map(function(i){return '<i class="'+(i===SU.step?'on':i<SU.step?'done':'')+'"></i>';}).join('')+'</div>';}
+function _suDots(){return '<div class="su-dots">'+[0,1,2,3].map(function(i){return '<i class="'+(i===SU.step?'on':i<SU.step?'done':'')+'"></i>';}).join('')+'</div>';}
+// En-tête des étapes : titre à la même hauteur que « Bienvenue », retour à gauche
+function _suHd(t,back){return _suDots()+'<div class="su-hd"><span class="su-back" onclick="_suGo('+back+')" aria-label="Retour">‹</span><h1>'+t+'</h1></div>';}
 function _suSec(t){return '<div class="su-sec">'+t+'</div>';}
 function _suRow(l,c){return '<div class="su-row"><span class="su-lbl">'+l+'</span><span class="su-ctl">'+c+'</span></div>';}
 function _suTgl(k){return '<label class="tgl"><input type="checkbox" data-k="'+k+'"'+(SU.v[k]===false?'':' checked')+'><span class="tgl-s"></span></label>';}
@@ -4509,14 +4517,15 @@ function _suSel(k,opts,eur){return (eur?'<span class="su-eur" id="su-e-'+k+'"></
 // 1. Présentation
 function _suStep0(){
   var nm=(S.profile&&S.profile.name)||'';
-  var F=[['ti-calendar','Votre planning','Votre ligne semaine par semaine, avec les vacations du cycle. Un jour se modifie, s’échange ou se déplace en un appui.'],
-    ['ti-clock-hour-4','Rendus et matelas','Les heures gagnées (dimanches, fériés, RH travaillés, heures sup.) sont comptées avec leurs dates d’expiration et leurs reports. Un rappel prévient avant que des heures expirent.'],
-    ['ti-beach','Congés et rendus','Posés depuis le calendrier, décomptés aussitôt.'],
-    ['ti-receipt-2','Paie','Le salaire estimé chaque mois, et chaque bulletin vérifié ligne par ligne.'],
-    ['ti-mail','Mail au gestionnaire','Les écarts de paie et les reports d’heures à demander, rédigés pour vous.'],
+  var F=[['ti-calendar','Planning','Votre ligne semaine par semaine, avec les cycles à jour. Une vacation se modifie, s’échange ou se déplace en un appui. Synchronisation possible avec Google Agenda.'],
+    ['ti-users','Équipe','La semaine de chaque ligne, avec les collègues qui y sont inscrits : utile pour trouver un échange.'],
+    ['ti-clock-hour-4','Rendus et congés','Les heures acquises (dimanches, fériés, RH travaillés, heures sup.) et posées, avec leurs dates d’expiration et leurs reports. Le solde de congés suit chaque pose.'],
+    ['ti-bell','Rappels','Une notification avant que des heures expirent.'],
+    ['ti-receipt-2','Paie','Le salaire brut estimé chaque mois, heures et primes comprises.'],
+    ['ti-scale','Vérification','Le tableau Gestion et les bulletins comparés à vos heures : chaque écart est repéré et expliqué.'],
+    ['ti-send','Transmission','Accès direct à Sirhius et à la demande de congés ; mail au gestionnaire rédigé avec les écarts et les reports à demander.'],
     ['ti-devices','Sur tous vos appareils','Les données suivent votre compte.']];
   return _suDots()+'<h1>Bienvenue'+(nm?' '+_suEsc(capitalize(nm)):'')+'</h1>'
-    +'<div class="su-sub">Voici ce que fait l’app. Deux étapes pour démarrer : votre ligne et vos heures, puis votre paie.</div>'
     +F.map(function(f){return '<div class="su-feat"><i class="ti '+f[0]+'"></i><div><b>'+f[1]+'</b><span>'+f[2]+'</span></div></div>';}).join('')
     +'<button class="su-btn" onclick="_suGo(1)">Commencer</button>';
 }
@@ -4525,32 +4534,32 @@ function _suStep0(){
 function _suStep1(){
   var g=getActiveCycleGrid(NOW)||CYCLE,sum=function(w){return (w||[]).map(function(v){return(!v||v==='RH')?'—':v;}).join(' ');};
   var m=SU.rhMode,P=SU.rh&&SU.rh.P;
-  var h=_suDots()+'<div class="su-back" onclick="_suGo(0)">← Retour</div><h1>Ligne et heures</h1>'
-    +_suSec('Ligne actuelle')
-    +'<select class="su-line" data-k="line" onchange="_suRead();_suLinePrev()">'+g.map(function(w,i){return '<option value="'+i+'"'+(+SU.v.line===i?' selected':'')+'>'+sum(w)+'</option>';}).join('')+'</select>'
+  var h=_suHd('Ligne et heures',0)
+    +_suSec('Ligne de cette semaine')
+    +'<select class="su-line" data-k="line" onchange="_suRead();_suLinePrev();_suLineOk()"><option value=""'+(SU.v.line===''?' selected':'')+' disabled>Sélectionner</option>'+g.map(function(w,i){return '<option value="'+i+'"'+(SU.v.line!==''&&+SU.v.line===i?' selected':'')+'>'+sum(w)+'</option>';}).join('')+'</select>'
     +'<div id="su-prev"></div>'
     +_suSec('Matelas et rendus')
     +'<div class="su-seg"><button class="'+(m==='imp'?'on':'')+'" onclick="_suRhPick()">'+(SU.rhBusy?'<span class="su-spin"></span>Lecture…':SU.rh?'✓ Tableau choisi':'Importer le tableau')+'</button>'
-    +'<button class="'+(m==='man'?'on':'')+'" onclick="_suRead();SU.rhMode=\'man\';_suDraw()">Saisir à la main</button></div>';
+    +'<button class="'+(m==='man'?'on':'')+'" onclick="_suRead();if(SU.rhMode!==\'man\')SU.anim=\'rh\';SU.rhMode=\'man\';_suDraw()">Saisir à la main</button></div>';
   if(SU.rhErr)h+='<div class="su-err">'+_suEsc(SU.rhErr)+'</div>';
   if(!m)h+='<div class="su-note"><b>Recommandé</b> · le tableau Gestion (fichier Excel envoyé par le gestionnaire) donne le matelas et les heures mois par mois, avec leurs dates d’expiration et leurs reports. Lu sur l’appareil, rien n’est envoyé.</div>';
   if(m==='imp'&&P)h+='<div class="su-note">Valeurs du tableau du '+P.ed.toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'})+' (modifiables) :</div>';
-  if(m==='man'||(m==='imp'&&P))h+=_suRow('Matelas','<input type="text" data-k="mat" placeholder="00h00" value="'+_suEsc(SU.v.mat||'')+'">')
-    +_suRow('Rendus à poser<small>heures encore valables</small>','<input type="text" data-k="eph" placeholder="00h00" value="'+_suEsc(SU.v.eph||'')+'">');
+  if(m==='man'||(m==='imp'&&P))h+='<div class="'+(SU.anim==='rh'?'su-in':'')+'">'+_suRow('Matelas<small>stock permanent</small>','<input type="text" data-k="mat" placeholder="00h00" value="'+_suEsc(SU.v.mat||'')+'">')
+    +_suRow('Rendus à poser<small>heures encore valables</small>','<input type="text" data-k="eph" placeholder="00h00" value="'+_suEsc(SU.v.eph||'')+'">')+'</div>';
   h+=_suSec('Génération des rendus')
     +_suRow('Dimanches',_suTgl('dimRendu'))+_suRow('RH travaillés',_suTgl('rhRendu'))+_suRow('Fériés',_suTgl('ferRendu'))+_suRow('Heures sup.',_suTgl('hsRendu'))
-    +'<button class="su-btn" onclick="_suGo(2)"'+(SU.rhBusy?' disabled':'')+'>Continuer</button>';
+    +'<button class="su-btn" id="su-next1" onclick="_suGo(2)"'+(SU.rhBusy||SU.v.line===''?' disabled':'')+'>Continuer</button>';
   return h;
 }
-// Aperçu de la ligne choisie : cette semaine et les 3 suivantes
+// Ligne choisie : ses vacations de la semaine, sous les jours
 function _suLinePrev(){
   var box=document.getElementById('su-prev');if(!box)return;
-  var g=getActiveCycleGrid(NOW)||CYCLE,n=g.length,i=+SU.v.line,mon=getMonday(NOW),rows='';
+  if(SU.v.line===''){box.innerHTML='';return;}
+  var g=getActiveCycleGrid(NOW)||CYCLE,w=g[+SU.v.line]||[];
   var cell=function(v){var off=!v||v==='RH';return '<td style="font-weight:'+(off?400:600)+';color:'+(off?'var(--text3)':'var(--text)')+'">'+(off?'—':v)+'</td>';};
-  for(var k=0;k<4;k++){var d=new Date(mon);d.setDate(d.getDate()+7*k);
-    rows+='<tr><td style="text-align:left;font-size:10.5px;color:var(--text3);white-space:nowrap">'+(k?d.getDate()+' '+MCs[d.getMonth()]:'cette sem.')+'</td>'+(g[(i+k)%n]||[]).map(cell).join('')+'</tr>';}
-  box.innerHTML='<table class="su-prev"><tr><td style="width:24%"></td>'+['L','M','M','J','V','S','D'].map(function(x){return '<td style="font-size:10px;color:var(--text3)">'+x+'</td>';}).join('')+'</tr>'+rows+'</table>';
+  box.innerHTML='<table class="su-prev su-in"><tr>'+['L','M','M','J','V','S','D'].map(function(x){return '<td style="font-size:10px;color:var(--text3)">'+x+'</td>';}).join('')+'</tr><tr>'+w.map(cell).join('')+'</tr></table>';
 }
+function _suLineOk(){var b=document.getElementById('su-next1');if(b)b.disabled=SU.v.line===''||!!SU.rhBusy;}
 // Tableau Gestion lu sur place : la roue tourne pendant la lecture, puis matelas et rendus apparaissent remplis
 function _suRhPick(){
   _suRead();
@@ -4558,7 +4567,7 @@ function _suRhPick(){
   inp.onchange=async function(){var f=inp.files&&inp.files[0];if(!f)return;
     SU.rhBusy=true;SU.rhErr=null;SU.rhMode='imp';_suDraw();
     try{var cells=await _xlsxRead(f),rh=_rhParse(cells,f.name),P=_rhImportPlan(rh);
-      SU.rh={cells:cells,name:f.name,rh:rh,P:P};SU.v.mat=P.matelas!=null?fmtMin(P.matelas):'';SU.v.eph=fmtMin(Math.round(P.total));}
+      SU.rh={cells:cells,name:f.name,rh:rh,P:P};SU.anim='rh';SU.v.mat=P.matelas!=null?fmtMin(P.matelas):'';SU.v.eph=fmtMin(Math.round(P.total));}
     catch(e){SU.rh=null;SU.rhMode=null;SU.rhErr=(e&&e.message)||'Ce fichier n’a pas pu être lu.';}
     SU.rhBusy=false;if(SU.step===1)_suDraw();};
   inp.click();
@@ -4567,9 +4576,9 @@ function _suRhPick(){
 // 3. Paie
 function _suStep2(){
   var m=SU.bulMode,nb=Object.keys(SU.bul).length,pc=getPrimesConvAllForYM(TODAY_YM);
-  var h=_suDots()+'<div class="su-back" onclick="_suGo(1)">← Retour</div><h1>Paie</h1>'
+  var h=_suHd('Paie',1)
     +'<div class="su-seg"><button class="'+(m==='imp'?'on':'')+'" onclick="_suBulPick()">'+(SU.bulBusy?'<span class="su-spin"></span>Lecture…':nb?'✓ '+(nb>1?nb+' bulletins':'1 bulletin'):'Importer des bulletins')+'</button>'
-    +'<button class="'+(m==='man'?'on':'')+'" onclick="_suRead();SU.bulMode=\'man\';_suDraw()">Saisir à la main</button></div>';
+    +'<button class="'+(m==='man'?'on':'')+'" onclick="_suRead();if(!SU.bulMode)SU.anim=\'pay\';SU.bulMode=\'man\';_suDraw()">Saisir à la main</button></div>';
   if(SU.bulErr)h+='<div class="su-err">'+_suEsc(SU.bulErr)+'</div>';
   if(!nb)h+='<div class="su-note"><b>Recommandé</b> · ajoutez tous vos bulletins depuis janvier (PDF) : l’app y lit le palier, l’ancienneté, le contrat, le groupe, la PFA et l’avantage individuel, puis vérifie chaque paie. Lus sur l’appareil, rien n’est envoyé.</div>';
   else{var yms=Object.keys(SU.bul).map(Number).sort(function(a,b){return a-b;}),lab=function(ym){return MCs[ym%12]+' '+Math.floor(ym/12);};
@@ -4581,20 +4590,33 @@ function _suStep2(){
     var M=[['','—']].concat(ML.map(function(l,i){return [i,l];}));
     var C=[];for(var p=5;p<=100;p+=5)C.push([p,p+' %']);if(SU.v.pct&&+SU.v.pct%5)C.push([+SU.v.pct,SU.v.pct+' %']);
     var G=[['','—']];for(var k=1;k<=9;k++)G.push([k,'Groupe '+k]);
-    h+=_suSec('Votre paie')
+    h+='<div class="'+(SU.anim==='pay'?'su-in':'')+'">'+_suSec('Votre paie')
       +_suRow('Palier',_suSel('pal',P,1))
       +_suRow('Ancienneté',_suSel('anc',A,1))
       +_suRow('Mois d’anniversaire<small>de l’ancienneté</small>',_suSel('anni',M))
       +_suRow('Contrat',_suSel('pct',C,1))
       +_suRow('Groupe',_suSel('grp',G,1))
       +_suRow('PFA',_suSel('pfa',[[1,'Mensuelle'],[0,'Semestrielle']]))
-      +_suRow('Avantage individuel<small>prime mensuelle, s’il y en a une</small>','<input type="text" data-k="avi" inputmode="decimal" placeholder="0,00 €" value="'+_suEsc(SU.v.avi||'')+'">');
-    if(pc.length)h+=_suSec('Primes de la convention')+pc.map(function(x){return _suRow(_suEsc(x.label)+'<small>'+fmtEuro(x.montant)+'</small>',_suTgl('pc_'+x.id));}).join('');
+      +_suSec('Primes')
+      +_suRow('Avantage individuel acquis<small>montant mensuel, s’il y en a un</small>','<input type="text" data-k="avi" inputmode="decimal" placeholder="0,00 €" value="'+_suEsc(SU.v.avi||'')+'">')
+      +pc.map(function(x){return _suRow(_suEsc(x.label)+'<small>'+fmtEuro(x.montant)+'</small>',_suTgl('pc_'+x.id));}).join('')+'</div>';
   }
-  h+='<button class="su-btn" onclick="_suDone()"'+(SU.bulBusy?' disabled':'')+'>Terminer</button>';
+  h+='<button class="su-btn" onclick="_suGo(3)"'+(SU.bulBusy?' disabled':'')+'>Continuer</button>';
   return h;
 }
 // Montants en direct à côté des choix
+// 4. Avant de commencer : ce que l'app sait déjà, ce qu'il reste à lui dire, et comment se calculent les heures disponibles
+function _suStep3(){
+  var rh=SU.rh&&SU.rh.P,start=rh?'au '+rh.ed.toLocaleDateString('fr-FR',{day:'numeric',month:'long'}):'au 1er '+MC[TODAY_YM%12];
+  return _suHd('Avant de commencer',2)
+    +'<div class="su-txt"><p>L’app part de votre ligne telle que prévue par le cycle. Pour que les heures et la paie soient justes, elle doit connaître ce qui s’en écarte&nbsp;:</p>'
+    +'<ul><li><b>vacations modifiées</b>&nbsp;: échanges, déplacements, horaires différents ;</li><li><b>congés</b> et <b>rendus</b> posés ;</li><li>absences, formations.</li></ul>'
+    +'<p>Tout se fait en touchant un jour du calendrier. Le suivi des heures part '+start+(rh?' (date du tableau Gestion)':'')+'&nbsp;: seuls les changements depuis cette date sont à entrer.</p></div>'
+    +_suSec('Heures disponibles')
+    +'<div class="su-calc"><div><span>Heures acquises encore valables</span><b></b></div><div><span>Rendus déjà posés</span><b>−</b></div><div><span>Rendus prévus plus tard</span><b>−</b></div><div class="su-calc-t"><span>Heures libres à poser</span><b>=</b></div></div>'
+    +'<div class="su-txt"><p>Chaque heure acquise reste valable jusqu’à la fin du 3e mois qui suit (fin octobre pour une heure de juillet), davantage avec un report. Les plus anciennes sont posées en premier. Le <b>matelas</b> est un stock à part, sans date d’expiration.</p></div>'
+    +'<button class="su-btn" onclick="_suDone()">C’est parti</button>';
+}
 function _suPayLbls(){
   var set=function(k,t){var e=document.getElementById('su-e-'+k);if(e)e.textContent=t;},v=SU.v;
   set('pal',v.pal?fmtEuro(calcPalierSalaire(+v.pal)):'');
@@ -4609,7 +4631,7 @@ function _suBulPick(){
   inp.onchange=async function(){var fs=[].slice.call(inp.files||[]);if(!fs.length)return;
     SU.bulBusy=true;SU.bulErr=null;_suDraw();var bad=0;
     for(var i=0;i<fs.length;i++){try{var b=_bulParse(await _pdfLines(fs[i]));if(b){b.at=Date.now();SU.bul[b.ym]=b;}else bad++;}catch(e){bad++;}}
-    if(Object.keys(SU.bul).length){SU.bulMode='imp';_suBulDerive();}
+    if(Object.keys(SU.bul).length){if(!SU.bulMode)SU.anim='pay';SU.bulMode='imp';_suBulDerive();}
     if(bad)SU.bulErr=(bad>1?bad+' fichiers n’ont pas pu être lus':'Un fichier n’a pas pu être lu')+(navigator.onLine===false?' (hors ligne)':'')+'.';
     SU.bulBusy=false;if(SU.step===2)_suDraw();};
   inp.click();
@@ -8492,6 +8514,8 @@ function init(){
   // Show user name in header if needed
   // reports automatiques après la lecture du cloud (avant, ils dataient les données locales et les faisaient passer pour plus récentes)
   loadState();applyTheme();
+  // inscription pas terminée, connue sur l'appareil : la suite s'affiche tout de suite, sans écran de chargement
+  if(S&&S.profile&&S.profile.setupPending){_suOpen();var _bt=document.getElementById('boot');if(_bt)_bt.remove();}
   // Load global pay config (convention collective)
   fetch(CLOUD_API+'/get-pay-config',{method:'POST',headers:cloudHeaders(),body:'{}'})
     .then(function(r){return r.json();})
@@ -8529,8 +8553,9 @@ function init(){
     setTimeout(pushSyncAlerts,3000);
     const hpn=document.getElementById('hdr-profile-name');
     if(hpn&&S&&S.profile)hpn.textContent=S.profile.name||'Profil';
-    // inscription pas terminée (présentation, ligne et heures, paie) : on y revient, avant tout le reste
+    // inscription pas terminée (présentation, ligne et heures, paie) : on y revient, avant tout le reste ; terminée ailleurs : on la ferme
     if(S&&S.profile&&S.profile.setupPending)_suOpen();
+    else if(document.getElementById('setup')){document.getElementById('setup').remove();SU=null;document.body.classList.remove('su-on');}
     _revealBody();
     // imports de l'inscription d'abord (le bulletin remplit palier, ancienneté, contrat, groupe) ; saisie à la main seulement sans import
     if(!(S&&S.profile&&S.profile.setupPending))setTimeout(function(){if(_bulImportPromptIfNeeded())return;if(_rhImportPromptIfNeeded())return;showPayPromptIfNeeded();},700);

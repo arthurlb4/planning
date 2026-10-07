@@ -127,7 +127,6 @@ input,textarea,select{user-select:text;-webkit-user-select:text;}
           </div>
           <div class="field"><label>Confirmer le mot de passe</label><div class="pwd-wrap"><input type="password" id="reg-pwd2" autocapitalize="off" autocorrect="off" spellcheck="false" name="password2" autocomplete="new-password" placeholder="••••••••" onkeydown="if(event.key==='Enter')regGoStep2()"><button type="button" class="pwd-eye" data-pwd="reg" onmousedown="event.preventDefault()" onclick="togglePwd(['reg-pwd','reg-pwd2'],this.dataset.pwd)" tabindex="-1" aria-label="Afficher le mot de passe"><i class="ti ti-eye"></i></button></div></div>
           <button class="btn" id="reg-btn" onclick="regGoStep2()">Créer mon compte</button>
-          <div style="font-size:12px;color:var(--text3);line-height:1.5;margin-top:12px;text-align:center">Ensuite : votre ligne, vos heures et votre paie.</div>
           <div class="err" id="reg-err1"></div>
         </div>
 
@@ -138,6 +137,7 @@ input,textarea,select{user-select:text;-webkit-user-select:text;}
           <div class="field"><label>Code reçu</label><input type="text" id="reg-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" style="letter-spacing:6px;font-size:20px;text-align:center" oninput="this.value=this.value.replace(/\D/g,'');if(this.value.length===6)regVerifyCode()" onkeydown="if(event.key==='Enter')regVerifyCode()"></div>
           <button class="btn" id="reg-code-btn" onclick="regVerifyCode()">Valider</button>
           <div class="err" id="reg-code-err"></div>
+          <div class="ok" id="reg-code-ok"></div>
           <div class="forgot" style="text-align:center;margin:14px 0 0" onclick="regSendCode(true)" id="reg-code-resend">Renvoyer le code</div>
         </div>
 
@@ -257,13 +257,14 @@ async function regSendCode(resend) {
   var btn = resend ? document.getElementById('reg-code-resend') : document.querySelector('#reg-s1 .btn');
   var errId = resend ? 'reg-code-err' : 'reg-err1';
   showErr(errId, '');
+  if (resend) showOk('reg-code-ok', '');
   if (btn.dataset.busy) return; btn.dataset.busy = '1'; var lbl = btn.textContent; btn.textContent = 'Envoi…';
   try {
     var r = await fetch(API + '/auth/send-code', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: email }) });
     var d = await r.json().catch(function(){ return {}; });
     if (!r.ok) { if (r.status === 409) _regEmailTaken = email; showErr(errId, d.error || 'Envoi du code impossible'); return; }
     if (d.required === false) { _regCodeOk = email; delete btn.dataset.busy; btn.textContent = lbl; await regShowStep2(); return; }
-    if (resend) { document.getElementById('reg-code').focus(); btn.textContent = 'Code renvoyé'; setTimeout(function(){ btn.textContent = 'Renvoyer le code'; }, 3000); delete btn.dataset.busy; return; }
+    if (resend) { document.getElementById('reg-code').value = ''; document.getElementById('reg-code').focus(); delete btn.dataset.busy; showOk('reg-code-ok', 'Nouveau code envoyé : le précédent ne marche plus.'); _regResendWait(); return; }
     document.getElementById('reg-code-to').textContent = email;
     document.getElementById('reg-code').value = '';
     _animRegSlider(function() {
@@ -271,14 +272,25 @@ async function regSendCode(resend) {
       document.getElementById('reg-s1b').style.display = '';
       setTimeout(function(){ document.getElementById('reg-code').focus(); }, 50);
     });
+    _regResendWait();
   } catch (e) { showErr(errId, 'Connexion impossible, réessayez'); }
   finally { if (btn.dataset.busy) { delete btn.dataset.busy; btn.textContent = lbl; } }
+}
+
+// « Renvoyer le code » grisé 30 s après chaque envoi, avec le décompte (le serveur refuse un nouvel envoi avant)
+var _regResendT = null;
+function _regResendWait() {
+  var el = document.getElementById('reg-code-resend'), t = 30;
+  clearInterval(_regResendT);
+  var tick = function() { if (t <= 0) { clearInterval(_regResendT); el.textContent = 'Renvoyer le code'; el.style.pointerEvents = ''; el.style.opacity = ''; return; }
+    el.textContent = 'Renvoyer le code dans ' + t + ' s'; el.style.pointerEvents = 'none'; el.style.opacity = '.6'; t--; };
+  tick(); _regResendT = setInterval(tick, 1000);
 }
 
 async function regVerifyCode() {
   var email = document.getElementById('reg-email').value.trim().toLowerCase();
   var code = document.getElementById('reg-code').value.trim(), btn = document.getElementById('reg-code-btn');
-  showErr('reg-code-err', '');
+  showErr('reg-code-err', ''); showOk('reg-code-ok', '');
   if (!/^\d{6}$/.test(code)) return showErr('reg-code-err', 'Saisir les 6 chiffres du code.');
   if (btn.disabled) return; btn.disabled = true;
   try {
