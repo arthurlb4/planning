@@ -3639,7 +3639,7 @@ function openDay(key){
   var _rst=echange?'<button style="font:500 11.5px var(--font);line-height:15px;padding:3px 10px;border:none;border-radius:999px;background:var(--btn);cursor:pointer;white-space:nowrap;flex-shrink:0;-webkit-tap-highlight-color:transparent;color:#e09a9a" onclick="event.stopPropagation();cancelExchange(\''+key+'\')" aria-label="Annuler l’échange"><i class="ti ti-arrow-back-up" style="margin-right:3px"></i>Échange</button>'
     :(ov||_exr||_dpOn)?'<button style="font:500 11.5px var(--font);line-height:15px;padding:3px 10px;border:none;border-radius:999px;background:var(--btn);cursor:pointer;white-space:nowrap;flex-shrink:0;-webkit-tap-highlight-color:transparent;color:var(--text)" onclick="event.stopPropagation();resetVac()"><i class="ti ti-arrow-back-up" style="margin-right:3px"></i>'+(cycleVac&&cycleVac!=='RH'?vLbl(cycleVac,VAC):'Repos')+'</button>':'';
   var _plusBtn='';
-  _renduBtn='<div style="display:flex;gap:8px;align-items:center;flex-shrink:0">'+_plusBtn+_rst+'<span style="font-size:11.5px;color:var(--text3);white-space:nowrap;display:flex;align-items:center">Modifier<i class="ti ti-chevron-right" style="font-size:13px"></i></span></div>';
+  _renduBtn='<div style="display:flex;gap:8px;align-items:center;flex-shrink:0">'+_plusBtn+_rst+'<button class="adj-pill" style="width:auto;padding:0 14px;height:28px;font-size:12px;flex-shrink:0" onclick="event.stopPropagation();openCustomVacModal()">Modifier</button></div>';
   var _exrHtml=_exr?'<div style="margin-top:8px;padding:7px 10px;border-radius:8px;background:rgba(150,180,100,.10);border:0.5px solid rgba(150,180,100,.25);display:flex;align-items:center;gap:8px;font-size:12.5px">'
     +'<i class="ti ti-clock-plus" style="font-size:15px;color:var(--rend-text)"></i><span style="flex:1;color:var(--text2)">Heures de rendu acquises'+(_exr.label?' · '+String(_exr.label).replace(/</g,'&lt;'):'')+'</span><b style="color:var(--rend-text)">+'+fmtMin(_exr.dur)+'</b></div>':'';
   var _dp=(S.dayPrimes||{})[key];if(_dp&&_dp.amt>0&&epvHtml)epvHtml=epvHtml.replace('</div>',' · <span style="color:var(--amber)">'+(_dp.lbl||'Prime')+' '+fmtEuro(_dp.amt)+'</span></div>');
@@ -7718,7 +7718,7 @@ function openCustomVacModal(){
     +'<div><label>Pause</label><select id="custom-pause" style="width:100%;'+fs+'"><option value="0">Sans</option><option value="45">45 min</option><option value="60">1h00</option></select></div></div>'
     +(key?'<div class="cv-hint" id="cv-calc" style="margin:-2px 2px 8px;min-height:2.8em"></div>':'')
     // Une seule ligne de hauteur fixe : [menu des primes | phrase d'explication] + montant à droite (prime « Autre » ou de formateur)
-    +'<div class="mrow" style="margin:8px 0 2px"><label id="cv-autre-lbl">'+(motif==='formateur'?'Prime de formateur (€)':'Primes du jour')+'</label>'
+    +'<div class="mrow" id="cv-prime-row" style="margin:8px 0 2px;'+(motif==='detache'?'display:none':'')+'"><label id="cv-autre-lbl">'+(motif==='formateur'?'Prime de formateur (€)':'Primes du jour')+'</label>'
     +'<div style="display:flex;gap:8px;align-items:stretch">'
     +'<div style="flex:1;min-width:0;display:grid">'
     +'<select id="custom-prime" onchange="_cvPrimeSync(this)" style="grid-area:1/1;width:100%;'+fs+';visibility:'+(key&&motif!=='autre'?'hidden':'visible')+'"><option value="">Aucune</option><option value="antenne">Antenne</option><option value="reel">Réal</option><option value="coord">Coordination</option>'+(key?'<option value="autre">Autre (montant)</option>':'')+'</select>'
@@ -7771,7 +7771,7 @@ function _cvFromVac(lbl){var key=pendingKey;if(!lbl||!key){_cvUnfill();return;}v
 function _cvCalc(){var el=document.getElementById('cv-calc'),R=window._cvCalcRef;if(!el)return;if(!R){el.textContent='';return;}
   var g=function(id){var e=document.getElementById(id);return e?e.value:'';},d=g('custom-deb'),f=g('custom-fin');if(!d||!f){el.textContent='';return;}
   var a=parseHM(d),b=parseHM(f),t=b-a;if(t<=0)t+=1440;var pz=parseInt(g('custom-pause'))||0;if(pz>=45)t-=pz;if(t<=0){el.textContent='';return;}
-  var l1=window._cvMotif==='detache'?'<b style="color:var(--text2)">'+fmtMin(t)+'</b> faites · détachement, pas d\'heures sup.':R.dur<0?'<b style="color:var(--text2)">'+fmtMin(t)+'</b> faites':!R.dur?'<b style="color:var(--text2)">'+fmtMin(t)+'</b> faites, en heures sup (jour de repos).'
+  var l1=window._cvMotif==='detache'?'<b style="color:var(--text2)">'+fmtMin(t)+'</b> faites · détachement : '+(R.n&&R.dur>0?'compte '+R.n+' ('+fmtMin(R.dur)+'), ':'')+'pas d\'heures sup ni de rendus.':R.dur<0?'<b style="color:var(--text2)">'+fmtMin(t)+'</b> faites':!R.dur?'<b style="color:var(--text2)">'+fmtMin(t)+'</b> faites, en heures sup (jour de repos).'
     :(function(){var x=t-R.dur;return '<b style="color:var(--text2)">'+fmtMin(t)+'</b> faites · '+R.n+' prévue '+fmtMin(R.dur)+(x>0?' → <b style="color:var(--blue)">+'+fmtMin(x)+' en heures sup</b>':x<0?' → '+fmtMin(R.dur)+' comptées':'');})();
   // Ce que le jour rapporte en plus : nuit (formation suivie → la plus grande des deux), matin, panier, majoration du jour
   var forme=window._cvMotif==='forme'&&R.dur>0,key=pendingKey,date=key?new Date(key+'T12:00:00'):null,ch=[];
@@ -7787,6 +7787,7 @@ function _cvRevert(){var k=pendingKey;if(!k||!(S.overrides||{})[k])return;pushUn
 // Motif : formateur ouvre directement la prime de formateur
 function _cvSetMotif(k){var prev=window._cvMotif;window._cvMotif=k;setTimeout(_cvCalc,0);document.querySelectorAll('#cv-motif button').forEach(function(b){b.classList.toggle('on',b.getAttribute('data-m')===k);});
   var h=document.getElementById('cv-motif-hint');if(h){h.textContent=(window._cvHints||{})[k]||'';h.style.visibility=k==='autre'?'hidden':'visible';}
+  var pr=document.getElementById('cv-prime-row');if(pr)pr.style.display=k==='detache'?'none':'';
   var al=document.getElementById('cv-autre-lbl');if(al)al.textContent=k==='formateur'?'Prime de formateur (€)':'Primes du jour';
   var row=document.getElementById('custom-prime');if(row)row.style.visibility=k==='autre'?'visible':'hidden'; // menu des primes : seulement pour « Horaires modifiés »
   var sel=document.getElementById('custom-prime'),I=window._cvInit||{};
