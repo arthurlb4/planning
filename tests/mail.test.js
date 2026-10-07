@@ -45,6 +45,12 @@ a.run('S.bulletins={' + YM(2026, 9) + ':{ym:' + YM(2026, 9) + '}};_bulIgn=functi
   + '_bulCompare=function(){return{status:"ecart",items:[' + JSON.stringify(row('panier', false, 0, 2, 0, 6)) + ',{id:"x",lbl:"X",d:-1,ign:true}]};};');
 eq('Bulletin de septembre, variables d’août', a.run('_gmPaie()'), ['- bulletin de septembre 2026 (variables d’août) :\n   • tu n’as noté aucun panier alors que j’en compte 2']);
 
+// 5 bis. Heures à payer mises en rendus par le bulletin (réglage gardé) : une seule ligne, sans répéter l'écart de la même ligne
+a.run('_bulPayDiffs=function(){return{keptList:[{ym:' + YM(2026, 8) + ',k:"dimRendu",h:450,v:1}]};};'
+  + '_bulCompare=function(){return{status:"ecart",items:[{id:"r:dim",d:-50,row:' + JSON.stringify(row('dim', true, 0, 450, 0, 50).row) + '}]};};');
+eq('Dimanche mis en rendus à tort', a.run('_gmPaie()'), ['- bulletin de septembre 2026 (variables d’août) :\n   • tu as mis 7h30 d’heures de dimanche en rendus alors qu’elles doivent être payées']);
+a.run('_bulPayDiffs=function(){return{keptList:[]};};');
+
 // 6. Reports : uniquement les heures qui expirent ce mois-ci
 a.run('calcSoldes=function(){return{realAvail:{' + YM(2026, 7) + ':1080,' + YM(2026, 8) + ':203},preExpiry:{}};};'
   + 'getExpYm=function(ym){return ym+3;};');
