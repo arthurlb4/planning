@@ -997,6 +997,7 @@ function loadState(){
   // Ensure profile fields exist
   if(!S.profile)S.profile={};
   if(S.profile.ephSoldeCreatedYM===undefined)S.profile.ephSoldeCreatedYM=TODAY_YM;
+  delete S.profile.repMail; // adresse de l'ancienne demande de report par mail (le destinataire est saisi dans Outlook)
   // Migrate: old autoReportEph incorrectly incremented ephExtend — undo it
   if(S.autoReported&&S.ephExtend){Object.keys(S.autoReported).forEach(function(ym){if(S.ephExtend[ym]>0){S.ephExtend[ym]--;if(S.ephExtend[ym]<=0)delete S.ephExtend[ym];}});delete S.autoReported;}
   // Migrate: autoReport1m → autoExtend level 1
@@ -2642,6 +2643,11 @@ function _bulPayApply(){
   if(D.anc){pr.ancYears=D.anc.y;pr.ancRefYM=D.anc.ym;if(D.anc.mo!=null)pr.ancMoisAnni=D.anc.mo;pr.primeAnciennete=calcAncPrime(D.anc.y);}
   saveState();render();
 }
+// Vérification depuis Suivi : on y revient en la fermant
+function openVerif(){_bulPayPropose(function(){openMergedRenduCgModal(6,2);},1);}
+// Vérification : importer des bulletins (on revient à la vérification) ou un tableau Gestion (comparaison, retour à Suivi)
+function _verifImport(t){var th=window._bulPayThen;window._bulPayThen=null;
+  if(t==='bul')importBulletins(function(){_bulPayPropose(th,1);});else{window._rvFrom='recap';rhCompareOpen();}}
 // Fenêtre de proposition (après un import, ou depuis Réglages → Paie)
 function _bulPayPropose(then,all){
   var D=_bulPayDiffs(),nb=Object.keys(S.bulletins||{}).length;
@@ -2683,7 +2689,8 @@ function _bulPayPropose(then,all){
       +(eok?'<b style="color:var(--green)">✓ aucun</b>':'<b style="color:'+(E.bal<-0.05?'var(--red)':Math.abs(E.bal)<=0.05?'var(--amber)':'var(--green)')+'">'+(Math.abs(E.bal)>0.05?(E.bal<0?'−':'+')+fmtEuro(Math.abs(E.bal)):'⚠ '+E.nPb)+'</b><span style="color:var(--text3)"> · '+E.nBad+' mois</span>')
       +'<a style="color:var(--blue);cursor:pointer;margin-left:8px" onclick="closeModal();openBulletinsCal()">Détail</a></span></div>'
       +(!eok&&D.paid.length?'<div style="font-size:10.5px;color:var(--text3);padding:0 0 4px">Corrigé en partie par la génération de rendus ci-dessous</div>':'');}
-  var body=((rows||all)?sec('Paie',(rows||okR('Palier, contrat, primes'))+EP):'')+((rend||all)?sec('Génération de rendus',(rend||okR('Payés ou rendus'))+KEPT):'')+(all?sec('Tableau Gestion',G):'');
+  var body=((rows||all)?sec('Paie',(rows||okR('Palier, contrat, primes'))+EP):'')+((rend||all)?sec('Génération de rendus',(rend||okR('Payés ou rendus'))+KEPT):'')+(all?sec('Tableau Gestion',G):'')
+    +(all?sec('Importer des documents','<div style="display:flex;gap:8px;padding:4px 0"><button class="adj-pill" style="flex:1;height:34px;font-size:12px" onclick="_verifImport(\'bul\')"><i class="ti ti-file-import" style="margin-right:4px"></i>Bulletins</button><button class="adj-pill" style="flex:1;height:34px;font-size:12px" onclick="_verifImport(\'rh\')"><i class="ti ti-table-import" style="margin-right:4px"></i>Tableau</button></div>'):'');
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)_bulPayDone(0)"><div class="sheet"><div class="sh"></div><div class="st">'+(all?'Vérification':'Réglages lus sur les bulletins')+'</div>'
     +(D.n?'<div style="font-size:12px;color:var(--text3);line-height:1.45;margin:-4px 0 10px">Corrections proposées d’après les bulletins'+(all?' et le tableau Gestion':'')+'.</div>':'')
     +body
@@ -3250,17 +3257,15 @@ function _ringSvg(size,rings,wr){
   return h+'</svg>';
 }
 _ringSvg.n=0;
-function _cptHtml(y){
-  // Année passée : toute l'année ; année en cours : à ce jour, sur toute l'année du planning ; année à venir : prévu sur toute l'année
-  var t=new Date(),cy=t.getFullYear(),cur=y===cy;
-  var a=cur?_bilanCount(y,t.getMonth(),t.getDate()):_bilanCount(y,11,31),b=cur?_bilanCount(y,11,31):a;
+function _cptHtml(){
+  // Année en cours : à ce jour, sur toute l'année du planning
+  var t=new Date(),y=t.getFullYear(),a=_bilanCount(y,t.getMonth(),t.getDate()),b=_bilanCount(y,11,31);
   var M=[{k:'jours',l:'Jours',c:'#FA2D55',u:'j'},{k:'nuits',l:'Nuit',c:'#A78BFA',u:'h'},{k:'dim',l:'Dimanches',c:'#38BDF8',u:''},{k:'fer',l:'Fériés',c:'#FBBF24',u:''},{k:'matins',l:'Matins',c:'#34D399',u:''}];
   var fmt=function(x,u){return u==='h'?fmtMin(x).replace(/h00$/,'h'):String(x)+(u==='j'?' j':'');};
-  var leg=function(o){var v=a[o.k],p=b[o.k];
-    return '<div class="cp-l"><span class="cp-n" style="color:'+o.c+'">'+o.l+'</span><span class="cp-v"><b data-n="'+v+'" data-u="'+o.u+'">'+fmt(v,o.u)+'</b>'+(cur?' <small>/ '+fmt(p,o.u)+'</small>':'')+'</span></div>';};
-  var fr=function(o){return b[o.k]?a[o.k]/b[o.k]:0;};
-  var big='<div class="cp-big">'+_ringSvg(84,M.map(function(o){return{f:fr(o),c:o.c};}),0.08)+'<div class="cp-ls">'+M.map(leg).join('')+'</div></div>';
-  return '<div class="sv-card cp-card" id="cpt-card"><div class="cp-hd"><div><div class="cp-t">Année '+y+'</div><div class="cp-s">'+(cur?'à ce jour, sur toute l’année':y<cy?'toute l’année':'prévu sur toute l’année')+'</div></div></div>'
+  var leg=function(o){var v=a[o.k];
+    return '<div class="cp-l"><span class="cp-n" style="color:'+o.c+'">'+o.l+'</span><span class="cp-v"><b data-n="'+v+'" data-u="'+o.u+'">'+fmt(v,o.u)+'</b> <small>/ '+fmt(b[o.k],o.u)+'</small></span></div>';};
+  var big='<div class="cp-big">'+_ringSvg(84,M.map(function(o){return{f:b[o.k]?a[o.k]/b[o.k]:0,c:o.c};}),0.08)+'<div class="cp-ls">'+M.map(leg).join('')+'</div></div>';
+  return '<div class="sv-card cp-card" id="cpt-card"><div class="cp-hd"><div><div class="cp-t">Année '+y+'</div><div class="cp-s">à ce jour, sur toute l’année</div></div></div>'
     +big+'</div>';
 }
 function openRecapModal(){
@@ -3966,13 +3971,16 @@ function gestMailSend(){
   var on=function(id){var e=document.getElementById(id);return !!(e&&e.checked&&!e.disabled);};
   var R=on('gm-rep')?_gmRep(window._gmRepYms):[],H=on('gm-rh')?_gmRh():null,P=on('gm-paie')?_gmPaie():[];
   if(!R.length&&!H&&!P.length){alert('Rien à demander : cocher au moins un point.');return;}
+  var m=_gmBuild(R,H,P);_openMail(m.sub,m.body);
+  openMergedRenduCgModal(6,2);}
+// Objet et texte du mail (tutoiement, sans signature)
+function _gmBuild(R,H,P){
   var sub=[],B=[];
   if(R.length){sub.push('report d’heures de rendus');B.push('Peux-tu m’accorder un report de mes heures de rendus :\n'+R.join('\n'));}
   if(H){sub.push('corrections du tableau de gestion');B.push('Dans le tableau de gestion du '+H.ed+', je relève :\n'+H.L.join('\n')+'\nPeux-tu le vérifier et le corriger ?');}
   if(P.length){sub.push('corrections de paie');B.push('Sur mes bulletins de paie, je relève les écarts suivants :\n'+P.join('\n')+'\nPeux-tu les faire corriger ?');}
   var subj=sub.join(', ').replace(/, ([^,]*)$/,' et $1');subj=subj.charAt(0).toUpperCase()+subj.slice(1);
-  _openMail(subj,'Bonjour,\n\n'+B.join('\n\n')+'\n\nMerci d’avance');
-  openMergedRenduCgModal(6,2);}
+  return{sub:subj,body:'Bonjour,\n\n'+B.join('\n\n')+'\n\nMerci d’avance'};}
 // Outlook sur iPhone / iPad (ms-outlook://), sinon la messagerie par défaut (mailto:, Outlook sur un poste qui l'a par défaut) ; destinataire saisi dans Outlook
 function _openMail(sub,body){
   var q='subject='+encodeURIComponent(sub)+'&body='+encodeURIComponent(body),mt='mailto:?'+q;
@@ -5475,9 +5483,11 @@ function openMergedRenduCgModal(limit,tab){
   // Suivi : toujours aujourd'hui (année en cours), quel que soit le mois affiché
   const recapRows=_suiviSimple(NOW.getFullYear())
     +'<div style="height:8px"></div>'
-    // Mail au gestionnaire : reports, corrections du tableau de gestion, de paie
-    +'<div class="ucard rep-mail" style="cursor:pointer" onclick="openGestMail()"><i class="ti ti-mail"></i><div style="flex:1;min-width:0"><div style="font-size:13px;color:var(--text)">Mail au gestionnaire</div><div style="font-size:11px;color:var(--text3)">reports, tableau de gestion, paie</div></div><i class="ti ti-chevron-right" style="font-size:16px;color:var(--text3)"></i></div>'
-    +_cptHtml(NOW.getFullYear())
+    // Vérifier (bulletins, tableau Gestion) et mail au gestionnaire, côte à côte au-dessus de l'année
+    +'<div class="sv-tiles" style="margin-bottom:8px">'
+    +[['openVerif()','ti-checks','Vérifier','bulletins, tableau'],['openGestMail()','ti-mail','Mail','au gestionnaire']].map(function(x){return '<div class="ucard rep-mail" style="cursor:pointer;margin:0;padding:12px" onclick="'+x[0]+'"><i class="ti '+x[1]+'"></i><div style="flex:1;min-width:0"><div style="font-size:13px;color:var(--text)">'+x[2]+'</div><div style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+x[3]+'</div></div></div>';}).join('')
+    +'</div>'
+    +_cptHtml()
     +_fold('fold-hist','history','var(--text2)','Dernières modifications',(S.history||[]).length?'dernière le '+S.history[0].t:'aucune',(S.history||[]).length||'','<div style="height:6px"></div>'+rcgHistHtml)
     +'<div style="height:12px"></div>';
   const dispoColor=dispoMois<=0?'var(--red)':dispoMois<120?'var(--amber)':'var(--rend-text)';
