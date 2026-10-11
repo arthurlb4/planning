@@ -8,7 +8,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v5.07">
+<meta name="app-version" content="v5.08">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -4742,7 +4742,9 @@ function _suStep4(){
 }
 // « de mars et avril 2026 », « de mars 2026 »
 function _suMoisList(yms){var y=Math.floor(yms[yms.length-1]/12),same=yms.every(function(x){return Math.floor(x/12)===y;}),n=yms.map(function(x){return ML[x%12].toLowerCase()+(same?'':' '+Math.floor(x/12));});
-  n=n.map(function(x){return (/^[aeiouyâéè]/i.test(x)?'d’':'de ')+x;}); // « de mars et d’avril »
+  var de=function(x){return (/^[aeiouyâéè]/i.test(x)?'d’':'de ')+x;};
+  if(yms.length>2&&yms[yms.length-1]-yms[0]===yms.length-1)return de(n[0])+' à '+n[n.length-1]+(same?' '+y:''); // suite de mois : « de janvier à août 2026 »
+  n=n.map(de); // « de mars et d’avril »
   return (n.length>1?n.slice(0,-1).join(', ')+' et '+n[n.length-1]:n[0])+(same?' '+y:'');}
 // 6. Ce qu'il reste à entrer
 function _suStart(){var D=_suFromYM();if(D!=null)return new Date(Math.floor(D/12),D%12,1,12);return SU.rh?new Date(SU.rh.P.ed):new Date(NOW);}
@@ -9267,12 +9269,15 @@ function _cloudSaveFailed(pid,msg){
 }
 // Nouvelle version publiée : l'app s'ouvre sur la copie gardée (pas d'écran blanc au lancement), puis se recharge
 // une fois sur la nouvelle, que le service worker vient de mettre de côté (une seule fois par version : jamais de boucle)
+function _suNewVer(){var c=document.querySelector('#setup .su-card');if(!c||document.getElementById('su-nv'))return;var d=document.createElement('div');d.id='su-nv';d.className='su-note';d.style.cssText='text-align:center;margin:0 0 10px;color:var(--blue);cursor:pointer';d.textContent='Nouvelle version de l’app → toucher pour recharger (la saisie reprend au début)';d.onclick=function(){location.reload();};c.insertBefore(d,c.firstChild);}
 function _verCheck(){
   fetch(location.href,{cache:'no-store',headers:{'Cache-Control':'no-cache, no-store','Pragma':'no-cache'}})
     .then(function(r){return r.text();})
     .then(function(html){
       var m=html.match(/name="app-version" content="([^"]+)"/);if(!m||m[1]===_appVer||_syncAbort)return;
-      if(document.getElementById('setup')||document.getElementById('modal-root').innerHTML)return; // pas pendant une saisie
+      // inscription : rechargée tant qu'il n'y a rien à perdre (début), sinon un lien le propose
+      if(document.getElementById('setup')&&SU&&SU.step>1){_suNewVer();return;}
+      if(!document.getElementById('setup')&&document.getElementById('modal-root').innerHTML)return; // pas pendant une saisie
       var k='pl_ver_rl';try{if(sessionStorage.getItem(k)===m[1])return;sessionStorage.setItem(k,m[1]);}catch(e){}
       location.reload();
     }).catch(function(){});
