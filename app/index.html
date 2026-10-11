@@ -8,7 +8,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v5.17">
+<meta name="app-version" content="v5.18">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -4587,11 +4587,23 @@ function _suOpen(){
   // iPhone : pas d'entrée d'historique (le glissement retour afficherait une page blanche) ; la flèche ‹ de chaque écran suffit
   var ios=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
   if(!ios)try{history.pushState({su:1},'');}catch(e){}
+  if(ios)_suSwipeBack(el);
   if(!ios&&!window._suPop){window._suPop=1;window.addEventListener('popstate',function(){
     if(!SU||!document.getElementById('setup'))return;
     if(SU.step>0){try{history.pushState({su:1},'');}catch(e){}_suGo(SU.step-1);}else signOut();});}
   _suDraw();
 }
+// Glisser depuis le bord gauche : étape précédente (la carte suit le doigt), sans passer par l'historique
+function _suSwipeBack(el){var x0=null,y0=0,dx=0,on=false,card=function(){return el.querySelector('.su-card');};
+  el.addEventListener('touchstart',function(e){var t=e.touches[0];x0=SU&&SU.step>0&&t.clientX<28?t.clientX:null;y0=t.clientY;dx=0;on=false;},{passive:true});
+  el.addEventListener('touchmove',function(e){if(x0==null)return;var t=e.touches[0];dx=t.clientX-x0;
+    if(!on){if(Math.abs(t.clientY-y0)>Math.abs(dx)){x0=null;return;}if(dx<8)return;on=true;}
+    var c=card();if(c){c.style.transition='none';c.style.transform='translateX('+Math.max(0,dx)+'px)';c.style.opacity=String(1-Math.min(.5,dx/600));}},{passive:true});
+  el.addEventListener('touchend',function(){if(x0==null)return;x0=null;var c=card();if(!c||!on)return;
+    if(dx>90){c.style.transition='transform .18s ease,opacity .18s ease';c.style.transform='translateX(110%)';c.style.opacity='0';
+      setTimeout(function(){_suGo(SU.step-1);var n=card();if(!n)return;n.style.transition='none';n.style.transform='translateX(-30px)';n.style.opacity='0';
+        requestAnimationFrame(function(){requestAnimationFrame(function(){n.style.transition='transform .22s ease,opacity .22s ease';n.style.transform='';n.style.opacity='';});});},170);}
+    else{c.style.transition='transform .2s ease,opacity .2s ease';c.style.transform='';c.style.opacity='';}},{passive:true});}
 // Valeurs des champs gardées avant chaque redessin (import, retour, étape suivante)
 function _suRead(){[].forEach.call(document.querySelectorAll('#setup [data-k]'),function(e){SU.v[e.dataset.k]=e.type==='checkbox'?e.checked:e.value;});}
 function _suGo(n){_suRead();SU.step=n;_suDraw();}
