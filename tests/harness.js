@@ -45,7 +45,7 @@ function load(today) {
     sessionStorage: { getItem: () => null, setItem() {}, removeItem() {} },
     fetch: () => new Promise(() => {}), navigator: { onLine: true, userAgent: 'node', serviceWorker: { register: () => Promise.resolve() } },
     location: { href: 'http://localhost/planning/app/', pathname: '/planning/app/', origin: 'http://localhost', search: '', hash: '', replace() {}, reload() {} },
-    innerWidth: 1400, innerHeight: 900, devicePixelRatio: 1, matchMedia: () => ({ matches: false, addEventListener() {}, addListener() {} }),
+    scrollTo() {}, innerWidth: 1400, innerHeight: 900, devicePixelRatio: 1, matchMedia: () => ({ matches: false, addEventListener() {}, addListener() {} }),
     addEventListener() {}, removeEventListener() {}, getComputedStyle: () => new Proxy({}, { get: () => '' }),
     ResizeObserver: class { observe() {} disconnect() {} }, MutationObserver: class { observe() {} disconnect() {} },
     TextDecoder, TextEncoder, Uint8Array, DataView, ArrayBuffer, Blob: class {}, File: class {},
