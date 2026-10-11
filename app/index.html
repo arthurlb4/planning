@@ -8,7 +8,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v5.01">
+<meta name="app-version" content="v5.02">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -855,7 +855,7 @@ body.su-on .overlay{z-index:1100} /* confirmation de suppression du compte : par
 #setup .su-fl{list-style:none;margin:0;padding:0}#setup .su-fl li{position:relative;padding-left:12px;font-size:12px;color:var(--text2);line-height:1.45}#setup .su-fl li::before{content:'•';position:absolute;left:0;color:var(--text3)}
 #setup .su-c0 .su-fl li{font-size:11.5px;line-height:1.4}
 #setup .su-tag{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;background:rgba(106,152,120,.25);color:var(--green);font-size:10.5px;font-weight:600;vertical-align:1px}
-#setup .su-nv{margin:0 0 8px 18px;font-size:12px;color:var(--amber);line-height:1.5}
+#setup .su-big{margin:2px 0 8px}#setup .su-big li{font-size:13px;line-height:1.5;padding:1px 0 1px 13px}#setup .su-nv li{color:var(--amber)}#setup .su-choice .su-fl li{font-size:12px}#setup .su-note .su-fl li{font-size:11.5px;color:var(--text3)}
 #setup .su-fold{margin:6px 0 0}#setup .su-fold summary{font-size:12px;color:var(--blue);cursor:pointer;padding:6px 2px;list-style:none}#setup .su-fold summary::-webkit-details-marker{display:none}#setup .su-fold[open] summary{margin-bottom:6px}
 /* présentation : tout tient sans défiler */
 #setup .su-c0{padding:18px 18px 16px}#setup .su-c0 .su-dots{margin:0 0 10px}#setup .su-c0 h1{margin-bottom:4px}
@@ -4643,17 +4643,19 @@ function _suStep1(){
 var _SU_REC_YM=NOW.getFullYear()*12; // recommandé : janvier de l'année en cours
 function _suFromYM(){return SU.v.from==='rec'?_SU_REC_YM:SU.v.from==='month'?+SU.v.fromYM:null;}
 function _suMoisL(ym){return ML[ym%12].toLowerCase()+' '+Math.floor(ym/12);}
+// Puces : une idée par ligne
+function _suPts(a,cls){return '<ul class="su-fl'+(cls?' '+cls:'')+'">'+a.filter(Boolean).map(function(l){return '<li>'+l+'</li>';}).join('')+'</ul>';}
 function _suStep2(){
   var c=SU.v.from,M=[];for(var ym=TODAY_YM-1;ym>=TODAY_YM-24;ym--)if(ym!==_SU_REC_YM)M.push(ym);
   if(SU.v.fromYM==null||SU.v.fromYM==='')SU.v.fromYM=M[0];
   var opt=function(k,t,d){return '<button class="su-choice'+(c===k?' on':'')+'" onclick="_suRead();SU.v.from=\''+k+'\';_suDraw()"><i class="ti '+(c===k?'ti-circle-check-filled':'ti-circle')+'"></i><span><b>'+t+'</b>'+d+'</span></button>';};
-  var past=function(ym){return 'Tableau Gestion et bulletins vérifiés depuis '+_suMoisL(ym)+'. Changements par rapport au cycle à entrer depuis le 1er '+_suMoisL(ym)+'.';};
+  var past=function(ym,x){return _suPts(['Tableau Gestion + bulletins vérifiés depuis '+_suMoisL(ym),'Changements au cycle à entrer depuis le 1er '+_suMoisL(ym),x]);};
   var h=_suHd('Vérifier depuis quand&nbsp;?',1)
-    +'<div class="su-txt"><p>L’app compare vos heures au tableau Gestion et à vos bulletins. Pour cela, elle doit connaître tous les changements par rapport au cycle depuis cette date&nbsp;: échanges, horaires, absences, formations, rendus posés.</p></div>'
-    +(_SU_REC_YM<TODAY_YM?opt('rec','Depuis '+_suMoisL(_SU_REC_YM)+' <span class="su-tag">recommandé</span>',past(_SU_REC_YM)+' Vérifie toute l’année.'):'')
-    +opt('month','Depuis un autre mois',c==='month'?'<select data-k="fromYM" onclick="event.stopPropagation()" onchange="_suRead();_suDraw()" style="width:100%;margin:6px 0 4px">'+M.map(function(ym){return '<option value="'+ym+'"'+(+SU.v.fromYM===ym?' selected':'')+'>'+capitalize(_suMoisL(ym))+'</option>';}).join('')+'</select>'+past(+SU.v.fromYM):'Un mois au choix, plus récent ou plus ancien.')
-    +opt('now','À partir de maintenant','Rien d’ancien à entrer. Les vérifications commencent au dernier tableau Gestion et aux prochains bulletins.')
-    +'<div class="su-note" style="margin-top:6px">Dans tous les cas, les <b>congés posés depuis le 1er janvier</b> sont à entrer (solde de l’année).</div>'
+    +_suPts(['Vos heures ↔ tableau Gestion et bulletins','À entrer depuis la date choisie → tout ce qui s’écarte du cycle : échanges, horaires, absences, formations, rendus'],'su-big')
+    +(_SU_REC_YM<TODAY_YM?opt('rec','Depuis '+_suMoisL(_SU_REC_YM)+' <span class="su-tag">recommandé</span>',past(_SU_REC_YM,'Toute l’année vérifiée')):'')
+    +opt('month','Depuis un autre mois',c==='month'?'<select data-k="fromYM" onclick="event.stopPropagation()" onchange="_suRead();_suDraw()" style="width:100%;margin:6px 0 4px">'+M.map(function(ym){return '<option value="'+ym+'"'+(+SU.v.fromYM===ym?' selected':'')+'>'+capitalize(_suMoisL(ym))+'</option>';}).join('')+'</select>'+past(+SU.v.fromYM):_suPts(['Un mois au choix, plus récent ou plus ancien']))
+    +opt('now','À partir de maintenant',_suPts(['Rien d’ancien à entrer','Vérifié à partir du dernier tableau Gestion et des prochains bulletins']))
+    +'<div class="su-note" style="margin-top:6px">Dans tous les cas → <b>congés posés depuis le 1er janvier</b> à entrer (solde de l’année)</div>'
     +'<button class="su-btn" onclick="_suGo(3)"'+(c?'':' disabled')+'>Continuer</button>';
   return h;
 }
@@ -4668,8 +4670,8 @@ function _suStep3(){
     +'<div class="su-seg"><button class="'+(m==='imp'?'on':'')+'" onclick="_suRhPick(0)">'+(SU.rhBusy===0?'<span class="su-spin"></span>Lecture…':SU.rh?'✓ Tableau du '+fs(P.ed):'Importer le tableau')+'</button>'
     +'<button class="'+(m==='man'?'on':'')+'" onclick="_suRead();if(SU.rhMode!==\'man\')SU.anim=\'rh\';SU.rhMode=\'man\';_suDraw()">Saisir à la main</button></div>';
   if(SU.rhErr)h+='<div class="su-err">'+_suEsc(SU.rhErr)+'</div>';
-  if(!m)h+='<div class="su-note">Le dernier fichier Excel envoyé par le gestionnaire. L’app y lit le matelas et les heures mois par mois, avec leurs expirations et leurs reports. Lu sur l’appareil, rien n’est envoyé.</div>';
-  if(m==='imp'&&P&&D!=null)h+=vals(P)+'<div class="su-note">L’app recalcule vos heures depuis '+_suMoisL(D)+' et les compare à ce tableau, mois par mois.</div>';
+  if(!m)h+='<div class="su-note">'+_suPts(['Le dernier fichier Excel du gestionnaire','Lu par l’app : matelas · heures mois par mois · expirations · reports','Lu sur l’appareil, rien n’est envoyé'])+'</div>';
+  if(m==='imp'&&P&&D!=null)h+=vals(P)+'<div class="su-note">'+_suPts(['Vos heures depuis '+_suMoisL(D)+' ↔ ce tableau, mois par mois'])+'</div>';
   if(m==='imp'&&P&&D==null)h+='<div class="su-note">Valeurs du '+fd(P.ed)+' (modifiables) :</div>';
   if(m==='man')h+='<div class="su-note">'+(D!=null?'Les soldes du tableau Gestion reçu en '+_suMoisL(D)+' (0h00 s’il n’y en a pas).':'Les deux soldes du dernier tableau Gestion (0h00 s’il n’y en a pas).')+'</div>';
   if(m==='man'||(m==='imp'&&P&&D==null))h+='<div class="'+(SU.anim==='rh'?'su-in':'')+'">'+_suRow('Matelas<small>stock permanent</small>','<input type="text" data-k="mat" placeholder="00h00" oninput="_suRead();_suOk3()" value="'+_suEsc(SU.v.mat||'')+'">')
@@ -4679,8 +4681,9 @@ function _suStep3(){
     h+=_suSec('Votre tableau de '+mD+' · facultatif')
       +'<div class="su-seg"><button class="'+(SU.rh0?'on':'')+'" onclick="_suRhPick(1)">'+(SU.rhBusy===1?'<span class="su-spin"></span>Lecture…':SU.rh0?'✓ Tableau du '+fs(S0.ed):'Importer le tableau de '+mD)+'</button></div>';
     if(SU.rh0Err)h+='<div class="su-err">'+_suEsc(SU.rh0Err)+'</div>';
-    h+=SU.rh0?vals(S0)+'<div class="su-note">Vos soldes au départ viennent de ce tableau. Les rendus que le gestionnaire a retirés depuis sont vérifiés aussi.</div>'
-      :'<div class="su-note">Le tableau reçu en '+mD+' (ou juste avant). Avec lui, l’app vérifie aussi les rendus retirés par le gestionnaire entre '+mD+' et le '+P.ed.toLocaleDateString('fr-FR',{day:'numeric',month:'long'})+'. Sans lui, elle déduit vos soldes de '+mD+' du dernier tableau.</div>';
+    var fe=P.ed.toLocaleDateString('fr-FR',{day:'numeric',month:'long'});
+    h+=SU.rh0?vals(S0)+'<div class="su-note">'+_suPts(['Soldes de départ → ce tableau','Rendus retirés par le gestionnaire depuis → vérifiés aussi'])+'</div>'
+      :'<div class="su-note">'+_suPts(['Le tableau reçu en '+mD+' (ou juste avant)','Avec → rendus retirés par le gestionnaire entre '+mD+' et le '+fe+' vérifiés aussi','Sans → soldes de '+mD+' déduits du dernier tableau'])+'</div>';
   }
   h+=_suSec('Génération des rendus')
     +_suRow('Dimanches',_suTgl('dimRendu'))+_suRow('RH travaillés',_suTgl('rhRendu'))+_suRow('Fériés',_suTgl('ferRendu'))+_suRow('Heures sup.',_suTgl('hsRendu'))
@@ -4714,11 +4717,11 @@ function _suStep4(){
     +'<div class="su-seg"><button class="'+(m==='imp'?'on':'')+'" onclick="_suBulPick()">'+(SU.bulBusy?'<span class="su-spin"></span>Lecture…':nb?'✓ '+(nb>1?nb+' bulletins':'1 bulletin'):'Importer des bulletins')+'</button>'
     +'<button class="'+(m==='man'?'on':'')+'" onclick="_suRead();if(!SU.bulMode)SU.anim=\'pay\';SU.bulMode=\'man\';_suDraw()">Saisir à la main</button></div>';
   if(SU.bulErr)h+='<div class="su-err">'+_suEsc(SU.bulErr)+'</div>';
-  if(!nb)h+='<div class="su-note"><b>Recommandé</b> · '+(D!=null?'vos bulletins de '+_suMoisL(D+1)+' à aujourd’hui (PDF) : celui de '+ML[(D+1)%12].toLowerCase()+' paie les heures de '+ML[D%12].toLowerCase()+'. ':'votre dernier bulletin (PDF). ')+'L’app y lit le palier, l’ancienneté, le contrat, le groupe, la PFA et l’avantage individuel'+(D!=null?', puis vérifie chaque paie':'')+'. Lus sur l’appareil, rien n’est envoyé.</div>';
+  if(!nb)h+='<div class="su-note">'+_suPts([D!=null?'<b>Recommandé</b> → bulletins de '+_suMoisL(D+1)+' à aujourd’hui (PDF)':'<b>Recommandé</b> → votre dernier bulletin (PDF)',D!=null?'Bulletin de '+ML[(D+1)%12].toLowerCase()+' = heures de '+ML[D%12].toLowerCase():'','Lu par l’app : palier · ancienneté · contrat · groupe · PFA · avantage individuel',D!=null?'Puis chaque paie vérifiée':'','Lus sur l’appareil, rien n’est envoyé'])+'</div>';
   else{var yms=Object.keys(SU.bul).map(Number).sort(function(a,b){return a-b;}),lab=function(ym){return MCs[ym%12]+' '+Math.floor(ym/12);};
     h+='<div class="su-note">Bulletins '+(nb>1?'de '+lab(yms[0])+' à '+lab(yms[nb-1]):'de '+lab(yms[0]))+' (valeurs modifiables). <a style="color:var(--blue);cursor:pointer" onclick="_suBulPick()">Ajouter des bulletins</a></div>';
-    if(D!=null&&miss.length)h+='<div class="su-note" style="color:var(--amber)">Il manque '+(miss.length>1?'les bulletins':'le bulletin')+' '+_suMoisList(miss)+'&nbsp;: '+(miss.length>1?'ces mois ne seront pas vérifiés':'ce mois ne sera pas vérifié')+'.</div>';
-    if(SU.v.anni===''||SU.v.anni==null)h+='<div class="su-note">Mois d’anniversaire de l’ancienneté non trouvé : il se remplira au prochain bulletin qui montre le changement de la prime.</div>';}
+    if(D!=null&&miss.length)h+='<div class="su-note" style="color:var(--amber)">Manque '+(miss.length>1?'les bulletins':'le bulletin')+' '+_suMoisList(miss)+' → '+(miss.length>1?'mois non vérifiés':'mois non vérifié')+'</div>';
+    if(SU.v.anni===''||SU.v.anni==null)h+='<div class="su-note">Mois d’anniversaire de l’ancienneté non trouvé → rempli au prochain bulletin qui montre le changement de prime</div>';}
   if(m){
     var P=[['','—']];for(var i=1;i<=100;i++)P.push([i,'P'+i]);
     var A=[['','—']];for(var y=0;y<=50;y++)A.push([y,y+(y>1?' ans':' an')]);
@@ -4746,18 +4749,19 @@ function _suMoisList(yms){var y=Math.floor(yms[yms.length-1]/12),same=yms.every(
 function _suStart(){var D=_suFromYM();if(D!=null)return new Date(Math.floor(D/12),D%12,1,12);return SU.rh?new Date(SU.rh.P.ed):new Date(NOW);}
 function _suStep5(){
   var D=_suFromYM(),st=_suStart(),fd=st.toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}).replace(/^1 /,'1er '),nv=[],miss=_suBulNeed().filter(function(ym){return !SU.bul[ym];});
-  if(D!=null&&SU.rh&&!SU.rh0)nv.push('les rendus retirés par le gestionnaire entre '+ML[D%12].toLowerCase()+' et le '+SU.rh.P.ed.toLocaleDateString('fr-FR',{day:'numeric',month:'long'})+' (pas de tableau de '+ML[D%12].toLowerCase()+')');
-  if(D!=null&&miss.length&&!Object.keys(SU.bul).length)nv.push('la paie depuis '+_suMoisL(D)+' (aucun bulletin importé)');
-  else if(D!=null&&miss.length)nv.push('la paie '+_suMoisList(miss.map(function(x){return x-1;})).replace(/^d[e’']\s?/,'de ')+' (bulletin'+(miss.length>1?'s':'')+' manquant'+(miss.length>1?'s':'')+')');
-  if(D!=null&&SU.rhMode==='man')nv.push('le tableau Gestion (soldes saisis à la main : à importer ensuite dans Réglages)');
+  if(D!=null&&SU.rh&&!SU.rh0)nv.push('les rendus retirés par le gestionnaire entre '+ML[D%12].toLowerCase()+' et le '+SU.rh.P.ed.toLocaleDateString('fr-FR',{day:'numeric',month:'long'})+' → pas de tableau de '+ML[D%12].toLowerCase());
+  if(D!=null&&miss.length&&!Object.keys(SU.bul).length)nv.push('la paie depuis '+_suMoisL(D)+' → aucun bulletin importé');
+  else if(D!=null&&miss.length)nv.push('la paie '+_suMoisList(miss.map(function(x){return x-1;})).replace(/^d[e’']\s?/,'de ')+' → bulletin'+(miss.length>1?'s':'')+' manquant'+(miss.length>1?'s':''));
+  if(D!=null&&SU.rhMode==='man')nv.push('le tableau Gestion → soldes saisis à la main, à importer ensuite dans Réglages');
   return _suHd('Ce qu’il reste à entrer',4)
-    +'<div class="su-txt"><p>L’app part de votre ligne telle que prévue par le cycle. Touchez un jour du calendrier pour entrer ce qui s’en écarte&nbsp;:</p>'
-    +'<ul><li><b>vacations modifiées</b> depuis le '+fd+'&nbsp;: échanges, horaires, absences, formations…</li><li><b>rendus</b> posés depuis le '+fd+'</li><li><b>congés</b> posés depuis le 1er janvier</li></ul></div>'
-    +(D!=null?'<div class="su-note">Vérification du tableau Gestion et des bulletins à partir de '+_suMoisL(D)+'. Les rattrapages des mois d’avant, sur les bulletins, sont affichés sans être vérifiés.</div>'
-      :'<div class="su-note">Vérification à partir du '+fd+'&nbsp;: tableau Gestion suivant, et bulletins des mois qui suivent.</div>')
-    +(nv.length?_suSec('Non vérifié')+'<ul class="su-nv">'+nv.map(function(x){return '<li>'+x+'</li>';}).join('')+'</ul>':'')
+    +_suPts(['Point de départ → votre ligne prévue par le cycle','Le reste → toucher un jour du calendrier'])
+    +_suSec('À entrer')
+    +_suPts(['<b>Vacations modifiées</b> depuis le '+fd+' · échanges, horaires, absences, formations','<b>Rendus</b> posés depuis le '+fd,'<b>Congés</b> posés depuis le 1er janvier'],'su-big')
+    +_suSec('Vérifié')
+    +_suPts(D!=null?['Tableau Gestion + bulletins depuis '+_suMoisL(D),'Rattrapages des mois d’avant → affichés, non vérifiés']:['Tableau Gestion suivant','Bulletins des mois qui suivent'],'su-big')
+    +(nv.length?_suSec('Non vérifié')+_suPts(nv.map(function(x){return x.charAt(0).toUpperCase()+x.slice(1);}),'su-big su-nv'):'')
     +'<details class="su-fold"><summary>Comment sont calculées les heures disponibles</summary><div class="su-calc"><div><span>Heures acquises encore valables</span><b></b></div><div><span>Rendus déjà posés</span><b>−</b></div><div><span>Rendus prévus plus tard</span><b>−</b></div><div class="su-calc-t"><span>Heures libres à poser</span><b>=</b></div></div>'
-    +'<div class="su-txt"><p>Chaque heure acquise reste valable jusqu’à la fin du 3e mois qui suit (fin octobre pour une heure de juillet), davantage avec un report. Les plus anciennes sont posées en premier. Le <b>matelas</b> est un stock à part, sans date d’expiration.</p></div></details>'
+    +_suPts(['Heure acquise → valable jusqu’à la fin du 3e mois suivant (juillet → fin octobre)','Report → plus longtemps','Les plus anciennes sont posées en premier','<b>Matelas</b> → stock à part, sans expiration'],'su-big')+'</details>'
     +'<button class="su-btn" onclick="_suDone()">C’est parti</button>';
 }
 function _suPayLbls(){
