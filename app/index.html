@@ -1634,24 +1634,8 @@ function calcCongesUsedForYear(year){
   const partialKeys=yearKeys.filter(function(k){
     const d=new Date(k+'T12:00:00');return!fullWeeks.has(dk(getMonday(d)));
   });
-  if(!partialKeys.length)return total;
-  function findReprise(fromDate){
-    const sd=new Date(fromDate);sd.setDate(sd.getDate()+1);
-    while(sd<=new Date('2031-01-01')){
-      const v2=getVac(sd);if(v2.vac&&v2.vac!=='RH'&&!v2.absent)return new Date(sd);
-      sd.setDate(sd.getDate()+1);}return null;
-  }
-  const groups={};
-  partialKeys.forEach(function(k){
-    const d=new Date(k+'T12:00:00'),r=findReprise(d),rk=r?dk(r):'none';
-    if(!groups[rk])groups[rk]={reprise:r,dates:[]};groups[rk].dates.push(d);
-  });
-  Object.values(groups).forEach(function(g){
-    const nb=g.dates.length;if(!g.reprise){total+=nb;return;}
-    const lastCp=new Date(Math.max.apply(null,g.dates));
-    const ecart=Math.round((g.reprise-lastCp)/(864e5))-1;
-    total+=nb+Math.max(0,ecart-2);
-  });
+  // semaines incomplètes : un jour par congé (les repos après le dernier congé, avant la reprise, ne comptent pas)
+  total+=partialKeys.length;
   return total;
 }
 
@@ -6229,14 +6213,7 @@ function calcCongesUsedForKeys(monthKeys,allCgKeys){
     for(let i=0;i<7;i++){const dd=new Date(mon);dd.setDate(mon.getDate()+i);const v2=getVac(dd);if(v2.vac&&v2.vac!=='RH'&&!v2.absent&&!cgSet.has(dk(dd))){ok=false;break;}}
     return ok===false; // only include in partial if week is NOT full
   });
-  function fR(from){const sd=new Date(from);sd.setDate(sd.getDate()+1);while(sd<=new Date('2031-01-01')){const v2=getVac(sd);if(v2.vac&&v2.vac!=='RH'&&!v2.absent)return new Date(sd);sd.setDate(sd.getDate()+1);}return null;}
-  const groups={};
-  partial.forEach(function(k){const d=new Date(k+'T12:00:00'),r=fR(d),rk=r?dk(r):'none';if(!groups[rk])groups[rk]={reprise:r,dates:[]};groups[rk].dates.push(d);});
-  Object.values(groups).forEach(function(g){
-    const nb=g.dates.length;if(!g.reprise){total+=nb;return;}
-    const lc=new Date(Math.max.apply(null,g.dates));
-    total+=nb+Math.max(0,Math.round((g.reprise-lc)/(864e5))-1-2);
-  });
+  total+=partial.length; // un jour par congé ; les repos avant la reprise ne comptent pas
   return total;
 }
 
