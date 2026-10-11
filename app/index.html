@@ -249,6 +249,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
   box-shadow:inset .5px .5px 0 rgba(255,250,243,.18),inset -.5px -.5px 0 rgba(255,250,243,.06),0 18px 44px rgba(0,0,0,.55);transform:scale(.88);opacity:0;transition:transform .18s cubic-bezier(.2,.9,.3,1.2),opacity .14s ease}
 #lp-menu.on{transform:scale(1);opacity:1}
 #lp-menu .lp-h{font-size:12px;color:var(--text3);padding:6px 12px 5px}
+#lp-menu .lp-i{font-size:12px;line-height:1.5;color:var(--text2);padding:0 12px 7px;margin-bottom:3px;border-bottom:.5px solid rgba(255,250,243,.08)}#lp-menu .lp-i b{color:var(--text);font-weight:600}
 #lp-menu button{display:flex;align-items:center;gap:10px;width:100%;padding:11px 12px;border:none;border-radius:11px;background:none;color:var(--text);font:500 15px var(--font);text-align:left;cursor:pointer}
 #lp-menu button:active{background:rgba(255,250,243,.09)}
 #lp-menu button i{font-size:18px;width:20px;text-align:center}
@@ -3989,6 +3990,25 @@ function showPoseSelect(){
   var w=document.getElementById('pose-select-wrap');
   if(w)w.style.display='block';
 }
+// Mini-menu du jour : l'essentiel de la journée (horaires, heures faites, rendus acquis, primes)
+function _dayMenuInfo(date){
+  var key=dk(date),g=getVac(date),VAC=getVAC(date),cg=(S.conges||{})[key],v=g.vac&&VAC[g.vac];
+  if(!v||g.absent||cg||(g.echange&&!g.ecSelf))return '';
+  var out=[],dur=v.dur||0,sett=settingsForYM(date.getFullYear()*12+date.getMonth());
+  out.push('<b>'+_h(vLbl(g.vac,VAC))+'</b> '+(v.deb&&v.fin?v.deb+' – '+v.fin:'')+' · '+fmtMin(dur)+' faites');
+  // rendus du jour : mêmes règles que le décompte du mois (férié ×2, dimanche et RH travaillé ×½), heures sup de la semaine
+  var r=[],isF=FERIES.has(key),isD=date.getDay()===0,isR=!g.echange&&!isD&&isRHDay(date);
+  if(isF&&sett.ferRendu)r.push(fmtMin(dur*2)+' férié');if(isD&&sett.dimRendu)r.push(fmtMin(dur/2)+' dimanche');if(isR&&sett.rhRendu)r.push(fmtMin(dur/2)+' RH');
+  var hs=0;try{hs=_dayHSMin(date);}catch(e){}if(hs>0)r.push(fmtMin(hs)+(sett.hsRendu?' HS':' HS payées'));
+  var x=(S.extraRendus||{})[key];if(x&&x.dur>0)r.push(fmtMin(x.dur)+' en plus');
+  if(r.length)out.push('<span style="color:var(--rend-text)">Rendus +'+r.join(' · ')+'</span>');
+  var p=[],pv=VAC[getPayVac(date)]||v,pr=pv.primes||{};
+  if(pr.antenne)p.push('Antenne');if(pr.reel)p.push('Réal');if(pr.coord)p.push('Coord');if(pv.deb&&_toMinApp(pv.deb)<240)p.push('Matin');if(isPanier(date))p.push('Panier');
+  var n=0;try{n=getNuitMinDay(date,VAC);}catch(e){}if(n>0)p.push('Nuit '+fmtMin(n));
+  var dp=(S.dayPrimes||{})[key];if(dp&&dp.amt>0)p.push(_h(dp.lbl||'Prime')+' '+fmtEuro(dp.amt));
+  if(p.length)out.push('<span style="color:var(--amber)">'+p.join(' · ')+'</span>');
+  return '<div class="lp-i">'+out.map(function(l){return '<div>'+l+'</div>';}).join('')+'</div>';
+}
 function _closeDayMenu(){
   var m=document.getElementById('lp-menu'),v=document.getElementById('lp-veil');
   document.querySelectorAll('.dci.lp-on').forEach(function(x){x.classList.remove('lp-on');});
@@ -4009,7 +4029,7 @@ function _openDayMenu(cell){
     var noRend=dispo<dur&&_rendStatus(key)==='rend',cR=Math.max(0,computeCongesRest(date.getFullYear()));
     items='<button onclick="_dayMenuAct(\''+key+'\',\'rend\')"'+(noRend?' disabled':'')+'><i class="ti ti-clock" style="color:var(--rend-text)"></i>Rendu</button>'
       +'<button onclick="_dayMenuAct(\''+key+'\',\'cg\')"'+(cR<=0?' disabled':'')+'><i class="ti ti-beach" style="color:var(--green)"></i>Congé</button>'
-      +'<button onclick="_dayMenuAct(\''+key+'\',\'ex\')"><i class="ti ti-arrows-exchange" style="color:#c98a8a"></i>Échange</button>';
+      +'<button onclick="_dayMenuAct(\''+key+'\',\'mod\')"><i class="ti ti-pencil" style="color:var(--blue)"></i>Modifier</button>';
   }
   items+='<button onclick="_dayMenuAct(\''+key+'\',\'open\')" style="color:var(--text2)"><i class="ti ti-dots"></i>Ouvrir la journée</button>';
   _haptic();
@@ -4018,7 +4038,7 @@ function _openDayMenu(cell){
   veil.addEventListener('click',function(e){e.stopPropagation();_closeDayMenu();});
   veil.addEventListener('touchmove',function(e){e.preventDefault();},{passive:false});
   var m=document.createElement('div');m.id='lp-menu';
-  m.innerHTML='<div class="lp-h">'+capitalize(fmtDate(date))+'</div>'+items;
+  m.innerHTML='<div class="lp-h">'+capitalize(fmtDate(date))+'</div>'+_dayMenuInfo(date)+items;
   document.body.appendChild(veil);document.body.appendChild(m);
   var r=cell.getBoundingClientRect(),mw=m.offsetWidth,mh=m.offsetHeight,vw=window.innerWidth,vh=window.innerHeight;
   var left=Math.min(Math.max(12,r.left+r.width/2-mw/2),vw-mw-12);
@@ -4202,6 +4222,7 @@ function _dayMenuAct(key,act){
   if(!document.body.classList.contains('modal-open'))_lockBodyScroll();
   if(act==='del'){removeCongé();return;}
   if(act==='unex'){cancelExchange(key);return;}
+  if(act==='mod'){window._cvReq=null;openCustomVacModal();return;}
   if(act==='ex')openExchange(key);else openPoseModal(act,1);
 }
 function openPoseModal(type,fromMenu){
