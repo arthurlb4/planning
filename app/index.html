@@ -8,7 +8,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v5.19">
+<meta name="app-version" content="v5.20">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -4792,20 +4792,20 @@ function _suMoisList(yms){var y=Math.floor(yms[yms.length-1]/12),same=yms.every(
 // du 1er janvier ; les bulletins, eux, depuis la paie choisie (une paie de janvier compte les heures de décembre)
 function _suGestYM(){var D=_suFromYM();if(D==null)return null;if(SU.rhMode==='man')return Math.max(D,TODAY_YM);var y=SU.rh&&SU.rh.P?SU.rh.P.ed.getFullYear():NOW.getFullYear();return Math.max(D,y*12);}
 function _suStart(){var D=_suFromYM();if(D!=null)return new Date(Math.floor(D/12),D%12,1,12);return SU.rh?new Date(SU.rh.P.ed):new Date(NOW);}
+// Avant de commencer : chaque élément n'apparaît qu'une fois, dans « vérifié » ou dans « non vérifié »
 function _suStep5(){
-  var D=_suFromYM(),st=_suStart(),fd=st.toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}).replace(/^1 /,'1er '),nv=[],miss=_suBulNeed().filter(function(ym){return !SU.bul[ym];});
-  if(D!=null&&miss.length&&!Object.keys(SU.bul).length)nv.push('les paies depuis celle '+_deMois(D+1)+' '+Math.floor((D+1)/12)+' → aucun bulletin importé');
-  else if(D!=null&&miss.length)nv.push('la paie '+_suMoisList(miss)+' → bulletin'+(miss.length>1?'s':'')+' manquant'+(miss.length>1?'s':''));
-  if(D!=null&&SU.rhMode==='man')nv.push('le tableau Gestion → soldes saisis à la main, à importer ensuite dans Réglages');
-  return _suHd('Ce qu’il reste à entrer',4)
-    +_suPts(['Point de départ → votre ligne prévue par le cycle','Le reste → toucher un jour du calendrier'])
+  var D=_suFromYM(),st=_suStart(),fd=st.toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}).replace(/^1 /,'1er '),
+    need=_suBulNeed(),miss=need.filter(function(ym){return !SU.bul[ym];}),imp=need.filter(function(ym){return SU.bul[ym];}),g=_suGestYM(),ok=[],nv=[];
+  if(imp.length)ok.push('Paies '+_suMoisList(imp)+' → bulletins importés');
+  if(miss.length)nv.push('Paies '+_suMoisList(miss)+' → '+(imp.length?'bulletin'+(miss.length>1?'s':'')+' manquant'+(miss.length>1?'s':''):'aucun bulletin importé'));
+  ok.push(imp.length||miss.length?'Paies suivantes → à chaque bulletin ajouté':'Paies dès celle '+_deMois(D+1)+' '+Math.floor((D+1)/12)+' → à chaque bulletin ajouté');
+  if(SU.rhMode==='man')nv.push('Tableau Gestion → soldes saisis à la main');else ok.push('Tableau Gestion depuis '+_suMoisL(g));
+  if(imp.length)ok.push('Rattrapages des mois d’avant → affichés, non vérifiés');
+  return _suHd('Avant de commencer',4)
     +_suSec('À entrer')
-    +_suPts(['<b>Vacations modifiées</b> depuis le '+fd+' · échanges, horaires, absences, formations','<b>Rendus</b> posés depuis le '+(function(){var g=_suGestYM();return g==null?fd:'1er '+_suMoisL(g);})(),'<b>Congés</b> posés depuis le 1er janvier'],'su-big')
-    +_suSec('Vérifié')
-    +_suPts(D!=null?['Bulletins dès celui '+_deMois(D+1)+' '+Math.floor((D+1)/12),'Tableau Gestion depuis '+_suMoisL(_suGestYM()),'Rattrapages des mois d’avant → affichés, non vérifiés']:['Tableau Gestion suivant','Bulletins des mois qui suivent'],'su-big')
-    +(nv.length?_suSec('Non vérifié')+_suPts(nv.map(function(x){return x.charAt(0).toUpperCase()+x.slice(1);}),'su-big su-nv'):'')
-    +'<details class="su-fold"><summary>Comment sont calculées les heures disponibles</summary><div class="su-calc"><div><span>Heures acquises encore valables</span><b></b></div><div><span>Rendus déjà posés</span><b>−</b></div><div><span>Rendus prévus plus tard</span><b>−</b></div><div class="su-calc-t"><span>Heures libres à poser</span><b>=</b></div></div>'
-    +_suPts(['Heure acquise → valable jusqu’à la fin du 3e mois suivant (juillet → fin octobre)','Report → plus longtemps','Les plus anciennes sont posées en premier','<b>Matelas</b> → stock à part, sans expiration'],'su-big')+'</details>'
+    +_suPts(['<b>Vacations modifiées</b> depuis le '+fd+' · échanges, horaires, absences, formations','<b>Rendus</b> posés depuis le 1er '+_suMoisL(g),'<b>Congés</b> posés depuis le 1er janvier'],'su-big')
+    +_suSec('Vérifié')+_suPts(ok,'su-big')
+    +(nv.length?_suSec('Non vérifié')+_suPts(nv,'su-big su-nv'):'')
     +'<button class="su-btn" onclick="_suDone()">C’est parti</button>';
 }
 function _suPayLbls(){
