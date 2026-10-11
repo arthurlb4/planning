@@ -211,7 +211,15 @@ function situation(opts) {
     for(var i=0;i<7;i++){var d=new Date(m);d.setDate(m.getDate()+i);var c=getCycleVac(d).cycleVac;if(c&&c!=='RH'){var k=dk(d);
       S.customVacs=S.customVacs||{};S.customVacs.X={deb:'06h00',fin:'20h00',dur:840,panier:false,hidden:true,label:'X',primes:{}};
       S.overrides=S.overrides||{};S.overrides[k]={vac:'X',fromSV:false,echange:false,hs:false,formation:false,motif:'autre'};
-      var w1=calcHSWeek(m).surplus>0;S.overrides[k].motif='detache';return [w1,calcHSWeek(m).surplus,_dayHSMin(d)];}}})()`), [true, 0, 0]);
+      var w1=calcHSWeek(m).surplus>0;S.overrides[k].motif='detache';return [w1,calcHSWeek(m).surplus,_dayHSMin(d)];}}})()`), [true, 0, 0]);  eq('Détachement syndical : pas d\'heures sup non plus', a.run(`(function(){var m=getMonday(new Date(2026,9,5,12));
+    for(var i=0;i<7;i++){var d=new Date(m);d.setDate(m.getDate()+i);var k=dk(d);if(S.overrides&&S.overrides[k]&&S.overrides[k].vac==='X'){
+      S.overrides[k].motif='syndic';return [calcHSWeek(m).surplus,_dayHSMin(d)];}}})()`), [0, 0]);
+}
+// Pool cadre : cycle de 5 semaines, ligne placée sur la semaine en cours
+{
+  const a = load('2026-10-01');
+  eq('Pool cadre : 5 lignes et vacations du cycle', a.run(`(function(){S.profile.pool='cadre';var m=getMonday(NOW),n=getCycleLen(NOW);
+    S.profile.anchorLine=((1-Math.round((m-ANCHOR)/(7*864e5)))%n+n)%n;var r=[n,lineIdx(m),getCycleVac(m).cycleVac];delete S.profile.pool;return r;})()`), [5, 1, 'P422V']);
 }
 
 // Report automatique : appliqué à l'échéance ; avant, « prévu » (7h ou moins restantes) et compté seulement « sous réserve »

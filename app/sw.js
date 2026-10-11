@@ -1,4 +1,4 @@
-const SW_VERSION = '10.2';
+const SW_VERSION = '10.3';
 const PAGES = 'pl-pages-v1';   // dernière version de l'app, pour l'ouvrir hors connexion
 const ASSETS = 'pl-assets-v1'; // icônes (CDN)
 
@@ -15,21 +15,24 @@ self.addEventListener('activate', function(e) {
 self.addEventListener('fetch', function(event) {
   const req = event.request;
   if (req.method !== 'GET') return;
-  // Pages : réseau d'abord (toujours la dernière version), copie gardée pour le hors connexion
+  // Pages : la copie gardée s'affiche tout de suite (au lancement, l'écran resterait blanc le temps du réseau),
+  // la dernière version est mise de côté en même temps ; l'app se recharge dessus si elle a changé.
+  // Rechargement demandé (actualiser) ou pas encore de copie : réseau d'abord.
   if (req.mode === 'navigate') {
+    const key = req.url.split('?')[0];
     const fresh = new Request(req.url, {
       method: 'GET',
       headers: { 'Cache-Control': 'no-cache, no-store', 'Pragma': 'no-cache' },
       cache: 'no-store'
     });
-    event.respondWith(
-      fetch(fresh).then(function(res) {
-        if (res && res.ok) { const copy = res.clone(); caches.open(PAGES).then(function(c) { c.put(req.url.split('?')[0], copy); }); }
-        return res;
-      }).catch(function() {
-        return caches.match(req.url.split('?')[0], { cacheName: PAGES }).then(function(r) { return r || caches.match(req); });
-      })
-    );
+    const net = fetch(fresh).then(function(res) {
+      if (res && res.ok) { const copy = res.clone(); return caches.open(PAGES).then(function(c) { return c.put(key, copy); }).then(function() { return res; }); }
+      return res;
+    });
+    event.waitUntil(net.catch(function() {}));
+    const fromNet = function() { return net.catch(function() { return caches.match(key, { cacheName: PAGES }).then(function(r) { return r || caches.match(req); }); }); };
+    if (req.cache === 'reload' || req.cache === 'no-cache' || req.cache === 'no-store') { event.respondWith(fromNet()); return; }
+    event.respondWith(caches.match(key, { cacheName: PAGES }).then(function(hit) { return hit || fromNet(); }));
     return;
   }
   // Icônes (feuille de style + polices du CDN) : cache d'abord, mise à jour en arrière-plan
