@@ -8,7 +8,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v4.98">
+<meta name="app-version" content="v4.99">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -851,6 +851,7 @@ body.su-on .overlay{z-index:1100} /* confirmation de suppression du compte : par
 #setup .su-choice{width:100%;display:flex;gap:10px;align-items:flex-start;text-align:left;padding:12px 14px;margin:0 0 8px;border:none;border-radius:16px;background:rgba(255,250,243,.05);color:var(--text2);cursor:pointer;font:400 12px/1.45 var(--font);box-shadow:inset .5px .5px 0 rgba(255,250,243,.12),inset -.5px -.5px 0 rgba(255,250,243,.04)}
 #setup .su-choice b{display:block;font-size:13.5px;font-weight:600;color:var(--text);margin-bottom:2px}#setup .su-choice i{font-size:20px;color:var(--text3);margin-top:1px}
 #setup .su-choice.on{background:rgba(98,170,220,.16);box-shadow:inset 0 0 0 1px var(--blue)}#setup .su-choice.on i{color:var(--blue)}#setup .su-choice:disabled{opacity:.5;cursor:default}
+#setup .su-vals{display:flex;gap:18px;font-size:12.5px;color:var(--text2);margin:2px 2px 6px}#setup .su-vals b{color:var(--text);font-weight:600;margin-left:3px}
 #setup .su-tag{display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;background:rgba(106,152,120,.25);color:var(--green);font-size:10.5px;font-weight:600;vertical-align:1px}
 #setup .su-nv{margin:0 0 8px 18px;font-size:12px;color:var(--amber);line-height:1.5}
 #setup .su-fold{margin:6px 0 0}#setup .su-fold summary{font-size:12px;color:var(--blue);cursor:pointer;padding:6px 2px;list-style:none}#setup .su-fold summary::-webkit-details-marker{display:none}#setup .su-fold[open] summary{margin-bottom:6px}
@@ -4656,24 +4657,27 @@ function _suStep2(){
 
 // 4. Tableau Gestion : le plus récent (solde actuel, référence de la vérification) et, pour un mois passé, celui de départ (facultatif)
 function _suStep3(){
-  var D=_suFromYM(),m=SU.rhMode,P=SU.rh&&SU.rh.P,S0=SU.rh0&&SU.rh0.P,fd=function(d){return d.toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'});};
+  var D=_suFromYM(),m=SU.rhMode,P=SU.rh&&SU.rh.P,S0=SU.rh0&&SU.rh0.P,mD=D!=null?ML[D%12].toLowerCase():'',
+    fd=function(d){return d.toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'});},fs=function(d){return d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'});},
+    vals=function(p){return '<div class="su-vals"><span>Matelas <b>'+(p.matelas!=null?fmtMin(p.matelas):'—')+'</b></span><span>Rendus à poser <b>'+fmtMin(Math.round(p.total))+'</b></span></div>';};
   var h=_suHd('Tableau Gestion',2)
-    +_suSec(m==='man'&&D!=null?'Soldes de départ':'Le plus récent')
-    +'<div class="su-seg"><button class="'+(m==='imp'?'on':'')+'" onclick="_suRhPick(0)">'+(SU.rhBusy===0?'<span class="su-spin"></span>Lecture…':SU.rh?'✓ Tableau du '+P.ed.toLocaleDateString('fr-FR',{day:'numeric',month:'short'}):'Importer le tableau')+'</button>'
+    +_suSec(m==='man'&&D!=null?'Vos soldes au 1er '+_suMoisL(D):'Votre dernier tableau')
+    +'<div class="su-seg"><button class="'+(m==='imp'?'on':'')+'" onclick="_suRhPick(0)">'+(SU.rhBusy===0?'<span class="su-spin"></span>Lecture…':SU.rh?'✓ Tableau du '+fs(P.ed):'Importer le tableau')+'</button>'
     +'<button class="'+(m==='man'?'on':'')+'" onclick="_suRead();if(SU.rhMode!==\'man\')SU.anim=\'rh\';SU.rhMode=\'man\';_suDraw()">Saisir à la main</button></div>';
   if(SU.rhErr)h+='<div class="su-err">'+_suEsc(SU.rhErr)+'</div>';
-  if(!m)h+='<div class="su-note"><b>Recommandé</b> · le fichier Excel envoyé par le gestionnaire : matelas et heures mois par mois, avec leurs dates d’expiration et leurs reports. Lu sur l’appareil, rien n’est envoyé.</div>';
-  if(m==='imp'&&P)h+='<div class="su-note">'+(D!=null?'Il sert de référence : l’app y compare ses heures depuis '+_suMoisL(D)+'.':'Valeurs du '+fd(P.ed)+' (modifiables) :')+'</div>';
-  if(m==='man')h+='<div class="su-note">'+(D!=null?'Les soldes au 1er '+_suMoisL(D)+' (tableau Gestion de cette période ; 0h00 s’il n’y en a pas).':'Les deux soldes du dernier tableau Gestion (0h00 s’il n’y en a pas).')+'</div>';
+  if(!m)h+='<div class="su-note">Le dernier fichier Excel envoyé par le gestionnaire. L’app y lit le matelas et les heures mois par mois, avec leurs expirations et leurs reports. Lu sur l’appareil, rien n’est envoyé.</div>';
+  if(m==='imp'&&P&&D!=null)h+=vals(P)+'<div class="su-note">L’app recalcule vos heures depuis '+_suMoisL(D)+' et les compare à ce tableau, mois par mois.</div>';
+  if(m==='imp'&&P&&D==null)h+='<div class="su-note">Valeurs du '+fd(P.ed)+' (modifiables) :</div>';
+  if(m==='man')h+='<div class="su-note">'+(D!=null?'Les soldes du tableau Gestion reçu en '+_suMoisL(D)+' (0h00 s’il n’y en a pas).':'Les deux soldes du dernier tableau Gestion (0h00 s’il n’y en a pas).')+'</div>';
   if(m==='man'||(m==='imp'&&P&&D==null))h+='<div class="'+(SU.anim==='rh'?'su-in':'')+'">'+_suRow('Matelas<small>stock permanent</small>','<input type="text" data-k="mat" placeholder="00h00" oninput="_suRead();_suOk3()" value="'+_suEsc(SU.v.mat||'')+'">')
     +_suRow('Rendus à poser<small>heures encore valables</small>','<input type="text" data-k="eph" placeholder="00h00" oninput="_suRead();_suOk3()" value="'+_suEsc(SU.v.eph||'')+'">')+'</div>';
-  // mois passé + tableau importé : tableau de départ, facultatif
+  // vérification depuis un mois passé : le tableau de ce mois-là, facultatif
   if(D!=null&&m==='imp'&&P&&D<P.edYM){
-    h+=_suSec('Tableau de départ · facultatif')
-      +'<div class="su-seg"><button class="'+(SU.rh0?'on':'')+'" onclick="_suRhPick(1)">'+(SU.rhBusy===1?'<span class="su-spin"></span>Lecture…':SU.rh0?'✓ Tableau du '+S0.ed.toLocaleDateString('fr-FR',{day:'numeric',month:'short'}):'Importer le tableau de '+ML[D%12].toLowerCase())+'</button></div>';
+    h+=_suSec('Votre tableau de '+mD+' · facultatif')
+      +'<div class="su-seg"><button class="'+(SU.rh0?'on':'')+'" onclick="_suRhPick(1)">'+(SU.rhBusy===1?'<span class="su-spin"></span>Lecture…':SU.rh0?'✓ Tableau du '+fs(S0.ed):'Importer le tableau de '+mD)+'</button></div>';
     if(SU.rh0Err)h+='<div class="su-err">'+_suEsc(SU.rh0Err)+'</div>';
-    h+='<div class="su-note">'+(SU.rh0?'Solde de départ repris de ce tableau : les rendus décomptés depuis sont vérifiés aussi.'
-      :'Le tableau reçu en '+_suMoisL(D)+' (ou juste avant). Sans lui, l’app reconstitue le solde de départ à partir du plus récent, mais ne peut pas vérifier les rendus décomptés avant le '+fd(P.ed)+'.')+'</div>';
+    h+=SU.rh0?vals(S0)+'<div class="su-note">Vos soldes au départ viennent de ce tableau. Les rendus que le gestionnaire a retirés depuis sont vérifiés aussi.</div>'
+      :'<div class="su-note">Le tableau reçu en '+mD+' (ou juste avant). Avec lui, l’app vérifie aussi les rendus retirés par le gestionnaire entre '+mD+' et le '+P.ed.toLocaleDateString('fr-FR',{day:'numeric',month:'long'})+'. Sans lui, elle déduit vos soldes de '+mD+' du dernier tableau.</div>';
   }
   h+=_suSec('Génération des rendus')
     +_suRow('Dimanches',_suTgl('dimRendu'))+_suRow('RH travaillés',_suTgl('rhRendu'))+_suRow('Fériés',_suTgl('ferRendu'))+_suRow('Heures sup.',_suTgl('hsRendu'))
@@ -4739,7 +4743,7 @@ function _suMoisList(yms){var y=Math.floor(yms[yms.length-1]/12),same=yms.every(
 function _suStart(){var D=_suFromYM();if(D!=null)return new Date(Math.floor(D/12),D%12,1,12);return SU.rh?new Date(SU.rh.P.ed):new Date(NOW);}
 function _suStep5(){
   var D=_suFromYM(),st=_suStart(),fd=st.toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}).replace(/^1 /,'1er '),nv=[],miss=_suBulNeed().filter(function(ym){return !SU.bul[ym];});
-  if(D!=null&&SU.rh&&!SU.rh0)nv.push('les rendus décomptés par le gestionnaire avant le '+SU.rh.P.ed.toLocaleDateString('fr-FR',{day:'numeric',month:'long'})+' (pas de tableau de départ)');
+  if(D!=null&&SU.rh&&!SU.rh0)nv.push('les rendus retirés par le gestionnaire entre '+ML[D%12].toLowerCase()+' et le '+SU.rh.P.ed.toLocaleDateString('fr-FR',{day:'numeric',month:'long'})+' (pas de tableau de '+ML[D%12].toLowerCase()+')');
   if(D!=null&&miss.length&&!Object.keys(SU.bul).length)nv.push('la paie depuis '+_suMoisL(D)+' (aucun bulletin importé)');
   else if(D!=null&&miss.length)nv.push('la paie '+_suMoisList(miss.map(function(x){return x-1;})).replace(/^d[e’']\s?/,'de ')+' (bulletin'+(miss.length>1?'s':'')+' manquant'+(miss.length>1?'s':'')+')');
   if(D!=null&&SU.rhMode==='man')nv.push('le tableau Gestion (soldes saisis à la main : à importer ensuite dans Réglages)');
