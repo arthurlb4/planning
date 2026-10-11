@@ -1541,6 +1541,8 @@ async function cleanupLines() {
 }
 
 // CYCLES
+// Équipes : chaque cycle appartient à une équipe (sans précision : antenne). L'app prend les cycles de l'équipe du profil.
+const POOL_L = { antenne: 'Antenne', cadre: 'Pool cadre', coord: 'Coordination' };
 async function loadCycles() {
   const el = document.getElementById('cycles-list');
   el.innerHTML = '<div class="empty">Chargement...</div>';
@@ -1557,7 +1559,7 @@ async function loadCycles() {
       const end = c.endDate ? ' → ' + c.endDate : ' (sans fin)';
       const weeks = (c.weeks || []).length;
       return '<div class="cycle-card">'
-        + '<div class="cycle-hdr"><div><div class="cycle-name">' + (c.name||'Cycle') + '</div><div class="cycle-dates">' + start + end + ' · ' + weeks + ' semaines</div></div>'
+        + '<div class="cycle-hdr"><div><div class="cycle-name">' + (c.name||'Cycle') + '</div><div class="cycle-dates">' + (POOL_L[c.pool||'antenne']||'Antenne') + ' · ' + start + end + ' · ' + weeks + ' semaines</div></div>'
         + '<div style="display:flex;gap:6px">'
         + '<button class="btn btn-sm" onclick="showCreateCycle(_adminCycles[' + idx + '])">Modifier</button>'
         + '<button class="btn btn-sm btn-ghost" onclick="duplicateCycle(' + idx + ')">Dupliquer</button>'
@@ -1585,7 +1587,8 @@ async function showCreateCycle(prefillData) {
     globalVacs = d.vacations || {};
   } catch(e) {}
   // All vacation codes including custom
-  const BASE_VACS = ['null','RH','A1','A2','A3','B1','C1','C2','D1','D2','P423','As1','As2','As3','Cs','Es','Fs','Ad1','Ad2','Ad3','Cd','Ed','Fd'];
+  const BASE_VACS = ['null','RH','A1','A2','A3','B1','C1','C2','D1','D2','P423','As1','As2','As3','Cs','Es','Fs','Ad1','Ad2','Ad3','Cd','Ed','Fd',
+    'M','S','Pj','Pv','B2V','C3V','P422V','MIXTE','Ds','Dd','BsV','BdV']; // + coordination et pool cadre
   const CUSTOM_VACS = Object.keys(globalVacs).filter(v => !BASE_VACS.includes(v));
   const ALL_VACS = [...BASE_VACS, ...CUSTOM_VACS];
   const DAYS = ['Lu','Ma','Me','Je','Ve','Sa','Di'];
@@ -1611,7 +1614,8 @@ async function showCreateCycle(prefillData) {
   mc.innerHTML = '<h2>' + (prefillData ? 'Modifier le cycle' : 'Nouveau cycle') + '</h2>'
     + '<div class="row"><div class="flex1 field"><label>Nom</label><input type="text" id="cyc-name" value="' + (prefillData ? prefillData.name||'' : '') + '" placeholder="Ex: Cycle été 2026"></div>'
     + '<div class="flex1 field"><label>Date de début</label><input type="date" id="cyc-start" value="' + (prefillData ? prefillData.startDate||'' : '') + '"></div>'
-    + '<div class="flex1 field"><label>Date de fin (optionnel)</label><input type="date" id="cyc-end" value="' + (prefillData&&prefillData.endDate ? prefillData.endDate : '') + '"></div></div>'
+    + '<div class="flex1 field"><label>Date de fin (optionnel)</label><input type="date" id="cyc-end" value="' + (prefillData&&prefillData.endDate ? prefillData.endDate : '') + '"></div>'
+    + '<div class="flex1 field"><label>Équipe</label><select id="cyc-pool">' + Object.keys(POOL_L).map(k => '<option value="' + k + '"' + (((prefillData && prefillData.pool) || 'antenne') === k ? ' selected' : '') + '>' + POOL_L[k] + '</option>').join('') + '</select></div></div>'
     + '<div class="field"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><label id="cyc-grid-lbl">Grille du cycle (' + window._cycleWeeks.length + ' semaines × 7 jours)</label>'
     + '<div style="display:flex;gap:4px"><button class="btn btn-sm btn-ghost" onclick="addCycleWeek()">+ Semaine</button><button class="btn btn-sm btn-ghost" onclick="removeCycleWeek()">- Semaine</button></div></div>'
     + '<div style="overflow-x:auto" id="cyc-grid-wrap">' + gridHtml + '</div></div>'
@@ -1720,7 +1724,8 @@ async function doSaveCycle(existingId) {
   const weeks = window._cycleWeeks.map(w => w.map(v => (!v || v === 'null' || v === 'SV') ? null : v));
   if (!weeks.length || weeks.some(w => !w || w.length !== 7)) { errEl.textContent = 'Chaque semaine doit avoir 7 jours.'; return; }
   const endpoint = existingId ? '/admin/cycle/update' : '/admin/cycle/create';
-  const body = { cycle: { id: existingId||undefined, name, startDate, endDate, anchor, weeks } };
+  const pool = (document.getElementById('cyc-pool') || {}).value || 'antenne';
+  const body = { cycle: { id: existingId||undefined, name, startDate, endDate, anchor, weeks, pool } };
   const res = await fetch(API + endpoint, { method: 'POST', headers: adminHeaders(), body: JSON.stringify(body) });
   const data = await res.json();
   if (res.ok) {

@@ -60,9 +60,12 @@ function situation(opts) {
 {
   const a = situation({});
   eq('Rappels : juillet (18h00) fin octobre, août (3h23) fin novembre',
-    a.run('_pushAlerts().map(function(x){return x.at+" "+x.body;})'),
+    a.run('_pushAlerts().filter(function(x){return x.tag.indexOf("exp-")===0;}).map(function(x){return x.at+" "+x.body;})'),
     ['2026-10-17 18h00 expirent fin octobre. Poser un rendu pour ne pas les perdre.', '2026-10-28 18h00 expirent le 31 octobre.',
      '2026-11-16 3h23 expirent fin novembre. Poser un rendu pour ne pas les perdre.', '2026-11-27 3h23 expirent le 30 novembre.']);
+  eq('Rappels : bulletin le 1er, tableau Gestion le 20',
+    a.run('_pushAlerts().filter(function(x){return x.tag.indexOf("exp-")!==0;}).slice(0,3).map(function(x){return x.at+" "+x.title;})'),
+    ['2026-10-01 Bulletin de paie', '2026-10-20 Tableau Gestion', '2026-11-01 Bulletin de paie']);
 }
 // 5. Lecture du tableau RH (faux tableau, même structure que celui du gestionnaire)
 {

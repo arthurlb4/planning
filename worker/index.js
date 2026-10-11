@@ -532,7 +532,8 @@ async function handle(request, env, ctx) {
       var cycles = await env.PLANNING_DB.get('global:cycles', { type: 'json' }) || [];
       cycle.id = randToken(8);
       cycle.createdAt = Date.now();
-      var activeCycle = cycles.find(function(c){ return !c.endDate || c.endDate > new Date().toISOString().slice(0,10); });
+      // même équipe seulement (antenne, pool cadre, coordination) : le cycle d'une autre équipe ne change pas les lignes
+      var activeCycle = cycles.find(function(c){ return (c.pool || 'antenne') === (cycle.pool || 'antenne') && (!c.endDate || c.endDate > new Date().toISOString().slice(0,10)); });
       var weekCountChanged = !activeCycle || activeCycle.weeks.length !== cycle.weeks.length;
       cycle.weekCountChanged = weekCountChanged;
       cycles.push(cycle);
