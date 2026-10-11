@@ -8,7 +8,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v5.18">
+<meta name="app-version" content="v5.19">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -853,6 +853,7 @@ body.su-on .overlay{z-index:1100} /* confirmation de suppression du compte : par
 #setup .su-choice.on{background:rgba(98,170,220,.16);box-shadow:inset 0 0 0 1px var(--blue)}#setup .su-choice.on i{color:var(--blue)}#setup .su-choice:disabled{opacity:.5;cursor:default}
 #setup .su-lead{font-size:13px;color:var(--text2);line-height:1.45;text-align:center;margin:-2px 4px 12px}#setup .su-hint{font-size:11.5px;color:var(--text3);text-align:center;margin:0 0 10px}
 #setup .su-sum{border-radius:16px;background:rgba(255,250,243,.05);box-shadow:inset .5px .5px 0 rgba(255,250,243,.12),inset -.5px -.5px 0 rgba(255,250,243,.04);padding:4px 14px}#setup .su-sum>div{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:9px 0;border-bottom:.5px solid var(--border2)}#setup .su-sum>div:last-child{border-bottom:none}#setup .su-sum span{font-size:12px;color:var(--text3);white-space:nowrap}#setup .su-sum b{white-space:nowrap}#setup .su-sum b{font-size:13px;font-weight:500;color:var(--text);line-height:1.45;text-align:right}
+body .su-ptr{position:fixed;left:50%;top:max(14px,env(safe-area-inset-top));margin:0 0 0 -14px;z-index:1200;opacity:0;pointer-events:none}
 #setup .su-tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:4px 0 6px}#setup .su-tiles>div{border-radius:16px;background:rgba(255,250,243,.05);box-shadow:inset .5px .5px 0 rgba(255,250,243,.12),inset -.5px -.5px 0 rgba(255,250,243,.04);padding:10px 12px;text-align:center}#setup .su-tiles small{display:block;font-size:11px;color:var(--text3)}#setup .su-tiles b{display:block;font:600 20px var(--font-num);color:var(--blue);margin:2px 0}#setup .su-tiles span{display:block;font-size:10.5px;color:var(--text3)}#setup .su-tsub{font-size:11.5px;color:var(--text3);text-align:center;margin:0 0 6px}
 #setup .su-vals{display:flex;gap:18px;font-size:12.5px;color:var(--text2);margin:2px 2px 6px}#setup .su-vals b{color:var(--text);font-weight:600;margin-left:3px}
 #setup .su-fl{list-style:none;margin:0;padding:0}#setup .su-fl li{position:relative;padding-left:12px;font-size:12px;color:var(--text2);line-height:1.45}#setup .su-fl li::before{content:'•';position:absolute;left:0;color:var(--text3)}
@@ -4582,7 +4583,9 @@ function _suEsc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){ret
 function _suOpen(){
   if(document.getElementById('setup'))return;
   SU={step:0,rh:null,rh0:null,rhBusy:null,rhMode:null,bul:{},bulMode:null,v:{line:'',dimRendu:true,rhRendu:true,ferRendu:true,hsRendu:true,pfa:0,pct:100}};
+  _suRestore();
   var el=document.createElement('div');el.id='setup';document.body.appendChild(el);document.body.classList.add('su-on');
+  _suPullRefresh(el);
   // Retour du téléphone ou du navigateur : étape précédente, et depuis la première, l'écran de connexion (le compte est déjà enregistré)
   // iPhone : pas d'entrée d'historique (le glissement retour afficherait une page blanche) ; la flèche ‹ de chaque écran suffit
   var ios=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
@@ -4593,6 +4596,20 @@ function _suOpen(){
     if(SU.step>0){try{history.pushState({su:1},'');}catch(e){}_suGo(SU.step-1);}else signOut();});}
   _suDraw();
 }
+// Actualiser en tirant vers le bas (comme dans l'app) : la saisie est gardée le temps du rechargement et reprise à la même étape
+function _suSave(){try{_suRead();sessionStorage.setItem('pl_su',JSON.stringify({step:SU.step,v:SU.v,rhMode:SU.rhMode,rh:SU.rh?{cells:SU.rh.cells,name:SU.rh.name}:null,bul:SU.bul,bulMode:SU.bulMode,aviFrom:SU.aviFrom,anniR:SU.anniR}));}catch(e){}}
+function _suRestore(){var o=null;try{o=JSON.parse(sessionStorage.getItem('pl_su')||'null');sessionStorage.removeItem('pl_su');}catch(e){}if(!o)return;
+  SU.step=o.step||0;SU.v=o.v||SU.v;SU.rhMode=o.rhMode||null;SU.bul=o.bul||{};SU.bulMode=o.bulMode||null;SU.aviFrom=o.aviFrom;SU.anniR=o.anniR||null;
+  if(o.rh){try{var rh=_rhParse(o.rh.cells,o.rh.name);SU.rh={cells:o.rh.cells,name:o.rh.name,rh:rh,P:_rhImportPlan(rh)};}catch(e){SU.rhMode=null;}}}
+function _suPullRefresh(el){var y0=null,dy=0,trig=false,w=null;
+  var show=function(p){if(!w){w=document.createElement('div');w.className='bt-ptr su-ptr';w.innerHTML=window._bootSpinSvg||'';document.body.appendChild(w);}
+    w.style.opacity=String(Math.min(1,p*1.4));w.style.transform='translateY('+Math.round(Math.min(1,p)*40)+'px) scale('+(.6+.4*Math.min(1,p))+')';};
+  var hide=function(){if(!w)return;var x=w;w=null;x.style.transition='opacity .2s ease,transform .2s ease';x.style.opacity='0';x.style.transform='translateY(0) scale(.6)';setTimeout(function(){x.remove();},220);};
+  el.addEventListener('touchstart',function(e){y0=el.scrollTop<=0&&e.touches[0].clientX>28?e.touches[0].clientY:null;dy=0;trig=false;},{passive:true});
+  el.addEventListener('touchmove',function(e){if(y0==null)return;dy=e.touches[0].clientY-y0;if(dy<=0){if(w)hide();return;}
+    var p=dy/110;show(p);var was=trig;trig=p>=1;if(trig&&!was)_haptic();},{passive:true});
+  el.addEventListener('touchend',function(){if(y0==null)return;y0=null;if(!trig){hide();return;}
+    if(w)w.classList.add('spin');_suSave();setTimeout(function(){location.reload();},350);},{passive:true});}
 // Glisser depuis le bord gauche : étape précédente (la carte suit le doigt), sans passer par l'historique
 function _suSwipeBack(el){var x0=null,y0=0,dx=0,on=false,card=function(){return el.querySelector('.su-card');};
   el.addEventListener('touchstart',function(e){var t=e.touches[0];x0=SU&&SU.step>0&&t.clientX<28?t.clientX:null;y0=t.clientY;dx=0;on=false;},{passive:true});
