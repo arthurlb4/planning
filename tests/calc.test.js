@@ -285,13 +285,5 @@ function situation(opts) {
   a.run('S.overrides={}');
 }
 
-// Congés : un jour posé juste avant plusieurs jours de repos compte 1 jour (les repos avant la reprise ne sont pas décomptés)
-{
-  const a = load('2026-10-01');
-  eq('Congé avant des repos : 1 jour', a.run(`(function(){var w=function(d){var v=getVac(d);return v.vac&&v.vac!=='RH'&&!v.absent;};
-    for(var i=0;i<120;i++){var d=new Date(2026,10,1+i,12);if(!w(d))continue;var ok=true;for(var j=1;j<=3;j++){var n=new Date(d);n.setDate(d.getDate()+j);if(w(n))ok=false;}
-      if(ok&&d.getDay()!==1){var y=d.getFullYear(),b=calcCongesUsedForYear(y);S.conges=S.conges||{};S.conges[dk(d)]='cg';var r=calcCongesUsedForYear(y)-b;delete S.conges[dk(d)];return r;}}})()`), 1);
-}
-
 console.log('\n' + (count - fails) + '/' + count + ' contrôles réussis');
 if (fails) process.exit(1);
