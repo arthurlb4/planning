@@ -8,7 +8,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v5.15">
+<meta name="app-version" content="v5.16">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -851,6 +851,8 @@ body.su-on .overlay{z-index:1100} /* confirmation de suppression du compte : par
 #setup .su-choice{box-sizing:border-box;border-radius:16px!important;width:100%;display:flex;gap:10px;align-items:flex-start;text-align:left;padding:12px 14px;margin:0 0 8px;border:none;border-radius:16px;background:rgba(255,250,243,.05);color:var(--text2);cursor:pointer;font:400 12px/1.45 var(--font);box-shadow:inset .5px .5px 0 rgba(255,250,243,.12),inset -.5px -.5px 0 rgba(255,250,243,.04)}
 #setup .su-choice b{display:block;font-size:13.5px;font-weight:600;color:var(--text);margin-bottom:2px}#setup .su-choice i{font-size:20px;color:var(--text3);margin-top:1px}
 #setup .su-choice.on{background:rgba(98,170,220,.16);box-shadow:inset 0 0 0 1px var(--blue)}#setup .su-choice.on i{color:var(--blue)}#setup .su-choice:disabled{opacity:.5;cursor:default}
+#setup .su-lead{font-size:13px;color:var(--text2);line-height:1.45;text-align:center;margin:-2px 4px 12px}#setup .su-hint{font-size:11.5px;color:var(--text3);text-align:center;margin:0 0 10px}
+#setup .su-sum{border-radius:16px;background:rgba(255,250,243,.05);box-shadow:inset .5px .5px 0 rgba(255,250,243,.12),inset -.5px -.5px 0 rgba(255,250,243,.04);padding:4px 14px}#setup .su-sum>div{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:9px 0;border-bottom:.5px solid var(--border2)}#setup .su-sum>div:last-child{border-bottom:none}#setup .su-sum span{font-size:12px;color:var(--text3);white-space:nowrap}#setup .su-sum b{white-space:nowrap}#setup .su-sum b{font-size:13px;font-weight:500;color:var(--text);line-height:1.45;text-align:right}
 #setup .su-tiles{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:4px 0 6px}#setup .su-tiles>div{border-radius:16px;background:rgba(255,250,243,.05);box-shadow:inset .5px .5px 0 rgba(255,250,243,.12),inset -.5px -.5px 0 rgba(255,250,243,.04);padding:10px 12px;text-align:center}#setup .su-tiles small{display:block;font-size:11px;color:var(--text3)}#setup .su-tiles b{display:block;font:600 20px var(--font-num);color:var(--blue);margin:2px 0}#setup .su-tiles span{display:block;font-size:10.5px;color:var(--text3)}#setup .su-tsub{font-size:11.5px;color:var(--text3);text-align:center;margin:0 0 6px}
 #setup .su-vals{display:flex;gap:18px;font-size:12.5px;color:var(--text2);margin:2px 2px 6px}#setup .su-vals b{color:var(--text);font-weight:600;margin-left:3px}
 #setup .su-fl{list-style:none;margin:0;padding:0}#setup .su-fl li{position:relative;padding-left:12px;font-size:12px;color:var(--text2);line-height:1.45}#setup .su-fl li::before{content:'•';position:absolute;left:0;color:var(--text3)}
@@ -4651,22 +4653,27 @@ function _suMoisL(ym){return ML[ym%12].toLowerCase()+' '+Math.floor(ym/12);}
 // Puces : une idée par ligne
 function _suPts(a,cls){return '<ul class="su-fl'+(cls?' '+cls:'')+'">'+a.filter(Boolean).map(function(l){return '<li>'+l+'</li>';}).join('')+'</ul>';}
 // Ce qu'implique un mois de départ : à entrer, paies vérifiées, tableau Gestion vérifié
-function _suFromPts(m,cls){var g=Math.max(m,NOW.getFullYear()*12);
-  return _suPts([g>m?'<b>À entrer</b> → vacations modifiées depuis le 1er '+_suMoisL(m)+' · rendus et congés depuis le 1er janvier':'<b>À entrer</b> → vacations modifiées et rendus depuis le 1er '+_suMoisL(m)+' · congés depuis le 1er janvier',
-    '<b>Paies vérifiées</b> → à partir de celle '+_deMois(m+1)+' '+Math.floor((m+1)/12)+(m+1===NOW.getFullYear()*12?', qui paie décembre':''),
-    SU.rhMode==='man'?'<b>Tableau Gestion</b> → non vérifié (soldes saisis à la main)':'<b>Tableau Gestion vérifié</b> → depuis '+_suMoisL(g)],cls);}
+// Ce qu'implique le mois choisi, en trois lignes : libellé à gauche, dates à droite
+function _suFromSum(m){var g=Math.max(m,NOW.getFullYear()*12),ms=_suMoisL,sm=function(ym){var n=MCs[ym%12];return (n.length<ML[ym%12].length?n+'.':n)+' '+Math.floor(ym/12);},row=function(l,v){return '<div><span>'+l+'</span><b>'+v+'</b></div>';};
+  return '<div class="su-sum">'
+    +(g>m?row('Vacations modifiées','dès le 1er '+sm(m))+row('Rendus et congés','dès le 1er '+sm(g)):row('Vacations et rendus','dès le 1er '+sm(m))+row('Congés','dès le 1er janvier'))
+    +row('Paies vérifiées','dès celle '+_deMois(m+1)+' '+Math.floor((m+1)/12))
+    +row('Gestion vérifiée',SU.rhMode==='man'?'non (saisie à la main)':'dès '+ms(g))
+    +'</div>';}
 function _suStep2(){
   var u=_suTabYM(),top=u!=null?Math.min(u,TODAY_YM):TODAY_YM,M=[];for(var ym=top;ym>=TODAY_YM-24;ym--)M.push(ym);
   if(SU.v.fromYM==null||SU.v.fromYM===''||M.indexOf(+SU.v.fromYM)<0)SU.v.fromYM=M.indexOf(_SU_REC_YM)>=0?_SU_REC_YM:top;
-  SU.v.from='month';var f=+SU.v.fromYM;
-  var sel='<select data-k="fromYM" onchange="_suRead();_suDraw()" class="su-msel">'+M.map(function(ym){return '<option value="'+ym+'"'+(f===ym?' selected':'')+'>'+capitalize(_suMoisL(ym))+(ym===_SU_REC_YM?' · recommandé':ym===top?(u!=null&&u<TODAY_YM?' · le plus récent':' · ce mois-ci'):'')+'</option>';}).join('')+'</select>'
-    +(u!=null&&u<TODAY_YM?'<div class="su-note" style="margin:-2px 2px 6px">Pas plus tard que '+_suMoisL(u)+' → votre tableau Gestion s’arrête fin '+ML[(u+11)%12].toLowerCase()+'</div>':'');
+  SU.v.from='month';var f=+SU.v.fromYM,late=u!=null&&u<TODAY_YM;
+  var sel='<select data-k="fromYM" onchange="_suRead();_suDraw()" class="su-msel">'+M.map(function(ym){return '<option value="'+ym+'"'+(f===ym?' selected':'')+'>'+capitalize(_suMoisL(ym))+(ym===_SU_REC_YM?' · recommandé':ym===top?(late?' · le plus récent':' · ce mois-ci'):'')+'</option>';}).join('')+'</select>';
+  // une seule ligne sous le menu : la recommandation, ou pourquoi le menu s'arrête là
+  var hint=f===_SU_REC_YM?'<span style="color:var(--green)">Toutes les paies de '+NOW.getFullYear()+' vérifiées</span>'
+    :late&&f===top?'Votre tableau Gestion s’arrête fin '+ML[(u+11)%12].toLowerCase()
+    :capitalize(_suMoisL(_SU_REC_YM))+' recommandé → toutes les paies de '+NOW.getFullYear()+' vérifiées';
   return _suHd('Depuis quel mois&nbsp;?',2)
-    +_suPts(['Vos heures comparées au tableau Gestion et aux bulletins','Pour ça → entrer ce qui s’écarte du cycle depuis ce mois : échanges, horaires, absences, formations, rendus'],'su-big')
-    +sel
-    +(f===_SU_REC_YM?'<div class="su-note" style="color:var(--green);margin:-2px 2px 6px">Recommandé → toutes les paies de '+NOW.getFullYear()+' vérifiées</div>'
-      :'<div class="su-note" style="margin:-2px 2px 6px">'+capitalize(_suMoisL(_SU_REC_YM))+' recommandé → toutes les paies de '+NOW.getFullYear()+' vérifiées</div>')
-    +_suFromPts(f,'su-big')
+    +'<div class="su-lead">Entrez ce qui s’écarte du cycle depuis ce mois : l’app compare ensuite vos heures au tableau Gestion et aux bulletins.</div>'
+    +sel+'<div class="su-hint">'+hint+'</div>'
+    +_suFromSum(f)
+    +'<div class="su-hint" style="margin-top:8px">Écarts au cycle → échanges, horaires, absences, formations, rendus</div>'
     +'<button class="su-btn" onclick="_suGo(4)">Continuer</button>';
 }
 
