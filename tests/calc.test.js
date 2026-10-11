@@ -285,5 +285,17 @@ function situation(opts) {
   a.run('S.overrides={}');
 }
 
+// Historique : une période posée ne montre que ses jours posés (pas les repos choisis en bout de période)
+{
+  const a = load('2026-10-01');
+  eq('Historique : période resserrée sur les jours posés', a.run(`(function(){var w=function(d){var v=getVac(d);return v.vac&&v.vac!=='RH'&&!v.absent;};
+    var s=null,e=null,ks=[];for(var i=0;i<40&&!e;i++){var d=new Date(2026,10,1+i,12);if(!s){if(!w(d)){var p=new Date(d);p.setDate(d.getDate()+1);if(w(p))s=d;}continue;}
+      if(w(d))ks.push(dk(d));else if(ks.length)e=d;}
+    S.conges=S.conges||{};ks.forEach(function(k){S.conges[k]='cg';});
+    S.history=[{t:'',d:fmtDate(s)+' au '+fmtDate(e)+' -> congé',c:'',key:dk(s)}];_histClean();var h=S.history[0];
+    ks.forEach(function(k){delete S.conges[k];});_histClean();
+    return [h.key===ks[0],h.d.indexOf(fmtDate(new Date(ks[ks.length-1]+'T12:00:00')))>0,S.history.length];})()`), [true, true, 0]);
+}
+
 console.log('\n' + (count - fails) + '/' + count + ' contrôles réussis');
 if (fails) process.exit(1);

@@ -8,7 +8,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v4.93">
+<meta name="app-version" content="v4.94">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -3404,13 +3404,25 @@ function logH(detail,color,key){
   if(S.history.length>8)S.history.pop();saveState();
 }
 // Historique : retire les lignes dont le jour n'a plus aucune modification (changement annulé depuis)
-function _histClean(){if(!S.history||!S.history.length)return false;var n=S.history.length;
+function _histClean(){if(!S.history||!S.history.length)return false;var n=JSON.stringify(S.history);
   S.history=S.history.filter(function(h){var k=h&&h.key;if(!k||!/^\d{4}-\d{2}-\d{2}$/.test(k))return true;
     if(/^Semaine du /.test(String(h.d||''))){var mon=getMonday(new Date(k+'T12:00:00'));if(S.weekLines&&S.weekLines[dk(mon)]!=null)return true;
       for(var i=0;i<7;i++){var d=new Date(mon);d.setDate(mon.getDate()+i);var o=(S.overrides||{})[dk(d)];if(o&&o.echange)return true;}return false;}
-    if(/ au \S+ \d{1,2} \S+ \d{4}/.test(String(h.d||''))){var d0=new Date(k+'T12:00:00');for(var j=0;j<62;j++){var x=new Date(d0);x.setDate(d0.getDate()+j);if((S.conges||{})[dk(x)])return true;}} // période posée : un de ses jours garde un congé ou un rendu
+    if(/ au \S+ \d{1,2} \S+ \d{4}/.test(String(h.d||'')))return _histPeriod(h); // période posée : resserrée sur ses jours posés
     return !!((S.overrides||{})[k]||(S.conges||{})[k]||(S.excInfo||{})[k]||(S.extraRendus||{})[k]||(S.dayPrimes||{})[k]);});
-  return S.history.length!==n;}
+  return JSON.stringify(S.history)!==n;}
+// Période posée (« X au Y -> congé ») : seuls les jours travaillés sont posés ; la ligne va du premier au dernier jour
+// réellement posé (pas les repos choisis en bout de période), et disparaît s'il n'en reste aucun
+function _histPeriod(h){
+  var m=String(h.d||'').match(/^(.+?) au (\S+ \d{1,2} \S+ \d{4}) -> (.+)$/);if(!m)return true;
+  var pd=function(t){var x=t.match(/(\d{1,2}) (\S+) (\d{4})$/),i=x?MC.indexOf(x[2]):-1;return i<0?null:new Date(+x[3],i,+x[1],12);};
+  var a=new Date(h.key+'T12:00:00'),b=pd(m[2]),lbl=m[3];if(!b||b<a)return true;
+  var T=/^congé/.test(lbl)?['cg']:/^rendu/.test(lbl)?['rend','rend-hist']:['absent'],ks=[];
+  for(var d=new Date(a);d<=b;d.setDate(d.getDate()+1)){var k=dk(d),c=(S.conges||{})[k];if(T.indexOf(c)>=0||(T[0]==='absent'&&(S.excInfo||{})[k]))ks.push(k);}
+  if(!ks.length)return false;
+  var f=new Date(ks[0]+'T12:00:00'),l=new Date(ks[ks.length-1]+'T12:00:00');
+  h.key=ks[0];h.d=fmtDate(f)+(ks.length>1?' au '+fmtDate(l):'')+' -> '+lbl;return true;
+}
 function removeHistoryForKey(key){if(!S.history)return;S.history=S.history.filter(h=>h.key!==key);saveState();}
 function _rhMonthSections(keys,type){
   const MC2=MC;
@@ -5234,6 +5246,7 @@ function applyPose(type,startKey,unique){
   const label=type==='cg'?'congé':type==='rend'?'rendu':_xm?EXC_M[_xm].l.toLowerCase()+(EXC_M[_xm]&&EXC_M[_xm].greve?' ('+({h:'1 heure',dj:'½ journée',j:'journée'})[_xg]+')':'')+(_xh?' (½'+(_xr==='rend'?' + rendu)':')'):''):'absent';
   const color=type==='cg'?'#6a9878':type==='rend'?'#A8BF7A':'#c88048';
   logH(fmtDate(start)+(unique?'':' au '+fmtDate(end))+' -> '+label,color,startKey);
+  if(!unique&&S.history[0]&&!_histPeriod(S.history[0]))S.history.shift(); // repos en bout de période : la ligne ne les montre pas
   saveState();closeModal();render();
   gcalTrigger();
 }
