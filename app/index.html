@@ -8,7 +8,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v5.20">
+<meta name="app-version" content="v5.21">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -4801,12 +4801,15 @@ function _suStep5(){
   ok.push(imp.length||miss.length?'Paies suivantes → à chaque bulletin ajouté':'Paies dès celle '+_deMois(D+1)+' '+Math.floor((D+1)/12)+' → à chaque bulletin ajouté');
   if(SU.rhMode==='man')nv.push('Tableau Gestion → soldes saisis à la main');else ok.push('Tableau Gestion depuis '+_suMoisL(g));
   if(imp.length)ok.push('Rattrapages des mois d’avant → affichés, non vérifiés');
+  // données de paie absentes (ni bulletin ni saisie) : pas de salaire estimé ni de vérification possible
+  var noPay=!SU.v.pal;if(noPay)nv.unshift('Salaire estimé et paies → données de paie manquantes (palier, ancienneté, contrat)');
   return _suHd('Avant de commencer',4)
     +_suSec('À entrer')
     +_suPts(['<b>Vacations modifiées</b> depuis le '+fd+' · échanges, horaires, absences, formations','<b>Rendus</b> posés depuis le 1er '+_suMoisL(g),'<b>Congés</b> posés depuis le 1er janvier'],'su-big')
     +_suSec('Vérifié')+_suPts(ok,'su-big')
     +(nv.length?_suSec('Non vérifié')+_suPts(nv,'su-big su-nv'):'')
-    +'<button class="su-btn" onclick="_suDone()">C’est parti</button>';
+    +(noPay?'<button class="su-btn" style="background:rgba(255,250,243,.09);color:var(--text);margin-top:14px" onclick="_suGo(4)">Ajouter les données de paie</button>':'')
+    +'<button class="su-btn"'+(noPay?' style="margin-top:8px"':'')+' onclick="_suDone()">'+(noPay?'Continuer sans (Réglages → Paie)':'C’est parti')+'</button>';
 }
 function _suPayLbls(){
   var set=function(k,t){var e=document.getElementById('su-e-'+k);if(e)e.textContent=t;},v=SU.v;
@@ -4874,7 +4877,7 @@ function _suDone(){
   if(yms.length){if(!S.bulletins)S.bulletins={};yms.forEach(function(ym){S.bulletins[ym]=SU.bul[ym];});try{_bulPayApply();}catch(e){console.warn(e);}}
   // une seule date de départ pour la Gestion et la paie : bulletins d'avant non comptés en écart
   pr.calcFrom=D!=null?'month':'now';pr.calcStart=dk(st);
-  delete pr.setupPending;pr.hasSeenPayPrompt=true;
+  delete pr.setupPending;if(v.pal)pr.hasSeenPayPrompt=true;else delete pr.hasSeenPayPrompt; // sans données de paie : demandées à l'arrivée dans l'app
   _profs[_aid]=S;saveState();try{cloudSave(_aid);}catch(e){}
   var el=document.getElementById('setup');if(el)el.remove();SU=null;document.body.classList.remove('su-on');
   render();_infoToast('✓ C’est prêt');
