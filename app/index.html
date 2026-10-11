@@ -8,7 +8,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v5.06">
+<meta name="app-version" content="v5.07">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -4641,8 +4641,9 @@ function _suStep1(){
 }
 
 // 3. Vérifier depuis quand : une seule date pour le tableau Gestion et les bulletins
-var _SU_REC_YM=NOW.getFullYear()*12; // recommandé : janvier de l'année en cours
-function _suFromYM(){return SU.v.from==='past'?+SU.v.fromYM:null;}
+var _SU_REC_YM=NOW.getFullYear()*12; // recommandé : la paie de janvier de l'année en cours (heures de décembre)
+// fromYM = 1re paie vérifiée ; elle paie les heures du mois d'avant : c'est de là que partent les changements à entrer et le tableau Gestion
+function _suFromYM(){return SU.v.from==='past'?+SU.v.fromYM-1:null;}
 function _suMoisL(ym){return ML[ym%12].toLowerCase()+' '+Math.floor(ym/12);}
 // Puces : une idée par ligne
 function _suPts(a,cls){return '<ul class="su-fl'+(cls?' '+cls:'')+'">'+a.filter(Boolean).map(function(l){return '<li>'+l+'</li>';}).join('')+'</ul>';}
@@ -4650,13 +4651,16 @@ function _suPts(a,cls){return '<ul class="su-fl'+(cls?' '+cls:'')+'">'+a.filter(
 function _suStep2(){
   var c=SU.v.from,M=[];for(var ym=TODAY_YM-1;ym>=TODAY_YM-24;ym--)M.push(ym);
   if(SU.v.fromYM==null||SU.v.fromYM===''||M.indexOf(+SU.v.fromYM)<0)SU.v.fromYM=M.indexOf(_SU_REC_YM)>=0?_SU_REC_YM:M[0];
-  var f=+SU.v.fromYM,rec=f===_SU_REC_YM;
+  var f=+SU.v.fromYM,rec=f===_SU_REC_YM,w=f-1,ml=function(ym){return ML[ym%12].toLowerCase();};
   // carte cliquable (pas un bouton : le menu des mois est dedans)
   var opt=function(k,t,d){return '<div class="su-choice'+(c===k?' on':'')+'" onclick="if(event.target.tagName!==\'SELECT\'){_suRead();SU.v.from=\''+k+'\';_suDraw()}"><i class="ti '+(c===k?'ti-circle-check-filled':'ti-circle')+'"></i><span><b>'+t+'</b>'+d+'</span></div>';};
-  var sel='<select data-k="fromYM" onchange="_suRead();SU.v.from=\'past\';_suDraw()" class="su-msel">'+M.map(function(ym){return '<option value="'+ym+'"'+(f===ym?' selected':'')+'>'+capitalize(_suMoisL(ym))+(ym===_SU_REC_YM?' · recommandé':'')+'</option>';}).join('')+'</select>';
+  var sel='<select data-k="fromYM" onchange="_suRead();SU.v.from=\'past\';_suDraw()" class="su-msel">'+M.map(function(ym){return '<option value="'+ym+'"'+(f===ym?' selected':'')+'>Paie '+_deMois(ym)+' '+Math.floor(ym/12)+(ym===_SU_REC_YM?' · recommandé':'')+'</option>';}).join('')+'</select>';
   return _suHd('Vérifier depuis quand&nbsp;?',1)
     +_suPts(['Vos heures comparées au tableau Gestion et aux bulletins','À entrer depuis la date choisie → tout ce qui s’écarte du cycle : échanges, horaires, absences, formations, rendus'],'su-big')
-    +opt('past','Depuis un mois passé',sel+_suPts([rec?'<span style="color:var(--green)">Recommandé → toute l’année vérifiée</span>':'Janvier recommandé → toute l’année vérifiée','Tableau Gestion + bulletins vérifiés depuis '+_suMoisL(f),'Changements au cycle à entrer depuis le 1er '+_suMoisL(f)]))
+    +opt('past','Depuis une paie passée',sel+_suPts([rec?'<span style="color:var(--green)">Recommandé → toute l’année vérifiée</span>':'Paie de janvier recommandée → toute l’année vérifiée',
+      'Bulletins vérifiés dès celui '+_deMois(f)+' '+Math.floor(f/12),
+      'Changements à entrer depuis le 1er '+_suMoisL(w)+' → la paie '+_deMois(f)+' compte les heures '+_deMois(w),
+      'Tableau Gestion vérifié depuis '+_suMoisL(w)]))
     +opt('now','À partir de maintenant',_suPts(['Rien d’ancien à entrer','Vérifié à partir du dernier tableau Gestion et des prochains bulletins']))
     +'<div class="su-note" style="margin-top:6px">Dans tous les cas → <b>congés posés depuis le 1er janvier</b> à entrer (solde de l’année)</div>'
     +'<button class="su-btn" onclick="_suGo(3)"'+(c?'':' disabled')+'>Continuer</button>';
@@ -4678,15 +4682,6 @@ function _suStep3(){
   if(m==='man')h+='<div class="su-note">'+(D!=null?'Les soldes du tableau Gestion reçu en '+_suMoisL(D)+' (0h00 s’il n’y en a pas).':'Les deux soldes du dernier tableau Gestion (0h00 s’il n’y en a pas).')+'</div>';
   if(m==='man'||(m==='imp'&&P&&D==null))h+='<div class="'+(SU.anim==='rh'?'su-in':'')+'">'+_suRow('Matelas<small>stock permanent</small>','<input type="text" data-k="mat" placeholder="00h00" oninput="_suRead();_suOk3()" value="'+_suEsc(SU.v.mat||'')+'">')
     +_suRow('Rendus à poser<small>heures encore valables</small>','<input type="text" data-k="eph" placeholder="00h00" oninput="_suRead();_suOk3()" value="'+_suEsc(SU.v.eph||'')+'">')+'</div>';
-  // vérification depuis un mois passé : le tableau de ce mois-là, facultatif
-  if(D!=null&&m==='imp'&&P&&D<P.edYM){
-    h+=_suSec('Votre tableau de '+mD+' · facultatif')
-      +'<div class="su-seg"><button class="'+(SU.rh0?'on':'')+'" onclick="_suRhPick(1)">'+(SU.rhBusy===1?'<span class="su-spin"></span>Lecture…':SU.rh0?'✓ Tableau du '+fs(S0.ed):'Importer le tableau de '+mD)+'</button></div>';
-    if(SU.rh0Err)h+='<div class="su-err">'+_suEsc(SU.rh0Err)+'</div>';
-    var fe=P.ed.toLocaleDateString('fr-FR',{day:'numeric',month:'long'});
-    h+=SU.rh0?vals(S0)+'<div class="su-note">'+_suPts(['Soldes de départ → ce tableau','Rendus retirés par le gestionnaire depuis → vérifiés aussi'])+'</div>'
-      :'<div class="su-note">'+_suPts(['Le tableau reçu en '+mD+' (ou juste avant)','Avec → rendus retirés par le gestionnaire entre '+mD+' et le '+fe+' vérifiés aussi','Sans → soldes de '+mD+' déduits du dernier tableau'])+'</div>';
-  }
   h+=_suSec('Génération des rendus')
     +_suRow('Dimanches',_suTgl('dimRendu'))+_suRow('RH travaillés',_suTgl('rhRendu'))+_suRow('Fériés',_suTgl('ferRendu'))+_suRow('Heures sup.',_suTgl('hsRendu'))
     +'<button class="su-btn" id="su-next3" onclick="_suGo(4)"'+(_suCan3()?'':' disabled')+'>Continuer</button>'
@@ -4722,12 +4717,13 @@ function _suStep4(){
   if(!nb)h+='<div class="su-note">'+_suPts([D!=null?'<b>Recommandé</b> → bulletins de '+_suMoisL(D+1)+' à aujourd’hui (PDF)':'<b>Recommandé</b> → votre dernier bulletin (PDF)',D!=null?'Bulletin de '+ML[(D+1)%12].toLowerCase()+' = heures de '+ML[D%12].toLowerCase():'','Lu par l’app : palier · ancienneté · contrat · groupe · PFA · avantage individuel',D!=null?'Puis chaque paie vérifiée':'','Lus sur l’appareil, rien n’est envoyé'])+'</div>';
   else{var yms=Object.keys(SU.bul).map(Number).sort(function(a,b){return a-b;}),lab=function(ym){return MCs[ym%12]+' '+Math.floor(ym/12);};
     h+='<div class="su-note">Bulletins '+(nb>1?'de '+lab(yms[0])+' à '+lab(yms[nb-1]):'de '+lab(yms[0]))+' (valeurs modifiables). <a style="color:var(--blue);cursor:pointer" onclick="_suBulPick()">Ajouter des bulletins</a></div>';
-    if(D!=null&&miss.length)h+='<div class="su-note" style="color:var(--amber)">Manque '+(miss.length>1?'les bulletins':'le bulletin')+' '+_suMoisList(miss)+' → '+(miss.length>1?'mois non vérifiés':'mois non vérifié')+'</div>';
-    if(SU.v.anni===''||SU.v.anni==null)h+='<div class="su-note">Mois d’anniversaire de l’ancienneté non trouvé → rempli au prochain bulletin qui montre le changement de prime</div>';}
+    if(D!=null&&miss.length)h+='<div class="su-note" style="color:var(--amber)">Il manque '+(miss.length>1?'les bulletins':'le bulletin')+' '+_suMoisList(miss)+' → '+(miss.length>1?'mois non vérifiés':'mois non vérifié')+'</div>';
+    if(SU.anniR&&(SU.v.anni===''||SU.v.anni==null))h+='<div class="su-note" style="color:var(--amber)">Ancienneté passée à l’année suivante entre '+_suMoisL(SU.anniR[0]-1)+' et '+_suMoisL(SU.anniR[1])+' → choisir le mois d’anniversaire ci-dessous</div>';
+    else if(SU.v.anni===''||SU.v.anni==null)h+='<div class="su-note">Mois d’anniversaire de l’ancienneté non trouvé → rempli au prochain bulletin qui montre le changement de prime</div>';}
   if(m){
     var P=[['','—']];for(var i=1;i<=100;i++)P.push([i,'P'+i]);
     var A=[['','—']];for(var y=0;y<=50;y++)A.push([y,y+(y>1?' ans':' an')]);
-    var M=[['','—']].concat(ML.map(function(l,i){return [i,l];}));
+    var M=[['','—']].concat(SU.anniR?(function(){var o=[];for(var y=SU.anniR[0];y<=SU.anniR[1];y++)o.push([y%12,ML[y%12]]);return o;})():ML.map(function(l,i){return [i,l];}));
     var C=[];for(var p=5;p<=100;p+=5)C.push([p,p+' %']);if(SU.v.pct&&+SU.v.pct%5)C.push([+SU.v.pct,SU.v.pct+' %']);
     var G=[['','—']];for(var k=1;k<=9;k++)G.push([k,'Groupe '+k]);
     h+='<div class="'+(SU.anim==='pay'?'su-in':'')+'">'+_suSec('Votre paie')
@@ -4746,21 +4742,21 @@ function _suStep4(){
 }
 // « de mars et avril 2026 », « de mars 2026 »
 function _suMoisList(yms){var y=Math.floor(yms[yms.length-1]/12),same=yms.every(function(x){return Math.floor(x/12)===y;}),n=yms.map(function(x){return ML[x%12].toLowerCase()+(same?'':' '+Math.floor(x/12));});
-  return _deMois(yms[0]).replace(/\s?\S+$/,'').replace(/’$/,'’')+(n.length>1?n.slice(0,-1).join(', ')+' et '+n[n.length-1]:n[0])+(same?' '+y:'');}
+  n=n.map(function(x){return (/^[aeiouyâéè]/i.test(x)?'d’':'de ')+x;}); // « de mars et d’avril »
+  return (n.length>1?n.slice(0,-1).join(', ')+' et '+n[n.length-1]:n[0])+(same?' '+y:'');}
 // 6. Ce qu'il reste à entrer
 function _suStart(){var D=_suFromYM();if(D!=null)return new Date(Math.floor(D/12),D%12,1,12);return SU.rh?new Date(SU.rh.P.ed):new Date(NOW);}
 function _suStep5(){
   var D=_suFromYM(),st=_suStart(),fd=st.toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}).replace(/^1 /,'1er '),nv=[],miss=_suBulNeed().filter(function(ym){return !SU.bul[ym];});
-  if(D!=null&&SU.rh&&!SU.rh0)nv.push('les rendus retirés par le gestionnaire entre '+ML[D%12].toLowerCase()+' et le '+SU.rh.P.ed.toLocaleDateString('fr-FR',{day:'numeric',month:'long'})+' → pas de tableau de '+ML[D%12].toLowerCase());
-  if(D!=null&&miss.length&&!Object.keys(SU.bul).length)nv.push('la paie depuis '+_suMoisL(D)+' → aucun bulletin importé');
-  else if(D!=null&&miss.length)nv.push('la paie '+_suMoisList(miss.map(function(x){return x-1;})).replace(/^d[e’']\s?/,'de ')+' → bulletin'+(miss.length>1?'s':'')+' manquant'+(miss.length>1?'s':''));
+  if(D!=null&&miss.length&&!Object.keys(SU.bul).length)nv.push('les paies depuis celle '+_deMois(D+1)+' '+Math.floor((D+1)/12)+' → aucun bulletin importé');
+  else if(D!=null&&miss.length)nv.push('la paie '+_suMoisList(miss)+' → bulletin'+(miss.length>1?'s':'')+' manquant'+(miss.length>1?'s':''));
   if(D!=null&&SU.rhMode==='man')nv.push('le tableau Gestion → soldes saisis à la main, à importer ensuite dans Réglages');
   return _suHd('Ce qu’il reste à entrer',4)
     +_suPts(['Point de départ → votre ligne prévue par le cycle','Le reste → toucher un jour du calendrier'])
     +_suSec('À entrer')
     +_suPts(['<b>Vacations modifiées</b> depuis le '+fd+' · échanges, horaires, absences, formations','<b>Rendus</b> posés depuis le '+fd,'<b>Congés</b> posés depuis le 1er janvier'],'su-big')
     +_suSec('Vérifié')
-    +_suPts(D!=null?['Tableau Gestion + bulletins depuis '+_suMoisL(D),'Rattrapages des mois d’avant → affichés, non vérifiés']:['Tableau Gestion suivant','Bulletins des mois qui suivent'],'su-big')
+    +_suPts(D!=null?['Bulletins dès celui '+_deMois(D+1)+' '+Math.floor((D+1)/12),'Tableau Gestion depuis '+_suMoisL(D),'Rattrapages des mois d’avant → affichés, non vérifiés']:['Tableau Gestion suivant','Bulletins des mois qui suivent'],'su-big')
     +(nv.length?_suSec('Non vérifié')+_suPts(nv.map(function(x){return x.charAt(0).toUpperCase()+x.slice(1);}),'su-big su-nv'):'')
     +'<details class="su-fold"><summary>Comment sont calculées les heures disponibles</summary><div class="su-calc"><div><span>Heures acquises encore valables</span><b></b></div><div><span>Rendus déjà posés</span><b>−</b></div><div><span>Rendus prévus plus tard</span><b>−</b></div><div class="su-calc-t"><span>Heures libres à poser</span><b>=</b></div></div>'
     +_suPts(['Heure acquise → valable jusqu’à la fin du 3e mois suivant (juillet → fin octobre)','Report → plus longtemps','Les plus anciennes sont posées en premier','<b>Matelas</b> → stock à part, sans expiration'],'su-big')+'</details>'
@@ -4789,8 +4785,10 @@ function _suBulDerive(){
   var yms=Object.keys(SU.bul).map(Number).sort(function(a,b){return a-b;}),last=SU.bul[yms[yms.length-1]],d=_bulPaySet(last),v=SU.v;
   if(d.palier)v.pal=d.palier;if(d.pct)v.pct=Math.round(d.pct*100)/100;if(d.groupe)v.grp=d.groupe;if(d.anc!=null)v.anc=d.anc;if(d.pfaMens!=null)v.pfa=d.pfaMens?1:0;
   // mois d'anniversaire : deux bulletins de mois qui se suivent où l'ancienneté passe à l'année suivante ; sinon laissé vide
-  var mo=null,prev=null;yms.forEach(function(ym){var a=_bulPaySet(SU.bul[ym]).anc;if(a==null)return;if(prev&&a===prev.a+1&&ym-prev.ym===1)mo=ym%12;prev={ym:ym,a:a};});
-  v.anni=mo!=null?mo:(v.anni==null?'':v.anni);
+  // bulletins éloignés : l'ancienneté a changé entre les deux → mois à choisir dans cet intervalle (SU.anniR)
+  var mo=null,prev=null;SU.anniR=null;yms.forEach(function(ym){var a=_bulPaySet(SU.bul[ym]).anc;if(a==null)return;if(prev&&a===prev.a+1){if(ym-prev.ym===1){mo=ym%12;SU.anniR=null;}else if(mo==null)SU.anniR=[prev.ym+1,ym];}prev={ym:ym,a:a};});
+  var inR=function(m){if(m===''||m==null)return false;for(var y=SU.anniR[0];y<=SU.anniR[1];y++)if(y%12===+m)return true;return false;};
+  v.anni=mo!=null?mo:SU.anniR?(inR(v.anni)?v.anni:''):(v.anni==null?'':v.anni);
   // avantage individuel : montant du dernier bulletin, compté depuis le premier bulletin qui le montre
   if(last.avInd!=null){v.avi=last.avInd.toFixed(2).replace('.',',');SU.aviFrom=yms[yms.length-1];for(var i=yms.length-1;i>=0;i--){if(SU.bul[yms[i]].avInd===last.avInd)SU.aviFrom=yms[i];else break;}}
 }

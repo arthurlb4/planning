@@ -92,8 +92,8 @@ function situation(opts) {
   a.run('S.profile={};S.conges={};S.ephExtend={};');
   eq('Import : point de départ = juin 14h, reporté', a.run('(function(){var P=_rhImportPlan(_rh);return JSON.stringify({split:P.split,reports:P.reports});})()'),
     JSON.stringify({ split: { [YM(2026, 6)]: 840 }, reports: { [YM(2026, 6)]: 1 } }));  // Inscription « vérifier depuis juillet » avec ce seul tableau : solde au 1er juillet reconstitué, paie et Gestion vérifiées depuis juillet
-  eq('Inscription depuis juillet sans tableau de départ', a.run(`(function(){var _r=render,_t=_infoToast;render=function(){};_infoToast=function(){};S.profile={name:'t'};S.conges={};S.ephExtend={};S.bulletins={};
-    SU={step:5,rh:{cells:${JSON.stringify(cells)},name:'t.xlsx',rh:_rh,P:_rhImportPlan(_rh)},rh0:null,rhMode:'imp',bul:{},bulMode:'man',v:{line:'3',from:'past',fromYM:${2026*12+6},pfa:0,pct:100}};
+  eq('Inscription depuis la paie d’août (heures de juillet) avec le seul dernier tableau', a.run(`(function(){var _r=render,_t=_infoToast;render=function(){};_infoToast=function(){};S.profile={name:'t'};S.conges={};S.ephExtend={};S.bulletins={};
+    SU={step:5,rh:{cells:${JSON.stringify(cells)},name:'t.xlsx',rh:_rh,P:_rhImportPlan(_rh)},rh0:null,rhMode:'imp',bul:{},bulMode:'man',v:{line:'3',from:'past',fromYM:${2026*12+7},pfa:0,pct:100}};
     _suDone();render=_r;_infoToast=_t;return JSON.stringify([S.profile.calcStart,S.profile.ephRecon.D,S.profile.ephBaseDate,_ephSplit(),!!S.profile.rhTable,_calcVerifYM()]);})()`),
     JSON.stringify(['2026-07-01', '2026-07-01', '2026-06-30', { [YM(2026, 4)]: 0, [YM(2026, 5)]: 450, [YM(2026, 6)]: 840 }, true, 2026 * 12 + 7]));
 }
