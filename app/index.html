@@ -8,7 +8,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v4.94">
+<meta name="app-version" content="v4.95">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -3422,6 +3422,14 @@ function _histPeriod(h){
   if(!ks.length)return false;
   var f=new Date(ks[0]+'T12:00:00'),l=new Date(ks[ks.length-1]+'T12:00:00');
   h.key=ks[0];h.d=fmtDate(f)+(ks.length>1?' au '+fmtDate(l):'')+' -> '+lbl;return true;
+}
+// Congé ou rendu resté sur un jour de repos (posé par une ancienne version, ou jour devenu repos) : il ne veut rien dire
+// mais s'affichait (historique, Google Agenda) et comptait dans les jours posés ; retiré une fois les cycles et le compte chargés
+function _cgRestClean(){
+  if(!window._cyclesOk||!window._cloudOk||!S||!S.conges)return;var n=0;
+  Object.keys(S.conges).forEach(function(k){var t=S.conges[k];if(t!=='cg'&&t!=='rend'&&t!=='rend-hist')return;
+    var v=getVac(new Date(k+'T12:00:00'));if(!v.vac||v.vac==='RH'){delete S.conges[k];n++;}});
+  if(!n)return;try{_histClean();}catch(e){}saveState();try{cloudSave(_aid);}catch(e){}render();try{gcalTrigger();}catch(e){}
 }
 function removeHistoryForKey(key){if(!S.history)return;S.history=S.history.filter(h=>h.key!==key);saveState();}
 function _rhMonthSections(keys,type){
@@ -8643,6 +8651,7 @@ function init(){
     const vd=results[0],cd=results[1];
     if(vd&&vd.vacations){_globalVacs=vd.vacations;Object.keys(_globalVacs).forEach(function(k){if(VAC_STD[k]&&_globalVacs[k].deb&&_globalVacs[k].deb!==VAC_STD[k].deb)console.warn('Cloud vac override:',k,'deb',_globalVacs[k].deb,'(std:',VAC_STD[k].deb+')');});}
     if(cd&&cd.cycles)_globalCycles=cd.cycles;
+    window._cyclesOk=!!(cd&&cd.cycles);_cgRestClean();
     render();
     if(gcalTokens)gcalSync();
   }).catch(function(){});
@@ -8654,6 +8663,7 @@ function init(){
     applyTheme();
     autoReportEph();
     render();
+    window._cloudOk=true;_cgRestClean();
     setTimeout(pushSyncAlerts,3000);
     setTimeout(_verCheck,1500);
     const hpn=document.getElementById('hdr-profile-name');

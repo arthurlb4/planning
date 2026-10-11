@@ -297,5 +297,14 @@ function situation(opts) {
     return [h.key===ks[0],h.d.indexOf(fmtDate(new Date(ks[ks.length-1]+'T12:00:00')))>0,S.history.length];})()`), [true, true, 0]);
 }
 
+// Congé resté sur un jour de repos : retiré au chargement, le congé du jour travaillé reste
+{
+  const a = load('2026-10-01');
+  eq('Congé sur un jour de repos retiré', a.run(`(function(){var w=function(d){var v=getVac(d);return v.vac&&v.vac!=='RH';},r=null,o=null;
+    for(var i=0;i<30&&!(r&&o);i++){var d=new Date(2026,10,1+i,12);if(w(d))o=o||dk(d);else r=r||dk(d);}
+    S.conges=S.conges||{};S.conges[r]='cg';S.conges[o]='cg';window.cloudSave=function(){};window.render=function(){};window._cyclesOk=window._cloudOk=true;_cgRestClean();
+    var res=[!!S.conges[r],S.conges[o]];delete S.conges[o];return res;})()`), [false, 'cg']);
+}
+
 console.log('\n' + (count - fails) + '/' + count + ' contrôles réussis');
 if (fails) process.exit(1);
