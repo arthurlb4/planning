@@ -8,7 +8,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v4.96">
+<meta name="app-version" content="v4.97">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -2750,15 +2750,18 @@ function _bulPayApply(){
 }
 // Vérification depuis Suivi : on y revient en la fermant
 function openVerif(){_bulPayPropose(function(){openMergedRenduCgModal(6,2);},1);}
+// Choix de fichiers : le champ est rattaché à la page le temps du choix (sur iPhone, un champ détaché ne reçoit pas toujours le fichier choisi)
+function _fileInput(){var i=document.createElement('input');i.type='file';i.style.cssText='position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0';return i;}
+function _fileOpen(i){document.body.appendChild(i);var f=i.onchange;i.onchange=function(e){var r=f&&f.call(i,e);setTimeout(function(){if(i.parentNode)i.remove();},60000);return r;};i.click();}
 // Vérification : un seul bouton Importer ; les PDF vont aux bulletins (retour à la vérification), le fichier Excel au tableau Gestion
 function _verifImport(){var th=window._bulPayThen;
-  var inp=document.createElement('input');inp.type='file';inp.multiple=true;inp.accept='application/pdf,.pdf,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  var inp=_fileInput();inp.multiple=true;inp.accept='application/pdf,.pdf,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   inp.onchange=function(){var fs=[].slice.call(inp.files||[]),pdf=fs.filter(function(f){return /\.pdf$/i.test(f.name)||f.type==='application/pdf';}),xl=fs.filter(function(f){return /\.xlsx$/i.test(f.name);});
     if(!pdf.length&&!xl.length){showBlockAlert('Fichier non reconnu','Choisir des bulletins (PDF) ou le tableau Gestion (Excel).');return;}
     window._bulPayThen=null;
     var rh=function(){window._rvFrom='recap';_rhFile(xl[xl.length-1]);};
     if(pdf.length)_importBulletinFiles(pdf,xl.length?rh:function(){_bulPayPropose(th,1);});else rh();};
-  inp.click();}
+  _fileOpen(inp);}
 // Fenêtre de proposition (après un import, ou depuis Réglages → Paie)
 function _bulPayPropose(then,all){
   var D=_bulPayDiffs(),nb=Object.keys(S.bulletins||{}).length;
@@ -2810,9 +2813,9 @@ function _bulPayPropose(then,all){
 }
 function _bulPayDone(ok){if(ok)_bulPayApply();var t=window._bulPayThen;window._bulPayThen=null;if(t)t();else if(ok)openSettingsModal(1);else closeModal();}
 function importBulletins(after){
-  var inp=document.createElement('input');inp.type='file';inp.accept='application/pdf,.pdf';inp.multiple=true;
+  var inp=_fileInput();inp.accept='application/pdf,.pdf';inp.multiple=true;
   inp.onchange=function(){_importBulletinFiles([].slice.call(inp.files||[]),after);};
-  inp.click();
+  _fileOpen(inp);
 }
 async function _importBulletinFiles(files,after){{
     if(!files.length)return;
@@ -4679,7 +4682,7 @@ function _suOk3(){var b=document.getElementById('su-next3');if(b)b.disabled=!_su
 // Tableau Gestion lu sur place (0 : le plus récent, 1 : celui de départ) : la roue tourne pendant la lecture
 function _suRhPick(which){
   _suRead();
-  var inp=document.createElement('input');inp.type='file';inp.accept='.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  var inp=_fileInput();inp.accept='.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   inp.onchange=async function(){var f=inp.files&&inp.files[0];if(!f)return;
     SU.rhBusy=which;if(which)SU.rh0Err=null;else{SU.rhErr=null;SU.rhMode='imp';}_suDraw();
     try{var cells=await _xlsxRead(f),rh=_rhParse(cells,f.name),P=_rhImportPlan(rh),o={cells:cells,name:f.name,rh:rh,P:P};
@@ -4687,7 +4690,7 @@ function _suRhPick(which){
       else{SU.rh=o;SU.anim='rh';SU.v.mat=P.matelas!=null?fmtMin(P.matelas):'';SU.v.eph=fmtMin(Math.round(P.total));if(SU.rh0&&SU.rh0.P.ed>=P.ed)SU.rh0=null;}}
     catch(e){var msg=(e&&e.message)||'Ce fichier n’a pas pu être lu.';if(which)SU.rh0Err=msg;else{SU.rh=null;SU.rhMode=null;SU.rhErr=msg;}}
     SU.rhBusy=null;if(SU.step===3)_suDraw();};
-  inp.click();
+  _fileOpen(inp);
 }
 
 // 5. Paie : bulletins depuis la date choisie (ils remplissent aussi palier, ancienneté…), ou saisie à la main
@@ -4754,14 +4757,14 @@ function _suPayLbls(){
 // Bulletins lus sur place (plusieurs à la fois, ajoutés aux précédents) ; les champs de paie en sont remplis
 function _suBulPick(){
   _suRead();
-  var inp=document.createElement('input');inp.type='file';inp.accept='application/pdf,.pdf';inp.multiple=true;
+  var inp=_fileInput();inp.accept='application/pdf,.pdf';inp.multiple=true;
   inp.onchange=async function(){var fs=[].slice.call(inp.files||[]);if(!fs.length)return;
     SU.bulBusy=true;SU.bulErr=null;_suDraw();var bad=0;
     for(var i=0;i<fs.length;i++){try{var b=_bulParse(await _pdfLines(fs[i]));if(b){b.at=Date.now();SU.bul[b.ym]=b;}else bad++;}catch(e){bad++;}}
     if(Object.keys(SU.bul).length){if(!SU.bulMode)SU.anim='pay';SU.bulMode='imp';_suBulDerive();}
     if(bad)SU.bulErr=(bad>1?bad+' fichiers n’ont pas pu être lus':'Un fichier n’a pas pu être lu')+(navigator.onLine===false?' (hors ligne)':'')+'.';
     SU.bulBusy=false;if(SU.step===4)_suDraw();};
-  inp.click();
+  _fileOpen(inp);
 }
 function _suBulDerive(){
   var yms=Object.keys(SU.bul).map(Number).sort(function(a,b){return a-b;}),last=SU.bul[yms[yms.length-1]],d=_bulPaySet(last),v=SU.v;
