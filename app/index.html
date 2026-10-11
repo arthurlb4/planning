@@ -8,7 +8,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v5.09">
+<meta name="app-version" content="v5.10">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -4641,29 +4641,31 @@ function _suStep1(){
 }
 
 // 3. Vérifier depuis quand : une seule date pour le tableau Gestion et les bulletins
-var _SU_REC_YM=NOW.getFullYear()*12; // recommandé : la paie de janvier de l'année en cours (heures de décembre)
-// fromYM = 1re paie vérifiée ; elle paie les heures du mois d'avant : c'est de là que partent les changements à entrer et le tableau Gestion
-function _suFromYM(){return SU.v.from==='past'?+SU.v.fromYM-1:null;}
+var _SU_REC_YM=NOW.getFullYear()*12-1; // recommandé : décembre de l'année d'avant (toutes les paies de l'année vérifiables, janvier compris)
+// Un seul choix : le mois depuis lequel les changements sont entrés (fromYM). Départ effectif : ce mois, ou plus tôt
+// si le dernier tableau Gestion s'arrête avant (premier mois qu'il ne couvre pas) — sinon ce trou ne serait compté nulle part
+function _suTabYM(){return SU.rh&&SU.rh.P&&SU.rhMode==='imp'?SU.rh.P.edYM:null;}
+function _suFromYM(){if(!SU.v.from)return null;var m=+SU.v.fromYM,u=_suTabYM();return u!=null&&u<m?u:m;}
 function _suMoisL(ym){return ML[ym%12].toLowerCase()+' '+Math.floor(ym/12);}
 // Puces : une idée par ligne
 function _suPts(a,cls){return '<ul class="su-fl'+(cls?' '+cls:'')+'">'+a.filter(Boolean).map(function(l){return '<li>'+l+'</li>';}).join('')+'</ul>';}
-// Deux choix : depuis un mois passé (janvier proposé, recommandé), ou à partir de maintenant
+// Ce qu'implique un mois de départ : à entrer, paies vérifiées, tableau Gestion vérifié
+function _suFromPts(m,cls){var g=Math.max(m,NOW.getFullYear()*12);
+  return _suPts([g>m?'<b>À entrer</b> → vacations modifiées depuis le 1er '+_suMoisL(m)+' · rendus et congés depuis le 1er janvier':'<b>À entrer</b> → vacations modifiées et rendus depuis le 1er '+_suMoisL(m)+' · congés depuis le 1er janvier',
+    '<b>Paies vérifiées</b> → à partir de celle '+_deMois(m+1)+' '+Math.floor((m+1)/12)+(m+1===NOW.getFullYear()*12?', qui paie décembre':''),
+    '<b>Tableau Gestion vérifié</b> → depuis '+_suMoisL(g)],cls);}
 function _suStep2(){
-  var c=SU.v.from,M=[];for(var ym=TODAY_YM-1;ym>=TODAY_YM-24;ym--)M.push(ym);
-  if(SU.v.fromYM==null||SU.v.fromYM===''||M.indexOf(+SU.v.fromYM)<0)SU.v.fromYM=M.indexOf(_SU_REC_YM)>=0?_SU_REC_YM:M[0];
-  var f=+SU.v.fromYM,rec=f===_SU_REC_YM,w=f-1,ml=function(ym){return ML[ym%12].toLowerCase();};
-  // carte cliquable (pas un bouton : le menu des mois est dedans)
-  var opt=function(k,t,d){return '<div class="su-choice'+(c===k?' on':'')+'" onclick="if(event.target.tagName!==\'SELECT\'){_suRead();SU.v.from=\''+k+'\';_suDraw()}"><i class="ti '+(c===k?'ti-circle-check-filled':'ti-circle')+'"></i><span><b>'+t+'</b>'+d+'</span></div>';};
-  var sel='<select data-k="fromYM" onchange="_suRead();SU.v.from=\'past\';_suDraw()" class="su-msel">'+M.map(function(ym){return '<option value="'+ym+'"'+(f===ym?' selected':'')+'>Paie '+_deMois(ym)+' '+Math.floor(ym/12)+(ym===_SU_REC_YM?' · recommandé':'')+'</option>';}).join('')+'</select>';
-  return _suHd('Vérifier depuis quand&nbsp;?',1)
-    +_suPts(['Vos heures comparées au tableau Gestion et aux bulletins','À entrer depuis la date choisie → tout ce qui s’écarte du cycle : échanges, horaires, absences, formations, rendus'],'su-big')
-    +opt('past','Depuis une paie passée',sel+_suPts([rec?'<span style="color:var(--green)">Recommandé → toute l’année vérifiée</span>':'Paie de janvier recommandée → toute l’année vérifiée',
-      'Bulletins vérifiés dès celui '+_deMois(f)+' '+Math.floor(f/12),
-      'Changements à entrer depuis le 1er '+_suMoisL(w)+' → la paie '+_deMois(f)+' compte les heures '+_deMois(w),
-      'Tableau Gestion vérifié depuis '+_suMoisL(Math.max(w,NOW.getFullYear()*12))]))
-    +opt('now','À partir de maintenant',_suPts(['Rien d’ancien à entrer','Vérifié à partir du dernier tableau Gestion et des prochains bulletins']))
-    +'<div class="su-note" style="margin-top:6px">Dans tous les cas → <b>congés posés depuis le 1er janvier</b> à entrer (solde de l’année)</div>'
-    +'<button class="su-btn" onclick="_suGo(3)"'+(c?'':' disabled')+'>Continuer</button>';
+  var M=[];for(var ym=TODAY_YM;ym>=TODAY_YM-24;ym--)M.push(ym);
+  if(SU.v.fromYM==null||SU.v.fromYM===''||M.indexOf(+SU.v.fromYM)<0)SU.v.fromYM=M.indexOf(_SU_REC_YM)>=0?_SU_REC_YM:TODAY_YM;
+  SU.v.from='month';var f=+SU.v.fromYM;
+  var sel='<select data-k="fromYM" onchange="_suRead();_suDraw()" class="su-msel">'+M.map(function(ym){return '<option value="'+ym+'"'+(f===ym?' selected':'')+'>'+capitalize(_suMoisL(ym))+(ym===_SU_REC_YM?' · recommandé':ym===TODAY_YM?' · ce mois-ci':'')+'</option>';}).join('')+'</select>';
+  return _suHd('Depuis quel mois&nbsp;?',1)
+    +_suPts(['Vos heures comparées au tableau Gestion et aux bulletins','Pour ça → entrer ce qui s’écarte du cycle depuis ce mois : échanges, horaires, absences, formations, rendus'],'su-big')
+    +sel
+    +(f===_SU_REC_YM?'<div class="su-note" style="color:var(--green);margin:-2px 2px 6px">Recommandé → toutes les paies de '+NOW.getFullYear()+' vérifiées</div>'
+      :'<div class="su-note" style="margin:-2px 2px 6px">'+capitalize(_suMoisL(_SU_REC_YM))+' recommandé → toutes les paies de '+NOW.getFullYear()+' vérifiées</div>')
+    +_suFromPts(f,'su-big')
+    +'<button class="su-btn" onclick="_suGo(3)">Continuer</button>';
 }
 
 // 4. Tableau Gestion : le plus récent (solde actuel, référence de la vérification) et, pour un mois passé, celui de départ (facultatif)
@@ -4677,7 +4679,7 @@ function _suStep3(){
     +'<button class="'+(m==='man'?'on':'')+'" onclick="_suRead();if(SU.rhMode!==\'man\')SU.anim=\'rh\';SU.rhMode=\'man\';_suDraw()">Saisir à la main</button></div>';
   if(SU.rhErr)h+='<div class="su-err">'+_suEsc(SU.rhErr)+'</div>';
   if(!m)h+='<div class="su-note">'+_suPts(['Le dernier fichier Excel du gestionnaire','Lu par l’app : matelas · heures mois par mois · expirations · reports','Lu sur l’appareil, rien n’est envoyé'])+'</div>';
-  if(m==='imp'&&P&&D!=null)h+=vals(P)+'<div class="su-note">'+_suPts(['Vos heures depuis '+_suMoisL(_suGestYM())+' comparées à ce tableau, mois par mois'])+'</div>';
+  if(m==='imp'&&P&&D!=null)h+=vals(P)+'<div class="su-note">'+_suPts([D<+SU.v.fromYM?'<span style="color:var(--amber)">À entrer depuis le 1er '+_suMoisL(D)+' → votre tableau s’arrête fin '+ML[(D+11)%12].toLowerCase()+'</span>':'','Vos heures depuis '+_suMoisL(_suGestYM())+' comparées à ce tableau, mois par mois'])+'</div>';
   if(m==='imp'&&P&&D==null)h+='<div class="su-note">Valeurs du '+fd(P.ed)+' (modifiables) :</div>';
   if(m==='man')h+='<div class="su-note">'+(D!=null?'Les soldes du tableau Gestion reçu en '+_suMoisL(_suGestYM())+' (0h00 s’il n’y en a pas).':'Les deux soldes du dernier tableau Gestion (0h00 s’il n’y en a pas).')+'</div>';
   if(m==='man'||(m==='imp'&&P&&D==null))h+='<div class="'+(SU.anim==='rh'?'su-in':'')+'">'+_suRow('Matelas<small>stock permanent</small>','<input type="text" data-k="mat" placeholder="00h00" oninput="_suRead();_suOk3()" value="'+_suEsc(SU.v.mat||'')+'">')
