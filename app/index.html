@@ -8,7 +8,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v4.97">
+<meta name="app-version" content="v4.98">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -2752,7 +2752,13 @@ function _bulPayApply(){
 function openVerif(){_bulPayPropose(function(){openMergedRenduCgModal(6,2);},1);}
 // Choix de fichiers : le champ est rattaché à la page le temps du choix (sur iPhone, un champ détaché ne reçoit pas toujours le fichier choisi)
 function _fileInput(){var i=document.createElement('input');i.type='file';i.style.cssText='position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0';return i;}
-function _fileOpen(i){document.body.appendChild(i);var f=i.onchange;i.onchange=function(e){var r=f&&f.call(i,e);setTimeout(function(){if(i.parentNode)i.remove();},60000);return r;};i.click();}
+// Le fichier choisi est traité une seule fois, qu'il arrive par « change », « input » ou au retour sur la page (certains iPhone ne signalent rien)
+function _fileOpen(i){document.body.appendChild(i);var f=i.onchange,done=false;i.onchange=null;
+  var go=function(e){if(done||!i.files||!i.files.length)return;done=true;window.removeEventListener('focus',back);document.removeEventListener('visibilitychange',back);f&&f.call(i,e);setTimeout(function(){if(i.parentNode)i.remove();},60000);};
+  var back=function(){setTimeout(go,700);};
+  i.addEventListener('change',go);i.addEventListener('input',go);
+  setTimeout(function(){window.addEventListener('focus',back);document.addEventListener('visibilitychange',back);},300);
+  i.click();}
 // Vérification : un seul bouton Importer ; les PDF vont aux bulletins (retour à la vérification), le fichier Excel au tableau Gestion
 function _verifImport(){var th=window._bulPayThen;
   var inp=_fileInput();inp.multiple=true;inp.accept='application/pdf,.pdf,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -4689,7 +4695,7 @@ function _suRhPick(which){
       if(which){if(SU.rh&&P.ed>=SU.rh.P.ed)throw new Error('Ce tableau n’est pas plus ancien que le plus récent.');SU.rh0=o;}
       else{SU.rh=o;SU.anim='rh';SU.v.mat=P.matelas!=null?fmtMin(P.matelas):'';SU.v.eph=fmtMin(Math.round(P.total));if(SU.rh0&&SU.rh0.P.ed>=P.ed)SU.rh0=null;}}
     catch(e){var msg=(e&&e.message)||'Ce fichier n’a pas pu être lu.';if(which)SU.rh0Err=msg;else{SU.rh=null;SU.rhMode=null;SU.rhErr=msg;}}
-    SU.rhBusy=null;if(SU.step===3)_suDraw();};
+    SU.rhBusy=null;if(SU)_suDraw();};
   _fileOpen(inp);
 }
 
@@ -4763,7 +4769,7 @@ function _suBulPick(){
     for(var i=0;i<fs.length;i++){try{var b=_bulParse(await _pdfLines(fs[i]));if(b){b.at=Date.now();SU.bul[b.ym]=b;}else bad++;}catch(e){bad++;}}
     if(Object.keys(SU.bul).length){if(!SU.bulMode)SU.anim='pay';SU.bulMode='imp';_suBulDerive();}
     if(bad)SU.bulErr=(bad>1?bad+' fichiers n’ont pas pu être lus':'Un fichier n’a pas pu être lu')+(navigator.onLine===false?' (hors ligne)':'')+'.';
-    SU.bulBusy=false;if(SU.step===4)_suDraw();};
+    SU.bulBusy=false;if(SU)_suDraw();};
   _fileOpen(inp);
 }
 function _suBulDerive(){
