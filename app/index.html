@@ -8,7 +8,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v5.16">
+<meta name="app-version" content="v5.17">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -4584,8 +4584,10 @@ function _suOpen(){
   SU={step:0,rh:null,rh0:null,rhBusy:null,rhMode:null,bul:{},bulMode:null,v:{line:'',dimRendu:true,rhRendu:true,ferRendu:true,hsRendu:true,pfa:0,pct:100}};
   var el=document.createElement('div');el.id='setup';document.body.appendChild(el);document.body.classList.add('su-on');
   // Retour du téléphone ou du navigateur : étape précédente, et depuis la première, l'écran de connexion (le compte est déjà enregistré)
-  try{history.pushState({su:1},'');}catch(e){}
-  if(!window._suPop){window._suPop=1;window.addEventListener('popstate',function(){
+  // iPhone : pas d'entrée d'historique (le glissement retour afficherait une page blanche) ; la flèche ‹ de chaque écran suffit
+  var ios=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+  if(!ios)try{history.pushState({su:1},'');}catch(e){}
+  if(!ios&&!window._suPop){window._suPop=1;window.addEventListener('popstate',function(){
     if(!SU||!document.getElementById('setup'))return;
     if(SU.step>0){try{history.pushState({su:1},'');}catch(e){}_suGo(SU.step-1);}else signOut();});}
   _suDraw();
@@ -4661,7 +4663,7 @@ function _suFromSum(m){var g=Math.max(m,NOW.getFullYear()*12),ms=_suMoisL,sm=fun
     +row('Gestion vérifiée',SU.rhMode==='man'?'non (saisie à la main)':'dès '+ms(g))
     +'</div>';}
 function _suStep2(){
-  var u=_suTabYM(),top=u!=null?Math.min(u,TODAY_YM):TODAY_YM,M=[];for(var ym=top;ym>=TODAY_YM-24;ym--)M.push(ym);
+  var u=_suTabYM(),top=u!=null?Math.min(u,TODAY_YM):TODAY_YM,M=[];for(var ym=top;ym>=Math.min(_SU_REC_YM,top);ym--)M.push(ym); // pas avant décembre de l'année d'avant
   if(SU.v.fromYM==null||SU.v.fromYM===''||M.indexOf(+SU.v.fromYM)<0)SU.v.fromYM=M.indexOf(_SU_REC_YM)>=0?_SU_REC_YM:top;
   SU.v.from='month';var f=+SU.v.fromYM,late=u!=null&&u<TODAY_YM;
   var sel='<select data-k="fromYM" onchange="_suRead();_suDraw()" class="su-msel">'+M.map(function(ym){return '<option value="'+ym+'"'+(f===ym?' selected':'')+'>'+capitalize(_suMoisL(ym))+(ym===_SU_REC_YM?' · recommandé':ym===top?(late?' · le plus récent':' · ce mois-ci'):'')+'</option>';}).join('')+'</select>';
