@@ -2164,9 +2164,8 @@ async function importCycleFromPDF() {
       let cycleName = file.name.replace(/\.pdf$/i, '');
       const meta = await pdf.getMetadata().catch(() => ({}));
       if (meta && meta.info && meta.info.Title) cycleName = meta.info.Title;
-      const result = _parsePDFGrid(allItems);
-      result.name = cycleName;
-      _showPDFPreview(result);
+      window._pdfItems = allItems; window._pdfName = cycleName;
+      _pdfShowSection(null);
     } catch(err) {
       const mc2 = document.getElementById('modal-content');
       mc2.innerHTML = '<h2>Erreur d\'import</h2>'
@@ -2197,7 +2196,7 @@ function _toVacCode(str) {
   return undefined;
 }
 
-function _parsePDFGrid(items) {
+function _parsePDFGrid(items, secIdx) {
   const Y_TOL = 8;
   const rows = [];
   for (const item of [...items].sort((a, b) => a.y - b.y)) {
@@ -2228,7 +2227,9 @@ function _parsePDFGrid(items) {
   const DAY_MAP = { l:0,lu:0,lun:0,lundi:0, m:1,ma:1,mar:1,mardi:1, me:2,mer:2,mercredi:2,
     j:3,je:3,jeu:3,jeudi:3, v:4,ve:4,ven:4,vendredi:4, s:5,sa:5,sam:5,samedi:5, d:6,di:6,dim:6,dimanche:6 };
   let dayColX = null, headerY = -1;
-  for (const row of rows) {
+  // Plusieurs grilles dans le même PDF (Antenne, Pool Cadre…) : une section par en-tête de jours, titrée par la ligne juste au-dessus
+  const sections = [];
+  rows.forEach((row, ri) => {
     const hits = row.items.map(it => {
       const k = it.str.trim().toLowerCase();
       return DAY_MAP.hasOwnProperty(k) ? { col: DAY_MAP[k], x: it.x } : null;
@@ -2236,13 +2237,19 @@ function _parsePDFGrid(items) {
     if (new Set(hits.map(h => h.col)).size >= 5) {
       const cols = Array(7).fill(null);
       for (const h of hits) { if (cols[h.col] === null) cols[h.col] = h.x; }
-      dayColX = cols; headerY = row.y; break;
+      const prev = sections.length ? sections[sections.length - 1].y : -Infinity;
+      let title = '', titleY = row.y;
+      for (let j = ri - 1; j >= 0 && rows[j].y > prev; j--) { if (/[a-z]/i.test(rows[j].text)) { title = rows[j].text.trim(); titleY = rows[j].y; break; } }
+      sections.push({ y: row.y, cols, title, titleY });
     }
-  }
+  });
+  if (secIdx == null) secIdx = 0;
+  if (secIdx >= sections.length) secIdx = 0;
+  if (sections.length) { dayColX = sections[secIdx].cols; headerY = sections[secIdx].y; }
 
-  // Détecter la limite de la section Antenne (Pool Cadre ou 2ème header de jours)
-  let stopY = Infinity;
-  for (const row of rows) {
+  // Limite de la section : titre de la section suivante, sinon « Pool » ou 2ème en-tête de jours
+  let stopY = sections[secIdx + 1] ? sections[secIdx + 1].titleY : Infinity;
+  if (stopY === Infinity) for (const row of rows) {
     if (row.y <= headerY) continue;
     if (row.items.some(it => /pool/i.test(it.str.trim()))) { stopY = row.y; break; }
     const hits2 = row.items.map(it => { const k = it.str.trim().toLowerCase(); return DAY_MAP.hasOwnProperty(k) ? k : null; }).filter(Boolean);
@@ -2289,6 +2296,53 @@ function _parsePDFGrid(items) {
     }
     for (let di = 0; di < 7; di++) {
       if (calCounts[di] >= 2) dayColX[di] = calSums[di] / calCounts[di];
+    }
+
+    // Numéros de semaine dans la marge (1, 2, 3…) : chaque semaine = la bande entre deux numéros.
+    // Dans une case : le code (parfois avec « V » sur une ligne en dessous : C3 + V → C3V), les horaires, la pause et la durée
+    const marginX = Math.min(...dayColX) - colSpacing * 0.2;
+    const marks = [];
+    for (const row of rows) {
+      if (row.y <= headerY || row.y >= stopY) continue;
+      for (const it of row.items) if (/^\d{1,2}$/.test(it.str.trim()) && it.x < marginX) marks.push({ n: +it.str.trim(), y: it.y });
+    }
+    if (marks.length >= 2) {
+      marks.sort((a, b) => a.y - b.y);
+      const TIME = /^(\d{1,2})h(\d{2})$/, inBand = [];
+      const lo = dayColX.map(x => x - colSpacing * 0.25);
+      const bandItems = [];
+      for (let m = 0; m < marks.length; m++) {
+        const y0 = marks[m].y - 6, y1 = m + 1 < marks.length ? marks[m + 1].y - 6 : stopY;
+        bandItems.push(items.filter(it => it.y >= y0 && it.y < y1));
+      }
+      const vacs = {}, seenDays = {};
+      weeks = bandItems.map(bi => {
+        const w = Array(7).fill(null);
+        for (let di = 0; di < 7; di++) {
+          const cell = bi.filter(it => it.x >= lo[di] && it.x < lo[di] + colSpacing).sort((a, b) => a.y - b.y || a.x - b.x);
+          const toks = cell.map(it => it.str.trim().replace(/\s/g, ''));
+          const main = toks.find(t => !/^v$/i.test(t) && _toVacCode(t) !== undefined);
+          let code = main ? _toVacCode(main) : null;
+          if (code && code !== 'RH' && toks.some(t => /^v$/i.test(t)) && !/V$/.test(code)) code += 'V';
+          w[di] = code;
+          if (!code || code === 'RH') continue;
+          (seenDays[code] = seenDays[code] || new Set()).add(di);
+          if (vacs[code]) continue;
+          // Horaires : 1re ligne = début et fin, 2e ligne = pause et durée effective
+          const tl = [];
+          for (const it of cell) { const m = TIME.exec(it.str.trim()); if (!m) continue; const g = tl.find(g => Math.abs(g.y - it.y) <= 4); const t = { s: it.str.trim(), x: it.x, min: +m[1] * 60 + +m[2] }; if (g) g.t.push(t); else tl.push({ y: it.y, t: [t] }); }
+          tl.forEach(g => g.t.sort((a, b) => a.x - b.x));
+          if (!tl.length || tl[0].t.length < 2) continue;
+          const deb = tl[0].t[0], fin = tl[0].t[tl[0].t.length - 1];
+          let dur = fin.min - deb.min; if (dur < 0) dur += 1440;
+          if (tl[1] && tl[1].t.length) dur = tl[1].t[tl[1].t.length - 1].min;
+          vacs[code] = { deb: deb.s, fin: fin.s, dur };
+        }
+        return w;
+      }).filter(w => w.some(c => c));
+      // Codes vus seulement le samedi / dimanche : vacations de week-end
+      Object.keys(vacs).forEach(c => { const d = [...seenDays[c]]; if (d.every(x => x >= 5)) vacs[c].type = d.includes(5) && d.includes(6) ? 'sat,sun' : d.includes(5) ? 'sat' : 'sun'; });
+      return { weeks, startDate: detectedDate, detected: weeks.length > 0, rawRows, vacations: vacs, sections: sections.map(x => x.title || 'Grille'), sec: secIdx };
     }
 
     // Fusionner les lignes très proches (ligne PDF découpée en 2 parties dans le rendu)
@@ -2364,7 +2418,7 @@ function _parsePDFGrid(items) {
   }
 
   const vacations = dayColX ? _parsePDFVacations(items, rows, dayColX, colSpacing, stopY) : {};
-  return { weeks, startDate: detectedDate, detected: weeks.length > 0, rawRows, vacations };
+  return { weeks, startDate: detectedDate, detected: weeks.length > 0, rawRows, vacations, sections: sections.map(x => x.title || 'Grille'), sec: secIdx };
 }
 
 function _parsePDFVacations(allItems, rows, dayColX, colSpacing, stopY = Infinity) {
@@ -2448,6 +2502,19 @@ function _parsePDFVacations(allItems, rows, dayColX, colSpacing, stopY = Infinit
   return vacMap;
 }
 
+// Grille du PDF à importer : par défaut celle de l'équipe affichée (titre « Pool Cadre », « Coordination »…)
+function _secPool(t) { return /cadre/i.test(t || '') ? 'cadre' : /coord/i.test(t || '') ? 'coord' : 'antenne'; }
+function _pdfShowSection(idx) {
+  let result = _parsePDFGrid(window._pdfItems, idx || 0);
+  if (idx == null && result.sections.length > 1) {
+    const i = result.sections.findIndex(t => _secPool(t) === _admPool);
+    if (i > 0) result = _parsePDFGrid(window._pdfItems, i);
+  }
+  const t = result.sections[result.sec];
+  result.name = window._pdfName + (result.sections.length > 1 && t ? ' — ' + t : '');
+  result.pool = result.sections.length > 1 ? _secPool(t) : _admPool;
+  _showPDFPreview(result);
+}
 function _showPDFPreview(result) {
   const { weeks, startDate, detected, name, rawRows, vacations } = result;
   window._pdfVacations = vacations || {};
@@ -2484,10 +2551,12 @@ function _showPDFPreview(result) {
       + _esc(rawRows.slice(0, 80).join('\n')) + '</textarea></details>'
     : '';
 
+  const secs = result.sections || [];
   mc.innerHTML = '<h2>Import PDF — Aperçu</h2>'
+    + (secs.length > 1 ? '<div class="field"><label>Grille du PDF</label><select onchange="_pdfShowSection(+this.value)">' + secs.map((t, i) => '<option value="' + i + '"' + (i === result.sec ? ' selected' : '') + '>' + _esc(t) + '</option>').join('') + '</select></div>' : '')
     + status
     + '<div class="row"><div class="flex1 field"><label>Nom du cycle</label><input type="text" id="pdf-cyc-name" value="' + _esc(name || '') + '" placeholder="Nom du cycle"></div>'
-    + '<div class="field"><label>Équipe</label><select id="pdf-cyc-pool">' + Object.keys(POOL_L).map(k => '<option value="' + k + '"' + (k === _admPool ? ' selected' : '') + '>' + POOL_L[k] + '</option>').join('') + '</select></div></div>'
+    + '<div class="field"><label>Équipe</label><select id="pdf-cyc-pool">' + Object.keys(POOL_L).map(k => '<option value="' + k + '"' + (k === (result.pool || _admPool) ? ' selected' : '') + '>' + POOL_L[k] + '</option>').join('') + '</select></div></div>'
     + '<div class="row"><div class="flex1 field"><label>Date de début</label><input type="date" id="pdf-cyc-start" value="' + _esc(startDate || '') + '"></div>'
     + '<div class="flex1 field"><label>Date de fin (optionnel)</label><input type="date" id="pdf-cyc-end"></div></div>'
     + grid
@@ -2548,7 +2617,7 @@ async function _saveVacationsAndLink(cycleId, vacs, rename, existing) {
       const vacLabel = fn !== vname ? vname : fn;
       const defaultPrimes = { antenne: vacLabel !== 'P423', reel: false, coord: false };
       await fetch(API+'/admin/vacation/save', { method:'POST', headers:adminHeaders(),
-        body: JSON.stringify({ vacation: { name:fn, ...(fn!==vname?{label:vname}:{}), deb:v.deb||'', fin:v.fin||'', dur:v.dur||0, panier:_calcPanier(v.deb,v.fin,v.dur), primes:defaultPrimes, type:'week' } }) });
+        body: JSON.stringify({ vacation: { name:fn, ...(fn!==vname?{label:vname}:{}), deb:v.deb||'', fin:v.fin||'', dur:v.dur||0, panier:_calcPanier(v.deb,v.fin,v.dur), primes:defaultPrimes, type:v.type||'week' } }) });
     }
     await fetch(API+'/admin/vacation/addcycle', { method:'POST', headers:adminHeaders(), body: JSON.stringify({ name:fn, cycleId }) });
     if (fn !== vname) renamed.push(vname + ' → ' + fn);
