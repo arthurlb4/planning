@@ -7,6 +7,8 @@ const ALLOWED_ORIGIN = 'https://arthurlb4.github.io';
 const ALLOWED_ORIGINS = [ALLOWED_ORIGIN, 'https://franceinfoplanning.com', 'https://www.franceinfoplanning.com',
   'http://franceinfoplanning.com', 'http://www.franceinfoplanning.com']; // http : le temps que le certificat HTTPS soit prêt
 // Adresse de l'app (liens des mails, retour de Google) : celle d'où vient la demande
+// Adresses de retour Google acceptées (celle enregistrée chez Google sert aussi depuis franceinfoplanning.com)
+const OAUTH_RU = ['https://arthurlb4.github.io/planning/app/', 'https://franceinfoplanning.com/app/', 'https://www.franceinfoplanning.com/app/'];
 function appBase(request) {
   var o = request.headers.get('Origin') || '';
   return ALLOWED_ORIGINS.indexOf(o) > 0 ? o + '/' : 'https://arthurlb4.github.io/planning/';
@@ -1191,7 +1193,7 @@ async function handle(request, env, ctx) {
         var tokenRes = await fetch('https://oauth2.googleapis.com/token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams({ code: code, client_id: CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, redirect_uri: appBase(request) + 'app/', grant_type: 'authorization_code' }),
+          body: new URLSearchParams({ code: code, client_id: CLIENT_ID, client_secret: env.GOOGLE_CLIENT_SECRET, redirect_uri: OAUTH_RU.indexOf(body.redirect_uri) >= 0 ? body.redirect_uri : appBase(request) + 'app/', grant_type: 'authorization_code' }),
         });
         var data = await tokenRes.json();
         return resp(data, tokenRes.status);
