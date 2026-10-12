@@ -367,5 +367,16 @@ function situation(opts) {
   eq('Report du tableau (+3 mois) sur juin repris ensuite', a.run('(function(){rhApplyReports([[' + YM(2026, 6) + ',1]]);autoReportEph();return getEphExtensions(' + YM(2026, 6) + ');})()'), 1);
 }
 
+// Heures que le tableau laisse expirer alors que l'app les a utilisées (le gestionnaire a pris avant des heures reportées)
+{ const a = load('2026-10-25');
+  eq('Juin perdu au tableau (10h le 30/09), utilisé dans l’app : signalé, avec la ligne du mail', a.run(`(function(){render=function(){};saveState=function(){};
+    S.settings=Object.assign(S.settings||{},{dimRendu:false,rhRendu:false,ferRendu:false,hsRendu:false});S.conges={};S.extraRendus={'2026-04-05':{dur:600},'2026-06-07':{dur:600}};
+    _startApply(_startManual('2026-04-01',0,0));S.ephExtend={};S.ephExtend[${YM(2026, 4)}]=1;S.noAuto={};getDur=function(){return 600;};S.conges['2026-09-10']='rend';recalcAllMatelas();
+    var U=function(y,m,d){return new Date(Date.UTC(y,m,d));};
+    var rh={edition:new Date(2026,9,20,12),tot:{},lastWeek:0,weeks:{},lines:[{ym:${YM(2026, 4)},nature:'Dimanche',acq:600,cons:600,solde:0,stock:0,rep:1,valid:U(2026,6,31),validRep:U(2026,9,31),com:''},
+      {ym:${YM(2026, 6)},nature:'Dimanche',acq:600,cons:0,solde:600,stock:0,rep:0,valid:U(2026,8,30),com:''}]};
+    rhCompareShow(rh,true);S.profile.rhTable={cells:{},name:'x'};var c=S.profile.rhCmp,m=_gmRh();return [JSON.stringify(c.lost),!!(m&&m.L.some(function(l){return l.indexOf('expiré le 30')>=0;}))];})()`),
+    ['[{"ym":' + YM(2026, 6) + ',"min":600,"v":"2026-09-30"}]', true]); }
+
 console.log('\n' + (count - fails) + '/' + count + ' contrôles réussis');
 if (fails) process.exit(1);

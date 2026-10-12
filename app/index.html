@@ -8,7 +8,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.13">
+<meta name="app-version" content="v6.14">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -4117,6 +4117,8 @@ function _gmRh(){
   if(Math.abs(e)>=2)L.push('- solde d’heures : le tableau m’en compte '+fmtMin(Math.abs(e))+' de '+(e>0?'plus':'moins')+' que mon décompte');
   if(T&&T.lines&&!igRest){var eY=T.edition.getFullYear()*12+T.edition.getMonth(),rr={};T.lines.forEach(function(l){if(l.ym<eY)rr[l.ym]=Math.max(rr[l.ym]||0,l.rep||0);});
     Object.keys(rr).map(Number).sort(function(a,b){return a-b;}).forEach(function(ym){var x=getEphExtAt(ym,eY);if(getExpYm(ym)>=TODAY_YM&&x!==rr[ym])L.push('- heures acquises en '+MF_(ym)+' : '+(x?'report de '+x*3+' mois':'aucun report')+' accordé, '+(rr[ym]?'report de '+rr[ym]*3+' mois':'aucun report')+' dans le tableau');});}
+  // heures laissées expirer alors que des heures valables plus longtemps ont été prises avant
+  (c.lost||[]).forEach(function(x){L.push('- '+fmtMin(x.min)+' acquises en '+MF_(x.ym)+' ont expiré le '+new Date(x.v+'T12:00:00').toLocaleDateString('fr-FR')+', alors que des heures valables plus longtemps ont été utilisées avant : merci de prendre d’abord les heures qui expirent le plus tôt et de rétablir ces heures');});
   // fav : seulement un solde en ma faveur (pas coché d'office)
   return L.length?{ed:new Date(c.ed+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}),L:L,fav:L.length===1&&e>=2}:null;}
 // Paie : écarts des bulletins non ignorés, ligne par ligne, dits concrètement (ce qui est noté sur le bulletin / ce que j'ai fait)
@@ -5237,9 +5239,9 @@ function _verifSim(rh){
   let matA=0,consA=0;const matK=[],wkA={},yms=_fifoYms(Object.keys(pool));
   keys.forEach(k=>{const d=new Date(k+'T12:00:00'),pym=d.getFullYear()*12+d.getMonth(),dur=getDur(d),w=getISOWeek(getMonday(d));wkA[w]=(wkA[w]||0)+dur;let left=dur;
     yms.forEach(ym=>{if(left<=0||pool[ym]<=0||ym>pym&&!_rbw(k,ym)||exp(ym)<pym)return;const t=Math.min(pool[ym],left);pool[ym]-=t;left-=t;consA+=t;});if(left>0)matK.push({k,pym,left});matA+=left;});
-  let appH=0;yms.forEach(ym=>{if(ym<asOfYM&&exp(ym)>=asOfYM)appH+=pool[ym];});
+  let appH=0;const remA={},expA={};yms.forEach(ym=>{if(ym>=asOfYM)return;if(exp(ym)>=asOfYM){appH+=pool[ym];if(pool[ym]>0)remA[ym]=pool[ym];}else if(pool[ym]>0)expA[ym]=pool[ym];});
   const tabH=rh.tot.cumSol!=null?rh.tot.cumSol:rh.lines.reduce((t,l)=>t+(l.nature&&_rhValidAt(l,asOf)?Math.max(0,l.solde):0),0);
-  return{st,asOf,asOfYM,lw:rh.lastWeek,cutK,acq,adjM,nat,adjrM,det:G.det,keys,lag,matK,adjr,consA:consA-adjr,xadj,consT,matA:matA-xadj,matT,wkA,appH,tabH,hasMat,appM:(st.mat||0)+xadj-matA,tabM:hasMat?rh.tot.stockAct:0};
+  return{st,asOf,asOfYM,lw:rh.lastWeek,cutK,acq,adjM,nat,adjrM,remA,expA,det:G.det,keys,lag,matK,adjr,consA:consA-adjr,xadj,consT,matA:matA-xadj,matT,wkA,appH,tabH,hasMat,appM:(st.mat||0)+xadj-matA,tabM:hasMat?rh.tot.stockAct:0};
 }
 // Rendus que l'app a pris sur le matelas et le gestionnaire sur des heures acquises après coup : faire comme lui
 // (les plus récents d'abord, jusqu'au montant de l'écart) — ils prennent alors les heures du mois suivant
@@ -5322,13 +5324,29 @@ function rhCompareShow(rh,silent){
   if(repL.length)card({t:'Reports',sub:repL.map(ym=>MFc(ym)+' : '+(tRep[ym]?'+'+tRep[ym]*3+' mois':'aucun')+' au tableau').join(' · '),info:1,vt:'',
     body:_suPts(repL.map(ym=>MFc(ym)+' → '+(tRep[ym]?'+'+tRep[ym]*3+' mois':'aucun')+' au tableau, '+(getEphExtensions(ym)?'+'+getEphExtensions(ym)*3+' mois':'aucun')+' dans l’app').concat(['Les reports sont accordés par le gestionnaire']))
       +'<button class="rv-b2" onclick="event.stopPropagation();rhApplyReports('+JSON.stringify(repL.map(ym=>[ym,tRep[ym]]))+')">Faire comme le tableau</button>'});
+  // 4b. Heures restantes mois par mois : le gestionnaire ne prend pas toujours les heures qui expirent le plus tôt
+  const MS=ym=>MF[ym%12]+(Math.floor(ym/12)!==asOf.getFullYear()?' '+Math.floor(ym/12):''),fdS=d=>d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'});
+  const vOf=l=>{const v=l.rep?(l.validRep||l.valid):l.valid;return v?new Date(v.getUTCFullYear(),v.getUTCMonth(),v.getUTCDate(),12):null;};
+  const tRem={},tExp={},tLost={},stD=new Date(R.st.d+'T12:00:00');
+  rh.lines.forEach(l=>{if(!l.nature||!(l.solde>0))return;const v=vOf(l);if(!v||v>=asOf){tRem[l.ym]=(tRem[l.ym]||0)+l.solde;if(v)tExp[l.ym]=v;}else if(v>=stD){const x=tLost[l.ym]||(tLost[l.ym]={min:0,v});x.min+=l.solde;}});
+  // heures que le tableau laisse expirer alors que l'app les a utilisées (le gestionnaire a pris avant des heures valables plus longtemps)
+  const lostL=[];Object.keys(tLost).map(Number).sort((a,b)=>a-b).forEach(ym=>{const x=tLost[ym],d=x.min-(R.expA[ym]||0);if(!bad(d))return;lostL.push({ym,min:d,v:dk(x.v)});
+    const later=Object.keys(tRep).map(Number).filter(m=>tRep[m]&&m!==ym&&!(tRem[m]>0)).map(MS);
+    card({t:'Heures de '+MS(ym)+' perdues au tableau',sub:fmtMin(d)+' expirées le '+fdS(x.v),v:-d,
+      body:_suPts(['Au tableau → '+fmtMin(d)+' de '+MS(ym)+' restaient, perdues le '+fdS(x.v),'Dans l’app → utilisées avant d’expirer',later.length?'Le gestionnaire a pris avant des heures valables plus longtemps ('+later.join(', ')+', reportées)':'',
+        'À lui demander → prendre d’abord les heures qui expirent ; ligne prête dans le mail au gestionnaire'])});});
+  // même total possible, mais mois différents : risque si le tableau garde des heures qui expirent plus tôt
+  const remYms=[...new Set(Object.keys(tRem).concat(Object.keys(R.remA)).map(Number))].sort((a,b)=>a-b),remBad=remYms.filter(ym=>bad((tRem[ym]||0)-(R.remA[ym]||0)));
+  if(remBad.length){const tOnly=remBad.filter(ym=>(tRem[ym]||0)>(R.remA[ym]||0)),risk=tOnly.filter(ym=>tExp[ym]&&remBad.some(m=>m!==ym&&(R.remA[m]||0)>(tRem[m]||0)&&getExpYm(m)*1>tExp[ym].getFullYear()*12+tExp[ym].getMonth()));
+    card({t:'Heures restantes par mois',sub:risk.length?'Au tableau, '+risk.map(ym=>fmtMin((tRem[ym]||0)-(R.remA[ym]||0))+' de '+MS(ym)+' expirent le '+fdS(tExp[ym])).join(', '):'Pas rangées dans les mêmes mois',info:!risk.length,vt:'',v:0,
+      body:_suPts(remBad.map(ym=>MS(ym)+' → tableau '+fmtMin(tRem[ym]||0)+', app '+fmtMin(R.remA[ym]||0)).concat([risk.length?'Le tableau garde des heures qui expirent plus tôt que dans l’app → à poser avant cette date, ou à signaler si elles sont perdues':'Seul le classement par mois diffère']))});}
   // 5. Le reste : heures expirées à d'autres dates
   const restH=eH-acqE-consE;
   if(bad(restH)){const ig=_rhCIgn('rest',restH);if(ig)ignSum+=restH;
     card({t:'Heures expirées',sub:ig?'Ignoré':(restH>0?'L’app en perd ':'Le tableau en perd ')+fmtMin(Math.abs(restH))+' de plus',v:restH,done:ig,
       body:_suPts(['Heures arrivées à échéance à d’autres dates',repL.length?'Reports différents → voir « Reports »':'Souvent un report différent']).replace('</ul>','</ul>')+'<div style="margin-top:6px">'+_rhIgnLink('rest',restH)+'</div>'});}
   const dTot=eH+eM,de=dTot-ignSum; // + : le tableau vous laisse plus
-  if(S.profile){const _c={ed:dk(asOf),d:Math.round(-dTot),de:Math.round(-de)};const _o=S.profile.rhCmp;if(!_o||_o.ed!==_c.ed||_o.d!==_c.d||_o.de!==_c.de){S.profile.rhCmp=_c;saveState();if(!silent)try{render();}catch(e){}}}
+  if(S.profile){const _c={ed:dk(asOf),d:Math.round(-dTot),de:Math.round(-de),lost:lostL};const _o=S.profile.rhCmp;if(!_o||_o.ed!==_c.ed||_o.d!==_c.d||_o.de!==_c.de||JSON.stringify(_o.lost||[])!==JSON.stringify(lostL)){S.profile.rhCmp=_c;saveState();if(!silent)try{render();}catch(e){}}}
   if(silent)return;
   // Résumé : deux lignes, puis une phrase
   const row=(l,t,a,e)=>'<tr><td style="font-size:12px;color:var(--text2);padding:4px 0;text-align:left">'+l+'</td>'
