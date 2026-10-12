@@ -8,7 +8,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.17">
+<meta name="app-version" content="v6.18">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -7651,7 +7651,7 @@ function openSettingsModal(tab){
     +(function(){var k=null;try{k=JSON.parse(localStorage.getItem('pl_bak')||'null');}catch(e){}
       if(!k||!k.d||(k.u&&k.u!==_plU())||Date.now()-k.at>30*864e5)return '';
       var dt=new Date(k.at).toLocaleDateString('fr-FR',{day:'numeric',month:'short'})+' '+new Date(k.at).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
-      return '<div class="srow" '+_sr+'><div class="slbl">Version d’avant sur cet appareil<span style="display:block;font-size:11px;color:var(--text3)">remplacée par le cloud le '+dt+'</span></div><button '+_bS+' onclick="_restoreBak()">Restaurer</button></div>';})()
+      return '<div class="srow" '+_sr+'><div class="slbl">Version d’avant sur cet appareil<span style="display:block;font-size:11px;color:var(--text3)">remplacée par le cloud le '+dt+'<br>'+_bakSum(k.d)+'</span></div><button '+_bS+' onclick="_restoreBak()">Restaurer</button></div>';})()
     +'<div class="srow" '+_sr+'><div class="slbl" style="color:var(--red)">Supprimer le profil</div><button class="mb del" style="width:120px;height:32px;min-height:32px;padding:0;font-size:12px;border:none" onclick="deleteCurrentProfile()">Supprimer</button></div>'
   // ── TAB 1: PAIE + RENDUS ──
   var palierOpts='<option value="">—</option>';
@@ -9652,17 +9652,23 @@ async function confirmDeleteAccount(){
 }
 
 // Historique (cloud) : liste des jours, puis restauration d'une version (la version actuelle reste dans l'historique du jour)
+// Résumé d'une version : de quoi reconnaître la bonne (tableau Gestion, paie, rendus, dernière modification)
+function _bakSum(d){var p=(d&&d.profile)||{},c=d&&d.conges||{},n=Object.keys(c).filter(function(k){return c[k]==='rend'||c[k]==='rend-hist';}).length,
+    cg=Object.keys(c).filter(function(k){return c[k]==='cg';}).length,ov=Object.keys(d&&d.overrides||{}).length,ls=p._lastSaved?new Date(p._lastSaved):null;
+  return [(p.rhTable||p.rhImportedAt?'✓':'✗')+' tableau Gestion',(p.palierNum?'✓':'✗')+' paie',n+' rendus · '+cg+' congés · '+ov+' changements',ls?'modifiée le '+ls.toLocaleDateString('fr-FR',{day:'numeric',month:'short'})+' à '+ls.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):''].filter(Boolean).join(' · ');}
+// Historique (cloud) : chaque jour gardé, avec son résumé, et un bouton Restaurer
 async function _histOpen(){var pid=_aid,dates=[];
-  try{var r=await fetch(CLOUD_API+'/data/backups',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({profileId:pid})});var d=await r.json();dates=d.dates||[];}catch(e){_infoToast('Historique injoignable');return;}
-  // Sélecteur de jour (jusqu'à 60) + un seul bouton Restaurer
-  var ls=dates.length?'<div style="display:flex;gap:8px;align-items:center"><select id="hist-sel" style="flex:1;min-width:0;padding:9px 10px;border:0.5px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--bg2);color:var(--text);font-family:var(--font);-webkit-appearance:none">'
-      +dates.slice().sort().reverse().map(function(dt){var x=new Date(dt+'T12:00:00');return '<option value="'+dt+'">Avant le '+x.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'long'})+'</option>';}).join('')
-      +'</select><button class="adj-pill" style="width:auto;padding:0 14px;height:38px;font-size:13px" onclick="_histRestore(document.getElementById(\'hist-sel\').value)">Restaurer</button></div>'
-    :'<div style="font-size:12px;color:var(--text3);padding:6px 0">Pas encore de version : elles s’enregistrent chaque jour où l’app est modifiée.</div>';
+  try{var r=await fetch(CLOUD_API+'/data/backups',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({profileId:pid})});var d=await r.json();dates=(d.dates||[]).slice().sort().reverse();}catch(e){_infoToast('Historique injoignable');return;}
   window._modalBack=function(){openSettingsModal();};
-  document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="sh"></div><div class="st">Sauvegardes</div>'
-    +'<div style="font-size:12px;color:var(--text3);line-height:1.45;margin:-4px 0 10px">État des données avant les premières modifications de chaque jour.</div><div class="hd-card">'+ls+'</div>'
-    +'<button class="mcancel" onclick="closeModal()">Retour</button></div></div>';}
+  var box=function(h){document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="sh"></div><div class="st">Sauvegardes</div>'
+    +'<div style="font-size:12px;color:var(--text3);line-height:1.45;margin:-4px 0 10px">Données telles qu’elles étaient avant les premières modifications de chaque jour.</div>'+h
+    +'<button class="mcancel" onclick="closeModal()">Retour</button></div></div>';};
+  if(!dates.length){box('<div class="hd-card" style="font-size:12px;color:var(--text3)">Pas encore de version : elles s’enregistrent chaque jour où l’app est modifiée.</div>');return;}
+  box('<div class="hd-card" style="font-size:12px;color:var(--text3)">Lecture des sauvegardes…</div>');
+  var vs=await Promise.all(dates.slice(0,20).map(function(dt){return fetch(CLOUD_API+'/data/backup',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({profileId:pid,date:dt})}).then(function(r){return r.json();}).then(function(x){return x.data;}).catch(function(){return null;});}));
+  box(dates.slice(0,20).map(function(dt,i){var x=new Date(dt+'T12:00:00');return '<div class="hd-card" style="padding:10px 12px;margin-bottom:6px"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><b style="font-size:13px">Avant le '+x.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'long'})+'</b>'
+    +(vs[i]?'<button class="adj-pill" style="width:auto;padding:0 12px;height:30px;font-size:12px" onclick="_histRestore(\''+dt+'\')">Restaurer</button>':'')+'</div>'
+    +'<div style="font-size:11.5px;color:var(--text3);margin-top:4px;line-height:1.45">'+(vs[i]?_bakSum(vs[i]):'illisible')+'</div></div>';}).join(''));}
 async function _histRestore(dt){var data=null;try{var r=await fetch(CLOUD_API+'/data/backup',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({profileId:_aid,date:dt})});data=(await r.json()).data;}catch(e){}
   if(!data){_infoToast('Version introuvable');return;}
   if(!confirm('Remettre les données d’avant le '+new Date(dt+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long'})+' ?\n\nLes données actuelles restent dans l’historique d’aujourd’hui.'))return;
