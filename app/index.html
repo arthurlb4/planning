@@ -8,7 +8,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.4">
+<meta name="app-version" content="v6.5">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -1469,6 +1469,8 @@ function getEphExtensions(ym){
 function getBaseExpYm(ym){return ym+3;}
 // Ordre de consommation des heures éphémères : celles qui expirent le plus tôt d'abord (à date égale, les plus anciennes),
 // comme le gestionnaire — sans report c'est l'ordre d'acquisition ; un mois reporté passe après ceux qui vont expirer
+// Rendu pris par le gestionnaire sur des heures acquises après coup (accepté depuis la comparaison) : ce mois-là lui est ouvert
+function _rbw(k,ym){var f=S.profile&&S.profile.rendFrom,r=f&&f[k];return r!=null&&+r===ym;}
 function _fifoYms(yms){return yms.map(Number).sort(function(a,b){return getExpYm(a)-getExpYm(b)||a-b;});}
 function getExpYm(ym){return ym+3+getEphExtensions(ym)*3;}
 
@@ -1477,7 +1479,7 @@ function getExpYm(ym){return ym+3+getEphExtensions(ym)*3;}
 // withDetail : renvoie aussi le détail jour par jour / semaine par semaine (comparaison avec le tableau RH)
 function buildGen(withDetail){
   const det=withDetail?{}:null;
-  const gen={};function add(ym,k,v,lbl){if(!gen[ym])gen[ym]={dim:0,rh:0,fer:0,hs:0,ram:0,extra:0,solde:0,monet:0};gen[ym][k]+=v;if(det&&lbl){const dkk=ym+':'+k;(det[dkk]=det[dkk]||[]).push({lbl:lbl,v:v});}}
+  const gen={};function add(ym,k,v,lbl){if(!gen[ym])gen[ym]={dim:0,rh:0,fer:0,hs:0,ram:0,extra:0,solde:0,monet:0,adj:0,adjr:0};gen[ym][k]+=v;if(det&&lbl){const dkk=ym+':'+k;(det[dkk]=det[dkk]||[]).push({lbl:lbl,v:v});}}
   const START=2026*12,maxYM=CUR_YEAR*12+11,maxYMDisplay=(CUR_YEAR+2)*12+11,VAC=getVAC();
   const createdYM=(S.profile&&S.profile.ephSoldeCreatedYM!==undefined)?S.profile.ephSoldeCreatedYM:START;
   const solde=(S.profile&&S.profile.ephSolde)||0,split=_ephSplit();
@@ -1519,6 +1521,10 @@ const dur=VAC[vac]?VAC[vac].dur:0;
         if(hsW.rendusMinRam>0)add(sunYm,'ram',hsW.rendusMinRam,'S'+getISOWeek(mon)+' (ramenée)');
       }}
   }
+  // Différences acceptées depuis la comparaison avec le tableau Gestion (« faire comme le tableau ») : heures acquises (adj) ou
+  // rendus déduits (adjr) du mois, en plus ou en moins
+  var _ig=(S.profile&&S.profile.ignRhC)||{};Object.keys(_ig).forEach(function(k){var m=/^acq(\d+)/.exec(k),r=/^wkm(\d+)s/.exec(k),ym=m?+m[1]:r?+r[1]:null;
+    if(ym!=null&&ym>=createdYM&&typeof _ig[k]==='number')add(ym,m?'adj':'adjr',_ig[k],'tableau Gestion');});
   Object.keys(S.extraRendus||{}).forEach(function(key){
     var d=new Date(key+'T12:00:00'),mon=getMonday(d),sun=new Date(mon);sun.setDate(mon.getDate()+6);
     var sunYm=sun.getFullYear()*12+sun.getMonth();
@@ -1580,7 +1586,7 @@ function calcSoldes(){
       let _left=_dur;
       const _yms=_fifoYms(Object.keys(_sim));
       for(const _ym of _yms){
-        if(_sim[_ym]<=0||getExpYm(_ym)<_poseYm||_ym>_poseYm)continue;
+        if(_sim[_ym]<=0||getExpYm(_ym)<_poseYm||_ym>_poseYm&&!_rbw(k,_ym))continue;
         const _take=Math.min(_sim[_ym],_left);_sim[_ym]-=_take;_left-=_take;
         if(_left<=0)break;
       }
@@ -2968,10 +2974,10 @@ function bulIgnL(ym,id,on){var pr=S.profile,c=_bulCompare(S.bulletins[ym]),it=c.
   var sh=document.querySelector('#modal-root .sheet'),st=sh?sh.scrollTop:0;saveState();render();openBulletinModal(ym);var s2=document.querySelector('#modal-root .sheet');if(s2){s2.style.animation='none';s2.scrollTop=st;}}
 // Tableau Gestion : on ignore une différence précise (gardée tant que sa valeur ne change pas), pas l'écart entier
 function _rhCIgn(k,v){var i=((S.profile||{}).ignRhC||{})[k];return i!=null&&Math.abs(i-v)<2;}
-function rhIgnC(k,v,on){var pr=S.profile;if(!pr.ignRhC)pr.ignRhC={};if(on)pr.ignRhC[k]=v;else delete pr.ignRhC[k];delete pr.ignRh;saveState();rhOpenFrom(window._rvFrom||'recap');render();}
+function rhIgnC(k,v,on){var pr=S.profile;if(!pr.ignRhC)pr.ignRhC={};if(on)pr.ignRhC[k]=v;else delete pr.ignRhC[k];delete pr.ignRh;try{recalcAllMatelas();}catch(e){}saveState();rhOpenFrom(window._rvFrom||'recap');render();}
 // Écart restant une fois les différences ignorées retirées (app − tableau, comme rhCmp.d)
 function _rhDe(c){return c?(c.de!=null?c.de:c.d):0;}
-function _rhIgnLink(k,v){var on=_rhCIgn(k,v);return '<a style="color:var(--blue);cursor:pointer;font-weight:400;white-space:nowrap" onclick="event.stopPropagation();rhIgnC(\''+k+'\','+Math.round(v)+','+(on?0:1)+')">'+(on?'Ne plus ignorer':'Ignorer')+'</a>';}
+function _rhIgnLink(k,v,acc){var on=_rhCIgn(k,v);return '<a style="color:var(--blue);cursor:pointer;font-weight:400;white-space:nowrap" onclick="event.stopPropagation();rhIgnC(\''+k+'\','+Math.round(v)+','+(on?0:1)+')">'+(acc?(on?'Revenir au calcul de l’app':'Faire comme le tableau'):(on?'Ne plus ignorer':'Ignorer'))+'</a>';}
 function openBulletinModal(ym,from){
   if(!document.body.classList.contains('modal-open'))_lockBodyScroll();
   var y=Math.floor(ym/12),cy=TODAY_YM!=null?Math.floor(TODAY_YM/12):y,arr='font-size:18px;padding:0 10px;color:var(--text2);cursor:pointer;user-select:none';
@@ -3956,7 +3962,7 @@ function _recalcAllMatelasRaw(){
   _rks.forEach(function(k){
     var _d=new Date(k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth(),_kdur=getDur(_d);
     var _lft=_kdur;
-    _syms.forEach(function(_ym){if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym||_ym>_pym)return;var _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;});
+    _syms.forEach(function(_ym){if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym||_ym>_pym&&!_rbw(k,_ym))return;var _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;});
     if(_lft>0){var _use=Math.min(_lft,_avail);if(!S.matelasKeys)S.matelasKeys={};S.matelasKeys[k]=_use;S.profile.matelas=_avail-_use;_avail=S.profile.matelas;}
   });
 }
@@ -4391,7 +4397,7 @@ function calcTrueDispo(viewedYM){
       const _d=new Date(k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth(),_dur=getDur(_d);
       let _lft=_dur;
       _fifoYms(_sortedYms).forEach(function(_ym){
-        if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym||_ym>_pym)return;
+        if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym||_ym>_pym&&!_rbw(k,_ym))return;
         const _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;
       });
     });
@@ -4408,13 +4414,13 @@ function calcTrueDispo(viewedYM){
       const _d=new Date(k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth(),_dur=getDur(_d);
       let _lft=_dur;
       _sortedYms.forEach(function(_ym){
-        if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym||_ym>_pym||_ym<=viewedYM)return;
+        if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym||_ym>_pym&&!_rbw(k,_ym)||_ym<=viewedYM)return;
         const _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;
       });
       if(_lft>0){
         const beforeFallback=_lft;
         _sortedYms.forEach(function(_ym){
-          if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym||_ym>_pym||_ym>viewedYM)return;
+          if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym||_ym>_pym&&!_rbw(k,_ym)||_ym>viewedYM)return;
           const _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;
         });
         const consumed=beforeFallback-_lft;
@@ -4461,7 +4467,7 @@ function calcSoldeRH(asOf){
     const _d=new Date(k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth();let _lft=getDur(_d);
     rendusPris+=_lft;rendusList.push({key:k,dur:_lft});
     _fifoYms(_yms).forEach(function(_ym){
-      if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym||_ym>_pym)return;
+      if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym||_ym>_pym&&!_rbw(k,_ym))return;
       const _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;
       (alloc[_ym]=alloc[_ym]||[]).push({key:k,amt:_tk});
     });
@@ -5150,7 +5156,7 @@ function _startApply(st){
   Object.keys(st.rep||{}).forEach(ym=>{if(+ym<st.genFrom&&st.rep[ym])S.ephExtend[ym]=st.rep[ym];});
   Object.keys(S.conges||{}).forEach(k=>{const c=S.conges[k];if(c==='rend'||c==='rend-hist')S.conges[k]=k>st.from?'rend':'rend-hist';});
   pr.calcFrom='month';pr.calcStart=st.d; // bulletins vérifiés depuis la même date
-  delete pr._rhImportBackup;delete pr.verif;delete pr.rhCmp;
+  delete pr._rhImportBackup;delete pr.verif;delete pr.rhCmp;delete pr.ignRhC;delete pr.rendFrom; // différences acceptées : liées au départ
   try{recalcAllMatelas();}catch(e){}
   saveState();
 }
@@ -5214,22 +5220,28 @@ function _verifSim(rh){
   // App : heures acquises d'après le planning depuis le départ, rendus posés après le départ
   const pr0=S.profile;let G;
   try{const t=Object.assign({},pr0,{ephSoldeCreatedYM:st.genFrom,ephSolde:0});delete t.ephSoldeSplit;delete t.ephRecon;S.profile=t;G=buildGen(true);}finally{S.profile=pr0;}
-  const acq={},nat={};Object.keys(G.gen).map(Number).forEach(ym=>{if(ym<st.genFrom||ym>=asOfYM)return;const g=G.gen[ym];
-    nat[ym]={fer:g.fer||0,dim:g.dim||0,rh:g.rh||0,hs:(g.hs||0)+(g.ram||0),extra:g.extra||0};acq[ym]=Object.keys(g).filter(k=>k!=='solde').reduce((t,k)=>t+g[k],0);});
+  const acq={},nat={},adjrM={};let adjr=0;Object.keys(G.gen).map(Number).forEach(ym=>{if(ym<st.genFrom||ym>=asOfYM)return;const g=G.gen[ym];
+    nat[ym]={fer:g.fer||0,dim:g.dim||0,rh:g.rh||0,hs:(g.hs||0)+(g.ram||0),extra:g.extra||0};acq[ym]=Object.keys(g).filter(k=>k!=='solde'&&k!=='adjr').reduce((t,k)=>t+g[k],0);adjr+=g.adjr||0;adjrM[ym]=g.adjr||0;});
   const isR=k=>S.conges[k]==='rend'||S.conges[k]==='rend-hist';
   const keys=Object.keys(S.conges||{}).filter(k=>isR(k)&&k>st.from&&k<=cutK).sort(),lag=Object.keys(S.conges||{}).filter(k=>isR(k)&&k>cutK&&k<=asK).sort();
-  const pool={};Object.keys(st.base||{}).forEach(ym=>{pool[ym]=(pool[ym]||0)+st.base[ym];});Object.keys(acq).forEach(ym=>{pool[ym]=(pool[ym]||0)+acq[ym];});
+  const pool={};Object.keys(st.base||{}).forEach(ym=>{pool[ym]=(pool[ym]||0)+st.base[ym];});Object.keys(acq).forEach(ym=>{pool[ym]=(pool[ym]||0)+acq[ym]+(adjrM[ym]||0);});
   // soldes reconstitués : ce que les rendus posés depuis le départ ont pris aux mois d'avant y est rajouté (comme dans le calcul)
   if(st.recon){const add={},oy=Object.keys(st.recon.cap).map(Number).sort((a,b)=>a-b);
     Object.keys(S.conges||{}).filter(k=>isR(k)&&k>=st.d&&k<=st.recon.ed).sort().forEach(k=>{const d=new Date(k+'T12:00:00'),pym=d.getFullYear()*12+d.getMonth();let left=getDur(d);
       oy.forEach(ym=>{if(left<=0||exp(ym)<pym)return;const t=Math.min((st.recon.cap[ym]||0)-(add[ym]||0),left);if(t<=0)return;add[ym]=(add[ym]||0)+t;pool[ym]+=t;left-=t;});});}
-  let matA=0,consA=0;const wkA={},yms=_fifoYms(Object.keys(pool));
+  let matA=0,consA=0;const matK=[],wkA={},yms=_fifoYms(Object.keys(pool));
   keys.forEach(k=>{const d=new Date(k+'T12:00:00'),pym=d.getFullYear()*12+d.getMonth(),dur=getDur(d),w=getISOWeek(getMonday(d));wkA[w]=(wkA[w]||0)+dur;let left=dur;
-    yms.forEach(ym=>{if(left<=0||pool[ym]<=0||ym>pym||exp(ym)<pym)return;const t=Math.min(pool[ym],left);pool[ym]-=t;left-=t;consA+=t;});matA+=left;});
+    yms.forEach(ym=>{if(left<=0||pool[ym]<=0||ym>pym&&!_rbw(k,ym)||exp(ym)<pym)return;const t=Math.min(pool[ym],left);pool[ym]-=t;left-=t;consA+=t;});if(left>0)matK.push({k,pym,left});matA+=left;});
   let appH=0;yms.forEach(ym=>{if(ym<asOfYM&&exp(ym)>=asOfYM)appH+=pool[ym];});
   const tabH=rh.tot.cumSol!=null?rh.tot.cumSol:rh.lines.reduce((t,l)=>t+(l.nature&&_rhValidAt(l,asOf)?Math.max(0,l.solde):0),0);
-  return{st,asOf,asOfYM,lw:rh.lastWeek,cutK,acq,nat,det:G.det,keys,lag,consA,consT,matA,matT,wkA,appH,tabH,hasMat,appM:(st.mat||0)-matA,tabM:hasMat?rh.tot.stockAct:0};
+  return{st,asOf,asOfYM,lw:rh.lastWeek,cutK,acq,nat,det:G.det,keys,lag,matK,adjr,consA:consA-adjr,consT,matA,matT,wkA,appH,tabH,hasMat,appM:(st.mat||0)-matA,tabM:hasMat?rh.tot.stockAct:0};
 }
+// Rendus que l'app a pris sur le matelas et le gestionnaire sur des heures acquises après coup : faire comme lui
+// (les plus récents d'abord, jusqu'au montant de l'écart) — ils prennent alors les heures du mois suivant
+function rhXferAccept(amt){const rh=window._rhLast,R=rh&&_verifSim(rh);if(!R)return;const pr=S.profile;if(!pr.rendFrom)pr.rendFrom={};let got=0;
+  R.matK.slice().sort((a,b)=>a.k<b.k?1:-1).forEach(x=>{if(got>=amt-2)return;pr.rendFrom[x.k]=x.pym+1;got+=x.left;});
+  try{recalcAllMatelas();}catch(e){}saveState();render();rhCompareShow(rh);}
+function rhXferUndo(){const pr=S.profile;delete pr.rendFrom;try{recalcAllMatelas();}catch(e){}saveState();render();if(window._rhLast)rhCompareShow(window._rhLast);}
 function rhCompareShow(rh,silent){
   window._rhLast=rh;
   const R=_verifSim(rh),fd=k=>new Date(k+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}).replace(/^1 /,'1er ');
@@ -5257,9 +5269,13 @@ function rhCompareShow(rh,silent){
     const daysOf=k=>(k==='hs'?(R.det[ym+':hs']||[]).concat(R.det[ym+':ram']||[]):(R.det[ym+':'+k]||[])).map(x=>(/^\d{4}-/.test(x.lbl)?dayL(x.lbl):x.lbl)+' '+fmtMin(x.v));
     diffs.filter(x=>x.a>x.s).forEach(x=>{const y=diffs.find(z=>z.a<z.s&&!used.has(z)&&Math.abs((z.a-z.s)+(x.a-x.s))<2);if(!y||used.has(x))return;used.add(x);used.add(y);const dl=daysOf(x.k);
       item('Catégorie différente en '+MF[ym%12],natL(x.k)+' dans l’app, '+natL(y.k)+' dans le tableau',fmtMin(x.a-x.s),(dl.length?'Dans l’app : '+dl.join(' · ')+'<br>':'')+'Même durée des deux côtés : sans effet.',true);});
-    diffs.filter(x=>!used.has(x)).forEach(x=>{const e=x.s-x.a,ik='acq'+ym+x.k.replace(/[^a-z0-9]/gi,''),ig=_rhCIgn(ik,e),dl=daysOf(x.k);if(ig)ignSum+=e;
-      item((x.k.startsWith('autre:')?natL(x.k)+' ':NAT_T[x.k]+' ')+moisDe(ym),(e>0?'Le tableau en compte plus':'L’app en compte plus')+(ig?' · ignorée':''),fmtE(e),
-        cmp(x.s,x.a)+(dl.length?'Dans l’app : '+dl.join(' · '):'')+'<div style="margin-top:6px">'+_rhIgnLink(ik,e)+'</div>',ig);});}
+    diffs.filter(x=>!used.has(x)).forEach(x=>{const e=x.s-x.a,ik='acq'+ym+x.k.replace(/[^a-z0-9]/gi,''),ig=_rhCIgn(ik,e),dl=daysOf(x.k);
+      item((x.k.startsWith('autre:')?natL(x.k)+' ':NAT_T[x.k]+' ')+moisDe(ym),(e>0?'Le tableau en compte plus':'L’app en compte plus')+(ig?' · comme le tableau':''),fmtE(e),
+        cmp(x.s,x.a)+(dl.length?'Dans l’app : '+dl.join(' · '):'')+'<div style="margin-top:6px">'+_rhIgnLink(ik,e,1)+'</div>',ig);});}
+  // Rendus d'une semaine citée qui diffèrent : faire comme le tableau (les heures du mois sont corrigées d'autant)
+  Object.keys(rh.weeks||{}).map(Number).forEach(w=>{const mon=_rhWeekMon(asOf.getFullYear(),w);if(dk(new Date(mon.getTime()+6*864e5))<=R.st.from||(rh.lastWeek&&w>rh.lastWeek))return;
+    const c=rh.weeks[w],a=R.wkA[w]||0,d=a-c;if(!bad(d))return;const ym=mon.getFullYear()*12+mon.getMonth(),ik='wkm'+ym+'s'+w,ig=_rhCIgn(ik,d);
+    item('Rendus de la S'+w,(d>0?'L’app en déduit plus':'Le tableau en déduit plus')+(ig?' · comme le tableau':''),fmtE(d),cmp(c,a)+'<div style="margin-top:6px">'+_rhIgnLink(ik,d,1)+'</div>',ig);});
   // Écarts (tableau − app : + en votre faveur)
   const eH=R.tabH-R.appH,eM=R.hasMat?R.tabM-R.appM:0,acqE=acqRows.reduce((t,r)=>t+r.s-r.a,0);
   const consE=R.consA-R.consT,matE=R.matA-R.matT; // pris sur les heures / sur le matelas : app − tableau
@@ -5284,9 +5300,12 @@ function rhCompareShow(rh,silent){
   let concl;if(!bad(eH)&&!bad(eM))concl='<div style="font-weight:600;margin:8px 0 2px;color:var(--green)">✓ Identique</div>';
   else if(!bad(dTot)&&bad(xfer))concl='<div style="font-weight:600;margin:8px 0 2px;color:var(--green)">Même total · en votre faveur</div><div class="rv-why" style="border-top:none;margin-top:0;padding-top:0">Le gestionnaire a pris '+fmtMin(Math.abs(xfer))+' de rendus '+(xfer>0?'sur des heures acquises après coup au lieu du matelas : votre matelas est plus haut au tableau, vos heures éphémères plus basses d’autant. Rien à corriger.':'sur le matelas au lieu des heures disponibles : votre matelas est plus bas au tableau. À lui signaler.')+'</div>';
   else concl='<div style="font-weight:600;margin:8px 0 2px;color:'+(dTot>0?'var(--green)':'var(--red)')+'">'+(dTot>0?'Écart en votre faveur : ':'À faire corriger : ')+fmtE(dTot)+' au total'+(!bad(de)?' · différences ignorées':'')+'</div>'
-    +(bad(xfer)?'<div class="rv-why" style="border-top:none;margin-top:0;padding-top:0">Dont '+fmtMin(Math.abs(xfer))+' de rendus que le gestionnaire a pris '+(xfer>0?'sur des heures acquises après coup, l’app sur le matelas faute d’heures ce jour-là : matelas plus haut au tableau, heures plus basses d’autant.':'sur le matelas, l’app sur des heures disponibles.')+'</div>':'')
+    +(bad(xfer)?'<div class="rv-why" style="border-top:none;margin-top:0;padding-top:0">Dont '+fmtMin(Math.abs(xfer))+' de rendus que le gestionnaire a pris '+(xfer>0?'sur des heures acquises après coup, l’app sur le matelas faute d’heures ce jour-là : matelas plus haut au tableau, heures plus basses d’autant.':'sur le matelas, l’app sur des heures disponibles.')+'</div>'
+      +(xfer>0&&R.matK.length?'<button class="rv-b2" onclick="rhXferAccept('+Math.round(xfer)+')">Faire comme le tableau</button>':''):'')
     +(repL.length&&bad(restH)?'<div class="rv-why" style="border-top:none;margin-top:4px;padding-top:0">Reports différents ('+repL.map(ym=>MF[ym%12]).join(', ')+') : voir « Reports » plus bas.</div>':'')
     +(bad(restH)?'<div style="font-size:11px;margin-top:4px">'+_rhIgnLink('rest',restH)+'</div>':'');
+  const _xf=Object.keys((S.profile&&S.profile.rendFrom)||{});
+  if(_xf.length)concl+='<div class="rv-why" style="border-top:none;margin-top:6px;padding-top:0;color:var(--text3)">Rendus du '+_xf.sort().map(k=>new Date(k+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'})).join(', ')+' pris sur les heures du mois suivant, comme le tableau. <a style="color:var(--blue);cursor:pointer" onclick="rhXferUndo()">Revenir au calcul de l’app</a></div>';
   const wks=[...new Set(Object.keys(rh.weeks||{}).map(Number).filter(w=>dk(new Date(_rhWeekMon(asOf.getFullYear(),w).getTime()+6*864e5))>R.st.from).concat(Object.keys(R.wkA).map(Number)))].filter(w=>!rh.lastWeek||w<=rh.lastWeek).sort((a,b)=>a-b);
   const wkRows=wks.map(w=>{const c=(rh.weeks||{})[w],a=R.wkA[w]||0,d=a-(c||0);
     return '<tr'+(c==null?' style="opacity:.55"':'')+'><td>S'+w+'</td><td>'+(c!=null?fmtMin(c):'pas cité')+'</td><td>'+(a?fmtMin(a):'—')+'</td><td>'+(c==null?'':bad(d)?'<span class="'+(d>0?'rc-pos':'rc-neg')+'">'+fmtE(d)+'</span>':'<span class="rc-ok">✓</span>')+'</td></tr>';}).join('');
@@ -5332,7 +5351,7 @@ function canPlaceRendu(newKeys){
       const _d=new Date(k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth(),_dur=getDur(_d);
       let _lft=_dur;
       _fifoYms(Object.keys(_sim)).forEach(function(_ym){
-        if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym||_ym>_pym)return;
+        if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym||_ym>_pym&&!_rbw(k,_ym))return;
         const _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;
       });
       if(_lft>0){if(trackSet&&trackSet.has(k))tracked+=_lft;else other+=_lft;}

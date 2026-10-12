@@ -345,5 +345,13 @@ function situation(opts) {
     S.conges={};S.conges[k]='rend-hist';S.conges['2026-01-07']='rend-hist';var P=_rhImportPlan(rh);return [P.toRend.indexOf(k)>=0,P.toRend.indexOf('2026-01-07')<0];})()`), [true, true]); }
 
 
+// « Faire comme le tableau » : rendu de février pris sur les heures de mars (au lieu du matelas), et heures acquises corrigées
+{ const a = load('2026-10-11');
+  eq('Rendu de février pris sur mars : matelas intact, mars entamé ; différence acceptée ajoutée au mois', a.run(`(function(){render=function(){};saveState=function(){};
+    S.settings=Object.assign(S.settings||{},{dimRendu:false,rhRendu:false,ferRendu:false,hsRendu:false});S.conges={};S.extraRendus={'2026-03-08':{dur:600}};
+    _startApply(_startManual('2026-02-01',6000,0));getDur=function(){return 480;};S.conges['2026-02-23']='rend';recalcAllMatelas();
+    var m0=Math.round(calcSoldes().matelas);S.profile.rendFrom={'2026-02-23':${YM(2026, 3)}};recalcAllMatelas();var c=calcSoldes(),m1=Math.round(c.matelas);
+    S.profile.ignRhC={['acq'+${YM(2026, 3)}+'dim']:60};var g=buildGen()[${YM(2026, 3)}];return [m0,m1,Math.round(g.adj)];})()`), [5520, 6000, 60]); }
+
 console.log('\n' + (count - fails) + '/' + count + ' contrôles réussis');
 if (fails) process.exit(1);
