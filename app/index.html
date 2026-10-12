@@ -8,7 +8,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.19">
+<meta name="app-version" content="v6.20">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -5343,9 +5343,16 @@ function rhCompareShow(rh,silent){
         'À lui demander → prendre d’abord les heures qui expirent ; ligne prête dans le mail au gestionnaire'])});});
   // même total possible, mais mois différents : risque si le tableau garde des heures qui expirent plus tôt
   const remYms=[...new Set(Object.keys(tRem).concat(Object.keys(R.remA)).map(Number))].sort((a,b)=>a-b),remBad=remYms.filter(ym=>bad((tRem[ym]||0)-(R.remA[ym]||0)));
-  if(remBad.length){const tOnly=remBad.filter(ym=>(tRem[ym]||0)>(R.remA[ym]||0)),risk=tOnly.filter(ym=>tExp[ym]&&remBad.some(m=>m!==ym&&(R.remA[m]||0)>(tRem[m]||0)&&getExpYm(m)*1>tExp[ym].getFullYear()*12+tExp[ym].getMonth()));
-    card({t:'Heures restantes par mois',sub:risk.length?'Au tableau, '+risk.map(ym=>fmtMin((tRem[ym]||0)-(R.remA[ym]||0))+' de '+MS(ym)+' expirent le '+fdS(tExp[ym])).join(', '):'Pas rangées dans les mêmes mois',info:!risk.length,vt:'',v:0,
-      body:_suPts(remBad.map(ym=>MS(ym)+' → tableau '+fmtMin(tRem[ym]||0)+', app '+fmtMin(R.remA[ym]||0)).concat([risk.length?'Le tableau garde des heures qui expirent plus tôt que dans l’app → à poser avant cette date, ou à signaler si elles sont perdues':'Seul le classement par mois diffère']))});}
+  if(remBad.length){
+    const eT=ym=>tExp[ym]?fdS(tExp[ym]):'—',eA=ym=>{const e=getExpYm(ym);return new Date(Math.floor(e/12),e%12+1,0,12).toLocaleDateString('fr-FR',{day:'numeric',month:'short'});};
+    const tM=remBad.filter(ym=>(tRem[ym]||0)>(R.remA[ym]||0)),aM=remBad.filter(ym=>(R.remA[ym]||0)>(tRem[ym]||0));
+    const tFirst=tM.map(ym=>tExp[ym]).filter(Boolean).sort((a,b)=>a-b)[0],aFirst=aM.map(ym=>{const e=getExpYm(ym);return new Date(Math.floor(e/12),e%12+1,0,12);}).sort((a,b)=>a-b)[0];
+    const sooner=tFirst&&aFirst&&tFirst<aFirst,past=tFirst&&tFirst<NOW,rk='rem'+dk(asOf),rv=remBad.reduce((t,ym)=>t+Math.abs((tRem[ym]||0)-(R.remA[ym]||0)),0),ig=_rhCIgn(rk,rv);
+    card({t:'Mois des heures restantes',sub:ig?'Ignoré':'Au tableau : '+tM.map(MS).join(', ')+' · dans l’app : '+aM.map(MS).join(', '),info:!sooner,vt:'',v:0,done:ig,
+      body:_suPts(tM.map(ym=>'Tableau → '+fmtMin((tRem[ym]||0)-(R.remA[ym]||0))+' de '+MS(ym)+', expirent le '+eT(ym))
+        .concat(aM.map(ym=>'App → '+fmtMin((R.remA[ym]||0)-(tRem[ym]||0))+' de '+MS(ym)+', expirent le '+eA(ym)))
+        .concat([sooner?(past?'Au tableau, elles expiraient plus tôt (le '+fdS(tFirst)+') → vérifier au prochain tableau qu’elles n’ont pas été perdues':'Au tableau, elles expirent plus tôt → à poser avant le '+fdS(tFirst)):'Même heures, rangées dans d’autres mois : pas de risque']))
+        +'<div style="margin-top:6px">'+_rhIgnLink(rk,rv)+'</div>'});}
   // 5. Le reste : heures expirées à d'autres dates
   const restH=eH-acqE-consE;
   if(bad(restH)){const ig=_rhCIgn('rest',restH);if(ig)ignSum+=restH;
@@ -5371,7 +5378,8 @@ function rhCompareShow(rh,silent){
     +(wks.length?'<div style="font-size:11px;color:var(--text3);margin:10px 0 2px">Par semaine (commentaires du tableau)</div><table class="rc-t">'+wks.map(w=>{const c=(rh.weeks||{})[w],a=R.wkA[w]||0;if(c==null)return '<tr style="opacity:.55"><td>S'+w+'</td><td>pas cité</td><td>'+fmtMin(a)+'</td><td></td></tr>';
       const mon=_rhWeekMon(asOf.getFullYear(),w);return t3('S'+w,c,a,'',1,_rhCIgn('wkm'+(mon.getFullYear()*12+mon.getMonth())+'s'+w,a-c)?'repris':'');}).join('')+'</table>':'');
   const html='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet rv-sheet tabmod">'+head
-    +'<div style="font-size:11px;color:var(--text3);text-align:center;margin:0 0 12px">tableau du '+fd(dk(asOf))+' · départ : '+_startTxt(R.st).split(' · ')[0]+'</div>'
+    +'<div style="font-size:11px;color:var(--text3);text-align:center;margin:0 0 8px">tableau du '+fd(dk(asOf))+' · départ : '+_startTxt(R.st).split(' · ')[0]+'</div>'
+    +'<div style="display:flex;justify-content:center;margin:0 0 12px"><button class="adj-pill" style="width:auto;padding:0 14px;height:30px;font-size:12px" onclick="rhCompareOpen()"><i class="ti ti-file-import" style="margin-right:4px"></i>Importer un nouveau tableau</button></div>'
     +'<div class="hd-card" style="padding:10px 14px 12px">'
     +'<table style="width:100%;border-collapse:collapse;table-layout:fixed"><colgroup><col><col style="width:62px"><col style="width:72px"><col style="width:62px"></colgroup>'
     +'<tr style="font-size:10.5px;color:var(--text3)"><td></td><td style="text-align:right">tableau</td><td style="text-align:right">app</td><td style="text-align:right">écart</td></tr>'
@@ -5382,13 +5390,13 @@ function rhCompareShow(rh,silent){
     +(done.length?'<div style="font-size:11.5px;color:var(--text3);margin-top:2px">'+done.length+' différence'+(done.length>1?'s reprises':' reprise')+' du tableau</div><button class="rv-b2" onclick="rhRevertAll()">Revenir au calcul de l’app</button>':'')
     +(R.lag.length?'<div style="font-size:11.5px;color:var(--text3);margin-top:4px">'+fmtMin(R.lag.reduce((t,k)=>t+getDur(new Date(k+'T12:00:00')),0))+' de rendus après la S'+R.lw+' : pas encore au tableau, mis de côté</div>':'')
     +'</div>'
-    +(todo.length+done.length?'<div class="rv-sec">Différences <span>'+(todo.length?todo.length+' à voir':'')+(todo.length&&done.length?' · ':'')+(done.length?done.length+' reprise'+(done.length>1?'s':''):'')+'</span></div>'+todo.join('')+done.join(''):'')
+    +(todo.length+done.length?'<div class="rv-sec">Différences <span>'+(todo.length?todo.length+' à voir':'rien à voir')+'</span></div>'+todo.join('')
+      +(done.length?'<div class="rv-more" onclick="var d=this.nextElementSibling;d.style.display=d.style.display===\'none\'?\'\':\'none\';this.textContent=d.style.display===\'none\'?\'Afficher les '+done.length+' différence'+(done.length>1?'s reprises ou ignorées':' reprise ou ignorée')+'\':\'Masquer\'">Afficher les '+done.length+' différence'+(done.length>1?'s reprises ou ignorées':' reprise ou ignorée')+'</div><div style="display:none">'+done.join('')+'</div>':''):'')
     +(acqRows.length?fold('Heures acquises','par mois',acqTbl):'')
     +fold('Rendus déduits','depuis le départ',consTbl)
     +fold('Départ du calcul',_startTxt(R.st).split(' · ')[0],'<div style="font-size:12px;color:var(--text2);line-height:1.45">Vos heures sont calculées à partir du <b style="color:var(--text)">'+_startTxt(R.st).split(' · ')[0]+'</b>.</div>'
       +'<button class="rv-b2" onclick="openStartModal()">Changer le départ</button>')
-    +'<div class="rv-sec">Nouveau tableau Gestion</div><div class="rv-det on"><div style="font-size:12px;color:var(--text2);line-height:1.45">Pour comparer vos heures à un tableau plus récent. Le départ ne change pas.</div>'
-      +'<button class="rv-b2" onclick="rhCompareOpen()">Importer pour comparer</button></div>'
+
     +'<div style="height:6px"></div><button class="mcancel mclose" onclick="closeModal()">Fermer</button>'
     +'</div></div>';
   document.getElementById('modal-root').innerHTML=html;
