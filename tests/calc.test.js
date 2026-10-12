@@ -405,5 +405,11 @@ function situation(opts) {
     var o=S.overrides[k],cu=S.customVacs[o.vac],W=_cvWInit(k);S.overrides={};
     return [o.exBase===cv,cu.fin,cu.label===vLbl(cv,getVAC(d)),JSON.stringify(cu.primes)===JSON.stringify(V.primes||{}),W.exVac===cv,W.exT.fin];})()`), [true, '23h45', true, true, true, '23h45']); }
 
+// Vacations des cycles en cours des autres équipes : proposées dans « Autres » (rangées sous l'équipe), pas celles d'un ancien cycle
+{ const a = load('2026-10-11');
+  eq('Autres : vacations des autres équipes', a.run(`(function(){_globalCycles=[{id:'a1',pool:'antenne',startDate:'2026-01-01',weeks:[[null,null,null,null,null,null,'RH']]},{id:'c1',pool:'cadre',startDate:'2026-01-01',weeks:[[null,null,null,null,null,null,'RH']]},{id:'c0',pool:'cadre',startDate:'2025-01-01',weeks:[[null]]}];
+    _globalVacs={Zx:{deb:'07h45',fin:'16h15',dur:510,type:'week',cycleIds:['c1']},Old:{deb:'07h45',fin:'16h15',dur:510,type:'week',cycleIds:['c0']}};
+    var V=getVAC(new Date(2026,9,14,12)),h=_autreVacHtml('2026-10-14');_globalCycles=[];_globalVacs={};return [!!V.Zx,!!V.Old,h.indexOf('Zx')>0,h.indexOf('>Cadre<')>0];})()`), [true, false, true, true]); }
+
 console.log('\n' + (count - fails) + '/' + count + ' contrôles réussis');
 if (fails) process.exit(1);
