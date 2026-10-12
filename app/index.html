@@ -8,7 +8,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v5.29">
+<meta name="app-version" content="v5.30">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -5206,7 +5206,14 @@ function rhCompareShow(rh,silent){
     return '<tr'+(b?(consOk?' class="rc-cmt"':' class="rc-hl"'):cited?'':' style="opacity:.55"')+'><td>S'+w+(b&&consOk?' <i class="rc-n">sans effet sur le solde</i>':'')+'</td><td>'+(cited?fmtMin(sh):'pas cité')+'</td><td>'+(a?fmtMin(a):'—')+'</td>'+(cited?(bad(d)?'<td'+(b&&consOk?'':' class="'+(d>0?'rc-pos':'rc-neg')+'"')+'>'+fmtE(d)+'</td>':'<td><span class="rc-ok">✓</span></td>'):'<td></td>')+'</tr>';}).join('');
   // Matelas
   const matApp=calcSoldes().matelas,hasMat=rh.tot.stockAct!==null&&rh.tot.stockAct!==undefined,matBad=hasMat&&bad(matApp-rh.tot.stockAct);
-  if(matBad){const mig=_rhCIgn('mat',rh.tot.stockAct-matApp);item('Matelas',(matApp>rh.tot.stockAct?'L’app en compte plus':'Le tableau en compte plus')+(mig?' · ignorée':''),fmtE(rh.tot.stockAct-matApp),cmp(rh.tot.stockAct,matApp)+'<div style="margin-top:6px">'+_rhIgnLink('mat',rh.tot.stockAct-matApp)+'</div>',mig);}
+  // total « Cumul soldes » absent du fichier : somme des soldes des lignes encore valables (sinon tout le solde de l'app passait pour un écart)
+  const solRh=rh.tot.cumSol!=null?rh.tot.cumSol:yms.reduce((t,ym)=>t+((sheet[ym]&&getExpYm(ym)>=asOfYM)?sheet[ym].solde:0),0),dSol=sumSolApp-solRh;
+  // Rendus pris sur le matelas d'un côté, sur les heures acquises de l'autre (le gestionnaire prend parfois les heures du mois suivant) :
+  // même total, seule la répartition diffère — ni à corriger ni à signaler
+  const matD=hasMat?matApp-rh.tot.stockAct:0,xfer=bad(matD)&&bad(dSol)&&(matD>0)!==(dSol>0)?Math.sign(dSol)*Math.min(Math.abs(matD),Math.abs(dSol)):0,dTot=dSol-xfer;
+  const xTxt=a=>fmtMin(a)+' de rendus pris sur le matelas '+(xfer>0?'dans l’app, sur les heures acquises au tableau':'au tableau, sur les heures acquises dans l’app');
+  if(matBad&&!bad(matD+xfer))item('Matelas','Même total avec les heures restantes',fmtE(-matD),cmp(rh.tot.stockAct,matApp)+capitalize(xTxt(Math.abs(xfer)))+' : l’écart du matelas est compensé dans les heures restantes, rien à corriger.',true);
+  else if(matBad){const mig=_rhCIgn('mat',rh.tot.stockAct-matApp);item('Matelas',(matApp>rh.tot.stockAct?'L’app en compte plus':'Le tableau en compte plus')+(mig?' · ignorée':''),fmtE(rh.tot.stockAct-matApp),cmp(rh.tot.stockAct,matApp)+'<div style="margin-top:6px">'+_rhIgnLink('mat',rh.tot.stockAct-matApp)+'</div>',mig);}
   // Solde de départ saisi à la main : proposer la répartition du tableau
   const _sg=_rhStartSplit(rh),_hasSplit=!!(S.profile&&S.profile.ephSoldeSplit&&Object.keys(S.profile.ephSoldeSplit).length);
   const _sgTxt=Object.keys(_sg.split).map(Number).sort((a,b)=>a-b).map(ym=>ymL(ym)+' '+fmtMin(_sg.split[ym])).join(' · ');
@@ -5215,8 +5222,6 @@ function rhCompareShow(rh,silent){
   if(_sg.S0>0&&_sgTxt&&!_sgSame&&!_hasSplit&&!(S.profile&&S.profile.rhImportedAt))item('Solde de départ','Rattaché en entier à '+ymL(_sg.createdYM-1)+' dans l’app',fmtMin(_sg.S0),
     'D’après le tableau, ces heures viennent de : '+_sgTxt+'. Chaque part expire à sa date.<button class="rv-b2" onclick="rhApplySplit(true)">Le répartir ainsi</button>',true);
   // Synthèse
-  // total « Cumul soldes » absent du fichier : somme des soldes des lignes encore valables (sinon tout le solde de l'app passait pour un écart)
-  const solRh=rh.tot.cumSol!=null?rh.tot.cumSol:yms.reduce((t,ym)=>t+((sheet[ym]&&getExpYm(ym)>=asOfYM)?sheet[ym].solde:0),0),dSol=sumSolApp-solRh;
   // Dernier bilan, affiché sur le bouton « Comparer » du modal rendus
   const okParts=[];if(hasMat&&!matBad)okParts.push('matelas');if(!repList.length)okParts.push('reports');
   // Explication de l'écart : seules les vraies différences (acquises par mois, total déduit), le reste est un arrondi
@@ -5225,7 +5230,8 @@ function rhCompareShow(rh,silent){
   // Écarts vus de ton solde : + en ta faveur (le tableau t'en laisse plus), − à faire corriger
   const sg=v=>'<b class="'+(v>0?'p':'m')+'">';
   const why=[];acqBadRows.forEach(r=>why.push(sg(r.s-r.a)+'les heures acquises en '+MF[r.ym%12]+' ('+fmtE(r.s-r.a)+')</b>'));if(!consOk)why.push(sg(dCons)+'les rendus déduits ('+fmtE(dCons)+')</b>');
-  const rest=-dSol-acqBadRows.reduce((t,r)=>t+r.s-r.a,0)-(consOk?0:dCons);
+  if(bad(xfer))why.push('<b>le matelas</b> ('+xTxt(Math.abs(xfer))+' : même total)');
+  const rest=-dSol+xfer-acqBadRows.reduce((t,r)=>t+r.s-r.a,0)-(consOk?0:dCons);
   let whyTxt=!bad(dSol)&&!why.length?'Tout correspond.':why.length?'L’écart vient '+(why.length===1?'d’<b>une seule</b> différence : ':'de : ')+why.join(', ')+'.':'';
   if(!consOk&&_rhCIgn('cons',dCons))ignSum+=dCons;
   if(bad(rest)){if(_rhCIgn('rest',rest))ignSum+=rest;
@@ -5236,10 +5242,10 @@ function rhCompareShow(rh,silent){
         +'<div style="margin-top:6px">'+_rhIgnLink('rest',rest)+'</div>';}
     else whyTxt+=(whyTxt?' ':'')+'Il reste '+fmtE(rest)+' liés aux heures expirées. '+_rhIgnLink('rest',rest);}
   // Écart une fois les différences ignorées retirées ; c'est lui qui déclenche les alertes
-  const eEff=-dSol-ignSum;
+  const eEff=-dTot-ignSum;
   if(S.profile){const _c={ed:dk(asOf),d:Math.round(dSol),de:Math.round(-eEff)};const _o=S.profile.rhCmp;if(!_o||_o.ed!==_c.ed||_o.d!==_c.d||_o.de!==_c.de){S.profile.rhCmp=_c;saveState();if(!silent)try{render();}catch(e){}}}
   if(silent)return; // seulement l'écart (tuiles Écart Rendus), sans ouvrir la comparaison
-  if(bad(dSol))whyTxt+=' '+(dSol<0?'':'Le tableau laisse moins d’heures que l’app : demander au gestionnaire de corriger.');
+  if(bad(dTot))whyTxt+=' '+(dTot<0?'':'Le tableau laisse moins d’heures que l’app : demander au gestionnaire de corriger.');
   const acqTbl='<table class="rc-t"><tr><th></th><th>Tableau</th><th>App</th><th>Écart</th></tr>'
     +acqRows.map(r=>{const e=r.s-r.a;return '<tr'+(bad(e)?' class="rc-hl"':'')+'><td>'+MFc(r.ym)+'</td><td>'+(r.s?fmtMin(r.s):'—')+'</td><td>'+(r.a?fmtMin(r.a):'—')+'</td>'+(bad(e)?'<td class="'+(e>0?'rc-pos':'rc-neg')+'">'+fmtE(e)+'</td>':'<td><span class="rc-ok">✓</span></td>')+'</tr>';}).join('')+'</table>';
   const consTbl='<table class="rc-t"><tr><th></th><th>Tableau</th><th>App</th><th>Écart</th></tr><tr class="rc-tot"><td>Total</td><td>'+fmtMin(tConsS)+'</td><td>'+fmtMin(tConsA)+'</td>'+(consOk?'<td><span class="rc-ok">✓</span></td>':'<td class="'+(dCons>0?'rc-pos':'rc-neg')+'">'+fmtE(dCons)+'</td>')+'</tr></table>'
@@ -5258,9 +5264,9 @@ function rhCompareShow(rh,silent){
     // Heures restantes en avant : tableau, app, écart
     +'<div style="font-size:11px;color:var(--text3);text-align:center;margin-bottom:6px">heures restantes</div>'
     +'<div class="tg-hr"><div><b>'+fmtMin(solRh)+'</b><span>tableau</span></div><div><b style="color:var(--rend-text)">'+fmtMin(sumSolApp)+'</b><span>app</span></div>'
-    +'<div><b style="color:'+(!bad(dSol)||dSol<0?'var(--green)':'var(--red)')+'">'+(bad(dSol)?fmtE(-dSol):'✓')+'</b><span>écart</span></div></div>'
-    +'<div style="font-weight:600;margin:2px 0 4px;color:'+(!bad(dSol)||dSol<0?'var(--green)':'var(--red)')+'">'
-    +(!bad(dSol)?'✓ Identique à l’app':(dSol<0?'Écart favorable':'À faire corriger')+(!bad(eEff)?' • différences ignorées':ignSum&&bad(ignSum)?' • reste '+fmtE(eEff)+' hors différences ignorées':''))+'</div>'
+    +'<div><b style="color:'+(!bad(dTot)||dTot<0?'var(--green)':'var(--red)')+'">'+(bad(dSol)?fmtE(-dSol):'✓')+'</b><span>écart</span></div></div>'
+    +'<div style="font-weight:600;margin:2px 0 4px;color:'+(!bad(dTot)||dTot<0?'var(--green)':'var(--red)')+'">'
+    +(!bad(dSol)?'✓ Identique à l’app':!bad(dTot)?'✓ Même total, matelas compris':(dTot<0?'Écart favorable':'À faire corriger')+(!bad(eEff)?' • différences ignorées':ignSum&&bad(ignSum)?' • reste '+fmtE(eEff)+' hors différences ignorées':''))+'</div>'
     +(whyTxt&&bad(dSol)?'<div class="rv-why" style="border-top:none;margin-top:0;padding-top:0">'+whyTxt+'</div>':'')
     +(lagTot>0?'<div class="rv-hn" style="border-top:none;padding-top:0;margin-top:6px"><i class="ti ti-clock"></i> <span><b>'+fmtMin(lagTot)+'</b> de rendus pas encore notés par le gestionnaire ('+lagKeys.sort().map(k=>new Date(k+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'})).join(', ')+') : mis de côté.</span></div>':'')
     +'</div>'

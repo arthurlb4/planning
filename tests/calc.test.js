@@ -330,5 +330,11 @@ function situation(opts) {
       rhCompareShow(rh,true);return [Math.round(_rhCons.s/60*100)/100,Math.round(_rhCons.unc)];})()`), [159.25, 960]); }
 }
 
+// Rendus pris sur le matelas dans l'app, sur les heures acquises au tableau : même total, pas d'écart signalé
+{ const a = load('2026-10-11');
+  eq('Matelas et heures restantes qui se compensent : écart effectif nul', a.run(`(function(){render=function(){};S.conges={};S.ephExtend={};S.settings=Object.assign(S.settings||{},{dimRendu:false,rhRendu:false,ferRendu:false,hsRendu:false});
+    var rh={edition:new Date(2026,8,18,12),tot:{stockAct:9000,cumSol:480},lines:[],weeks:{},lastWeek:0};S.matelasKeys={};S.profile.matelas=9480;
+    rhCompareShow(rh,true);return [S.profile.rhCmp.d,S.profile.rhCmp.de];})()`), [-480, 0]); }
+
 console.log('\n' + (count - fails) + '/' + count + ' contrôles réussis');
 if (fails) process.exit(1);
