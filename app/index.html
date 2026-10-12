@@ -8,7 +8,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.21">
+<meta name="app-version" content="v6.22">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -5338,27 +5338,8 @@ function rhCompareShow(rh,silent){
   // heures que le tableau laisse expirer alors que l'app les a utilisées (le gestionnaire a pris avant des heures valables plus longtemps)
   const lostL=[];Object.keys(tLost).map(Number).sort((a,b)=>a-b).forEach(ym=>{const x=tLost[ym],d=x.min-(R.expA[ym]||0);if(!bad(d))return;lostL.push({ym,min:d,v:dk(x.v)});
     const later=Object.keys(tRep).map(Number).filter(m=>tRep[m]&&m!==ym&&!(tRem[m]>0)).map(MS);
-    card({t:'Heures de '+MS(ym)+' perdues au tableau',sub:fmtMin(d)+' expirées le '+fdS(x.v),v:-d,
-      body:_suPts(['Au tableau → '+fmtMin(d)+' de '+MS(ym)+' restaient, perdues le '+fdS(x.v),'Dans l’app → utilisées avant d’expirer',later.length?'Le gestionnaire a pris avant des heures valables plus longtemps ('+later.join(', ')+', reportées)':'',
-        'À lui demander → prendre d’abord les heures qui expirent ; ligne prête dans le mail au gestionnaire'])});});
-  // même total possible, mais mois différents : risque si le tableau garde des heures qui expirent plus tôt
-  const remYms=[...new Set(Object.keys(tRem).concat(Object.keys(R.remA)).map(Number))].sort((a,b)=>a-b),remBad=remYms.filter(ym=>bad((tRem[ym]||0)-(R.remA[ym]||0)));
-  if(remBad.length){
-    const eT=ym=>tExp[ym]?fdS(tExp[ym]):'—',eA=ym=>{const e=getExpYm(ym);return new Date(Math.floor(e/12),e%12+1,0,12).toLocaleDateString('fr-FR',{day:'numeric',month:'short'});};
-    const tM=remBad.filter(ym=>(tRem[ym]||0)>(R.remA[ym]||0)),aM=remBad.filter(ym=>(R.remA[ym]||0)>(tRem[ym]||0));
-    const tFirst=tM.map(ym=>tExp[ym]).filter(Boolean).sort((a,b)=>a-b)[0],aFirst=aM.map(ym=>{const e=getExpYm(ym);return new Date(Math.floor(e/12),e%12+1,0,12);}).sort((a,b)=>a-b)[0];
-    const sooner=tFirst&&aFirst&&tFirst<aFirst,past=tFirst&&tFirst<NOW,rk='rem'+dk(asOf),rv=remBad.reduce((t,ym)=>t+Math.abs((tRem[ym]||0)-(R.remA[ym]||0)),0),ig=_rhCIgn(rk,rv);
-    const tTxt=tM.map(ym=>fmtMin((tRem[ym]||0)-(R.remA[ym]||0))+' de '+MS(ym)).join(', '),aTxt=aM.map(ym=>MS(ym)).join(', ');
-    // le problème dit tout de suite : des heures qui expirent plus tôt au tableau que dans l'app
-    if(sooner)card({t:past?'Heures de '+tM.map(MS).join(', ')+' peut-être perdues':'Heures de '+tM.map(MS).join(', ')+' à poser avant le '+fdS(tFirst),
-      sub:ig?'Ignoré':past?'Au tableau, '+tTxt+' expiraient le '+fdS(tFirst):'Au tableau, '+tTxt+' expirent le '+fdS(tFirst),v:0,vt:'',done:ig,
-      body:_suPts(['Le gestionnaire a utilisé avant vos heures de '+aTxt+', valables plus longtemps',
-        'Dans l’app, il vous reste des heures de '+aTxt+' (jusqu’au '+aM.map(eA).join(', ')+')',
-        past?'Si elles apparaissent perdues au prochain tableau → demander au gestionnaire de les rétablir (ligne prête dans le mail)':'Posez-les avant le '+fdS(tFirst)+' pour ne pas les perdre'])
-        +'<div style="margin-top:6px">'+_rhIgnLink(rk,rv)+'</div>'});
-    // mêmes heures rangées dans d'autres mois, sans risque : pour information, avec les différences masquées
-    else card({t:'Heures rangées dans d’autres mois',sub:'Au tableau : '+tM.map(MS).join(', ')+' · dans l’app : '+aTxt,info:1,vt:'',v:0,done:1,
-      body:_suPts(['Même total, pas de risque de perte'])});}
+    card({t:fmtMin(d)+' de '+MS(ym)+' perdues au tableau',sub:'L’app les avait utilisées à temps · à faire rétablir',v:-d,
+      body:_suPts(['Le gestionnaire les a laissées expirer le '+fdS(x.v)+(later.length?', en utilisant avant des heures valables plus longtemps ('+later.join(', ')+')':''),'Demande prête dans le mail au gestionnaire'])});});
   // 5. Le reste : heures expirées à d'autres dates
   const restH=eH-acqE-consE;
   if(bad(restH)){const ig=_rhCIgn('rest',restH);if(ig)ignSum+=restH;
