@@ -385,5 +385,10 @@ function situation(opts) {
     undoAction();var a=[Object.keys(S.conges).length,!!(S.profile.ignRhC&&S.profile.ignRhC.x),window._lt];redoAction();a.push(S.conges['2026-10-20'],window._lt);return a;})()`),
     [0, false, 'Annulé : Rendu posé', 'rend', 'Rétabli : Rendu posé']); }
 
+// Délégation syndicale : primes et nuit de la vacation prévue, sans la prime de matin
+{ const a = load('2026-10-11');
+  eq('Délégation syndicale : vacation prévue payée, pas de matin', a.run(`(function(){var d=null;for(var i=1;i<28&&!d;i++){var x=new Date(2026,8,i,12),v=getVac(x),V=getVAC(x)[v.vac];if(v.vac&&v.vac!=='RH'&&V&&V.deb&&_toMinApp(V.deb)<240)d=x;}
+    var k=dk(d),cv=getCycleVac(d).cycleVac,m0=calcPrimesMois(2026,8).matin;S.overrides[k]={vac:'SV',echange:false,motif:'syndic'};var r=[getPayVac(d)===cv,calcPrimesMois(2026,8).matin===m0-1];delete S.overrides[k];return r;})()`), [true, true]); }
+
 console.log('\n' + (count - fails) + '/' + count + ' contrôles réussis');
 if (fails) process.exit(1);
