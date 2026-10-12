@@ -8,7 +8,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.2">
+<meta name="app-version" content="v6.3">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -5261,12 +5261,16 @@ function rhCompareShow(rh,silent){
   const eH=R.tabH-R.appH,eM=R.hasMat?R.tabM-R.appM:0,acqE=acqRows.reduce((t,r)=>t+r.s-r.a,0);
   const consE=R.consA-R.consT,matE=R.matA-R.matT; // pris sur les heures / sur le matelas : app − tableau
   // le gestionnaire prend parfois sur des heures acquises après coup plutôt que sur le matelas : le matelas monte, les heures baissent d'autant
-  const xfer=R.hasMat&&bad(eM)&&bad(eH)&&(eM>0)!==(eH>0)?Math.sign(eM)*Math.min(Math.abs(eM),Math.abs(eH)):0;
+  const xfer=R.hasMat&&bad(matE)&&bad(consE)&&(matE>0)!==(consE>0)?Math.sign(matE)*Math.min(Math.abs(matE),Math.abs(consE)):0;
+  // Reports différents (accordés par le gestionnaire) : heures expirées à d'autres dates
+  const tRep=_rhRepOf(rh),repL=Object.keys(tRep).map(Number).filter(ym=>ym<asOfYM&&ym>=R.st.genFrom-3&&tRep[ym]!==getEphExtensions(ym)).sort((a,b)=>a-b);
+  if(repL.length)item('Reports',repL.map(ym=>MF[ym%12]+' : '+(tRep[ym]?'+'+tRep[ym]*3+' mois':'aucun')+' au tableau, '+(getEphExtensions(ym)?'+'+getEphExtensions(ym)*3+' mois':'aucun')+' dans l’app').join(' · '),'',
+    'Les reports sont accordés par le gestionnaire : reprendre les siens change la date d’expiration de ces heures dans l’app.<button class="rv-b2" onclick="rhApplyReports('+JSON.stringify(repL.map(ym=>[ym,tRep[ym]]))+')">Reprendre les reports du tableau</button>',true);
   const restH=eH-acqE-consE; // heures expirées à d'autres dates (reports)
   const sg=v=>'<b class="'+(v>0?'p':'m')+'">',whyH=[],whyM=[];
   acqRows.filter(r=>bad(r.s-r.a)).forEach(r=>whyH.push(sg(r.s-r.a)+'heures acquises en '+MF[r.ym%12]+' ('+fmtE(r.s-r.a)+')</b>'));
   if(bad(consE))whyH.push(sg(consE)+'rendus pris sur les heures ('+fmtMin(R.consT)+' au tableau, '+fmtMin(R.consA)+' dans l’app)</b>');
-  if(bad(restH)){whyH.push(sg(restH)+'heures expirées à d’autres dates ('+fmtE(restH)+')</b>');if(_rhCIgn('rest',restH))ignSum+=restH;}
+  if(bad(restH)){whyH.push(sg(restH)+'heures expirées à d’autres dates ('+fmtE(restH)+(repL.length?', reports différents : '+repL.map(ym=>MF[ym%12]).join(', '):'')+')</b>');if(_rhCIgn('rest',restH))ignSum+=restH;}
   if(bad(matE))whyM.push(sg(matE)+'rendus pris sur le matelas ('+fmtMin(R.matT)+' au tableau, '+fmtMin(R.matA)+' dans l’app)</b>');
   const dTot=eH+eM,de=dTot-ignSum; // + : le tableau vous laisse plus
   if(S.profile){const _c={ed:dk(asOf),d:Math.round(-dTot),de:Math.round(-de)};const _o=S.profile.rhCmp;if(!_o||_o.ed!==_c.ed||_o.d!==_c.d||_o.de!==_c.de){S.profile.rhCmp=_c;saveState();if(!silent)try{render();}catch(e){}}}
@@ -5277,7 +5281,8 @@ function rhCompareShow(rh,silent){
   let concl;if(!bad(eH)&&!bad(eM))concl='<div style="font-weight:600;margin:8px 0 2px;color:var(--green)">✓ Identique</div>';
   else if(!bad(dTot)&&bad(xfer))concl='<div style="font-weight:600;margin:8px 0 2px;color:var(--green)">Même total · en votre faveur</div><div class="rv-why" style="border-top:none;margin-top:0;padding-top:0">Le gestionnaire a pris '+fmtMin(Math.abs(xfer))+' de rendus '+(xfer>0?'sur des heures acquises après coup au lieu du matelas : votre matelas est plus haut au tableau, vos heures éphémères plus basses d’autant. Rien à corriger.':'sur le matelas au lieu des heures disponibles : votre matelas est plus bas au tableau. À lui signaler.')+'</div>';
   else concl='<div style="font-weight:600;margin:8px 0 2px;color:'+(dTot>0?'var(--green)':'var(--red)')+'">'+(dTot>0?'Écart en votre faveur : ':'À faire corriger : ')+fmtE(dTot)+' au total'+(!bad(de)?' · différences ignorées':'')+'</div>'
-    +(bad(xfer)?'<div class="rv-why" style="border-top:none;margin-top:0;padding-top:0">Dont '+fmtMin(Math.abs(xfer))+' pris '+(xfer>0?'sur des heures acquises après coup au lieu du matelas (en votre faveur)':'sur le matelas au lieu des heures disponibles')+'.</div>':'')
+    +(bad(xfer)?'<div class="rv-why" style="border-top:none;margin-top:0;padding-top:0">Dont '+fmtMin(Math.abs(xfer))+' de rendus que le gestionnaire a pris '+(xfer>0?'sur des heures acquises après coup, l’app sur le matelas faute d’heures ce jour-là : matelas plus haut au tableau, heures plus basses d’autant.':'sur le matelas, l’app sur des heures disponibles.')+'</div>':'')
+    +(repL.length&&bad(restH)?'<div class="rv-why" style="border-top:none;margin-top:4px;padding-top:0">Reports différents ('+repL.map(ym=>MF[ym%12]).join(', ')+') : voir « Reports » plus bas.</div>':'')
     +(bad(restH)?'<div style="font-size:11px;margin-top:4px">'+_rhIgnLink('rest',restH)+'</div>':'');
   const wks=[...new Set(Object.keys(rh.weeks||{}).map(Number).filter(w=>dk(new Date(_rhWeekMon(asOf.getFullYear(),w).getTime()+6*864e5))>R.st.from).concat(Object.keys(R.wkA).map(Number)))].filter(w=>!rh.lastWeek||w<=rh.lastWeek).sort((a,b)=>a-b);
   const wkRows=wks.map(w=>{const c=(rh.weeks||{})[w],a=R.wkA[w]||0,d=a-(c||0);
