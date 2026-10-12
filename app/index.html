@@ -10,7 +10,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.41">
+<meta name="app-version" content="v6.42">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -671,6 +671,18 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 
 
 /* Exchange */
+.cv-days{display:flex;align-items:center;gap:3px;padding:4px;margin-bottom:12px;border-radius:24px;background:var(--bg3);border:0.5px solid var(--border)}
+.cv-days .exchange-days{margin:0;gap:2px}
+.cv-days .exchange-day{border:none!important;background:transparent;border-radius:18px!important;padding:6px 0 7px;display:flex;flex-direction:column;align-items:center;gap:1px;line-height:1.2}
+.cv-days .exchange-day:hover{background:var(--bg2)}
+.cv-days .exc-dl{font-size:9.5px;color:var(--text3);letter-spacing:.02em}
+.cv-days .exc-day-n{font-size:15px;font-weight:600;color:var(--text)}
+.cv-days .exc-day-v{font-size:9.5px;color:var(--text2);max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.cv-days .exchange-day.pick{background:var(--blue)!important;box-shadow:0 1px 3px rgba(0,0,0,.25)}
+.cv-days .exchange-day.pick .exc-dl,.cv-days .exchange-day.pick .exc-day-n,.cv-days .exchange-day.pick .exc-day-v{color:#fff}
+.cv-days .exchange-day.ced{background:var(--blue-l)!important}
+.cv-days .exchange-day.ced .exc-day-n{color:var(--blue)}
+.cv-days .cvd-nav{flex:none;width:28px;height:28px;border-radius:50%;border:none;background:var(--bg2);color:var(--text2);font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
 .exchange-days{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:8px;}
 .exchange-day{min-width:0;padding:7px 2px;border-radius:var(--r);border:0.5px solid var(--border);background:var(--bg2);cursor:pointer;font-size:11px;line-height:1.35;text-align:center;transition:all .1s;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
 .exchange-day.sel{background:var(--blue-l);border-color:var(--blue-m);color:var(--blue);font-weight:600;}
@@ -8445,14 +8457,15 @@ function _cvWInit(key){var o=(S.overrides||{})[key]||{},d=new Date(key+'T12:00:0
 // Rangée des jours (‹ › : autre semaine). Le jour ouvert = ce jour ; un autre jour = déplacement ou échange.
 // Sens déduit du jour ouvert : jour travaillé → « Fait le » (il est cédé) ; repos → « Vacation prévue le » (il est fait à la place)
 function _cvWhenHtml(key,W){var mon=getMonday(new Date(key+'T12:00:00'));mon.setDate(mon.getDate()+7*(W.wOff||0));
-  var nb='flex:none;width:26px;height:44px;display:flex;align-items:center;justify-content:center;border:none;border-radius:10px;background:none;color:var(--text3);font-size:18px;cursor:pointer;padding:0';
+
   var h='<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px"><div class="cv-sec" style="margin:0">Jour travaillé'+(W.role==='give'?'':' <span style="text-transform:none;letter-spacing:0;font-weight:400;color:var(--text3)">· ce jour, à la place du</span>')+'</div>'
     +(W.wOff?'<span style="font-size:11px;color:var(--amber)">semaine du '+mon.getDate()+' '+MCs[mon.getMonth()]+'</span>':'')+'</div>'
-    +'<div style="display:flex;align-items:center;gap:2px;margin-bottom:12px"><button type="button" style="'+nb+'" onclick="_cvWeek(-1)">‹</button><div class="exchange-days" style="flex:1;min-width:0">';
+    // rangée en pilule comme les onglets de l'app : ‹ jours de la semaine ›
+    +'<div class="cv-days"><button type="button" class="cvd-nav" onclick="_cvWeek(-1)" aria-label="Semaine précédente">‹</button><div class="exchange-days" style="flex:1;min-width:0">';
   for(var i=0;i<7;i++){var d=new Date(mon);d.setDate(mon.getDate()+i);var k=dk(d),g=getVac(d),me=k===key,sel=me?!W.other:k===W.other;
     // jour choisi : surbrillance forte ; jour ouvert quand un autre est choisi : surbrillance légère
-    h+='<div class="exchange-day'+(sel?' pick':me?' ced':'')+'" onclick="_cvPickDay(\''+k+'\')"><div class="exc-day-n">'+['D','L','Ma','Me','J','V','S'][d.getDay()]+' '+d.getDate()+'</div><div class="exc-day-v">'+(g.vac&&g.vac!=='RH'?vLbl(g.vac,getVAC(d)):'–')+'</div></div>';}
-  return h+'</div><button type="button" style="'+nb+'" onclick="_cvWeek(1)">›</button></div>';}
+    h+='<div class="exchange-day'+(sel?' pick':me?' ced':'')+'" onclick="_cvPickDay(\''+k+'\')"><div class="exc-dl">'+['dim','lun','mar','mer','jeu','ven','sam'][d.getDay()]+'</div><div class="exc-day-n">'+d.getDate()+'</div><div class="exc-day-v">'+(g.vac&&g.vac!=='RH'?_h(vLbl(g.vac,getVAC(d))):'repos')+'</div></div>';}
+  return h+'</div><button type="button" class="cvd-nav" onclick="_cvWeek(1)" aria-label="Semaine suivante">›</button></div>';}
 function _cvDraftSave(){var g=function(id){var e=document.getElementById(id);return e?e.value:null;};
   window._cvDraft={name:g('custom-name'),deb:g('custom-deb'),fin:g('custom-fin'),pause:g('custom-pause'),prime:g('custom-prime'),amt:g('cv-autre-amt'),note:g('cv-note'),xl:g('cv-exr-lbl'),xd:g('cv-exr-dur')};}
 // Redessine la page (même position, sans animation) en gardant la saisie
