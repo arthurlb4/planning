@@ -13,7 +13,8 @@ const YM = (y, m) => y * 12 + (m - 1); // m de 1 à 12
 
 // Situation d'Arthur au 1er octobre 2026 (sans planning : seules comptent les heures de départ et les rendus)
 //  avril 49h30 et mai 89h08 reportés de 3 mois, juin 12h15, juillet 18h00, août 3h23 ;
-//  rendus posés en septembre : 18 × 7h30 + 4h52 = 139h52, pris sur les heures les plus anciennes.
+//  rendus posés en septembre : 18 × 7h30 + 4h52 = 139h52, pris sur les heures qui expirent le plus tôt
+//  (juin fin septembre, puis avril et juillet fin octobre, puis mai reporté à fin novembre).
 function situation(opts) {
   const a = load('2026-10-01');
   const split = { [YM(2026, 4)]: 2970, [YM(2026, 5)]: 5348, [YM(2026, 6)]: 735, [YM(2026, 7)]: 1080, [YM(2026, 8)]: 203 };
@@ -30,13 +31,13 @@ function situation(opts) {
   return a;
 }
 
-// 1. Heures de juin perdues fin septembre (cas réel d'octobre 2026)
+// 1. Juin (sans report) utilisé avant mai (reporté) : rien de perdu fin septembre
 {
   const a = situation({});
-  eq('Solde au 1/10 = 21h23 (juillet 18h00 + août 3h23)', a.run('calcSoldeRH(new Date(2026,9,1,12)).solde'), 1283);
-  eq('Juin : 11h01 perdues fin septembre', a.run('calcSoldes().preExpiry'), { [YM(2026, 6)]: 661 });
+  eq('Solde au 1/10 = 32h24 (mai 29h01 + août 3h23)', a.run('calcSoldeRH(new Date(2026,9,1,12)).solde'), 1944);
+  eq('Juin : rien de perdu fin septembre', a.run('calcSoldes().preExpiry'), { [YM(2026, 6)]: 0 });
   eq('Libre à poser en septembre = 32h24', a.run('calcTrueDispo(' + YM(2026, 9) + ').total'), 1944);
-  eq('Libre à poser en octobre = 21h23', a.run('calcTrueDispo(' + YM(2026, 10) + ').total'), 1283);
+  eq('Libre à poser en octobre = 32h24', a.run('calcTrueDispo(' + YM(2026, 10) + ').total'), 1944);
 }
 // 2. Même situation avec juin reporté : rien n'est perdu
 {
@@ -47,8 +48,8 @@ function situation(opts) {
 // 3. Un rendu posé plus tard en octobre réduit le libre à poser, pas le solde au 1/10
 {
   const a = situation({ extraRendus: { '2026-10-20': 450 } });
-  eq('Rendu du 20/10 : solde au 1/10 inchangé', a.run('calcSoldeRH(new Date(2026,9,1,12)).solde'), 1283);
-  eq('Rendu du 20/10 : libre à poser en octobre = 13h53', a.run('calcTrueDispo(' + YM(2026, 10) + ').total'), 833);
+  eq('Rendu du 20/10 : solde au 1/10 inchangé', a.run('calcSoldeRH(new Date(2026,9,1,12)).solde'), 1944);
+  eq('Rendu du 20/10 : libre à poser en octobre = 24h54', a.run('calcTrueDispo(' + YM(2026, 10) + ').total'), 1494);
 }
 // 4. Expiration : 3 mois après le mois d'acquisition, +3 par report
 {
@@ -59,10 +60,9 @@ function situation(opts) {
 // 4b. Rappels push : 14 j et 3 j avant la fin du mois où des heures expirent
 {
   const a = situation({});
-  eq('Rappels : juillet (18h00) fin octobre, août (3h23) fin novembre',
+  eq('Rappels : mai et août (32h24) fin novembre',
     a.run('_pushAlerts().filter(function(x){return x.tag.indexOf("exp-")===0;}).map(function(x){return x.at+" "+x.body;})'),
-    ['2026-10-17 18h00 expirent fin octobre. Poser un rendu pour ne pas les perdre.', '2026-10-28 18h00 expirent le 31 octobre.',
-     '2026-11-16 3h23 expirent fin novembre. Poser un rendu pour ne pas les perdre.', '2026-11-27 3h23 expirent le 30 novembre.']);
+    ['2026-11-16 32h24 expirent fin novembre. Poser un rendu pour ne pas les perdre.', '2026-11-27 32h24 expirent le 30 novembre.']);
   eq('Rappels : bulletin le 1er, tableau Gestion le 20',
     a.run('_pushAlerts().filter(function(x){return x.tag.indexOf("exp-")!==0;}).slice(0,3).map(function(x){return x.at+" "+x.title;})'),
     ['2026-10-01 Bulletin de paie', '2026-10-20 Tableau Gestion', '2026-11-01 Bulletin de paie']);
@@ -234,7 +234,7 @@ function situation(opts) {
   eq('Report auto : août « report auto prévu »', a.run('!!window._autoPlan[' + YM(2026, 8) + ']'), true);
   eq('Report auto : juillet (18h00) pas prévu', a.run('!!window._autoPlan[' + YM(2026, 7) + ']'), false);
   eq('Report auto : sous réserve, août valable jusqu’à fin août 2027', a.run('_withProj(function(){return getExpYm(' + YM(2026, 8) + ');})'), YM(2027, 8));
-  eq('Report auto : juin (11h01 à l’échéance) toujours perdu', a.run('calcSoldes().preExpiry'), { [YM(2026, 6)]: 661 });
+  eq('Report auto : juin utilisé avant l’échéance, rien de perdu', a.run('calcSoldes().preExpiry'), { [YM(2026, 6)]: 0 });
   eq('Report auto : pas encore compté à la date d’un tableau de septembre', a.run('getEphExtAt(' + YM(2026, 8) + ',' + YM(2026, 9) + ')'), 0);
   eq('Rendu du 3 décembre : couvert sous réserve (pas sur le matelas)', a.run('!!window._resvKeys["2026-12-03"]&&!(S.matelasKeys||{})["2026-12-03"]'), true);
   // HS ajoutées sur août avant l'échéance (8h23) : plus de report prévu, le rendu passe sur le matelas, avec un message

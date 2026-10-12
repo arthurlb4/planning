@@ -8,7 +8,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.3">
+<meta name="app-version" content="v6.4">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -1467,6 +1467,9 @@ function getEphExtensions(ym){
   return Math.max(mv,av);
 }
 function getBaseExpYm(ym){return ym+3;}
+// Ordre de consommation des heures éphémères : celles qui expirent le plus tôt d'abord (à date égale, les plus anciennes),
+// comme le gestionnaire — sans report c'est l'ordre d'acquisition ; un mois reporté passe après ceux qui vont expirer
+function _fifoYms(yms){return yms.map(Number).sort(function(a,b){return getExpYm(a)-getExpYm(b)||a-b;});}
 function getExpYm(ym){return ym+3+getEphExtensions(ym)*3;}
 
 // BUILD GEN
@@ -1575,7 +1578,7 @@ function calcSoldes(){
     _rendKeys.forEach(function(k){
       const _d=new Date(k+'T12:00:00'),_poseYm=_d.getFullYear()*12+_d.getMonth(),_dur=getDur(_d);
       let _left=_dur;
-      const _yms=Object.keys(_sim).map(Number).sort();
+      const _yms=_fifoYms(Object.keys(_sim));
       for(const _ym of _yms){
         if(_sim[_ym]<=0||getExpYm(_ym)<_poseYm||_ym>_poseYm)continue;
         const _take=Math.min(_sim[_ym],_left);_sim[_ym]-=_take;_left-=_take;
@@ -3948,7 +3951,7 @@ function _recalcAllMatelasRaw(){
     if(_ym>TODAY_YM){_sim[_ym]=total;return;}
     _sim[_ym]=total; // per-day getExpYm check (line below) handles expiry per rendu day
   });
-  var _syms=Object.keys(_sim).map(Number).sort();
+  var _syms=_fifoYms(Object.keys(_sim));
   var _rks=Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='rend';}).sort();
   _rks.forEach(function(k){
     var _d=new Date(k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth(),_kdur=getDur(_d);
@@ -4387,7 +4390,7 @@ function calcTrueDispo(viewedYM){
     .forEach(function(k){
       const _d=new Date(k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth(),_dur=getDur(_d);
       let _lft=_dur;
-      _sortedYms.forEach(function(_ym){
+      _fifoYms(_sortedYms).forEach(function(_ym){
         if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym||_ym>_pym)return;
         const _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;
       });
@@ -4457,7 +4460,7 @@ function calcSoldeRH(asOf){
   Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='rend'&&k<=todayKey;}).sort().forEach(function(k){
     const _d=new Date(k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth();let _lft=getDur(_d);
     rendusPris+=_lft;rendusList.push({key:k,dur:_lft});
-    _yms.forEach(function(_ym){
+    _fifoYms(_yms).forEach(function(_ym){
       if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym||_ym>_pym)return;
       const _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;
       (alloc[_ym]=alloc[_ym]||[]).push({key:k,amt:_tk});
@@ -5103,7 +5106,7 @@ function rhApplyReports(list){
 }
 // ── Départ du calcul ──
 // Une date de départ et les soldes à cette date : le matelas à part, les heures éphémères par mois d'acquisition.
-// Ensuite l'app compte seule : heures acquises d'après le planning, rendus posés après le départ (heures les plus anciennes
+// Ensuite l'app compte seule : heures acquises d'après le planning, rendus posés après le départ (heures qui expirent le plus tôt
 // encore valables d'abord, sinon le matelas). Les tableaux Gestion plus récents servent à vérifier : ils ne changent rien.
 // pr.start = {k:'tab'|'mois'|'man', d: jour de départ, from: rendus comptés après ce jour, genFrom: premier mois d'heures acquises
 //   comptées par l'app, mat: matelas (min), base:{ym:min} heures éphémères restantes, rep:{ym:n} reports,
@@ -5220,7 +5223,7 @@ function _verifSim(rh){
   if(st.recon){const add={},oy=Object.keys(st.recon.cap).map(Number).sort((a,b)=>a-b);
     Object.keys(S.conges||{}).filter(k=>isR(k)&&k>=st.d&&k<=st.recon.ed).sort().forEach(k=>{const d=new Date(k+'T12:00:00'),pym=d.getFullYear()*12+d.getMonth();let left=getDur(d);
       oy.forEach(ym=>{if(left<=0||exp(ym)<pym)return;const t=Math.min((st.recon.cap[ym]||0)-(add[ym]||0),left);if(t<=0)return;add[ym]=(add[ym]||0)+t;pool[ym]+=t;left-=t;});});}
-  let matA=0,consA=0;const wkA={},yms=Object.keys(pool).map(Number).sort((a,b)=>a-b);
+  let matA=0,consA=0;const wkA={},yms=_fifoYms(Object.keys(pool));
   keys.forEach(k=>{const d=new Date(k+'T12:00:00'),pym=d.getFullYear()*12+d.getMonth(),dur=getDur(d),w=getISOWeek(getMonday(d));wkA[w]=(wkA[w]||0)+dur;let left=dur;
     yms.forEach(ym=>{if(left<=0||pool[ym]<=0||ym>pym||exp(ym)<pym)return;const t=Math.min(pool[ym],left);pool[ym]-=t;left-=t;consA+=t;});matA+=left;});
   let appH=0;yms.forEach(ym=>{if(ym<asOfYM&&exp(ym)>=asOfYM)appH+=pool[ym];});
@@ -5328,7 +5331,7 @@ function canPlaceRendu(newKeys){
     allKeys.forEach(function(k){
       const _d=new Date(k+'T12:00:00'),_pym=_d.getFullYear()*12+_d.getMonth(),_dur=getDur(_d);
       let _lft=_dur;
-      Object.keys(_sim).map(Number).sort().forEach(function(_ym){
+      _fifoYms(Object.keys(_sim)).forEach(function(_ym){
         if(_lft<=0||_sim[_ym]<=0||getExpYm(_ym)<_pym||_ym>_pym)return;
         const _tk=Math.min(_sim[_ym],_lft);_sim[_ym]-=_tk;_lft-=_tk;
       });
@@ -6200,7 +6203,7 @@ function openMergedRenduCgModal(limit,tab){
     +'<div style="font-size:9px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Étapes du calcul</div>'
     +'<ol style="margin:0;padding-left:16px;font-size:9px;color:var(--text3);line-height:1.9">'
     +'<li>Heures générées par mois (colonne Généré)</li>'
-    +'<li>Rendus passés : consomment les heures les plus anciennes (colonne −Posés)</li>'
+    +'<li>Rendus passés : consomment d’abord les heures qui expirent le plus tôt (colonne −Posés)</li>'
     +'<li>Ce qui reste = stock actif (colonne Reste, total ci-dessus)</li>'
     +'<li>Rendus futurs : réservent ce qu\'ils ne peuvent couvrir avec du stock généré plus tard</li>'
     +'<li>Ce qui reste = le dispo</li>'
