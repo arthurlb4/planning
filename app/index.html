@@ -8,7 +8,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.11">
+<meta name="app-version" content="v6.12">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -5239,7 +5239,7 @@ function _verifSim(rh){
     yms.forEach(ym=>{if(left<=0||pool[ym]<=0||ym>pym&&!_rbw(k,ym)||exp(ym)<pym)return;const t=Math.min(pool[ym],left);pool[ym]-=t;left-=t;consA+=t;});if(left>0)matK.push({k,pym,left});matA+=left;});
   let appH=0;yms.forEach(ym=>{if(ym<asOfYM&&exp(ym)>=asOfYM)appH+=pool[ym];});
   const tabH=rh.tot.cumSol!=null?rh.tot.cumSol:rh.lines.reduce((t,l)=>t+(l.nature&&_rhValidAt(l,asOf)?Math.max(0,l.solde):0),0);
-  return{st,asOf,asOfYM,lw:rh.lastWeek,cutK,acq,adjM,nat,det:G.det,keys,lag,matK,adjr,consA:consA-adjr,xadj,consT,matA:matA-xadj,matT,wkA,appH,tabH,hasMat,appM:(st.mat||0)+xadj-matA,tabM:hasMat?rh.tot.stockAct:0};
+  return{st,asOf,asOfYM,lw:rh.lastWeek,cutK,acq,adjM,nat,adjrM,det:G.det,keys,lag,matK,adjr,consA:consA-adjr,xadj,consT,matA:matA-xadj,matT,wkA,appH,tabH,hasMat,appM:(st.mat||0)+xadj-matA,tabM:hasMat?rh.tot.stockAct:0};
 }
 // Rendus que l'app a pris sur le matelas et le gestionnaire sur des heures acquises après coup : faire comme lui
 // (les plus récents d'abord, jusqu'au montant de l'écart) — ils prennent alors les heures du mois suivant
@@ -5327,8 +5327,11 @@ function rhCompareShow(rh,silent){
   // heures acquises : l'écart d'origine reste affiché (planning seul), avec « repris » quand l'app a fait comme le tableau
   const acqTbl='<table class="rc-t"><tr><th></th><th>Tableau</th><th>App</th><th>Écart</th></tr>'+acqRows.map(r=>t3(MFc(r.ym),r.s,r.a-r.adj,'',0,bad(r.adj)&&!bad(r.s-r.a)?'repris':'')).join('')+'</table>';
   const wks=[...new Set(Object.keys(rh.weeks||{}).map(Number).filter(w=>dk(new Date(_rhWeekMon(asOf.getFullYear(),w).getTime()+6*864e5))>R.st.from).concat(Object.keys(R.wkA).map(Number)))].filter(w=>!rh.lastWeek||w<=rh.lastWeek).sort((a,b)=>a-b);
-  const consTbl='<table class="rc-t"><tr><th></th><th>Tableau</th><th>App</th><th>Écart</th></tr>'+t3('Sur les heures',R.consT,R.consA,'',1)+(R.hasMat?t3('Sur le matelas',R.matT,R.matA,'',1):'')+t3('Total',R.consT+R.matT,R.consA+R.matA,'rc-tot',1)+'</table>'
-    +(wks.length?'<div style="font-size:11px;color:var(--text3);margin:10px 0 2px">Par semaine (commentaires du tableau)</div><table class="rc-t">'+wks.map(w=>{const c=(rh.weeks||{})[w];return c==null?'<tr style="opacity:.55"><td>S'+w+'</td><td>pas cité</td><td>'+fmtMin(R.wkA[w]||0)+'</td><td></td></tr>':t3('S'+w,c,R.wkA[w]||0,'',1);}).join('')+'</table>':'');
+  // écart d'origine (calcul de l'app seul), « repris » quand l'app fait comme le tableau
+  const cA0=R.consA+R.adjr,mA0=R.matA+R.xadj,rp=v=>bad(v)?'dont '+fmtMin(Math.abs(v))+' repris':'';
+  const consTbl='<table class="rc-t"><tr><th></th><th>Tableau</th><th>App</th><th>Écart</th></tr>'+t3('Sur les heures',R.consT,cA0,'',1,rp(R.adjr))+(R.hasMat?t3('Sur le matelas',R.matT,mA0,'',1,rp(R.xadj)):'')+t3('Total',R.consT+R.matT,cA0+mA0,'rc-tot',1,rp(R.adjr+R.xadj))+'</table>'
+    +(wks.length?'<div style="font-size:11px;color:var(--text3);margin:10px 0 2px">Par semaine (commentaires du tableau)</div><table class="rc-t">'+wks.map(w=>{const c=(rh.weeks||{})[w],a=R.wkA[w]||0;if(c==null)return '<tr style="opacity:.55"><td>S'+w+'</td><td>pas cité</td><td>'+fmtMin(a)+'</td><td></td></tr>';
+      const mon=_rhWeekMon(asOf.getFullYear(),w);return t3('S'+w,c,a,'',1,_rhCIgn('wkm'+(mon.getFullYear()*12+mon.getMonth())+'s'+w,a-c)?'repris':'');}).join('')+'</table>':'');
   const html='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet rv-sheet tabmod">'+head
     +'<div style="font-size:11px;color:var(--text3);text-align:center;margin:0 0 12px">tableau du '+fd(dk(asOf))+' · départ : '+_startTxt(R.st).split(' · ')[0]+'</div>'
     +'<div class="hd-card" style="padding:10px 14px 12px">'
@@ -5343,8 +5346,10 @@ function rhCompareShow(rh,silent){
     +(todo.length+done.length?'<div class="rv-sec">Différences <span>'+(todo.length?todo.length+' à voir':'')+(todo.length&&done.length?' · ':'')+(done.length?done.length+' reprise'+(done.length>1?'s':''):'')+'</span></div>'+todo.join('')+done.join(''):'')
     +(acqRows.length?fold('Heures acquises','par mois',acqTbl):'')
     +fold('Rendus déduits','depuis le départ',consTbl)
-    +fold('Départ du calcul','','<div style="font-size:12px;color:var(--text2);line-height:1.45">L’app calcule vos heures depuis le <b style="color:var(--text)">'+_startTxt(R.st).split(' · ')[0]+'</b>.</div>'
-      +'<div style="display:flex;gap:8px"><button class="rv-b2" onclick="openStartModal()">Changer le départ</button><button class="rv-b2" onclick="rhCompareOpen()">Vérifier un autre tableau</button></div>')
+    +fold('Départ du calcul',_startTxt(R.st).split(' · ')[0],'<div style="font-size:12px;color:var(--text2);line-height:1.45">Vos heures sont calculées à partir du <b style="color:var(--text)">'+_startTxt(R.st).split(' · ')[0]+'</b>.</div>'
+      +'<button class="rv-b2" onclick="openStartModal()">Changer le départ</button>')
+    +'<div class="rv-sec">Nouveau tableau Gestion</div><div class="rv-det on"><div style="font-size:12px;color:var(--text2);line-height:1.45">Pour comparer vos heures à un tableau plus récent. Le départ ne change pas.</div>'
+      +'<button class="rv-b2" onclick="rhCompareOpen()">Importer pour comparer</button></div>'
     +'<div style="height:6px"></div><button class="mcancel mclose" onclick="closeModal()">Fermer</button>'
     +'</div></div>';
   document.getElementById('modal-root').innerHTML=html;
