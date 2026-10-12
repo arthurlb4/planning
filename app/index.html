@@ -10,7 +10,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.40">
+<meta name="app-version" content="v6.41">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -1335,7 +1335,9 @@ function _excUsed(m,y){var n=0;Object.keys(S.excInfo||{}).forEach(function(k){if
   var same=x.m===m||((m==='enfant'||m==='proche')&&(x.m==='enfant'||x.m==='proche'));if(same)n+=x.half?0.5:1;});return n;}
 // Minutes de nuit d'un jour : formation suivie → la plus grande entre la vacation prévue et la formation
 function getNuitMinDay(date,VAC){VAC=VAC||getVAC(date);const pv=getPayVac(date),v=getVac(date).vac;let n=calcNuitMinShift(VAC[pv])||0;if(v&&v!==pv&&v!=='RH')n=Math.max(n,calcNuitMinShift(VAC[v])||0);return n;}
-// Délégation syndicale : primes et heures de nuit de la vacation prévue, comme une formation suivie, mais sans la prime de matin
+// Délégation syndicale : primes et heures de nuit de la vacation prévue, comme une formation suivie ; matin selon la vacation faite
+// prime de matin : la vacation payée commence avant 4h ; en délégation syndicale, c'est la vacation faite qui compte
+function _isMatin(date,V){if(_isSyndicDay(date)){const v=getVac(date).vac,A=v&&getVAC(date)[v];return !!(A&&A.deb&&_toMinApp(A.deb)<240);}return !!(V&&V.deb&&_toMinApp(V.deb)<240);}
 function _isSyndicDay(date){const ov=(S.overrides||{})[dk(date)];return !!(ov&&ov.motif==='syndic'&&(!ov.echange||ov.ecSelf));}
 function getPayVac(date){const key=dk(date);const ov=(S.overrides||{})[key];
   if(ov&&ov.echange&&ov.ecSelf&&(ov.motif==='forme'||ov.motif==='syndic')&&ov.pair&&ov.pair!==key){const pc=getCycleVac(new Date(ov.pair+'T12:00:00')).cycleVac;if(pc&&pc!=='RH')return pc;}
@@ -2244,8 +2246,8 @@ function updateCounters(){
     const av=getExpYm(ym)<TODAY_YM?(preExpiry[ym]||0):(realAvail[ym]||0);
     if(av>0){
       if(getExpYm(ym)===_viewExpYM){
-        if(getEphExtensions(ym)>0)_repViewAmt+=av;
-        else _expViewAmt+=av;
+        if((window._autoPlan||{})[ym])_repViewAmt+=av; // report automatique prévu
+        else _expViewAmt+=av; // déjà reportées jusqu'à ce mois-ci : elles expirent aussi
       } else if(getBaseExpYm(ym)===_viewExpYM&&getEphExtensions(ym)>0&&getExpYm(ym)>=TODAY_YM){
         _repViewAmt+=av;
       }
@@ -2479,7 +2481,7 @@ function calcPaniersMois(y,m){
 }
 function calcPrimesMois(y,m){
   let antenne=0,reel=0,coord=0,matin=0;const mym=y*12+m,seenW=new Set(),last=new Date(y,m+1,0).getDate();const VAC=getVAC();
-  for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd),mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);const sun=new Date(mon);sun.setDate(mon.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mym)continue;for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);const key=dk(d);if((S.conges||{})[key])continue;const{vac,absent,echange,ecSelf}=getVac(d);if(absent)continue;if(echange&&!ecSelf)continue;if(!vac||vac==='RH')continue;const pvac=getPayVac(d);const v=VAC[pvac];if(!v)continue;if(v.deb&&_toMinApp(v.deb)<240&&!_isSyndicDay(d))matin++;if(!v.primes)continue;if(v.primes.antenne)antenne++;if(v.primes.reel)reel++;if(v.primes.coord)coord++;}}
+  for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd),mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);const sun=new Date(mon);sun.setDate(mon.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mym)continue;for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);const key=dk(d);if((S.conges||{})[key])continue;const{vac,absent,echange,ecSelf}=getVac(d);if(absent)continue;if(echange&&!ecSelf)continue;if(!vac||vac==='RH')continue;const pvac=getPayVac(d);const v=VAC[pvac];if(!v)continue;if(_isMatin(d,v))matin++;if(!v.primes)continue;if(v.primes.antenne)antenne++;if(v.primes.reel)reel++;if(v.primes.coord)coord++;}}
   return{antenne,reel,coord,matin};
 }
 function fmtEuro(n){if(!isFinite(n)||isNaN(n))n=0;const abs=Math.abs(n).toFixed(2);const[int,dec]=abs.split('.');const intFmt=int.replace(/\B(?=(\d{3})+(?!\d))/g,' ');return(n<0?'-':'')+intFmt+','+dec+' €';}
@@ -3190,7 +3192,7 @@ function openPaniersModal(){
       const lbl=JOURS_L2[jidx===0?6:jidx-1]+' '+date.getDate()+' '+ML2[date.getMonth()];
       const entry={lbl,vac,wk:isoWeek(date)};
       if(v.panier)paniers.push(entry);
-      if(v.deb&&_toMinApp(v.deb)<240&&!_isSyndicDay(date))pm.push(entry);
+      if(v.deb&&_toMinApp(v.deb)<240)pm.push(entry);
       if(v.primes){if(v.primes.antenne)pa.push(entry);if(v.primes.reel)pr.push(entry);if(v.primes.coord)pc.push(entry);}
     }
   }
@@ -3810,7 +3812,7 @@ function openDay(key){
       if(_pv.primes&&_pv.primes.antenne)_epv.push('<span style="color:var(--amber)">Antenne</span>');
       if(_pv.primes&&_pv.primes.reel)_epv.push('<span style="color:var(--amber)">Réal</span>');
       if(_pv.primes&&_pv.primes.coord)_epv.push('<span style="color:var(--amber)">Coord</span>');
-      if(_pv.deb&&_toMinApp(_pv.deb)<240&&!_isSyndicDay(date))_epv.push('<span style="color:var(--amber)">Matin</span>');
+      if(_isMatin(date,_pv))_epv.push('<span style="color:var(--amber)">Matin</span>');
       if(isPanier(date))_epv.push('<span style="color:var(--amber)">Panier</span>');
       if(isFer)_epv.push('<span style="color:var(--text2)">Férié ×'+getTauxForYM(date.getFullYear()*12+date.getMonth()).fer+'%</span>');
       else if(date.getDay()===0)_epv.push('<span style="color:var(--text2)">Dim ×'+getTauxForYM(date.getFullYear()*12+date.getMonth()).dim+'%</span>');
@@ -4084,7 +4086,7 @@ function _dayMenuInfo(date){
   var x=(S.extraRendus||{})[key];if(x&&x.dur>0)r.push(fmtMin(x.dur)+' en plus');
   if(r.length)out.push('<span style="color:var(--rend-text)">Rendus +'+r.join(' · ')+'</span>');
   var p=[],pv=VAC[getPayVac(date)]||v,pr=pv.primes||{};
-  if(pr.antenne)p.push('Antenne');if(pr.reel)p.push('Réal');if(pr.coord)p.push('Coord');if(pv.deb&&_toMinApp(pv.deb)<240&&!_isSyndicDay(date))p.push('Matin');if(isPanier(date))p.push('Panier');
+  if(pr.antenne)p.push('Antenne');if(pr.reel)p.push('Réal');if(pr.coord)p.push('Coord');if(_isMatin(date,pv))p.push('Matin');if(isPanier(date))p.push('Panier');
   var n=0;try{n=getNuitMinDay(date,VAC);}catch(e){}if(n>0)p.push('Nuit '+fmtMin(n));
   var dp=(S.dayPrimes||{})[key];if(dp&&dp.amt>0)p.push(_h(dp.lbl||'Prime')+' '+fmtEuro(dp.amt));
   if(p.length)out.push('<span style="color:var(--amber)">'+p.join(' · ')+'</span>');
@@ -6666,7 +6668,7 @@ function openMergedMoisModal(mym,tab){
       const lbl=JOURS_L[jidx===0?6:jidx-1]+' '+date.getDate()+' '+MLf[date.getMonth()].toLowerCase();
       const entry={lbl,vac,wk:isoWeek(date)};
       if(v.panier)paniers.push(entry);
-      if(v.deb&&_toMinApp(v.deb)<240&&!_isSyndicDay(date))pm2.push(entry);
+      if(v.deb&&_toMinApp(v.deb)<240)pm2.push(entry);
       if(v.primes){if(v.primes.antenne)pa.push(entry);if(v.primes.reel)pr.push(entry);if(v.primes.coord)pc.push(entry);}
     }
   }
@@ -8537,7 +8539,7 @@ function openCustomVacModal(){
   var motif=re&&window._cvMotif?window._cvMotif:(window._cvMotifReq||(ov.echange?(ov.motif||'echange'):(ov.motif||(ov.formation?'forme':'autre'))));window._cvMotifReq=null;window._cvMotif=motif;
   var cP=[];if(cI){var cp=cI.primes||{};if(cp.antenne)cP.push('Antenne');if(cp.reel)cP.push('Réal');if(cp.coord)cP.push('Coordination');if(cI.deb&&_toMinApp(cI.deb)<240)cP.push('matin');}
   if(key&&W.when==='other'&&!oKey)cN='';
-  window._cvHints={forme:cN?'celles de '+cN+(cP.length?' ('+cP.join(', ')+')':''):'aucune',formateur:cN?'pas celles de '+cN:'aucune',detache:'',syndic:cN?'celles de '+cN+(cP.filter(function(x){return x!=='matin';}).length?' ('+cP.filter(function(x){return x!=='matin';}).join(', ')+')':'')+', sans matin':'aucune',autre:'',echange:''};
+  window._cvHints={forme:cN?'celles de '+cN+(cP.length?' ('+cP.join(', ')+')':''):'aucune',formateur:cN?'pas celles de '+cN:'aucune',detache:'',syndic:cN?'celles de '+cN+(cP.filter(function(x){return x!=='matin';}).length?' ('+cP.filter(function(x){return x!=='matin';}).join(', ')+')':'')+' ; matin si la vacation faite commence avant 4h':'aucune',autre:'',echange:''};
   var mB=function(k,l){return '<option value="'+k+'"'+(motif===k?' selected':'')+'>'+l+'</option>';};
   // « Pourquoi ce changement ? » : chaque choix montre directement ce qu'il implique pour les primes
   if(key&&W.when==='other'&&motif==='autre'){motif='echange';window._cvMotif=motif;}
@@ -8640,7 +8642,7 @@ function _cvCalc(){var el=document.getElementById('cv-calc'),R=window._cvCalcRef
   // Ce que le jour rapporte en plus : nuit (formation suivie → la plus grande des deux), matin, panier, majoration du jour
   var _W=window._cvW||{},syn=window._cvMotif==='syndic'&&R.dur>0,forme=(window._cvMotif==='forme'||syn)&&R.dur>0,key=_W.when==='other'&&_W.role==='give'&&_W.other?_W.other:pendingKey,date=key?new Date(key+'T12:00:00'):null,ch=[];
   var nu=calcNuitMinShift({deb:d,fin:f}),nf=forme&&(R.nuit||0)>nu;if(forme)nu=Math.max(nu,R.nuit||0);if(nu>0)ch.push('<span style="color:#9c7fe0">Nuit '+fmtMin(nu)+(nf?' (celle de '+R.n+')':'')+'</span>');
-  var md=forme&&R.deb?_toMinApp(R.deb):a;if(!syn&&md!==null&&md<240)ch.push('<span style="color:var(--amber)">Matin</span>');
+  var md=forme&&!syn&&R.deb?_toMinApp(R.deb):a;if(md!==null&&md<240)ch.push('<span style="color:var(--amber)">Matin</span>');
   if(pz<45&&coversMealSlot(a,b))ch.push('<span style="color:var(--amber)">Panier</span>');
   if(date){var tx=getTauxForYM(date.getFullYear()*12+date.getMonth()),gv=getVac(date);
     var hx=fmtMin(t);if(FERIES.has(key))ch.push('Férié '+hx+' <span style="opacity:.6">×'+tx.fer+'%</span>');else if(date.getDay()===0)ch.push('Dimanche '+hx+' <span style="opacity:.6">×'+tx.dim+'%</span>');else if(isRHDay(date)&&!(gv.echange&&!gv.ecSelf))ch.push('RH '+hx+' <span style="opacity:.6">×'+tx.rh+'%</span>');}
