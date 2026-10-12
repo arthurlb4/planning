@@ -411,5 +411,18 @@ function situation(opts) {
     _globalVacs={Zx:{deb:'07h45',fin:'16h15',dur:510,type:'week',cycleIds:['c1']},Old:{deb:'07h45',fin:'16h15',dur:510,type:'week',cycleIds:['c0']}};
     var V=getVAC(new Date(2026,9,14,12)),h=_autreVacHtml('2026-10-14');_globalCycles=[];_globalVacs={};return [!!V.Zx,!!V.Old,h.indexOf('Zx')>0,h.indexOf('>Cadre<')>0];})()`), [true, false, true, true]); }
 
+// Changement d'équipe « à partir de » : l'ancienne équipe avant la date, la nouvelle après (son cycle, sa longueur)
+{ const a = load('2026-10-11');
+  eq('Équipe changée à partir d’une date', a.run(`(function(){render=function(){};saveState=function(){};gcalUpdateBtn=function(){};closeModal=function(){};gcalTokens=null;
+    _aid='p1';_profs={p1:S};window._poolTmp='cadre';applyChangeLigne('p1',2,'from','2026-11-02');
+    return [window._poolTmp,_poolAt(new Date(2026,9,20,12)),_poolAt(new Date(2026,10,10,12)),S.profile.pool||'antenne',lineIdx(getMonday(new Date(2026,10,3,12))),getCycleLen(new Date(2026,10,10,12))===CYCLE_CADRE.length];})()`),
+    [null, 'antenne', 'cadre', 'antenne', 2, true]); }
+
+// Inscription : changement de ligne après le mois de départ → ligne d'avant jusqu'au changement, ligne actuelle ensuite
+{ const a = load('2026-10-11');
+  eq('Inscription : ligne d’avant un changement', a.run(`(function(){SU={v:{lcD:'2026-06-10'}};var lm=_suLcMon(),pr=S.profile,n=getCycleLen(NOW),diff=Math.round((getMonday(NOW)-ANCHOR)/(7*864e5));pr.anchorLine=((3-diff)%n+n)%n;
+    var lf=new Date(lm);lf.setDate(lf.getDate()+7);var n0=getCycleLen(lm),d0=Math.round((lm-ANCHOR)/(7*864e5));pr.origAnchor=((7-d0)%n0+n0)%n0;pr.lineHistory=[{anchorLine:pr.anchorLine,from:dk(lf)}];
+    return [dk(lm),lineIdx(lm),lineIdx(getMonday(NOW))];})()`), ['2026-06-01', 7, 3]); }
+
 console.log('\n' + (count - fails) + '/' + count + ' contrôles réussis');
 if (fails) process.exit(1);
