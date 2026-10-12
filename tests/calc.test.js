@@ -330,6 +330,13 @@ function situation(opts) {
       rhCompareShow(rh,true);return [Math.round(_rhCons.s/60*100)/100,Math.round(_rhCons.unc)];})()`), [159.25, 960]); }
 }
 
+// Repartir d'un tableau plus ancien : rendus déjà passés en historique mais postérieurs à sa dernière semaine notée → de nouveau décomptés
+{ const a = load('2026-10-11');
+  eq('Tableau de février (dernière semaine S2) : rendu de la S8 de nouveau décompté', a.run(`(function(){
+    var k=null;for(var i=16;i<=20&&!k;i++){var d=new Date(2026,1,i,12),v=getVac(d);if(v.vac&&v.vac!=='RH')k=dk(d);}
+    var rh={edition:new Date(2026,1,22,12),tot:{stockAct:10208},lines:[{ym:2026*12,nature:'Férié',acq:960,cons:960,solde:0,com:'31h posés S2'}],lastWeek:2,weeks:{2:1860}};
+    S.conges={};S.conges[k]='rend-hist';S.conges['2026-01-07']='rend-hist';var P=_rhImportPlan(rh);return [P.toRend.indexOf(k)>=0,P.toRend.indexOf('2026-01-07')<0];})()`), [true, true]); }
+
 // Rendus pris sur le matelas dans l'app, sur les heures acquises au tableau : même total, pas d'écart signalé
 { const a = load('2026-10-11');
   eq('Matelas et heures restantes qui se compensent : écart effectif nul', a.run(`(function(){render=function(){};S.conges={};S.ephExtend={};S.settings=Object.assign(S.settings||{},{dimRendu:false,rhRendu:false,ferRendu:false,hsRendu:false});

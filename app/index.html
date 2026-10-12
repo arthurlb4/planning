@@ -8,7 +8,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v5.30">
+<meta name="app-version" content="v5.31">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -4957,7 +4957,9 @@ function _rhImportPlan(rh,keepCounted){
   // Rendus douteux que l'utilisateur garde décomptés par l'app (pas encore saisis par le gestionnaire)
   const keep=keepCounted||new Set();
   // Rendus passés en historique par un tableau plus récent (ou un départ plus tardif) mais postérieurs à celui-ci : de nouveau décomptés
-  const toRend=Object.keys(S.conges||{}).filter(k=>S.conges[k]==='rend-hist'&&k>baseKey&&new Date(k+'T12:00:00').getFullYear()*12+new Date(k+'T12:00:00').getMonth()>=edYM).sort();
+  // ainsi que ceux d'après sa dernière semaine notée (un tableau plus ancien ne les a pas encore déduits)
+  const toRend=Object.keys(S.conges||{}).filter(k=>{if(S.conges[k]!=='rend-hist')return false;const d=new Date(k+'T12:00:00');
+    return (k>baseKey&&d.getFullYear()*12+d.getMonth()>=edYM)||(!!_lwE&&d>_lwE&&k<=baseKey&&!keep.has(k));}).sort();
   return{ed,baseKey,edYM,split,reports,total,toHist:toHist.filter(k=>!keep.has(k)),toRend,maybeLate,matelas:rh.tot.stockAct};
 }
 function rhImportPreview(rh){
@@ -4981,7 +4983,7 @@ function rhImportPreview(rh){
     +'</table>'
     +'<div class="rc-note">Ensuite, l’app calcule elle-même les heures acquises à partir du planning, à compter du '+P.ed.toLocaleDateString('fr-FR')+'.</div>'
     +(hist.length?'<div class="rc-note"><i class="ti ti-history" style="color:var(--blue)"></i> <b>'+hist.length+' rendu'+(hist.length>1?'s':'')+' jusqu’au '+(rh.lastWeek?'dimanche de la S'+rh.lastWeek:P.ed.toLocaleDateString('fr-FR'))+' ('+fmtMin(histH)+')</b> : déjà déduit'+(hist.length>1?'s':'')+' dans le tableau. Ils restent affichés dans le calendrier, mais l’app ne les retire pas une deuxième fois.</div>':'')
-    +(P.toRend.length?'<div class="rc-note"><i class="ti ti-clock" style="color:var(--rend-text)"></i> <b>'+P.toRend.length+' rendu'+(P.toRend.length>1?'s':'')+' après le '+P.ed.toLocaleDateString('fr-FR')+' ('+fmtMin(P.toRend.reduce((t,k)=>t+getDur(new Date(k+'T12:00:00')),0))+')</b> : pas dans ce tableau, l’app les décompte de nouveau.</div>':'')
+    +(P.toRend.length?'<div class="rc-note"><i class="ti ti-clock" style="color:var(--rend-text)"></i> <b>'+P.toRend.length+' rendu'+(P.toRend.length>1?'s':'')+' pas encore dans ce tableau ('+fmtMin(P.toRend.reduce((t,k)=>t+getDur(new Date(k+'T12:00:00')),0))+')</b> : pas dans ce tableau, l’app les décompte de nouveau.</div>':'')
     +(P.maybeLate.length?'<div class="rc-note"><i class="ti ti-clock" style="color:var(--blue)"></i> <b>'+P.maybeLate.length+' rendu'+(P.maybeLate.length>1?'s':'')+' après la S'+rh.lastWeek+'</b>, dernière semaine notée par le gestionnaire ('+P.maybeLate.map(k=>new Date(k+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'})).join(', ')+') : pas encore dans son tableau, l’app les décompte elle-même.</div>':'')
     +(P.toHist.length?'<div class="rc-com" style="margin:2px 0 4px">Si l’app s’est trompée sur un rendu, touche le jour dans le calendrier pour corriger.</div>':'')
     +'<button class="rc-btn" style="margin-top:10px;height:40px" onclick="rhImportApply()">Repartir de ce tableau</button>'
