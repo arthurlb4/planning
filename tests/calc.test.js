@@ -92,10 +92,10 @@ function situation(opts) {
   a.run('S.profile={};S.conges={};S.ephExtend={};');
   eq('Import : point de départ = juin 14h, reporté', a.run('(function(){var P=_rhImportPlan(_rh);return JSON.stringify({split:P.split,reports:P.reports});})()'),
     JSON.stringify({ split: { [YM(2026, 6)]: 840 }, reports: { [YM(2026, 6)]: 1 } }));  // Inscription « vérifier depuis juillet » avec ce seul tableau : solde au 1er juillet reconstitué, paie et Gestion vérifiées depuis juillet
-  eq('Inscription depuis juillet avec le seul dernier tableau', a.run(`(function(){var _r=render,_t=_infoToast;render=function(){};_infoToast=function(){};S.profile={name:'t'};S.conges={};S.ephExtend={};S.bulletins={};
+  eq('Inscription depuis juillet : soldes repris du tableau, vérification depuis juillet', a.run(`(function(){var _r=render,_t=_infoToast;render=function(){};_infoToast=function(){};S.profile={name:'t'};S.conges={};S.ephExtend={};S.bulletins={};
     SU={step:5,rh:{cells:${JSON.stringify(cells)},name:'t.xlsx',rh:_rh,P:_rhImportPlan(_rh)},rh0:null,rhMode:'imp',bul:{},bulMode:'man',v:{line:'3',from:'past',fromYM:${2026*12+6},pfa:0,pct:100}};
-    _suDone();render=_r;_infoToast=_t;return JSON.stringify([S.profile.calcStart,S.profile.ephRecon.D,S.profile.ephBaseDate,_ephSplit(),!!S.profile.rhTable,_calcVerifYM()]);})()`),
-    JSON.stringify(['2026-07-01', '2026-07-01', '2026-06-30', { [YM(2026, 4)]: 0, [YM(2026, 5)]: 450, [YM(2026, 6)]: 840 }, true, 2026 * 12 + 7]));
+    _suDone();render=_r;_infoToast=_t;return JSON.stringify([S.profile.calcStart,S.profile.verif.D,S.profile.ephBaseDate,_ephSplit(),!!S.profile.rhTable,_calcVerifYM()]);})()`),
+    JSON.stringify(['2026-07-01', '2026-07-01', '2026-09-18', { [YM(2026, 6)]: 840 }, true, 2026 * 12 + 7]));
 }
 
 // 6. Bulletin de paie : lecture des lignes du PDF (exemple fictif, au format des bulletins)
@@ -320,14 +320,16 @@ function situation(opts) {
   const run = f => { const a = load('2026-10-11'); return a.run(`(function(){var rh=_rhParse(${JSON.stringify(cells)},'18-09-2026.xlsx'),P=_rhImportPlan(rh);
     render=function(){};_infoToast=function(){};S.profile={name:'t'};S.conges={};S.ephExtend={};S.bulletins={};
     SU={step:5,rh:{cells:${JSON.stringify(cells)},name:'x.xlsx',rh:rh,P:P},rh0:null,rhMode:'imp',bul:{},bulMode:'man',v:{line:'3',from:'past',fromYM:${f},pfa:0,pct:100}};
-    _suDone();var pr=S.profile;return JSON.stringify([dk(rh.edition),rh.lines.length,rh.lastWeek,pr.calcStart,pr.ephRecon.D,Math.round(pr.matelas)]);})()`); };
-  eq('Tableau réel, départ décembre 2025 : bulletins depuis la paie de janvier, Gestion depuis janvier, matelas 171,89 h', run(YM(2025, 12)), JSON.stringify(['2026-09-18', 19, 35, '2025-12-01', '2026-01-01', 10313]));
+    _suDone();var pr=S.profile;return JSON.stringify([dk(rh.edition),rh.lines.length,rh.lastWeek,pr.calcStart,pr.verif.D,Math.round(pr.matelas)]);})()`); };
+  eq('Tableau réel, départ décembre 2025 : bulletins depuis la paie de janvier, Gestion vérifiée depuis janvier, matelas du tableau (162,27 h)', run(YM(2025, 12)), JSON.stringify(['2026-09-18', 19, 35, '2025-12-01', '2026-01-01', 9736]));
   eq('Tableau réel, « ce mois-ci » (octobre) : départ avancé à septembre, premier mois que le tableau ne couvre pas', run(YM(2026, 10)), JSON.stringify(['2026-09-18', 19, 35, '2026-09-01', '2026-09-01', 9736]));
   eq('Tableau réel, départ avril : matelas 162,27 h', run(YM(2026, 4)), JSON.stringify(['2026-09-18', 19, 35, '2026-04-01', '2026-04-01', 9736]));
-  // Départ d'un tableau de février (22/02) : rendus déduits sans semaine citée (mars, mai…) comptés dans le total du tableau
-  { const a = load('2026-10-11'); eq('Tableau réel, suivi depuis le 22 février : total déduit = consommations depuis le départ (S8 retirée), 16h sans semaine citée',
-    a.run(`(function(){var rh=_rhParse(${JSON.stringify(cells)},'18-09-2026.xlsx');render=function(){};S.profile={name:'t',ephSoldeCreatedYM:${YM(2026, 2)},ephBaseDate:'2026-02-22'};S.conges={};S.ephExtend={};
-      rhCompareShow(rh,true);return [Math.round(_rhCons.s/60*100)/100,Math.round(_rhCons.unc)];})()`), [159.25, 960]); }
+  // Vérification depuis le tableau de février (22/02, janvier seulement, matelas 170,14 h) : rendus déduits = ce que le tableau
+  // de septembre a consommé depuis (heures et matelas), sans ce qui l'était déjà en février
+  { const a = load('2026-10-11'); eq('Vérification depuis un tableau plus ancien : départ février, rendus déduits depuis = 167h15',
+    a.run(`(function(){var rh=_rhParse(${JSON.stringify(cells)},'18-09-2026.xlsx');S.conges={};
+      var f={edition:new Date(2026,1,22,12),tot:{stock2025:10313.4,stockAct:10208.4},lastWeek:2,weeks:{2:1860},lines:[{ym:${YM(2026, 1)},nature:'Férié',acq:960,cons:960,solde:0,stock:0,com:''},{ym:${YM(2026, 1)},nature:'RCR (HS)',acq:525,cons:525,solde:0,stock:0,com:''},{ym:${YM(2026, 1)},nature:'Dimanche',acq:270,cons:270,solde:0,stock:0,com:''},{ym:${YM(2026, 1)},nature:'',acq:0,cons:0,solde:0,stock:105,com:'31h posés S2 - complément de stock 1,75'}]};
+      S.profile.verif=_verifFromTable(f);var R=_verifSim(rh);return [R.V.k,R.genFrom===${YM(2026, 2)},Math.round(R.consT),R.fromK,Math.round(R.tabM)];})()`), ['tab', true, 10035, '2026-01-11', 9736]); }
 }
 
 // Repartir d'un tableau plus ancien : rendus déjà passés en historique mais postérieurs à sa dernière semaine notée → de nouveau décomptés
@@ -337,11 +339,6 @@ function situation(opts) {
     var rh={edition:new Date(2026,1,22,12),tot:{stockAct:10208},lines:[{ym:2026*12,nature:'Férié',acq:960,cons:960,solde:0,com:'31h posés S2'}],lastWeek:2,weeks:{2:1860}};
     S.conges={};S.conges[k]='rend-hist';S.conges['2026-01-07']='rend-hist';var P=_rhImportPlan(rh);return [P.toRend.indexOf(k)>=0,P.toRend.indexOf('2026-01-07')<0];})()`), [true, true]); }
 
-// Rendus pris sur le matelas dans l'app, sur les heures acquises au tableau : même total, pas d'écart signalé
-{ const a = load('2026-10-11');
-  eq('Matelas et heures restantes qui se compensent : écart effectif nul', a.run(`(function(){render=function(){};S.conges={};S.ephExtend={};S.settings=Object.assign(S.settings||{},{dimRendu:false,rhRendu:false,ferRendu:false,hsRendu:false});
-    var rh={edition:new Date(2026,8,18,12),tot:{stockAct:9000,cumSol:480},lines:[],weeks:{},lastWeek:0};S.matelasKeys={};S.profile.matelas=9480;
-    rhCompareShow(rh,true);return [S.profile.rhCmp.d,S.profile.rhCmp.de];})()`), [-480, 0]); }
 
 console.log('\n' + (count - fails) + '/' + count + ' contrôles réussis');
 if (fails) process.exit(1);
