@@ -10,7 +10,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.44">
+<meta name="app-version" content="v6.45">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -8451,8 +8451,19 @@ function _cvSd(k){var d=new Date(k+'T12:00:00');return ['dim.','lun.','mar.','me
 // État de départ : déplacement / échange déjà posé, sinon ce jour ; rôle par défaut : repos → je le fais à la place d'un autre, jour travaillé → je ne le fais pas
 function _cvWInit(key){var o=(S.overrides||{})[key]||{},d=new Date(key+'T12:00:00'),c=getCycleVac(d).cycleVac,mon=getMonday(d);
   if(o.echange&&o.pair&&o.pair!==key){var pm=getMonday(new Date(o.pair+'T12:00:00'));
-    return{when:'other',role:o.ecSelf?'take':'give',other:o.pair,wOff:Math.round((pm-mon)/(7*864e5)),exVac:o.motif?null:(o.ecSelf?o.vac:((S.overrides||{})[o.pair]||{}).vac),exHs:!!(o.ecSelf?o.hs:((S.overrides||{})[o.pair]||{}).hs)};}
-  return{when:'day',role:c&&c!=='RH'?'give':'take',other:null,wOff:0,exVac:o.echange&&!o.motif?o.vac:null,exHs:!!(o.echange&&o.hs)};}
+    return{when:'other',role:o.ecSelf?'take':'give',other:o.pair,wOff:Math.round((pm-mon)/(7*864e5)),exVac:o.motif?null:_exBaseOf(o.ecSelf?o:((S.overrides||{})[o.pair]||{})),exHs:!!(o.ecSelf?o.hs:((S.overrides||{})[o.pair]||{}).hs),exT:_exTOf(o.ecSelf?o:((S.overrides||{})[o.pair]||{}))};}
+  return{when:'day',role:c&&c!=='RH'?'give':'take',other:null,wOff:0,exVac:o.echange&&!o.motif?_exBaseOf(o):null,exHs:!!(o.echange&&o.hs),exT:o.echange&&!o.motif?_exTOf(o):null};}
+// Échange aux horaires différents : la vacation de base est gardée (exBase), les horaires faits sont une vacation perso
+function _exBaseOf(o){return o&&(o.exBase||o.vac)||null;}
+function _exTOf(o){var v=o&&o.exBase&&(S.customVacs||{})[o.vac];if(!v)return null;var t=parseHM(v.fin)-parseHM(v.deb);if(t<0)t+=1440;var pz=t-(v.dur||0);return{deb:v.deb,fin:v.fin,pause:pz>=60?'60':pz>=45?'45':'0'};}
+function _cvTOpts(){var h='<option value="">—</option>';for(var m=0;m<1440;m+=15){var t=String(Math.floor(m/60)).padStart(2,'0')+'h'+String(m%60).padStart(2,'0');h+='<option value="'+t+'">'+t+'</option>';}return h;}
+// Horaires faits pré-remplis avec ceux de la vacation choisie
+function _cvExTFill(){var W=window._cvW||{},V=W.exVac&&getVAC(new Date(_cvFKey()+'T12:00:00'))[W.exVac];if(!V)return;var t=parseHM(V.fin)-parseHM(V.deb);if(t<0)t+=1440;var pz=t-(V.dur||0);
+  W.exT={deb:V.deb||'',fin:V.fin||'',pause:pz>=60?'60':pz>=45?'45':'0'};_cvExTSet();}
+function _cvExTSet(){var T=(window._cvW||{}).exT||{};[['cv-exd','deb'],['cv-exf','fin'],['cv-exp','pause']].forEach(function(a){var e=document.getElementById(a[0]);if(e)e.value=T[a[1]]||(a[1]==='pause'?'0':'');});}
+function _cvExTRead(){var W=window._cvW,g=function(id){var e=document.getElementById(id);return e?e.value:'';};if(W)W.exT={deb:g('cv-exd'),fin:g('cv-exf'),pause:g('cv-exp')};}
+function _cvExHr(on){var W=window._cvW;W.exHr=on;var f=document.getElementById('cv-exhr-f');if(f)f.style.display=on?'':'none';if(on&&!(W.exT&&W.exT.deb))_cvExTFill();}
+function _cvFKey(){var W=window._cvW||{},k=pendingKey;return W.when==='other'&&W.role==='give'&&W.other?W.other:k;}
 // Sélecteurs du haut : Prévue (ce jour / un autre jour / semaine) ; pour un autre jour : rôle de ce jour et choix de l'autre jour (‹ › pour changer de semaine)
 // Rangée des jours (‹ › : autre semaine). Le jour ouvert = ce jour ; un autre jour = déplacement ou échange.
 // Sens déduit du jour ouvert : jour travaillé → « Fait le » (il est cédé) ; repos → « Vacation prévue le » (il est fait à la place)
@@ -8481,7 +8492,7 @@ function _cvPickDay(k){var W=window._cvW,key=pendingKey;_haptic();var _o=documen
   setTimeout(function(){var n=document.querySelector('.cv-days .exchange-day.pick');if(!_or||!n||!document.body.animate)return;var nr=n.getBoundingClientRect();if(Math.abs(_or.left-nr.left)<2)return;
     var f=document.createElement('div');f.style.cssText='position:fixed;left:'+nr.left+'px;top:'+nr.top+'px;width:'+nr.width+'px;height:'+nr.height+'px;border-radius:18px;background:var(--blue);z-index:9999;pointer-events:none;opacity:.55';
     document.body.appendChild(f);var a=f.animate([{transform:'translateX('+(_or.left-nr.left)+'px)',opacity:.55},{transform:'none',opacity:0}],{duration:260,easing:'cubic-bezier(.3,.8,.3,1)'});a.onfinish=function(){f.remove();};},0);if(k===key){W.other=null;W.when='day';}else{W.other=k;W.when='other';if(window._cvMotif==='autre')window._cvMotif='echange';}W.exVac=null;_cvRerender();}
-function _cvPickExVac(b){var W=window._cvW;W.exVac=b.getAttribute('data-exv');_haptic();[].forEach.call(document.querySelectorAll('#cv-exg [data-exv]'),function(x){x.classList.toggle('exsel',x===b);});}
+function _cvPickExVac(b){var W=window._cvW;W.exVac=b.getAttribute('data-exv');_haptic();if(W.exHr)_cvExTFill();[].forEach.call(document.querySelectorAll('#cv-exg [data-exv]'),function(x){x.classList.toggle('exsel',x===b);});}
 // Échange : vacations du jour fait (celles du cycle ce jour-là, puis les autres)
 function _cvExGrid(fk){var W=window._cvW||{},d=new Date(fk+'T12:00:00'),VAC=getVAC(d);
   var dv=_dayVacRows(d,VAC),typ=dv.rows.reduce(function(a,r){return a.concat(r);},[]).filter(function(n){var v=VAC[n];return n!=='SV'&&n!=='Autre'&&v&&!v.mixte&&v.dur>0;});
@@ -8493,6 +8504,10 @@ function _cvExGrid(fk){var W=window._cvW||{},d=new Date(fk+'T12:00:00'),VAC=getV
     +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">'+typ.map(bt).join('')
     +(oth?'<button type="button" class="mb vt" style="background:var(--bg0);color:var(--text2);font-weight:700" onclick="var o=document.getElementById(\'cv-exo\');o.style.display=o.style.display?\'\':\'none\'">Autres</button>':'')+'</div>'
     +(oth?'<div id="cv-exo"'+(open?'':' style="display:none"')+'>'+oth+'</div>':'')
+    +'<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin:10px 2px 0"><span style="font-size:13px">Horaires différents</span>'
+    +'<label class="tgl"><input type="checkbox" id="cv-exhr"'+(W.exHr?' checked':'')+' onchange="_cvExHr(this.checked)"><span class="tgl-s"></span></label></div>'
+    +'<div id="cv-exhr-f" class="mr2" style="grid-template-columns:1fr 1fr 1fr;margin:8px 0 0'+(W.exHr?'':';display:none')+'">'
+    +[['cv-exd','Début',_cvTOpts()],['cv-exf','Fin',_cvTOpts()],['cv-exp','Pause','<option value="0">Sans</option><option value="45">45 min</option><option value="60">1h00</option>']].map(function(a){return '<div><label>'+a[1]+'</label><select id="'+a[0]+'" onchange="_cvExTRead()" style="width:100%;padding:10px 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--bg2);color:var(--text);font-family:var(--font);-webkit-appearance:none">'+a[2]+'</select></div>';}).join('')+'</div>'
     +'<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin:10px 2px 0"><span style="font-size:13px">Heures sup <span style="font-size:11px;color:var(--text3)">demande de la direction</span></span>'
     +'<label class="tgl"><input type="checkbox" id="cv-exhs"'+(W.exHs?' checked':'')+' onchange="window._cvW.exHs=this.checked;var h=document.getElementById(\'cv-exhint\');if(h)h.textContent=this.checked?\'Les heures faites comptent : ce qui dépasse part en heures sup. Primes de la vacation faite.\':\'Les heures prévues comptent (pas d’heures sup). Primes de la vacation faite.\'"><span class="tgl-s"></span></label></div>'
     +'<div class="cv-hint" id="cv-exhint" style="margin:8px 2px 4px">'+(W.exHs?'Les heures faites comptent : ce qui dépasse part en heures sup. Primes de la vacation faite.':'Les heures prévues comptent (pas d’heures sup). Primes de la vacation faite.')+'</div>'
@@ -8514,9 +8529,13 @@ function _cvSaveMove(){var W=window._cvW||{when:'day'},key=pendingKey,m=window._
   pushUndo(ex?'Échange enregistré':'Déplacement enregistré');if(!S.overrides)S.overrides={};
   // liens d'un ancien échange / déplacement de ces jours : défaits
   [oKey,fKey].forEach(function(k){var o=S.overrides[k];if(o&&o.echange&&o.pair&&o.pair!==k&&o.pair!==oKey&&o.pair!==fKey){var p=S.overrides[o.pair];if(p&&p.echange&&p.pair===k)delete S.overrides[o.pair];}});
+  // Échange aux horaires différents : vacation perso aux horaires faits, primes de la vacation choisie
+  var exB=null;if(ex&&W.exHr){var bv=VF[W.exVac]||{},T=W.exT||{};if(!T.deb||!T.fin){alert('Début et fin requis.');return;}
+    var ea=parseHM(T.deb),eb=parseHM(T.fin),ed=eb-ea;if(ed<=0)ed+=1440;var ep=parseInt(T.pause)||0,epn=false;if(ep>=45)ed-=ep;else if(coversMealSlot(ea,eb))epn=true;if(ed<=0){alert('Horaires invalides');return;}
+    if(!(T.deb===bv.deb&&T.fin===bv.fin&&ed===bv.dur)){exB=W.exVac;nv={deb:T.deb,fin:T.fin,dur:ed,panier:epn,hidden:true,label:vLbl(W.exVac,VF),primes:Object.assign({},bv.primes||{})};}}
   var V=W.exVac;if(nv){V='_p_'+nv.label+'_'+Date.now();if(!S.customVacs)S.customVacs={};S.customVacs[V]=nv;}
   if(oKey!==fKey){if(S.conges&&S.conges[fKey])delete S.conges[fKey];S.overrides[oKey]={vac:oCyc,fromSV:false,echange:true,ecSelf:false,hs:false,pair:fKey};if(!ex)S.overrides[oKey].motif=m;}
-  S.overrides[fKey]={vac:V,fromSV:!fCyc||fCyc==='RH',echange:true,ecSelf:true,hs:!!(ex&&W.exHs),pair:oKey};if(!ex){S.overrides[fKey].motif=m;S.overrides[fKey].formation=m==='forme';}
+  S.overrides[fKey]={vac:V,fromSV:!fCyc||fCyc==='RH',echange:true,ecSelf:true,hs:!!(ex&&W.exHs),pair:oKey};if(exB)S.overrides[fKey].exBase=exB;if(!ex){S.overrides[fKey].motif=m;S.overrides[fKey].formation=m==='forme';}
   if(!S.dayPrimes)S.dayPrimes={};if(amt>0)S.dayPrimes[fKey]={lbl:m==='formateur'?'Prime formateur':'Prime',amt:Math.round(amt*100)/100};else if(!ex)delete S.dayPrimes[fKey];
   _cvSaveExtras();
   var ML={autre:'horaires',forme:'formation',formateur:'formateur',detache:'détachement',syndic:'détachement syndical'};
@@ -8627,6 +8646,7 @@ function openCustomVacModal(){
     st('custom-name',D.name);st('custom-deb',D.deb);st('custom-fin',D.fin);st('custom-pause',D.pause);st('custom-prime',D.prime);st('cv-autre-amt',D.amt);st('cv-note',D.note);st('cv-exr-lbl',D.xl);st('cv-exr-dur',D.xd);
     var sp=document.getElementById('custom-prime');if(sp&&motif!=='formateur')_cvPrimeSync(sp,1);_cvRmSync();_cvCalc();}
   window._cvDraft=null;
+  _cvExTSet();
 }
 // Nom : vacations connues du jour proposées ; en choisir une remplit horaires, pause et prime (ex. B1 rallongée sur un repos)
 // Vacations proposables ce jour-là : celles du cycle actif pour ce type de jour (sans cycle : la grille par défaut du jour), plus les vacations perso visibles

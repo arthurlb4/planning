@@ -397,5 +397,13 @@ function situation(opts) {
     var cv=getCycleVac(new Date(work+'T12:00:00')).cycleVac;S.overrides={};S.overrides[work]={vac:cv,echange:true,ecSelf:false,hs:false,pair:rest};S.overrides[rest]={vac:cv,echange:true,ecSelf:true,hs:false,pair:work};
     var a0=calcHSWeek(mon).surplus;S.overrides[rest].hs=true;var a1=calcHSWeek(mon).surplus;S.overrides={};return [a0,a1>0];})()`), [0, true]); }
 
+// Échange aux horaires différents : la vacation choisie reste la base (primes), les horaires faits sont gardés et rouverts
+{ const a = load('2026-10-11');
+  eq('Échange : horaires différents enregistrés puis rouverts', a.run(`(function(){render=function(){};saveState=function(){};gcalTrigger=function(){};popCell=function(){};openDay=function(){};_cvSaveExtras=function(){};
+    var d=null;for(var i=1;i<28&&!d;i++){var x=new Date(2026,8,i,12),c=getCycleVac(x).cycleVac;if(c&&c!=='RH')d=x;}var k=dk(d),cv=getCycleVac(d).cycleVac,V=getVAC(d)[cv];S.overrides={};
+    pendingKey=k;window._cvMotif='echange';window._cvW={when:'day',exVac:cv,exHr:true,exT:{deb:V.deb,fin:'23h45',pause:'0'}};_cvSaveMove();
+    var o=S.overrides[k],cu=S.customVacs[o.vac],W=_cvWInit(k);S.overrides={};
+    return [o.exBase===cv,cu.fin,cu.label===vLbl(cv,getVAC(d)),JSON.stringify(cu.primes)===JSON.stringify(V.primes||{}),W.exVac===cv,W.exT.fin];})()`), [true, '23h45', true, true, true, '23h45']); }
+
 console.log('\n' + (count - fails) + '/' + count + ' contrôles réussis');
 if (fails) process.exit(1);
