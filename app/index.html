@@ -8,7 +8,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.5">
+<meta name="app-version" content="v6.6">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -1523,8 +1523,8 @@ const dur=VAC[vac]?VAC[vac].dur:0;
   }
   // Différences acceptées depuis la comparaison avec le tableau Gestion (« faire comme le tableau ») : heures acquises (adj) ou
   // rendus déduits (adjr) du mois, en plus ou en moins
-  var _ig=(S.profile&&S.profile.ignRhC)||{};Object.keys(_ig).forEach(function(k){var m=/^acq(\d+)/.exec(k),r=/^wkm(\d+)s/.exec(k),ym=m?+m[1]:r?+r[1]:null;
-    if(ym!=null&&ym>=createdYM&&typeof _ig[k]==='number')add(ym,m?'adj':'adjr',_ig[k],'tableau Gestion');});
+  var _ig=(S.profile&&S.profile.ignRhC)||{};Object.keys(_ig).forEach(function(k){var m=/^acq(\d+)/.exec(k),r=/^wkm(\d+)s/.exec(k),x=/^xfer(\d+)$/.exec(k),ym=m?+m[1]:r?+r[1]:x?+x[1]:null;
+    if(ym!=null&&ym>=createdYM&&typeof _ig[k]==='number')add(ym,m?'adj':'adjr',x?-_ig[k]:_ig[k],'tableau Gestion');}); // xfer : pris sur ces heures au lieu du matelas
   Object.keys(S.extraRendus||{}).forEach(function(key){
     var d=new Date(key+'T12:00:00'),mon=getMonday(d),sun=new Date(mon);sun.setDate(mon.getDate()+6);
     var sunYm=sun.getFullYear()*12+sun.getMonth();
@@ -5206,7 +5206,7 @@ function _startMigrate(){const pr=S.profile;if(!pr||pr.start||pr.setupPending)re
 // ── Vérification par un tableau plus récent : l'état de l'app à la date du tableau (même calcul, depuis le même départ),
 // matelas et heures éphémères comparés séparément. Ne modifie rien.
 function _verifSim(rh){
-  const pr=S.profile||{},st=pr.start,asOf=_rhEd(rh),asOfYM=asOf.getFullYear()*12+asOf.getMonth(),asK=dk(asOf);
+  const pr=S.profile||{},st=pr.start,xadj=Object.keys(pr.ignRhC||{}).filter(k=>/^xfer\d+$/.test(k)).reduce((t,k)=>t+(pr.ignRhC[k]||0),0),asOf=_rhEd(rh),asOfYM=asOf.getFullYear()*12+asOf.getMonth(),asK=dk(asOf);
   if(!st||st.d>=asK)return null; // tableau pas plus récent que le départ
   // rendus comptés jusqu'à la dernière semaine notée par le gestionnaire ; ceux d'après sont mis de côté
   const lw=_rhLastWeekEnd(rh,asOf),cut=lw&&lw<asOf?lw:asOf,cutK=dk(cut),y=asOf.getFullYear(),exp=ym=>getExpYm(ym);
@@ -5234,13 +5234,15 @@ function _verifSim(rh){
     yms.forEach(ym=>{if(left<=0||pool[ym]<=0||ym>pym&&!_rbw(k,ym)||exp(ym)<pym)return;const t=Math.min(pool[ym],left);pool[ym]-=t;left-=t;consA+=t;});if(left>0)matK.push({k,pym,left});matA+=left;});
   let appH=0;yms.forEach(ym=>{if(ym<asOfYM&&exp(ym)>=asOfYM)appH+=pool[ym];});
   const tabH=rh.tot.cumSol!=null?rh.tot.cumSol:rh.lines.reduce((t,l)=>t+(l.nature&&_rhValidAt(l,asOf)?Math.max(0,l.solde):0),0);
-  return{st,asOf,asOfYM,lw:rh.lastWeek,cutK,acq,nat,det:G.det,keys,lag,matK,adjr,consA:consA-adjr,consT,matA,matT,wkA,appH,tabH,hasMat,appM:(st.mat||0)-matA,tabM:hasMat?rh.tot.stockAct:0};
+  return{st,asOf,asOfYM,lw:rh.lastWeek,cutK,acq,nat,det:G.det,keys,lag,matK,adjr,consA:consA-adjr,xadj,consT,matA:matA-xadj,matT,wkA,appH,tabH,hasMat,appM:(st.mat||0)+xadj-matA,tabM:hasMat?rh.tot.stockAct:0};
 }
 // Rendus que l'app a pris sur le matelas et le gestionnaire sur des heures acquises après coup : faire comme lui
 // (les plus récents d'abord, jusqu'au montant de l'écart) — ils prennent alors les heures du mois suivant
-function rhXferAccept(amt){const rh=window._rhLast,R=rh&&_verifSim(rh);if(!R)return;const pr=S.profile;if(!pr.rendFrom)pr.rendFrom={};let got=0;
-  R.matK.slice().sort((a,b)=>a.k<b.k?1:-1).forEach(x=>{if(got>=amt-2)return;pr.rendFrom[x.k]=x.pym+1;got+=x.left;});
-  try{recalcAllMatelas();}catch(e){}saveState();render();rhCompareShow(rh);}
+// montant exact : l'écart du matelas, retiré des heures du mois qui suit le dernier rendu pris sur le matelas, rendu au matelas
+function rhXferAccept(amt){const rh=window._rhLast,R=rh&&_verifSim(rh);if(!R||!R.matK.length)return;const pr=S.profile;
+  const ym=Math.max.apply(null,R.matK.map(x=>x.pym))+1,k='xfer'+ym;if(!pr.ignRhC)pr.ignRhC={};
+  pr.ignRhC[k]=(pr.ignRhC[k]||0)+amt;pr.matelas=(pr.matelas||0)+amt;try{recalcAllMatelas();}catch(e){}saveState();render();rhCompareShow(rh);}
+function rhXferUndoAdj(k){const pr=S.profile,v=pr.ignRhC&&pr.ignRhC[k];if(!v)return;delete pr.ignRhC[k];pr.matelas=(pr.matelas||0)-v;try{recalcAllMatelas();}catch(e){}saveState();render();if(window._rhLast)rhCompareShow(window._rhLast);}
 function rhXferUndo(){const pr=S.profile;delete pr.rendFrom;try{recalcAllMatelas();}catch(e){}saveState();render();if(window._rhLast)rhCompareShow(window._rhLast);}
 function rhCompareShow(rh,silent){
   window._rhLast=rh;
@@ -5301,9 +5303,10 @@ function rhCompareShow(rh,silent){
   else if(!bad(dTot)&&bad(xfer))concl='<div style="font-weight:600;margin:8px 0 2px;color:var(--green)">Même total · en votre faveur</div><div class="rv-why" style="border-top:none;margin-top:0;padding-top:0">Le gestionnaire a pris '+fmtMin(Math.abs(xfer))+' de rendus '+(xfer>0?'sur des heures acquises après coup au lieu du matelas : votre matelas est plus haut au tableau, vos heures éphémères plus basses d’autant. Rien à corriger.':'sur le matelas au lieu des heures disponibles : votre matelas est plus bas au tableau. À lui signaler.')+'</div>';
   else concl='<div style="font-weight:600;margin:8px 0 2px;color:'+(dTot>0?'var(--green)':'var(--red)')+'">'+(dTot>0?'Écart en votre faveur : ':'À faire corriger : ')+fmtE(dTot)+' au total'+(!bad(de)?' · différences ignorées':'')+'</div>'
     +(bad(xfer)?'<div class="rv-why" style="border-top:none;margin-top:0;padding-top:0">Dont '+fmtMin(Math.abs(xfer))+' de rendus que le gestionnaire a pris '+(xfer>0?'sur des heures acquises après coup, l’app sur le matelas faute d’heures ce jour-là : matelas plus haut au tableau, heures plus basses d’autant.':'sur le matelas, l’app sur des heures disponibles.')+'</div>'
-      +(xfer>0&&R.matK.length?'<button class="rv-b2" onclick="rhXferAccept('+Math.round(xfer)+')">Faire comme le tableau</button>':''):'')
+      +(xfer>0&&R.matK.length?'<button class="rv-b2" onclick="rhXferAccept('+Math.round(matE)+')">Faire comme le tableau</button>':''):'')
     +(repL.length&&bad(restH)?'<div class="rv-why" style="border-top:none;margin-top:4px;padding-top:0">Reports différents ('+repL.map(ym=>MF[ym%12]).join(', ')+') : voir « Reports » plus bas.</div>':'')
     +(bad(restH)?'<div style="font-size:11px;margin-top:4px">'+_rhIgnLink('rest',restH)+'</div>':'');
+  Object.keys((S.profile&&S.profile.ignRhC)||{}).filter(k=>/^xfer\d+$/.test(k)).forEach(k=>{const ym=+k.slice(4);concl+='<div class="rv-why" style="border-top:none;margin-top:6px;padding-top:0;color:var(--text3)">'+fmtMin(S.profile.ignRhC[k])+' de rendus pris sur les heures '+moisDe(ym)+' au lieu du matelas, comme le tableau. <a style="color:var(--blue);cursor:pointer" onclick="rhXferUndoAdj(\''+k+'\')">Revenir au calcul de l’app</a></div>';});
   const _xf=Object.keys((S.profile&&S.profile.rendFrom)||{});
   if(_xf.length)concl+='<div class="rv-why" style="border-top:none;margin-top:6px;padding-top:0;color:var(--text3)">Rendus du '+_xf.sort().map(k=>new Date(k+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'})).join(', ')+' pris sur les heures du mois suivant, comme le tableau. <a style="color:var(--blue);cursor:pointer" onclick="rhXferUndo()">Revenir au calcul de l’app</a></div>';
   const wks=[...new Set(Object.keys(rh.weeks||{}).map(Number).filter(w=>dk(new Date(_rhWeekMon(asOf.getFullYear(),w).getTime()+6*864e5))>R.st.from).concat(Object.keys(R.wkA).map(Number)))].filter(w=>!rh.lastWeek||w<=rh.lastWeek).sort((a,b)=>a-b);
