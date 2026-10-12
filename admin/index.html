@@ -270,7 +270,7 @@ textarea{width:100%;padding:9px 12px;background:var(--bg);border:0.5px solid var
       <!-- Panier et primes -->
       <div class="vf-sec"><div class="vf-h">Panier et primes</div>
         <div class="vchips">
-          <label class="vchip"><input type="checkbox" id="vf-panier">Panier repas</label>
+          <label class="vchip"><input type="checkbox" id="vf-panier" onchange="var a=_vfPanAuto();window._vfPanForced=a!==null&&this.checked!==a">Panier repas</label>
           <label class="vchip"><input type="checkbox" id="vf-prime-antenne">Antenne</label>
           <label class="vchip"><input type="checkbox" id="vf-prime-reel">Réal</label>
           <label class="vchip"><input type="checkbox" id="vf-prime-coord">Coordination</label>
@@ -1077,7 +1077,13 @@ function _vfTotal() {
   const fin = document.getElementById('vf-fin').value;
   return deb && fin ? calcDur(deb, fin) : null;
 }
+// Panier forcé (coché alors que les horaires ne le donnent pas, ou l'inverse) : plus recalculé
+function _vfPanAuto() {
+  const deb = fmtHHMMToH(document.getElementById('vf-deb').value), fin = fmtHHMMToH(document.getElementById('vf-fin').value), dur = parseVacDur(document.getElementById('vf-dur').value);
+  return deb && fin && dur !== null ? _calcPanier(deb, fin, dur) : null;
+}
 function _updatePanierFromForm() {
+  if (window._vfPanForced) return;
   const deb = fmtHHMMToH(document.getElementById('vf-deb').value);
   const fin = fmtHHMMToH(document.getElementById('vf-fin').value);
   const dur = parseVacDur(document.getElementById('vf-dur').value);
@@ -1131,6 +1137,7 @@ function showVacForm(name, v) {
   const _total = v ? calcDur(fmtTimeToHHMM(v.deb||''), fmtTimeToHHMM(v.fin||'')) : 0;
   document.getElementById('vf-pause').value = v && v.dur && _total > v.dur ? fmtVacDur(_total - v.dur) : (v ? '0h00' : '');
   document.getElementById('vf-panier').checked = v ? !!v.panier : false;
+  window._vfPanForced = !!v && _vfPanAuto() !== null && !!v.panier !== _vfPanAuto();
   document.getElementById('vf-mixte').checked = v ? !!v.mixte : false;
   document.getElementById('vf-prime-antenne').checked = v ? !!(v.primes && v.primes.antenne) : false;
   document.getElementById('vf-prime-reel').checked = v ? !!(v.primes && v.primes.reel) : false;
@@ -1908,7 +1915,7 @@ async function doSaveImportedCycle() {
     // 3. Create cycle
     var cycRes = await fetch(API + '/admin/cycle/create', {
       method: 'POST', headers: adminHeaders(),
-      body: JSON.stringify({ cycle: { name: name, startDate: startDate, anchor: startDate, endDate: null, weeks: weeks } })
+      body: JSON.stringify({ cycle: { name: name, startDate: startDate, anchor: startDate, endDate: null, weeks: weeks, pool: _admPool } })
     });
     var cycData = await cycRes.json();
     if (!cycRes.ok) { errEl.textContent = cycData.error || 'Erreur création cycle'; if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Créer le cycle'; } return; }
@@ -2479,7 +2486,8 @@ function _showPDFPreview(result) {
 
   mc.innerHTML = '<h2>Import PDF — Aperçu</h2>'
     + status
-    + '<div class="field"><label>Nom du cycle</label><input type="text" id="pdf-cyc-name" value="' + _esc(name || '') + '" placeholder="Nom du cycle"></div>'
+    + '<div class="row"><div class="flex1 field"><label>Nom du cycle</label><input type="text" id="pdf-cyc-name" value="' + _esc(name || '') + '" placeholder="Nom du cycle"></div>'
+    + '<div class="field"><label>Équipe</label><select id="pdf-cyc-pool">' + Object.keys(POOL_L).map(k => '<option value="' + k + '"' + (k === _admPool ? ' selected' : '') + '>' + POOL_L[k] + '</option>').join('') + '</select></div></div>'
     + '<div class="row"><div class="flex1 field"><label>Date de début</label><input type="date" id="pdf-cyc-start" value="' + _esc(startDate || '') + '"></div>'
     + '<div class="flex1 field"><label>Date de fin (optionnel)</label><input type="date" id="pdf-cyc-end"></div></div>'
     + grid
@@ -2552,8 +2560,9 @@ function _pdfOpenInEditor() {
   const name = document.getElementById('pdf-cyc-name').value.trim();
   const startDate = document.getElementById('pdf-cyc-start').value;
   const endDate = document.getElementById('pdf-cyc-end').value || null;
+  const pool = document.getElementById('pdf-cyc-pool').value;
   closeModal();
-  setTimeout(() => showCreateCycle({ name, startDate, endDate, weeks: window._pdfWeeks || [] }), 80);
+  setTimeout(() => showCreateCycle({ name, startDate, endDate, pool, weeks: window._pdfWeeks || [] }), 80);
 }
 
 async function _pdfSaveDirect() {
@@ -2571,12 +2580,14 @@ async function _pdfSaveDirect() {
     const weeks = rawWeeks.map(w => w.map(c => (!c || c === 'SV') ? null : rename[c] || c));
     const res = await fetch(API + '/admin/cycle/create', {
       method: 'POST', headers: adminHeaders(),
-      body: JSON.stringify({ cycle: { name, startDate, endDate, anchor: startDate, weeks } })
+      body: JSON.stringify({ cycle: { name, startDate, endDate, anchor: startDate, weeks, pool: document.getElementById('pdf-cyc-pool').value } })
     });
     const data = await res.json();
     if (!res.ok) { err.textContent = data.error || 'Erreur'; if (btn) { btn.disabled = false; btn.textContent = 'Créer le cycle'; } return; }
     const cycleId = data.cycle && data.cycle.id;
     const renamed = Object.keys(vacs).length ? await _saveVacationsAndLink(cycleId, vacs, rename, existing) : [];
+    const pool = document.getElementById('pdf-cyc-pool').value;
+    if (pool !== _admPool) { _admPool = pool; try { localStorage.setItem('adm_pool', pool); } catch(e) {} }
     closeModal(); loadCycles();
     var msg = 'Cycle "' + name + '" créé' + (Object.keys(vacs).length ? ' avec ' + Object.keys(vacs).length + ' vacation(s).' : '.');
     if (renamed.length) msg += '\n\nVacations renommées :\n' + renamed.join('\n');
