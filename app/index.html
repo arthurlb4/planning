@@ -8,7 +8,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.12">
+<meta name="app-version" content="v6.13">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -5255,9 +5255,23 @@ function rhRevertAll(){const pr=S.profile,ig=pr.ignRhC||{};Object.keys(ig).forEa
   delete pr.rendFrom;try{recalcAllMatelas();}catch(e){}saveState();render();if(window._rhLast)rhCompareShow(window._rhLast);}
 function rhXferUndoAdj(k){const pr=S.profile,v=pr.ignRhC&&pr.ignRhC[k];if(!v)return;delete pr.ignRhC[k];pr.matelas=(pr.matelas||0)-v;try{recalcAllMatelas();}catch(e){}saveState();render();if(window._rhLast)rhCompareShow(window._rhLast);}
 function rhXferUndo(){const pr=S.profile;delete pr.rendFrom;try{recalcAllMatelas();}catch(e){}saveState();render();if(window._rhLast)rhCompareShow(window._rhLast);}
+// Reprises du tableau qui ne correspondent plus à une différence (tableau plus récent corrigé par le gestionnaire, ou planning modifié) :
+// retirées d'elles-mêmes. Rend la liste de ce qui a été retiré.
+function _rhAutoUnaccept(rh,R){const pr=S.profile,ig=pr&&pr.ignRhC;if(!ig||!R)return [];const out=[],bad=d=>Math.abs(d)>=2,y=R.asOf.getFullYear();
+  const MF=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'],NT={fer:'fériés',dim:'dimanches',rh:'RH',hs:'heures sup',extra:'heures en plus'};
+  const tNat={};rh.lines.forEach(l=>{if(!l.nature)return;const k=_rhNatKey(l.nature);(tNat[l.ym]=tNat[l.ym]||{})[k]=((tNat[l.ym]||{})[k]||0)+l.acq;});
+  Object.keys(ig).forEach(k=>{const v=ig[k];let m;
+    if((m=/^acq(\d+)([a-z]+)$/.exec(k))){const ym=+m[1];if(ym<R.st.genFrom||ym>=R.asOfYM)return;const e=((tNat[ym]||{})[m[2]]||0)-((R.nat[ym]||{})[m[2]]||0);
+      if(Math.abs(e-v)>=2){delete ig[k];out.push((NT[m[2]]||m[2])+' de '+MF[ym%12]);}}
+    else if((m=/^wkm(\d+)s(\d+)$/.exec(k))){const w=+m[2],c=(rh.weeks||{})[w];if(rh.lastWeek&&w>rh.lastWeek)return;const d=c==null?null:(R.wkA[w]||0)-c;
+      if(d==null||Math.abs(d-v)>=2){delete ig[k];out.push('rendus de la S'+w);}}
+    else if(/^xfer\d+$/.test(k)){const orig=R.matA+R.xadj-R.matT;if(!bad(orig)||orig<0){delete ig[k];pr.matelas=(pr.matelas||0)-v;out.push('matelas ou heures');}}});
+  if(out.length){try{recalcAllMatelas();}catch(e){}pr.rhAutoOff={ed:dk(R.asOf),L:out};saveState();}
+  return out;}
 function rhCompareShow(rh,silent){
   window._rhLast=rh;
-  const R=_verifSim(rh),fd=k=>new Date(k+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}).replace(/^1 /,'1er ');
+  let R=_verifSim(rh);if(_rhAutoUnaccept(rh,R).length)R=_verifSim(rh);
+  const fd=k=>new Date(k+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}).replace(/^1 /,'1er ');
   const head='<div class="sh"></div>'+(window._rvFrom?'<div class="nav-back" style="'+_navBackCss+'" onclick="_rvGoBack()">‹ '+(window._rvFrom==='rendus'?'Rendus':'Suivi')+'</div>':'')
     +'<div class="st" style="display:flex;justify-content:center;text-align:center;margin-bottom:2px">Tableau Gestion</div>';
   const btn='<button class="rv-b2" onclick="rhCompareOpen()">Importer un tableau plus récent</button>';
@@ -5265,7 +5279,7 @@ function rhCompareShow(rh,silent){
     document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet rv-sheet tabmod">'+head
       +'<div class="hd-card" style="font-size:12px;padding:12px;line-height:1.5;margin-top:10px">'+_suPts(['Départ du calcul → '+_startTxt(S.profile&&S.profile.start),'Tableau du '+fd(dk(_rhEd(rh)))+' → pas plus récent que le départ, rien à vérifier'])+btn+'</div>'
       +'<div style="height:6px"></div><button class="mcancel mclose" onclick="closeModal()">Fermer</button></div></div>';return;}
-  const pr=S.profile||{},asOf=R.asOf,asOfYM=R.asOfYM;
+  const pr=S.profile||{},asOf=R.asOf,asOfYM=R.asOfYM,aoff=pr.rhAutoOff&&pr.rhAutoOff.ed===dk(R.asOf)?pr.rhAutoOff.L:null;
   const MF=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
   const moisDe=ym=>{const m=MF[ym%12];return(/^[aeiouy]/.test(m)?'d’':'de ')+m;},MFc=ym=>MF[ym%12].replace(/^./,c=>c.toUpperCase());
   const fmtE=d=>Math.abs(d)<2?'=':d>0?'+'+fmtMin(d):'−'+fmtMin(-d),bad=d=>Math.abs(d)>=2;
@@ -5340,6 +5354,7 @@ function rhCompareShow(rh,silent){
     +row('Heures éphémères',R.tabH,R.appH,eH)+(R.hasMat?row('Matelas',R.tabM,R.appM,eM):'')+'</table>'
     +'<div style="font-size:13px;font-weight:600;margin-top:8px;color:'+stC+'">'+st+'</div>'
     +(todo.length?'<div style="font-size:11.5px;color:var(--text3);margin-top:2px">'+todo.length+' différence'+(todo.length>1?'s':'')+' à voir ci-dessous</div>':'')
+    +(aoff?'<div style="font-size:11.5px;color:var(--text3);margin-top:4px">Plus de différence avec ce tableau → reprise retirée : '+aoff.join(', ')+'</div>':'')
     +(done.length?'<div style="font-size:11.5px;color:var(--text3);margin-top:2px">'+done.length+' différence'+(done.length>1?'s reprises':' reprise')+' du tableau</div><button class="rv-b2" onclick="rhRevertAll()">Revenir au calcul de l’app</button>':'')
     +(R.lag.length?'<div style="font-size:11.5px;color:var(--text3);margin-top:4px">'+fmtMin(R.lag.reduce((t,k)=>t+getDur(new Date(k+'T12:00:00')),0))+' de rendus après la S'+R.lw+' : pas encore au tableau, mis de côté</div>':'')
     +'</div>'

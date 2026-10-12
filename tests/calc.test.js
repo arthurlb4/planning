@@ -329,6 +329,13 @@ function situation(opts) {
     a.run(`(function(){render=function(){};S.profile={name:'t',verif:{k:'mois',D:'2026-01-01'},rhTable:{cells:${JSON.stringify(cells)},name:'18-09-2026.xlsx'},ephBaseDate:'2026-09-18'};
       S.conges={'2026-06-03':'rend-hist','2025-12-10':'rend'};_startMigrate();return [S.profile.start.k,S.profile.start.d,S.conges['2026-06-03'],S.conges['2025-12-10'],Math.round(S.profile.start.mat),!!S.profile.verif];})()`),
     ['mois', '2026-01-01', 'rend', 'rend-hist', 10313, false]); }
+  // Reprise d'une différence que le tableau n'a plus (gestionnaire qui corrige) : retirée d'elle-même ; celle qui existe encore est gardée
+  { const a = load('2026-10-11'); eq('Reprises : retirée si le tableau n’a plus la différence, gardée sinon',
+    a.run(`(function(){render=function(){};saveState=function(){};var rh=_rhParse(${JSON.stringify(cells)},'18-09-2026.xlsx');S.conges={};
+      S.settings=Object.assign(S.settings||{},{dimRendu:false,rhRendu:false,ferRendu:false,hsRendu:false});
+      var f={edition:new Date(2026,1,22,12),tot:{stock2025:10313.4,stockAct:10208.4},lastWeek:2,weeks:{2:1860},lines:[]};_startApply(_startFromTable(f));
+      var kOk='acq'+${YM(2026, 7)}+'fer',kOld='acq'+${YM(2026, 6)}+'dim';S.profile.ignRhC={};S.profile.ignRhC[kOk]=840;S.profile.ignRhC[kOld]=999;
+      rhCompareShow(rh,true);return [kOk in S.profile.ignRhC,kOld in S.profile.ignRhC,S.profile.rhAutoOff.L.join()];})()`), [true, false, 'dimanches de juin']); }
   // Vérification depuis le tableau de février (22/02, janvier seulement, matelas 170,14 h) : rendus déduits = ce que le tableau
   // de septembre a consommé depuis (heures et matelas), sans ce qui l'était déjà en février
   { const a = load('2026-10-11'); eq('Départ = tableau de février : depuis, 159h23 pris sur les heures et 7h52 sur le matelas au tableau ; matelas de départ 170h14',
