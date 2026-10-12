@@ -10,7 +10,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.33">
+<meta name="app-version" content="v6.34">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -3324,8 +3324,20 @@ function _suiviSimple(y){
     :(hasN?'non perçu'+(hasP?'<br><b style="color:var(--green);font-size:13px">+'+fmtEuro(pos)+'</b> trop perçu<br><b style="color:'+(bal<0?'var(--red)':'var(--green)')+';font-size:13px">'+(bal<0?'−':'+')+fmtEuro(Math.abs(bal))+'</b> solde':'')+'<br>':hasP?'trop perçu<br>':'')
       +nPb+' problème'+(nPb>1?'s':'')+' sur '+nBad+' bulletin'+(nBad>1?'s':'')+(nOld?'<br>dont '+nOld+' des années précédentes':'')+_bk+_bl;
   var bl='<button class="sv-tile" onclick="openBulletinsCal()"><span class="t">Écart Paie</span><b style="color:'+bigC+'">'+big+'</b><small>'+det+'</small></button>';
-  return '<div class="sv-tiles">'+g+bl+'</div>';
+  return _suiviFacts(c,o,E)+'<div class="sv-tiles">'+g+bl+'</div>';
 }
+// En haut de Suivi : les faits, une ligne chacun (différences, imports manquants, heures qui expirent), sans conseil
+function _suiviFacts(c,o,E){var L=[],M=function(ym){return _deMois(ym).replace(/^d[e’']\s?/,'')+(Math.floor(ym/12)!==NOW.getFullYear()?' '+Math.floor(ym/12):'');},
+    row=function(ic,col,t,fn){L.push('<div onclick="'+fn+'" style="display:flex;align-items:center;gap:10px;padding:9px 2px;border-top:0.5px solid var(--border2);cursor:pointer"><i class="ti '+ic+'" style="color:'+col+';font-size:16px"></i><span style="flex:1;font-size:13px">'+t+'</span><i class="ti ti-chevron-right" style="color:var(--text3);font-size:14px"></i></div>');};
+  if(c&&c.n)row('ti-alert-circle','var(--amber)','Tableau Gestion : '+c.n+' différence'+(c.n>1?'s':''),'rhOpenFromRecap()');
+  var exp=NOW.getDate()>=20?TODAY_YM:TODAY_YM-1;
+  if(!o)row('ti-file-import','var(--blue)','Tableau Gestion : aucun importé','rhOpenFromRecap(true)');
+  else{var T=null;try{T=_rhStored();}catch(e){}if(T){var ey=T.edition.getFullYear()*12+T.edition.getMonth();if(ey<exp)row('ti-file-import','var(--blue)','Tableau Gestion '+_deMois(exp)+' : pas importé','rhCompareOpen()');}}
+  if(E&&E.nBad)row('ti-alert-circle','var(--amber)','Paie : '+E.nBad+' bulletin'+(E.nBad>1?'s':'')+' avec écart','openBulletinsCal()');
+  if(E&&E.nB&&!(S.bulletins||{})[TODAY_YM-1])row('ti-file-import','var(--blue)','Bulletin '+_deMois(TODAY_YM-1)+' : pas importé','window._bulFrom=\'recap\';importBulletins()');
+  try{var cs=calcSoldes(),ex=0;Object.keys(cs.realAvail).forEach(function(ym){if(getExpYm(+ym)===TODAY_YM)ex+=cs.realAvail[ym]||0;});
+    if(ex>=1)row('ti-hourglass-low','var(--rend-text)',fmtMin(Math.round(ex))+' de rendus expirent fin '+ML[TODAY_YM%12].toLowerCase(),'openMergedRenduCgModal(6,0)');}catch(e){}
+  return '<div class="hd-card" style="padding:4px 12px 2px;margin-bottom:8px">'+(L.length?L.join('').replace('border-top:0.5px solid var(--border2);',''):'<div style="display:flex;align-items:center;gap:10px;padding:10px 2px;font-size:13px;color:var(--green)"><i class="ti ti-circle-check" style="font-size:16px"></i>Tout est à jour</div>')+'</div>';}
 // Paie de l'année (calendrier des bulletins) : tous les mois de l'année, toucher un mois ouvre sa page Paie
 function openBulletinsCal(y){
   if(y==null)y=window._svYear||NOW.getFullYear();window._svYear=y;
@@ -5369,7 +5381,7 @@ function rhCompareShow(rh,silent){
     card({t:'Heures expirées',sub:ig?'Ignoré':(restH>0?'L’app en perd ':'Le tableau en perd ')+fmtMin(Math.abs(restH))+' de plus',v:restH,done:ig,
       body:_suPts(['Heures arrivées à échéance à d’autres dates',repL.length?'Reports différents → voir « Reports »':'Souvent un report différent']).replace('</ul>','</ul>')+'<div style="margin-top:6px">'+_rhIgnLink('rest',restH)+'</div>'});}
   const dTot=eH+eM,de=dTot-ignSum; // + : le tableau vous laisse plus
-  if(S.profile){const _c={ed:dk(asOf),d:Math.round(-dTot),de:Math.round(-de),lost:lostL};const _o=S.profile.rhCmp;if(!_o||_o.ed!==_c.ed||_o.d!==_c.d||_o.de!==_c.de||JSON.stringify(_o.lost||[])!==JSON.stringify(lostL)){S.profile.rhCmp=_c;saveState();if(!silent)try{render();}catch(e){}}}
+  if(S.profile){const _c={ed:dk(asOf),d:Math.round(-dTot),de:Math.round(-de),lost:lostL,n:todo.length};const _o=S.profile.rhCmp;if(!_o||_o.ed!==_c.ed||_o.d!==_c.d||_o.de!==_c.de||JSON.stringify(_o.lost||[])!==JSON.stringify(lostL)){S.profile.rhCmp=_c;saveState();if(!silent)try{render();}catch(e){}}}
   if(silent)return;
   // Résumé : deux lignes, puis une phrase
   const row=(l,t,a,e)=>'<tr><td style="font-size:12px;color:var(--text2);padding:4px 0;text-align:left">'+l+'</td>'
