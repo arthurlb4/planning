@@ -324,6 +324,10 @@ function situation(opts) {
   eq('Tableau réel, départ décembre 2025 : bulletins depuis la paie de janvier, Gestion depuis janvier, matelas 171,89 h', run(YM(2025, 12)), JSON.stringify(['2026-09-18', 19, 35, '2025-12-01', '2026-01-01', 10313]));
   eq('Tableau réel, « ce mois-ci » (octobre) : départ avancé à septembre, premier mois que le tableau ne couvre pas', run(YM(2026, 10)), JSON.stringify(['2026-09-18', 19, 35, '2026-09-01', '2026-09-01', 9736]));
   eq('Tableau réel, départ avril : matelas 162,27 h', run(YM(2026, 4)), JSON.stringify(['2026-09-18', 19, 35, '2026-04-01', '2026-04-01', 9736]));
+  // Départ d'un tableau de février (22/02) : rendus déduits sans semaine citée (mars, mai…) comptés dans le total du tableau
+  { const a = load('2026-10-11'); eq('Tableau réel, suivi depuis le 22 février : total déduit = consommations depuis le départ (S8 retirée), 16h sans semaine citée',
+    a.run(`(function(){var rh=_rhParse(${JSON.stringify(cells)},'18-09-2026.xlsx');render=function(){};S.profile={name:'t',ephSoldeCreatedYM:${YM(2026, 2)},ephBaseDate:'2026-02-22'};S.conges={};S.ephExtend={};
+      rhCompareShow(rh,true);return [Math.round(_rhCons.s/60*100)/100,Math.round(_rhCons.unc)];})()`), [159.25, 960]); }
 }
 
 console.log('\n' + (count - fails) + '/' + count + ' contrôles réussis');

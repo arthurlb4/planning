@@ -8,7 +8,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v5.28">
+<meta name="app-version" content="v5.29">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -5120,7 +5120,7 @@ function rhCompareShow(rh,silent){
   // Rendus posés après la dernière semaine notée par le gestionnaire : pas encore dans son tableau, mis de côté
   const _lwE=_rhLastWeekEnd(rh,asOf),isLagged=key=>!!_lwE&&new Date(key+'T12:00:00')>_lwE;
   const items=[],detRows=[],repList=[];let sumSolApp=0,lagTot=0,acqBad=0,ignSum=0;const lagKeys=[];
-  const acqIt=[],acqRows=[];let tConsS=0,tConsA=0;
+  const acqIt=[],acqRows=[];let tConsS=0,tConsA=0,_consUncited=0;
   const item=(t,sub,v,body,neutral,to)=>(to||items).push('<div class="rv-it" onclick="if(event.target.tagName!==\'BUTTON\')this.classList.toggle(\'on\')"><div class="rv-ih"><span class="rv-dot"></span><div class="rv-tt">'+t+'<small>'+sub+'</small></div><b class="rv-v'+(neutral?' n':/^\+/.test(v)?' pos':/^−/.test(v)?' neg':'')+'">'+v+'</b><i class="ti ti-chevron-down rv-ch"></i></div><div class="rv-ib">'+body+'</div></div>');
   const cmp=(s,a)=>'<div class="rv-cmp"><span>Tableau <b>'+fmtMin(s)+'</b></span><span>App <b>'+fmtMin(a)+'</b></span></div>';
   yms.forEach(ym=>{
@@ -5186,7 +5186,14 @@ function rhCompareShow(rh,silent){
     const _kw=new Set(Object.keys(S.conges||{}).filter(k=>S.conges[k]==='rend').map(k=>new Date(k+'T12:00:00')).filter(d=>d.getFullYear()===edY&&d<=asOf).map(d=>getISOWeek(getMonday(d))));
     const _in=w=>{const mon=_isoMon(edY,w);return (mon>_bd||_kw.has(w))&&mon<=asOf&&(!rh.lastWeek||w<=rh.lastWeek);};
     tConsS=Object.keys(rh.weeks).map(Number).filter(_in).reduce((t,w)=>t+rh.weeks[w],0);
+    // Le gestionnaire ne cite pas toujours la semaine : son total déduit (consommations et compléments sur stock des lignes
+    // depuis le départ, moins les semaines citées d'avant le départ) compte aussi ces rendus non détaillés
+    const _wre=/(\d+(?:[.,?;:']\d+)?)\s*h\b[^\d\/·]*?\bS\s?(\d{1,2})\b/gi;let _tot=0,_pre=0;
+    rh.lines.forEach(l=>{if(l.ym<_trkYM)return;_tot+=(l.cons||0)+(l.stock||0);let mm;_wre.lastIndex=0;
+      while((mm=_wre.exec(l.com))){const w=+mm[2];if(w>=1&&w<=53&&!_in(w))_pre+=Math.round(parseFloat(mm[1].replace(/[,?;:']/,'.'))*60);}});
+    const _totS=Math.round(_tot-_pre);if(_totS-tConsS>=2){_consUncited=_totS-tConsS;tConsS=_totS;}
     tConsA=Object.keys(S.conges||{}).filter(k=>{if(S.conges[k]!=='rend')return false;const d=new Date(k+'T12:00:00');return d.getFullYear()===edY&&_in(getISOWeek(getMonday(d)));}).reduce((t,k)=>t+getDur(new Date(k+'T12:00:00')),0);}
+  window._rhCons={s:tConsS,a:tConsA,unc:_consUncited}; // dernier total déduit comparé (tests)
   let wkBad=0,wkCmt=0;const consOk=!bad(tConsA-tConsS);
   const wkRows=_wk.map(w=>{const mon=_isoMon(edY,w),sun=new Date(mon);sun.setDate(mon.getDate()+6);
     const days=[];for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);if((S.conges||{})[dk(d)]==='rend'&&d>=_trkStart&&d<=asOf)days.push({k:dk(d),dur:getDur(d)});}
@@ -5237,6 +5244,7 @@ function rhCompareShow(rh,silent){
     +acqRows.map(r=>{const e=r.s-r.a;return '<tr'+(bad(e)?' class="rc-hl"':'')+'><td>'+MFc(r.ym)+'</td><td>'+(r.s?fmtMin(r.s):'—')+'</td><td>'+(r.a?fmtMin(r.a):'—')+'</td>'+(bad(e)?'<td class="'+(e>0?'rc-pos':'rc-neg')+'">'+fmtE(e)+'</td>':'<td><span class="rc-ok">✓</span></td>')+'</tr>';}).join('')+'</table>';
   const consTbl='<table class="rc-t"><tr><th></th><th>Tableau</th><th>App</th><th>Écart</th></tr><tr class="rc-tot"><td>Total</td><td>'+fmtMin(tConsS)+'</td><td>'+fmtMin(tConsA)+'</td>'+(consOk?'<td><span class="rc-ok">✓</span></td>':'<td class="'+(dCons>0?'rc-pos':'rc-neg')+'">'+fmtE(dCons)+'</td>')+'</tr></table>'
     +(wkRows?'<div class="rv-dh" style="font-size:11px;font-weight:400;color:var(--text3)">Par semaine</div><table class="rc-t"><tr><th></th><th></th><th></th><th></th></tr>'+wkRows+'</table>':'')
+    +(_consUncited?'<div style="font-size:11px;color:var(--text3);margin-top:6px">Total du tableau : '+fmtMin(_consUncited)+' déduits sans semaine citée, compris</div>':'')
     +(!consOk?'<div style="font-size:11px;color:var(--text3);margin-top:6px">Écart sur le total déduit : '+fmtE(dCons)+(_rhCIgn('cons',dCons)?' · ignoré':'')+' · '+_rhIgnLink('cons',dCons)+'</div>':'')
     +(wkCmt?'<div class="rv-why" style="font-size:11px;color:var(--text3)">'+(wkCmt>1?'Ces semaines diffèrent':'Cette semaine diffère')+' dans le détail du tableau, mais le total déduit est le même : rien à corriger.</div>':'');
   const html='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet rv-sheet tabmod">'
