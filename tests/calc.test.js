@@ -391,5 +391,11 @@ function situation(opts) {
     var k=dk(d),cv=getCycleVac(d).cycleVac,VAC=getVAC(d),m0=calcPrimesMois(2026,8).matin,late=Object.keys(VAC).filter(function(c){return VAC[c].deb&&_toMinApp(VAC[c].deb)>=480&&VAC[c].dur>0;})[0];
     S.overrides[k]={vac:late,echange:false,motif:'syndic'};var r=[getPayVac(d)===cv,calcPrimesMois(2026,8).matin===m0-1];S.overrides[k].vac=cv;r.push(calcPrimesMois(2026,8).matin===m0);delete S.overrides[k];return r;})()`), [true, true, true]); }
 
+// Échange « Heures sup · demande de la direction » : la vacation faite compte en heures sup ; sans, les heures prévues comptent
+{ const a = load('2026-10-11');
+  eq('Échange avec ou sans heures sup demandées', a.run(`(function(){var mon=getMonday(new Date(2026,8,14,12)),rest=null,work=null;for(var i=0;i<7;i++){var d=new Date(mon);d.setDate(mon.getDate()+i);var c=getCycleVac(d).cycleVac;if(!c||c==='RH'){if(!rest)rest=dk(d);}else if(!work)work=dk(d);}
+    var cv=getCycleVac(new Date(work+'T12:00:00')).cycleVac;S.overrides={};S.overrides[work]={vac:cv,echange:true,ecSelf:false,hs:false,pair:rest};S.overrides[rest]={vac:cv,echange:true,ecSelf:true,hs:false,pair:work};
+    var a0=calcHSWeek(mon).surplus;S.overrides[rest].hs=true;var a1=calcHSWeek(mon).surplus;S.overrides={};return [a0,a1>0];})()`), [0, true]); }
+
 console.log('\n' + (count - fails) + '/' + count + ' contrôles réussis');
 if (fails) process.exit(1);
