@@ -8,7 +8,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.10">
+<meta name="app-version" content="v6.11">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -2414,15 +2414,16 @@ function autoReportEph(){
   const manOf=function(ym){return typeof manExt[ym]==='number'?manExt[ym]:(manExt[ym]?1:0);};
   // 1. reports déjà déclenchés (échéance passée) : acquis
   Object.keys(S.autoExtend).forEach(function(k){delete S.autoExtend[k];});
-  Object.keys(saved).map(Number).forEach(function(ym){var man=manOf(ym),L=man;for(var i=man+1;i<=(saved[ym]||0);i++)if(ym+3+3*(i-1)<TODAY_YM)L=i;if(L>man)S.autoExtend[ym]=L;});
+  var no=S.noAuto||{}; // mois où le report a été repris du tableau Gestion : pas de report automatique
+  Object.keys(saved).map(Number).forEach(function(ym){if(no[ym])return;var man=manOf(ym),L=man;for(var i=man+1;i<=(saved[ym]||0);i++)if(ym+3+3*(i-1)<TODAY_YM)L=i;if(L>man)S.autoExtend[ym]=L;});
   // 2. échéances passées avec 7h ou moins : report (répété si plusieurs échéances sont passées depuis)
   for(var pass=0;pass<3;pass++){var ch=false,c0=calcSoldes();
-    Object.keys(c0.preExpiry).map(Number).forEach(function(ym){if(ym>TODAY_YM)return;var L=Math.max(manOf(ym),S.autoExtend[ym]||0),av=c0.preExpiry[ym]||0;
+    Object.keys(c0.preExpiry).map(Number).forEach(function(ym){if(ym>TODAY_YM||no[ym])return;var L=Math.max(manOf(ym),S.autoExtend[ym]||0),av=c0.preExpiry[ym]||0;
       if(L<3&&ym+3+3*L<TODAY_YM&&av>0&&av<=420){S.autoExtend[ym]=L+1;ch=true;}});
     if(!ch)break;}
   // 3. reports prévus : mois pas encore à échéance, 7h ou moins restantes
   var cs=calcSoldes(),plan={};
-  Object.keys(cs.realAvail).map(Number).forEach(function(ym){if(ym>TODAY_YM)return;var L=Math.max(manOf(ym),S.autoExtend[ym]||0),av=cs.realAvail[ym]||0;
+  Object.keys(cs.realAvail).map(Number).forEach(function(ym){if(ym>TODAY_YM||no[ym])return;var L=Math.max(manOf(ym),S.autoExtend[ym]||0),av=cs.realAvail[ym]||0;
     if(L<3&&getExpYm(ym)>=TODAY_YM&&av>0&&av<=420)plan[ym]=1;});
   var planCh=JSON.stringify(plan)!==JSON.stringify(window._autoPlan||{});window._autoPlan=plan;
   var changed=JSON.stringify(saved)!==JSON.stringify(S.autoExtend);
@@ -5107,7 +5108,11 @@ function rendusTakeRep(ym,n,limit){
 }
 function rhApplyReports(list){
   if(!S.ephExtend)S.ephExtend={};
-  list.forEach(([ym,n])=>{const auto=(S.autoExtend&&typeof S.autoExtend[ym]==='number')?S.autoExtend[ym]:0;if(n<auto)return;if(n>0)S.ephExtend[ym]=n;else delete S.ephExtend[ym];});
+  // le tableau fait foi, report automatique de l'app compris : moins (ou aucun) au tableau → plus de report automatique pour ce mois
+  if(!S.noAuto)S.noAuto={};
+  list.forEach(([ym,n])=>{const auto=(S.autoExtend&&typeof S.autoExtend[ym]==='number')?S.autoExtend[ym]:0;if(n>0)S.ephExtend[ym]=n;else delete S.ephExtend[ym];
+    if(n<auto||!n){S.noAuto[ym]=1;if(S.autoExtend)delete S.autoExtend[ym];}else delete S.noAuto[ym];});
+  try{recalcAllMatelas();}catch(e){}
   saveState();render();if(window._rhLast)rhCompareShow(window._rhLast);
 }
 // ── Départ du calcul ──

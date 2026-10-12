@@ -353,5 +353,12 @@ function situation(opts) {
     var m0=Math.round(calcSoldes().matelas);S.profile.rendFrom={'2026-02-23':${YM(2026, 3)}};recalcAllMatelas();var c=calcSoldes(),m1=Math.round(c.matelas);
     S.profile.ignRhC={['acq'+${YM(2026, 3)}+'dim']:60};var g=buildGen()[${YM(2026, 3)}];return [m0,m1,Math.round(g.adj)];})()`), [5520, 6000, 60]); }
 
+// Reports du tableau repris alors que l'app avait un report automatique : le tableau fait foi, plus de report auto pour ce mois
+{ const a = situation({ extraRendus: { '2026-12-03': 180 } });
+  a.run('saveState=function(){};render=function(){};_infoToast=function(){};autoReportEph();');
+  eq('Report auto de juin remplacé par « aucun » du tableau', a.run('(function(){S.autoExtend={};S.autoExtend[' + YM(2026, 6) + ']=1;autoReportEph();var b=getEphExtensions(' + YM(2026, 6) + ');window._rhLast=null;rhApplyReports([[' + YM(2026, 6) + ',0]]);autoReportEph();return [b,getEphExtensions(' + YM(2026, 6) + ')];})()'), [1, 0]);
+  eq('Report du tableau (+3 mois) sur juin repris ensuite', a.run('(function(){rhApplyReports([[' + YM(2026, 6) + ',1]]);autoReportEph();return getEphExtensions(' + YM(2026, 6) + ');})()'), 1);
+}
+
 console.log('\n' + (count - fails) + '/' + count + ' contrôles réussis');
 if (fails) process.exit(1);
