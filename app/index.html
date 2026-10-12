@@ -10,7 +10,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.36">
+<meta name="app-version" content="v6.37">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -6093,12 +6093,13 @@ function openMergedRenduCgModal(limit,tab){
   const ML2=MCs;
   const genPast=Object.keys(gen).map(Number).filter(ym=>ym<=TODAY_YM).sort().slice(-24);
   const allPrev2=Object.keys(prevEph).map(Number).filter(ym=>prevEph[ym]>0).sort();
-  const extM=Object.keys(S.ephExtend||{}).map(Number).filter(ym=>ym<=TODAY_YM&&getExpYm(ym)>TODAY_YM);
+  const extM=Object.keys(S.ephExtend||{}).map(Number).filter(ym=>ym<=TODAY_YM&&getExpYm(ym)>=TODAY_YM);
+  const actM=Object.keys(realAvail).map(Number).filter(ym=>ym<=TODAY_YM&&realAvail[ym]>0); // mois avec des heures encore à poser : toujours affichés
   const futureGen=Object.keys(gen).map(Number).filter(ym=>ym>TODAY_YM).sort();
-  const allYms=[...new Set([...genPast,...allPrev2,...extM,...futureGen])].sort();
+  const allYms=[...new Set([...genPast,...allPrev2,...extM,...actM,...futureGen])].sort();
   const hasMore=allYms.length>limit;
   // Months with recoverable balance always shown; fill remaining slots by proximity
-  const alwaysShow=new Set([...extM,...Object.keys(preExpiry).map(Number).filter(ym=>preExpiry[ym]>0)]);
+  const alwaysShow=new Set([...extM,...actM,...Object.keys(preExpiry).map(Number).filter(ym=>preExpiry[ym]>0)]);
   const proxRest=allYms.filter(ym=>!alwaysShow.has(ym)).sort(function(a,b){return Math.abs(a-TODAY_YM)-Math.abs(b-TODAY_YM);}).slice(0,Math.max(0,limit-alwaysShow.size));
   const yms=[...new Set([...alwaysShow,...proxRest])].sort(function(a,b){return a-b;});
   // En plus : le mois qui précède le premier affiché (déjà expiré le plus souvent, pour voir ce qui a été perdu ou utilisé)
@@ -6380,7 +6381,7 @@ function openMergedRenduCgModal(limit,tab){
   [...new Set(Object.keys(realAvail).concat(Object.keys(preExpiry)))].map(Number).forEach(function(ym){
     const av=_avAt(ym);
     if(av>0){
-      if(getExpYm(ym)===_viewedYM){if(getEphExtensions(ym)>0||(window._autoPlan||{})[ym])_repAmt+=av;else _expAmt+=av;}
+      if(getExpYm(ym)===_viewedYM){if((window._autoPlan||{})[ym])_repAmt+=av;else _expAmt+=av;} // déjà reportées jusqu'à ce mois-ci : elles expirent aussi
       else if(getBaseExpYm(ym)===_viewedYM&&getEphExtensions(ym)>0&&getExpYm(ym)>=TODAY_YM){_repAmt+=av;}
     }
   });
