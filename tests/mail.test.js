@@ -63,7 +63,7 @@ a.run('_bulPayDiffs=function(){return{keptList:[],paid:[]};};');
 a.run('S.profile.rhCmp={ed:"2026-09-18",d:-60,de:0};S.profile.rhTable={};S.profile.ignRhC={rest:60};_rhStored=function(){return null;};');
 eq('Tableau : écart ignoré absent du mail', a.run('_gmRh()'), null);
 a.run('S.profile.rhCmp={ed:"2026-09-18",d:-60,de:-60};S.profile.ignRhC={};');
-eq('Tableau : écart non ignoré', a.run('_gmRh().L'), ['- solde d’heures : le tableau m’en compte 1h00 de plus que mon décompte']);
+eq('Tableau : écart non ignoré', a.run('_gmRh().L'), ['- heures de rendus et matelas : le tableau m’en compte 1h00 de plus que mon décompte']);
 
 // 6. Reports : uniquement les heures qui expirent ce mois-ci
 a.run('calcSoldes=function(){return{realAvail:{' + YM(2026, 7) + ':1080,' + YM(2026, 8) + ':203},preExpiry:{}};};'
