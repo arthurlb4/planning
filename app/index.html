@@ -8,7 +8,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.14">
+<meta name="app-version" content="v6.15">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -1110,6 +1110,9 @@ function loadState(){
 }
 function saveState(){
   var _ts=Date.now();
+  // Avant la lecture du cloud au démarrage : rien n'est daté ni envoyé (des données anciennes de cet appareil, retouchées au
+  // démarrage, passeraient sinon pour plus récentes que le cloud et l'écraseraient)
+  if(window._authToken&&!window._cloudReady){try{localStorage.setItem('pl_v8',JSON.stringify({p:_profs,a:_aid,u:_plU()}));}catch(e){}return;}
   // seulement le profil actif (les autres n'ont pas changé : les dater les ferait passer pour plus récents que le cloud)
   if(_profs[_aid]&&_profs[_aid].profile)_profs[_aid].profile._lastSaved=_ts;
   try{localStorage.setItem('pl_v8',JSON.stringify({p:_profs,a:_aid,u:_plU()}));}catch(e){}
@@ -5200,7 +5203,7 @@ function startPickMonth(){const ym=+document.getElementById('st-m').value,Dk=dk(
   else st=_startManual(Dk,parseHM(document.getElementById('st-mat').value||'0'),parseHM(document.getElementById('st-eph').value||'0'));
   _startApply(st);closeModal();render();_infoToast('✓ Départ : '+_startTxt(st).split(' · ')[0]);}
 // Comptes d'avant : départ tiré des champs existants (soldes de départ, matelas, mois de départ)
-function _startMigrate(){const pr=S.profile;if(!pr||pr.start||pr.setupPending)return;let rh=null;try{rh=_rhStored();}catch(e){}
+function _startMigrate(){const pr=S.profile;if(!pr||pr.start||pr.setupPending)return;if(window._authToken&&!window._cloudOk)return;/* après la lecture du cloud seulement */let rh=null;try{rh=_rhStored();}catch(e){}
   const V=pr.verif,R=pr.ephRecon,cy=pr.ephSoldeCreatedYM!==undefined?pr.ephSoldeCreatedYM:2026*12;let st=null;
   try{
     if(V&&V.k==='tab')st={k:'tab',d:V.ed,from:V.from,genFrom:V.genFrom,mat:V.matelas||0,base:V.base||{},cons:{},stk:{},rep:V.rep||{}};
@@ -9503,6 +9506,7 @@ async function cloudRefresh(){
   // Rien en attente ici et le cloud a changé depuis notre dernier envoi : c'est une modification faite ailleurs, on la prend
   // L'utilisateur a modifié entre-temps, ou une fenêtre est ouverte : ne pas écraser
   if(_syncSig(_profs[pid])!==localSig||document.getElementById('modal-root').innerHTML)return;
+  try{localStorage.setItem('pl_bak',JSON.stringify({at:Date.now(),u:_plU(),pid:pid,d:_profs[pid]}));}catch(e){} // version remplacée, gardée (Réglages → Profil → Restaurer)
   _profs[pid]=cloud;S=cloud;_us=[];_rs=[];
   try{localStorage.setItem('pl_v8',JSON.stringify({p:_profs,a:_aid,u:_plU()}));localStorage.setItem(sigKey,cloudSig);}catch(e){}
   applyTheme();render();updateUrBtns();
@@ -9512,14 +9516,14 @@ async function cloudRefresh(){
 
 async function cloudLoadAll(){
   window._lastCloudRefresh=Date.now();
-  if(!window._authToken){gcalLoad();return;}
+  if(!window._authToken){window._cloudReady=true;gcalLoad();return;}
   try{
     const res=await fetch(CLOUD_API+'/data/list',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({})});
     // session expirée au démarrage : reconnexion puis rechargement (le cloud d'abord), sinon le dire tout de suite
     if(res.status===401){gcalLoad();(async function(){if(await _silentRelogin())location.reload();else _sessionExpired();})();return;}
-    if(!res.ok){gcalLoad();return;}
+    if(!res.ok){window._cloudReady=true;gcalLoad();return;} // cloud injoignable : on travaille sur l'appareil
     const text=await res.text();
-    if(!text||text.trim()===''){gcalLoad();return;}
+    if(!text||text.trim()===''){window._cloudReady=true;gcalLoad();return;}
     const data=JSON.parse(text);
     const profiles=data.profiles||{};
     if(Object.keys(profiles).length===0){
@@ -9535,7 +9539,7 @@ async function cloudLoadAll(){
             S=_profs[_aid]||_profs[Object.keys(_profs)[0]];
             if(window._authUser&&window._authUser.name&&S.profile)S.profile.name=capitalize(window._authUser.name);
             // Push initial profile to cloud
-            cloudSave(_aid);
+            window._cloudReady=window._cloudOk=true;cloudSave(_aid);
             saveState();
             gcalLoad();checkPendingLineChoice();return;
           }
@@ -9578,8 +9582,10 @@ async function cloudLoadAll(){
         if(dirty&&pid===_aid)cloudSave(pid);
       }
     });
+    window._cloudReady=true;window._cloudOk=true;
     saveState();
   }catch(e){console.warn('cloud load all error',e);}
+  window._cloudReady=true;try{render();}catch(e){}
   gcalLoad();
   checkPendingLineChoice();
   gcalStartPoll();
