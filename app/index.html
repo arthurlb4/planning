@@ -8,7 +8,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v5.25">
+<meta name="app-version" content="v5.26">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -4591,6 +4591,7 @@ function _suOpen(){
   _suRestore();
   var el=document.createElement('div');el.id='setup';document.body.appendChild(el);document.body.classList.add('su-on');
   _suPullRefresh(el);
+  el.addEventListener('input',_suSaveSoon);el.addEventListener('change',_suSaveSoon);
   // Retour du téléphone ou du navigateur : étape précédente, et depuis la première, l'écran de connexion (le compte est déjà enregistré)
   // iPhone : pas d'entrée d'historique (le glissement retour afficherait une page blanche) ; la flèche ‹ de chaque écran suffit
   var ios=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
@@ -4602,8 +4603,13 @@ function _suOpen(){
   _suDraw();
 }
 // Actualiser en tirant vers le bas (comme dans l'app) : la saisie est gardée le temps du rechargement et reprise à la même étape
-function _suSave(){try{_suRead();sessionStorage.setItem('pl_su',JSON.stringify({step:SU.step,v:SU.v,rhMode:SU.rhMode,rh:SU.rh?{cells:SU.rh.cells,name:SU.rh.name}:null,bul:SU.bul,bulMode:SU.bulMode,aviFrom:SU.aviFrom,anniR:SU.anniR}));}catch(e){}}
-function _suRestore(){var o=null;try{o=JSON.parse(sessionStorage.getItem('pl_su')||'null');sessionStorage.removeItem('pl_su');}catch(e){}if(!o)return;
+// Saisie gardée sur l'appareil (par compte) : reprise à la même étape après fermeture de l'app, actualisation ou nouvelle version
+function _suKey(){return 'pl_su_'+(typeof _aid!=='undefined'&&_aid?_aid:'x');}
+function _suSave(){try{if(!SU)return;_suRead();var o=JSON.stringify({step:SU.step,v:SU.v,rhMode:SU.rhMode,rh:SU.rh?{cells:SU.rh.cells,name:SU.rh.name}:null,bul:SU.bul,bulMode:SU.bulMode,aviFrom:SU.aviFrom,anniR:SU.anniR});
+  try{localStorage.setItem(_suKey(),o);}catch(e){sessionStorage.setItem('pl_su',o);}}catch(e){}}
+var _suSaveT=null;function _suSaveSoon(){clearTimeout(_suSaveT);_suSaveT=setTimeout(_suSave,300);}
+function _suForget(){try{localStorage.removeItem(_suKey());sessionStorage.removeItem('pl_su');}catch(e){}}
+function _suRestore(){var o=null;try{o=JSON.parse(sessionStorage.getItem('pl_su')||localStorage.getItem(_suKey())||'null');sessionStorage.removeItem('pl_su');}catch(e){}if(!o)return;
   SU.step=o.step||0;SU.v=o.v||SU.v;SU.rhMode=o.rhMode||null;SU.bul=o.bul||{};SU.bulMode=o.bulMode||null;SU.aviFrom=o.aviFrom;SU.anniR=o.anniR||null;
   if(o.rh){try{var rh=_rhParse(o.rh.cells,o.rh.name);SU.rh={cells:o.rh.cells,name:o.rh.name,rh:rh,P:_rhImportPlan(rh)};}catch(e){SU.rhMode=null;}}}
 function _suPullRefresh(el){var y0=null,dy=0,trig=false,w=null;
@@ -4640,7 +4646,7 @@ function _suDraw(){
   if(oc&&nc&&!matchMedia('(prefers-reduced-motion: reduce)').matches){var nh=nc.offsetHeight;
     if(Math.abs(nh-oh)>2){nc.style.height=oh+'px';nc.style.overflow='hidden';nc.offsetHeight;nc.style.transition='height .32s cubic-bezier(.3,.8,.3,1)';nc.style.height=nh+'px';
       setTimeout(function(){if(nc.isConnected){nc.style.height='';nc.style.overflow='';nc.style.transition='';}},340);}}
-  if(SU.step===4)_suPayLbls();SU.anim=null;
+  if(SU.step===4)_suPayLbls();SU.anim=null;_suSaveSoon();
 }
 function _suDots(){return '<div class="su-dots">'+[0,1,2,3,4,5].map(function(i){return '<i class="'+(i===SU.step?'on':i<SU.step?'done':'')+'"></i>';}).join('')+'</div>';}
 // En-tête des étapes : titre à la même hauteur que « Bienvenue », retour à gauche
@@ -4681,8 +4687,7 @@ function _suStep1(){
     +(SU.lineOpen?'<div class="su-lmenu su-in"><div class="su-wk su-wkh">'+['L','M','M','J','V','S','D'].map(function(x){return '<span>'+x+'</span>';}).join('')+'</div>'
       +g.map(function(w,i){return '<div class="su-wk su-wkr'+(sel&&+SU.v.line===i?' on':'')+'" style="animation-delay:'+Math.min(i*15,200)+'ms" onclick="_suRead();SU.v.line=\''+i+'\';SU.lineOpen=false;_suDraw()">'+cells(w)+'</div>';}).join('')+'</div>':'')
     +'</div>'
-    +'<button class="su-btn" onclick="_suGo(2)"'+(SU.v.line===''?' disabled':'')+'>Continuer</button>'
-    +(SU.v.line===''?'<div class="su-note" style="text-align:center;margin-top:8px">Choisir la ligne de cette semaine.</div>':'');
+    +'<button class="su-btn" onclick="_suGo(2)"'+(SU.v.line===''?' disabled':'')+'>Continuer</button>';
 }
 
 // 3. Vérifier depuis quand : une seule date pour le tableau Gestion et les bulletins
@@ -4768,10 +4773,12 @@ function _suStep4(){
   if(SU.bulErr)h+='<div class="su-err">'+_suEsc(SU.bulErr)+'</div>';
   if(!nb)h+='<div class="su-note">'+_suPts([D!=null?'<b>Recommandé</b> → bulletins de '+_suMoisL(D+1)+' à aujourd’hui (PDF)':'<b>Recommandé</b> → votre dernier bulletin (PDF)',D!=null?'Bulletin de '+ML[(D+1)%12].toLowerCase()+' = heures de '+ML[D%12].toLowerCase():'','Lu par l’app : palier · ancienneté · contrat · groupe · PFA · avantage individuel',D!=null?'Puis chaque paie vérifiée':'','Lus sur l’appareil, rien n’est envoyé'])+'</div>';
   else{var yms=Object.keys(SU.bul).map(Number).sort(function(a,b){return a-b;}),lab=function(ym){return MCs[ym%12]+' '+Math.floor(ym/12);};
-    h+='<div class="su-note">Bulletins '+(nb>1?'de '+lab(yms[0])+' à '+lab(yms[nb-1]):'de '+lab(yms[0]))+' (valeurs modifiables). <a style="color:var(--blue);cursor:pointer" onclick="_suBulPick()">Ajouter des bulletins</a></div>';
-    if(D!=null&&miss.length)h+='<div class="su-note" style="color:var(--amber)">Il manque '+(miss.length>1?'les bulletins':'le bulletin')+' '+_suMoisList(miss)+' → '+(miss.length>1?'mois non vérifiés':'mois non vérifié')+'</div>';
-    if(SU.anniR&&(SU.v.anni===''||SU.v.anni==null))h+='<div class="su-note" style="color:var(--amber)">Ancienneté passée à l’année suivante entre '+_suMoisL(SU.anniR[0]-1)+' et '+_suMoisL(SU.anniR[1])+' → choisir le mois d’anniversaire ci-dessous</div>';
-    else if(SU.v.anni===''||SU.v.anni==null)h+='<div class="su-note">Mois d’anniversaire de l’ancienneté non trouvé → rempli au prochain bulletin qui montre le changement de prime</div>';}
+    // une idée par ligne : bulletins lus, manquants, mois d'anniversaire
+    var am=SU.v.anni===''||SU.v.anni==null,amb=function(t){return '<span style="color:var(--amber)">'+t+'</span>';};
+    h+='<div class="su-note">'+_suPts(['Bulletins '+(nb>1?'de '+lab(yms[0])+' à '+lab(yms[nb-1]):'de '+lab(yms[0]))+' → valeurs lues ci-dessous, modifiables',
+      D!=null&&miss.length?amb('Il manque '+(miss.length>1?'les bulletins':'le bulletin')+' '+_suMoisList(miss)+' → '+(miss.length>1?'mois non vérifiés':'mois non vérifié')):'',
+      SU.anniR&&am?amb('Ancienneté passée à l’année suivante entre '+_suMoisL(SU.anniR[0]-1)+' et '+_suMoisL(SU.anniR[1])+' → choisir le mois d’anniversaire'):am?'Mois d’anniversaire non trouvé → rempli au bulletin qui montre le changement de prime':''])
+      +'<a style="color:var(--blue);cursor:pointer;display:inline-block;margin-top:4px" onclick="_suBulPick()">+ Ajouter des bulletins</a></div>';}
   if(m){
     var P=[['','—']];for(var i=1;i<=100;i++)P.push([i,'P'+i]);
     var A=[['','—']];for(var y=0;y<=50;y++)A.push([y,y+(y>1?' ans':' an')]);
@@ -4890,7 +4897,7 @@ function _suDone(){
   pr.calcFrom=D!=null?'month':'now';pr.calcStart=dk(st);
   delete pr.setupPending;if(v.pal)pr.hasSeenPayPrompt=true;else delete pr.hasSeenPayPrompt; // sans données de paie : demandées à l'arrivée dans l'app
   _profs[_aid]=S;saveState();try{cloudSave(_aid);}catch(e){}
-  var el=document.getElementById('setup');if(el)el.remove();SU=null;document.body.classList.remove('su-on');
+  _suForget();var el=document.getElementById('setup');if(el)el.remove();SU=null;document.body.classList.remove('su-on');
   render();_infoToast('✓ C’est prêt');
 }
 // Après une inscription sans matelas ni rendus saisis : proposer d'importer le tableau RH
@@ -9333,14 +9340,13 @@ function _cloudSaveFailed(pid,msg){
 }
 // Nouvelle version publiée : l'app s'ouvre sur la copie gardée (pas d'écran blanc au lancement), puis se recharge
 // une fois sur la nouvelle, que le service worker vient de mettre de côté (une seule fois par version : jamais de boucle)
-function _suNewVer(){var c=document.querySelector('#setup .su-card');if(!c||document.getElementById('su-nv'))return;var d=document.createElement('div');d.id='su-nv';d.className='su-note';d.style.cssText='text-align:center;margin:0 0 10px;color:var(--blue);cursor:pointer';d.textContent='Nouvelle version de l’app → toucher pour recharger (la saisie reprend au début)';d.onclick=function(){location.reload();};c.insertBefore(d,c.firstChild);}
 function _verCheck(){
   fetch(location.href,{cache:'no-store',headers:{'Cache-Control':'no-cache, no-store','Pragma':'no-cache'}})
     .then(function(r){return r.text();})
     .then(function(html){
       var m=html.match(/name="app-version" content="([^"]+)"/);if(!m||m[1]===_appVer||_syncAbort)return;
       // inscription : rechargée tant qu'il n'y a rien à perdre (début), sinon un lien le propose
-      if(document.getElementById('setup')&&SU&&SU.step>1){_suNewVer();return;}
+      if(document.getElementById('setup')&&SU)_suSave(); // inscription : saisie gardée, reprise à la même étape après rechargement
       if(!document.getElementById('setup')&&document.getElementById('modal-root').innerHTML)return; // pas pendant une saisie
       var k='pl_ver_rl';try{if(sessionStorage.getItem(k)===m[1])return;sessionStorage.setItem(k,m[1]);}catch(e){}
       location.reload();
@@ -9516,7 +9522,7 @@ function deleteCurrentProfile(){
 async function confirmDeleteAccount(){
   const btn=document.getElementById('del-confirm-btn');
   if(btn){btn.disabled=true;btn.textContent='Suppression...';}
-  const pid=_aid||Object.keys(_profs)[0];
+  const pid=_aid||Object.keys(_profs)[0];_suForget();
   const delGcal=!!(document.getElementById('del-gcal-cb')&&document.getElementById('del-gcal-cb').checked);
   // Delete Google Calendar if requested
   if(delGcal&&gcalTokens&&gcalCalendarId&&gcalCalendarId!=='primary'){
