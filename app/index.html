@@ -8,7 +8,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.18">
+<meta name="app-version" content="v6.19">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -3297,7 +3297,10 @@ function _bulEcart(){
 function _suiviSimple(y){
   // Accueil des problèmes : imports, écart avec le tableau Gestion, bulletins à vérifier
   var c=S.profile&&S.profile.rhCmp,o=S.profile&&S.profile.rhTable,g;
-  if(!c||!o)g='<button class="sv-tile" onclick="rhOpenFromRecap(true)"><span class="t">Écart Rendus</span><b style="color:var(--text3)">—</b><small>aucun tableau importé</small></button>';
+  // tableau gardé mais comparaison pas encore faite (restauration, changement de départ) : calculée ici, une fois
+  if(o&&!c){var _ck=(o.at||'')+'|'+((S.profile.start||{}).d||'');if(window._rhCmpTry!==_ck){window._rhCmpTry=_ck;try{var _r=_rhStored();if(_r)rhCompareShow(_r,true);}catch(e){}}c=S.profile.rhCmp;}
+  if(!o)g='<button class="sv-tile" onclick="rhOpenFromRecap(true)"><span class="t">Écart Rendus</span><b style="color:var(--text3)">—</b><small>aucun tableau importé</small></button>';
+  else if(!c)g='<button class="sv-tile" onclick="rhOpenFromRecap()"><span class="t">Écart Rendus</span><b style="color:var(--text3)">—</b><small>tableau pas plus récent que le départ</small></button>';
   else{var e0=-c.d,e=-_rhDe(c),ok=Math.abs(e0)<2,ig=!ok&&Math.abs(e)<2,part=!ok&&!ig&&Math.abs(e-e0)>=2;
     g='<button class="sv-tile" onclick="rhOpenFromRecap()"><span class="t">Écart Rendus</span><b style="color:'+(ok||e0>0?'var(--green)':'var(--red)')+'">'+(ok?'✓':(e0>0?'+':'−')+fmtMin(Math.abs(e0)))+'</b><small>'+(ok?'identique':(e0>0?'favorable':'à faire corriger')+(ig?'<br>différences ignorées':part?'<br>en partie ignoré':''))+'<br><span style="white-space:nowrap">Tableau du '+new Date(c.ed+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long'})+'</span>'+'</small></button>';}
   // Bulletins : ce qui n'a pas été perçu (somme des écarts négatifs, ligne par ligne), le trop perçu, puis le solde des deux
@@ -4168,7 +4171,7 @@ function openGestMail(repYms){
     +row('gm-lost','Reports d’heures déjà expirées',X.length?X.length+' mois · expirées il y a moins de 3 mois':'aucune heure perdue ces 3 derniers mois',X.length)
     +row('gm-rep','Reports d’heures qui vont expirer',R.length?R.length+' mois d’acquisition · '+(repYms?'heures choisies':'expirent en '+ML[TODAY_YM%12].toLowerCase()):'aucune heure n’expire en '+ML[TODAY_YM%12].toLowerCase(),R.length)
     +row('gm-mon','Monétisation',Mo.length?Mo.length+' mois · heures monétisées dans l’app':'aucune heure monétisée',Mo.length)
-    +row('gm-rh','Corrections du tableau de gestion',H?(H.fav?'écart en ma faveur':H.L.length+' point'+(H.L.length>1?'s':''))+' · tableau du '+H.ed:(S.profile&&S.profile.rhCmp?(Math.abs(S.profile.rhCmp.d)>=2?'différences ignorées':'tableau identique'):'aucun tableau importé'),H,H&&H.fav)
+    +row('gm-rh','Corrections du tableau de gestion',H?(H.fav?'écart en ma faveur':H.L.length+' point'+(H.L.length>1?'s':''))+' · tableau du '+H.ed:(S.profile&&S.profile.rhCmp?(Math.abs(S.profile.rhCmp.d)>=2?'différences ignorées':'tableau identique'):S.profile&&S.profile.rhTable?'rien à comparer':'aucun tableau importé'),H,H&&H.fav)
     +row('gm-paie','Corrections de paie',P.length?P.length+' bulletin'+(P.length>1?'s':'')+' à corriger':'aucun écart sur les bulletins',P.length)
     +'</div>'
     +(function(){var n=0;try{n=(_bulPayDiffs().paid||[]).length;}catch(e){}return n?'<div style="display:flex;gap:8px;align-items:flex-start;font-size:12px;color:var(--text2);line-height:1.4;margin-top:10px"><span style="color:var(--amber)">⚠</span><span style="flex:1">Génération de rendus : '+n+' mois où les réglages diffèrent des bulletins. Le mail le signale. Vérifier d’abord les réglages. <a style="color:var(--blue);cursor:pointer" onclick="_bulPayPropose(function(){openGestMail();},1)">Vérifier</a></span></div>':'';})()
@@ -9655,7 +9658,7 @@ async function confirmDeleteAccount(){
 // Résumé d'une version : de quoi reconnaître la bonne (tableau Gestion, paie, rendus, dernière modification)
 function _bakSum(d){var p=(d&&d.profile)||{},c=d&&d.conges||{},n=Object.keys(c).filter(function(k){return c[k]==='rend'||c[k]==='rend-hist';}).length,
     cg=Object.keys(c).filter(function(k){return c[k]==='cg';}).length,ov=Object.keys(d&&d.overrides||{}).length,ls=p._lastSaved?new Date(p._lastSaved):null;
-  return [(p.rhTable||p.rhImportedAt?'✓':'✗')+' tableau Gestion',(p.palierNum?'✓':'✗')+' paie',n+' rendus · '+cg+' congés · '+ov+' changements',ls?'modifiée le '+ls.toLocaleDateString('fr-FR',{day:'numeric',month:'short'})+' à '+ls.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):''].filter(Boolean).join(' · ');}
+  return [p.rhTable?'✓ tableau Gestion':p.rhImportedAt?'tableau Gestion lu, fichier pas gardé':'✗ tableau Gestion',(p.palierNum?'✓':'✗')+' paie',n+' rendus · '+cg+' congés · '+ov+' changements',ls?'modifiée le '+ls.toLocaleDateString('fr-FR',{day:'numeric',month:'short'})+' à '+ls.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):''].filter(Boolean).join(' · ');}
 // Historique (cloud) : chaque jour gardé, avec son résumé, et un bouton Restaurer
 async function _histOpen(){var pid=_aid,dates=[];
   try{var r=await fetch(CLOUD_API+'/data/backups',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({profileId:pid})});var d=await r.json();dates=(d.dates||[]).slice().sort().reverse();}catch(e){_infoToast('Historique injoignable');return;}
