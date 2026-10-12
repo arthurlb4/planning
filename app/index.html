@@ -10,7 +10,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.31">
+<meta name="app-version" content="v6.33">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -1141,26 +1141,37 @@ function getProfiles(){
 // UNDO / REDO
 // ================================================================
 // Instantané pour Annuler / Rétablir : tout ce que la fiche du jour et ses écrans modifient
-function snap(){return JSON.stringify({ov:S.overrides,co:S.conges,hi:S.history,mat:(S.profile&&S.profile.matelas)||0,mk:JSON.parse(JSON.stringify(S.matelasKeys||{})),wl:S.weekLines||{},xr:S.extraRendus||{},dp:S.dayPrimes||{},no:S.notes||{}});}
-function _snapApply(p){S.overrides=p.ov;S.conges=p.co;S.history=p.hi;if(S.profile)S.profile.matelas=p.mat||0;S.matelasKeys=p.mk||{};if(p.wl)S.weekLines=p.wl;if(p.xr)S.extraRendus=p.xr;if(p.dp)S.dayPrimes=p.dp;if(p.no)S.notes=p.no;}
-function pushUndo(label){var sn=snap();_us.push(sn);if(_us.length>30)_us.shift();_rs=[];updateUrBtns();
+// Instantané complet du profil (planning, rendus, congés, soldes, départ, reprises du tableau…) pour annuler n'importe quelle action
+function snap(){return JSON.stringify(S,function(k,v){return k==='_lastSaved'||k==='rhCmp'?undefined:v;});}
+function _snapApply(p){var ls=S.profile&&S.profile._lastSaved;Object.keys(S).forEach(function(k){delete S[k];});Object.assign(S,typeof p==='string'?JSON.parse(p):p);if(S.profile&&ls)S.profile._lastSaved=ls;try{recalcAllMatelas();}catch(e){}}
+// Chaque action annulable garde son nom : « Annuler : Rendu posé », et la liste se retrouve dans Suivi → Dernières modifications
+function pushUndo(label){var sn=snap();_us.push({s:sn,l:label||'Modification',t:Date.now()});if(_us.length>40)_us.shift();_rs=[];updateUrBtns();
   // Bandeau « … · Annuler » si l'action a réellement modifié quelque chose
-  if(label){clearTimeout(window._utT);window._utT=setTimeout(function(){if(snap()!==sn&&_us[_us.length-1]===sn)_undoToast(label);},60);}
+  if(label){clearTimeout(window._utT);window._utT=setTimeout(function(){var e=_us[_us.length-1];if(e&&e.s===sn&&snap()!==sn)_undoToast(label,'Annuler',undoAction);},60);}
 }
-function _undoToast(label){
+function _undoToast(label,btn,fn){
   var t=document.getElementById('undo-toast');
   if(!t){t=document.createElement('div');t.id='undo-toast';t.setAttribute('role','status');document.body.appendChild(t);}
-  t.innerHTML='<span></span><button type="button">Annuler</button>';
-  t.firstChild.textContent=label;
-  t.lastChild.onclick=function(e){e.stopPropagation();undoAction();_hideUndoToast();};
+  t.innerHTML='<span></span><button type="button"></button>';
+  t.firstChild.textContent=label;t.lastChild.textContent=btn||'Annuler';
+  t.lastChild.onclick=function(e){e.stopPropagation();_hideUndoToast();(fn||undoAction)();};
   clearTimeout(window._utHide);
   requestAnimationFrame(function(){t.classList.add('on');});
   window._utHide=setTimeout(_hideUndoToast,4500);
 }
 function _hideUndoToast(){var t=document.getElementById('undo-toast');if(t)t.classList.remove('on');}
-function undoAction(){if(!_us.length)return;_rs.push(snap());_snapApply(JSON.parse(_us.pop()));saveState();render();updateUrBtns();gcalTrigger();}
-function redoAction(){if(!_rs.length)return;_us.push(snap());_snapApply(JSON.parse(_rs.pop()));saveState();render();updateUrBtns();gcalTrigger();}
-function updateUrBtns(){const u=document.getElementById('undo-btn'),r=document.getElementById('redo-btn');if(u)u.disabled=!_us.length;if(r)r.disabled=!_rs.length;}
+function undoAction(quiet){if(!_us.length)return;var e=_us.pop();_rs.push({s:snap(),l:e.l,t:e.t});_snapApply(e.s);saveState();render();updateUrBtns();gcalTrigger();
+  if(!quiet)_undoToast('Annulé : '+e.l,'Rétablir',redoAction);}
+function redoAction(){if(!_rs.length)return;var e=_rs.pop();_us.push({s:snap(),l:e.l,t:e.t});_snapApply(e.s);saveState();render();updateUrBtns();gcalTrigger();
+  _undoToast('Rétabli : '+e.l,'Annuler',undoAction);}
+// Annuler d'un coup les actions jusqu'à celle-ci (incluse)
+function undoTo(i){var n=_us.length-i;if(n<=0)return;for(var k=0;k<n;k++)undoAction(true);closeModal();_undoToast('Annulé : '+n+' action'+(n>1?'s':''),'Rétablir',function(){for(var k=0;k<n;k++)redoAction();});}
+function openUndoList(){var L=_us.map(function(e,i){return {e:e,i:i};}).reverse();
+  document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="sh"></div><div class="st">Actions de cette session</div>'
+    +'<div style="font-size:12px;color:var(--text3);margin:-4px 0 10px">Toucher une action annule celle-ci et toutes celles faites après.</div>'
+    +(L.length?L.map(function(x){var d=new Date(x.e.t||Date.now());return '<button class="rv-b2" style="display:flex;justify-content:space-between;text-align:left" onclick="undoTo('+x.i+')"><span>'+x.e.l.replace(/</g,'&lt;')+'</span><span style="color:var(--text3)">'+d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})+' · annuler</span></button>';}).join(''):'<div class="hd-card" style="font-size:12px;color:var(--text3)">Aucune action à annuler.</div>')
+    +'<button class="mcancel mclose" style="margin-top:12px" onclick="closeModal()">Fermer</button></div></div>';}
+function updateUrBtns(){const u=document.getElementById('undo-btn'),r=document.getElementById('redo-btn');if(u){u.disabled=!_us.length;u.title=_us.length?'Annuler : '+_us[_us.length-1].l:'Rien à annuler';u.setAttribute('aria-label',u.title);}if(r){r.disabled=!_rs.length;r.title=_rs.length?'Rétablir : '+_rs[_rs.length-1].l:'Rien à rétablir';r.setAttribute('aria-label',r.title);}}
 
 // ================================================================
 // HELPERS
@@ -2980,10 +2991,10 @@ function bulIgnL(ym,id,on){var pr=S.profile,c=_bulCompare(S.bulletins[ym]),it=c.
   var sh=document.querySelector('#modal-root .sheet'),st=sh?sh.scrollTop:0;saveState();render();openBulletinModal(ym);var s2=document.querySelector('#modal-root .sheet');if(s2){s2.style.animation='none';s2.scrollTop=st;}}
 // Tableau Gestion : on ignore une différence précise (gardée tant que sa valeur ne change pas), pas l'écart entier
 function _rhCIgn(k,v){var i=((S.profile||{}).ignRhC||{})[k];return i!=null&&Math.abs(i-v)<2;}
-function rhIgnC(k,v,on){var pr=S.profile;if(!pr.ignRhC)pr.ignRhC={};if(on)pr.ignRhC[k]=v;else delete pr.ignRhC[k];delete pr.ignRh;try{recalcAllMatelas();}catch(e){}saveState();rhOpenFrom(window._rvFrom||'recap');render();}
+function rhIgnC(k,v,on){pushUndo(/^(acq|wkm)/.test(k)?(on?'Différence reprise du tableau':'Reprise du tableau annulée'):(on?'Différence ignorée':'Différence de nouveau comptée'));var pr=S.profile;if(!pr.ignRhC)pr.ignRhC={};if(on)pr.ignRhC[k]=v;else delete pr.ignRhC[k];delete pr.ignRh;try{recalcAllMatelas();}catch(e){}saveState();rhOpenFrom(window._rvFrom||'recap');render();}
 // Écart restant une fois les différences ignorées retirées (app − tableau, comme rhCmp.d)
 function _rhDe(c){return c?(c.de!=null?c.de:c.d):0;}
-function _rhIgnLink(k,v,acc){var on=_rhCIgn(k,v);return '<a style="color:var(--blue);cursor:pointer;font-weight:400;white-space:nowrap" onclick="event.stopPropagation();rhIgnC(\''+k+'\','+Math.round(v)+','+(on?0:1)+')">'+(acc?(on?'Revenir au calcul de l’app':'Faire comme le tableau'):(on?'Ne plus ignorer':'Ignorer'))+'</a>';}
+function _rhIgnLink(k,v,acc){var on=_rhCIgn(k,v);return '<a style="color:var(--blue);cursor:pointer;font-weight:400;white-space:nowrap" onclick="event.stopPropagation();rhIgnC(\''+k+'\','+Math.round(v)+','+(on?0:1)+')">'+(acc?(on?'Annuler la reprise':'Faire comme le tableau'):(on?'Ne plus ignorer':'Ignorer'))+'</a>';}
 function openBulletinModal(ym,from){
   if(!document.body.classList.contains('modal-open'))_lockBodyScroll();
   var y=Math.floor(ym/12),cy=TODAY_YM!=null?Math.floor(TODAY_YM/12):y,arr='font-size:18px;padding:0 10px;color:var(--text2);cursor:pointer;user-select:none';
@@ -4601,7 +4612,7 @@ async function _rhFile(f,mode){
   try{const cells=await _xlsxRead(f);const rh=_rhParse(cells,f.name),pr=S.profile||{},st=pr.start,ek=dk(_rhEd(rh));
     // départ demandé, ou tableau pas plus récent que le départ : proposer d'en faire le départ du calcul
     if(mode==='start'||!st||ek<=st.d){if(mode==='start'||confirm('Tableau du '+_rhEd(rh).toLocaleDateString('fr-FR')+' : '+(st?(ek===st.d?'même date que votre départ':'plus ancien que votre départ')+' ('+_startTxt(st)+').\n\n':'')+'En faire le départ du calcul ?\n\nSes soldes (matelas, heures, reports) deviennent ceux du départ ; les rendus posés après sa dernière semaine notée sont décomptés par l’app.')){
-        _startApply(_startFromTable(rh));render();closeModal();_infoToast('✓ Départ : tableau du '+_rhEd(rh).toLocaleDateString('fr-FR',{day:'numeric',month:'short'}));
+        pushUndo('Départ du calcul changé');_startApply(_startFromTable(rh));render();closeModal();_infoToast('✓ Départ : tableau du '+_rhEd(rh).toLocaleDateString('fr-FR',{day:'numeric',month:'short'}));
         const L=_rhStored();if(L&&dk(_rhEd(L))>ek){window._rvFrom=null;rhCompareShow(L);}}
       return;}
     // plus récent : il sert à vérifier, rien d'autre ne change
@@ -5118,6 +5129,7 @@ function rendusTakeRep(ym,n,limit){
   saveState();render();openMergedRenduCgModal(limit,0);
 }
 function rhApplyReports(list){
+  pushUndo('Reports repris du tableau');
   if(!S.ephExtend)S.ephExtend={};
   // le tableau fait foi, report automatique de l'app compris : moins (ou aucun) au tableau → plus de report automatique pour ce mois
   if(!S.noAuto)S.noAuto={};
@@ -5212,7 +5224,7 @@ function openStartModal(mode){
 function _startMsel(){const ym=+document.getElementById('st-m').value,L=window._stL,rec=L&&ym<=L.ym;
   document.getElementById('st-rec').innerHTML=rec?'L’app retrouve le matelas et les heures au 1er de ce mois grâce à votre tableau du '+new Date(L.ed+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long'})+'.':'Indiquez le matelas et les heures au 1er de ce mois :';
   document.getElementById('st-man').style.display=rec?'none':'';}
-function startPickMonth(){const ym=+document.getElementById('st-m').value,Dk=dk(new Date(Math.floor(ym/12),ym%12,1,12)),L=window._stL;let st;
+function startPickMonth(){pushUndo('Départ du calcul changé');const ym=+document.getElementById('st-m').value,Dk=dk(new Date(Math.floor(ym/12),ym%12,1,12)),L=window._stL;let st;
   if(L&&ym<=L.ym){let rh=null;try{rh=_rhStored();}catch(e){}if(!rh)return;st=_startFromMonth(rh,Dk);}
   else st=_startManual(Dk,parseHM(document.getElementById('st-mat').value||'0'),parseHM(document.getElementById('st-eph').value||'0'));
   _startApply(st);closeModal();render();_infoToast('✓ Départ : '+_startTxt(st).split(' · ')[0]);}
@@ -5263,16 +5275,16 @@ function _verifSim(rh){
 // Rendus que l'app a pris sur le matelas et le gestionnaire sur des heures acquises après coup : faire comme lui
 // (les plus récents d'abord, jusqu'au montant de l'écart) — ils prennent alors les heures du mois suivant
 // montant exact : l'écart du matelas, retiré des heures du mois qui suit le dernier rendu pris sur le matelas, rendu au matelas
-function rhXferAccept(amt){const rh=window._rhLast,R=rh&&_verifSim(rh);if(!R)return;const pr=S.profile;if(!pr.ignRhC)pr.ignRhC={};
+function rhXferAccept(amt){pushUndo('Matelas comme le tableau');const rh=window._rhLast,R=rh&&_verifSim(rh);if(!R)return;const pr=S.profile;if(!pr.ignRhC)pr.ignRhC={};
   // déjà repris : on corrige ce montant (une autre différence acceptée depuis a changé ce qui passe sur le matelas)
   const old=Object.keys(pr.ignRhC).filter(k=>/^xfer\d+$/.test(k))[0];if(!old&&!R.matK.length)return;
   const k=old||'xfer'+(Math.max.apply(null,R.matK.map(x=>x.pym))+1);
   if((pr.ignRhC[k]||0)+amt<=0){rhXferUndoAdj(k);return;}
   pr.ignRhC[k]=(pr.ignRhC[k]||0)+amt;pr.matelas=(pr.matelas||0)+amt;try{recalcAllMatelas();}catch(e){}saveState();render();rhCompareShow(rh);}
 // Revenir au calcul de l'app : toutes les différences reprises du tableau sont effacées (heures, rendus, matelas)
-function rhRevertAll(){const pr=S.profile,ig=pr.ignRhC||{};Object.keys(ig).forEach(k=>{if(/^xfer\d+$/.test(k))pr.matelas=(pr.matelas||0)-(ig[k]||0);if(/^(acq|wkm|xfer)\d/.test(k))delete ig[k];});
+function rhRevertAll(){pushUndo('Reprises du tableau annulées');const pr=S.profile,ig=pr.ignRhC||{};Object.keys(ig).forEach(k=>{if(/^xfer\d+$/.test(k))pr.matelas=(pr.matelas||0)-(ig[k]||0);if(/^(acq|wkm|xfer)\d/.test(k))delete ig[k];});
   delete pr.rendFrom;try{recalcAllMatelas();}catch(e){}saveState();render();if(window._rhLast)rhCompareShow(window._rhLast);}
-function rhXferUndoAdj(k){const pr=S.profile,v=pr.ignRhC&&pr.ignRhC[k];if(!v)return;delete pr.ignRhC[k];pr.matelas=(pr.matelas||0)-v;try{recalcAllMatelas();}catch(e){}saveState();render();if(window._rhLast)rhCompareShow(window._rhLast);}
+function rhXferUndoAdj(k){pushUndo('Matelas : reprise du tableau annulée');const pr=S.profile,v=pr.ignRhC&&pr.ignRhC[k];if(!v)return;delete pr.ignRhC[k];pr.matelas=(pr.matelas||0)-v;try{recalcAllMatelas();}catch(e){}saveState();render();if(window._rhLast)rhCompareShow(window._rhLast);}
 function rhXferUndo(){const pr=S.profile;delete pr.rendFrom;try{recalcAllMatelas();}catch(e){}saveState();render();if(window._rhLast)rhCompareShow(window._rhLast);}
 // Reprises du tableau qui ne correspondent plus à une différence (tableau plus récent corrigé par le gestionnaire, ou planning modifié) :
 // retirées d'elles-mêmes. Rend la liste de ce qui a été retiré.
@@ -5305,7 +5317,7 @@ function rhCompareShow(rh,silent){
   const dayL=k=>new Date(k+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'});
   const NAT_T={fer:'Fériés',dim:'Dimanches',rh:'RH travaillés',hs:'Heures sup',extra:'Heures en plus'},natL=k=>k.startsWith('autre:')?k.slice(6):NAT_T[k];
   const tv=(t,a)=>'<div class="rv-cmp"><span>Tableau <b>'+fmtMin(t)+'</b></span><span>App <b>'+fmtMin(a)+'</b></span></div>';
-  const act=(k,v,on)=>'<button class="rv-b2" onclick="event.stopPropagation();rhIgnC(\''+k+'\','+Math.round(v)+','+(on?0:1)+')">'+(on?'Revenir au calcul de l’app':'Faire comme le tableau')+'</button>';
+  const act=(k,v,on)=>'<button class="rv-b2" onclick="event.stopPropagation();rhIgnC(\''+k+'\','+Math.round(v)+','+(on?0:1)+')">'+(on?'Annuler la reprise ('+fmtE(v)+')':'Faire comme le tableau ('+fmtE(v)+')')+'</button>';
   // Différences : une carte dépliable chacune — à voir (point orange) ou reprise du tableau (coche verte)
   const todo=[],done=[];let ignSum=0;
   const card=(o)=>(o.done?done:todo).push('<div class="rv-it" onclick="if(!event.target.closest(\'button,a\'))this.classList.toggle(\'on\')"><div class="rv-ih">'
@@ -5335,7 +5347,7 @@ function rhCompareShow(rh,silent){
     body:_suPts(['Rendus pris sur le matelas → tableau '+fmtMin(R.matT)+', app '+fmtMin(R.matA),'Même total : seul l’endroit où les heures sont prises change','Faire comme le tableau → '+fmtMin(Math.abs(matE))+(matE>0?' rendus au matelas, retirés des heures':' retirés du matelas, rendus aux heures')])
       +'<button class="rv-b2" onclick="event.stopPropagation();rhXferAccept('+Math.round(matE)+')">Faire comme le tableau</button>'});
   if(xk)card({t:'Matelas ou heures',sub:'Repris du tableau',vt:fmtMin(xv),done:1,
-    body:_suPts([fmtMin(xv)+' de rendus pris sur les heures '+moisDe(+xk.slice(4))+' au lieu du matelas, comme le gestionnaire'])+'<button class="rv-b2" onclick="event.stopPropagation();rhXferUndoAdj(\''+xk+'\')">Revenir au calcul de l’app</button>'});
+    body:_suPts([fmtMin(xv)+' de rendus pris sur les heures '+moisDe(+xk.slice(4))+' au lieu du matelas, comme le gestionnaire'])+'<button class="rv-b2" onclick="event.stopPropagation();rhXferUndoAdj(\''+xk+'\')">Annuler la reprise ('+fmtMin(xv)+' au matelas)</button>'});
   // 4. Reports accordés par le gestionnaire
   const tRep=_rhRepOf(rh),repL=Object.keys(tRep).map(Number).filter(ym=>ym<asOfYM&&ym>=R.st.genFrom-3&&tRep[ym]!==getEphExtensions(ym)).sort((a,b)=>a-b);
   if(repL.length)card({t:'Reports',sub:repL.map(ym=>MFc(ym)+' : '+(tRep[ym]?'+'+tRep[ym]*3+' mois':'aucun')+' au tableau').join(' · '),info:1,vt:'',
@@ -5385,7 +5397,7 @@ function rhCompareShow(rh,silent){
     +'<div style="font-size:13px;font-weight:600;margin-top:8px;color:'+stC+'">'+st+'</div>'
     +(todo.length?'<div style="font-size:11.5px;color:var(--text3);margin-top:2px">'+todo.length+' différence'+(todo.length>1?'s':'')+' à voir ci-dessous</div>':'')
     +(aoff?'<div style="font-size:11.5px;color:var(--text3);margin-top:4px">Plus de différence avec ce tableau → reprise retirée : '+aoff.join(', ')+'</div>':'')
-    +(done.length?'<div style="font-size:11.5px;color:var(--text3);margin-top:2px">'+done.length+' différence'+(done.length>1?'s reprises':' reprise')+' du tableau</div><button class="rv-b2" onclick="rhRevertAll()">Revenir au calcul de l’app</button>':'')
+    +(done.length?'<div style="font-size:11.5px;color:var(--text3);margin-top:2px">'+done.length+' différence'+(done.length>1?'s reprises':' reprise')+' du tableau</div><button class="rv-b2" onclick="rhRevertAll()">Annuler les '+done.length+' reprise'+(done.length>1?'s':'')+' du tableau</button>':'')
     +(R.lag.length?'<div style="font-size:11.5px;color:var(--text3);margin-top:4px">'+fmtMin(R.lag.reduce((t,k)=>t+getDur(new Date(k+'T12:00:00')),0))+' de rendus après la S'+R.lw+' : pas encore au tableau, mis de côté</div>':'')
     +'</div>'
     +(todo.length+done.length?'<div class="rv-sec">Différences <span>'+(todo.length?todo.length+' à voir':'rien à voir')+'</span></div>'+todo.join('')
@@ -6195,7 +6207,7 @@ function openMergedRenduCgModal(limit,tab){
     +[['openVerif()','ti-checks','Vérifier, importer','bulletins, tableau'],['openGestMail()','ti-mail','Mail','au gestionnaire']].map(function(x){return '<div class="ucard rep-mail" style="cursor:pointer;margin:0;padding:12px" onclick="'+x[0]+'"><i class="ti '+x[1]+'"></i><div style="flex:1;min-width:0"><div style="font-size:13px;color:var(--text)">'+x[2]+'</div><div style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+x[3]+'</div></div></div>';}).join('')
     +'</div>'
     +_fold('fold-annee','','var(--text2)','Année '+NOW.getFullYear(),'jours, nuits, dimanches, matins, fériés','',_cptHtml())
-    +_fold('fold-hist','history','var(--text2)','Dernières modifications',(S.history||[]).length?'dernière le '+S.history[0].t:'aucune',(S.history||[]).length||'','<div style="height:6px"></div>'+rcgHistHtml)
+    +_fold('fold-hist','history','var(--text2)','Dernières modifications',(S.history||[]).length?'dernière le '+S.history[0].t:'aucune',(S.history||[]).length||'','<div style="height:6px"></div>'+(_us.length?'<button class="rv-b2" style="margin:0 0 8px" onclick="openUndoList()">Annuler des actions de cette session ('+_us.length+')</button>':'')+rcgHistHtml)
     +'<div style="height:12px"></div>';
   const dispoColor=dispoMois<=0?'var(--red)':dispoMois<120?'var(--amber)':'var(--rend-text)';
   const _as1Map={};afterStep1.forEach(function(e){_as1Map[e.ym]=e.amount;});
@@ -9682,10 +9694,10 @@ async function _histOpen(){var pid=_aid,dates=[];
 async function _histRestore(dt){var data=null;try{var r=await fetch(CLOUD_API+'/data/backup',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({profileId:_aid,date:dt})});data=(await r.json()).data;}catch(e){}
   if(!data){_infoToast('Version introuvable');return;}
   if(!confirm('Remettre les données d’avant le '+new Date(dt+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long'})+' ?\n\nLes données actuelles restent dans l’historique d’aujourd’hui.'))return;
-  _us=[];_rs=[];_profs[_aid]=data;S=_profs[_aid];saveState();cloudSave(_aid);window._modalBack=null;closeModal();render();_infoToast('✓ Version restaurée');}
+  pushUndo('Sauvegarde restaurée');_snapApply(data);saveState();cloudSave(_aid);window._modalBack=null;closeModal();render();}
 function _restoreBak(){var k=null;try{k=JSON.parse(localStorage.getItem('pl_bak')||'null');}catch(e){}if(!k||!k.d)return;
   if(!confirm('Remettre la version d’avant enregistrée sur cet appareil ('+((k.d.profile||{}).name||'profil')+') ?\n\nElle remplace les données actuelles, ici et dans le cloud.'))return;
-  _us=[];_rs=[];_profs[k.pid]=k.d;_aid=k.pid;S=_profs[_aid];try{localStorage.removeItem('pl_bak');}catch(e){}
+  if(k.pid===_aid){pushUndo('Version d’avant restaurée');_snapApply(k.d);}else{_us=[];_rs=[];_profs[k.pid]=k.d;_aid=k.pid;S=_profs[_aid];}try{localStorage.removeItem('pl_bak');}catch(e){}
   saveState();cloudSave(_aid);render();closeModal();_infoToast('✓ Version d’avant restaurée');}
 document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden'&&window._authToken&&_aid&&window._syncStatus==='pending'){clearTimeout(window._cloudSyncTimer);cloudSave(_aid);}});
 async function signOut(){

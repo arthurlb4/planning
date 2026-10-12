@@ -378,5 +378,12 @@ function situation(opts) {
     rhCompareShow(rh,true);S.profile.rhTable={cells:{},name:'x'};var c=S.profile.rhCmp,m=_gmRh();return [JSON.stringify(c.lost),!!(m&&m.L.some(function(l){return l.indexOf('expiré le 30')>=0;}))];})()`),
     ['[{"ym":' + YM(2026, 6) + ',"min":600,"v":"2026-09-30"}]', true]); }
 
+// Annuler : instantané complet (rendus, départ, reprises du tableau), libellé gardé, rétablir
+{ const a = load('2026-10-11');
+  eq('Annuler / rétablir une action nommée', a.run(`(function(){render=function(){};saveState=function(){};gcalTrigger=function(){};_undoToast=function(l){window._lt=l;};
+    S.conges={};pushUndo('Rendu posé');S.conges['2026-10-20']='rend';S.profile.ignRhC={x:1};var t1=document.getElementById('undo-btn');
+    undoAction();var a=[Object.keys(S.conges).length,!!(S.profile.ignRhC&&S.profile.ignRhC.x),window._lt];redoAction();a.push(S.conges['2026-10-20'],window._lt);return a;})()`),
+    [0, false, 'Annulé : Rendu posé', 'rend', 'Rétabli : Rendu posé']); }
+
 console.log('\n' + (count - fails) + '/' + count + ' contrôles réussis');
 if (fails) process.exit(1);
