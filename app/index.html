@@ -8,7 +8,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.7">
+<meta name="app-version" content="v6.8">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -457,7 +457,7 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .rv-dot{width:7px;height:7px;border-radius:50%;background:var(--amber);flex:none}
 .rv-tt{flex:1;font-size:13px;color:var(--text)}.rv-tt small{display:block;font-size:11px;color:var(--text3);margin-top:1px}
 .rv-v{font-size:13px;color:var(--text2);white-space:nowrap}.rv-v.n{color:var(--text2)}
-.rv-ch{font-size:13px;color:var(--text3);transition:transform .2s}.rv-it.on .rv-ch{transform:rotate(180deg)}
+.rv-ch{font-size:13px;color:var(--text3);transition:transform .2s}.rv-it.on .rv-ch,.rv-ch.r{transform:rotate(180deg)}
 .rv-ib{display:none;padding:0 12px 11px 29px;font-size:11.5px;color:var(--text2);line-height:1.55}.rv-it.on .rv-ib{display:block}
 .rv-cmp{display:flex;gap:14px;margin-bottom:4px;color:var(--text3)}.rv-cmp b{color:var(--text);font-weight:600}
 .rv-b2{display:block;width:100%;margin-top:8px;padding:8px;border:none;border-radius:8px;background:var(--btn);color:var(--text);font-size:12px;font-family:inherit;cursor:pointer}
@@ -5220,8 +5220,8 @@ function _verifSim(rh){
   // App : heures acquises d'après le planning depuis le départ, rendus posés après le départ
   const pr0=S.profile;let G;
   try{const t=Object.assign({},pr0,{ephSoldeCreatedYM:st.genFrom,ephSolde:0});delete t.ephSoldeSplit;delete t.ephRecon;S.profile=t;G=buildGen(true);}finally{S.profile=pr0;}
-  const acq={},nat={},adjrM={};let adjr=0;Object.keys(G.gen).map(Number).forEach(ym=>{if(ym<st.genFrom||ym>=asOfYM)return;const g=G.gen[ym];
-    nat[ym]={fer:g.fer||0,dim:g.dim||0,rh:g.rh||0,hs:(g.hs||0)+(g.ram||0),extra:g.extra||0};acq[ym]=Object.keys(g).filter(k=>k!=='solde'&&k!=='adjr').reduce((t,k)=>t+g[k],0);adjr+=g.adjr||0;adjrM[ym]=g.adjr||0;});
+  const acq={},nat={},adjrM={},adjM={};let adjr=0;Object.keys(G.gen).map(Number).forEach(ym=>{if(ym<st.genFrom||ym>=asOfYM)return;const g=G.gen[ym];
+    nat[ym]={fer:g.fer||0,dim:g.dim||0,rh:g.rh||0,hs:(g.hs||0)+(g.ram||0),extra:g.extra||0};acq[ym]=Object.keys(g).filter(k=>k!=='solde'&&k!=='adjr').reduce((t,k)=>t+g[k],0);adjr+=g.adjr||0;adjrM[ym]=g.adjr||0;adjM[ym]=g.adj||0;});
   const isR=k=>S.conges[k]==='rend'||S.conges[k]==='rend-hist';
   const keys=Object.keys(S.conges||{}).filter(k=>isR(k)&&k>st.from&&k<=cutK).sort(),lag=Object.keys(S.conges||{}).filter(k=>isR(k)&&k>cutK&&k<=asK).sort();
   const pool={};Object.keys(st.base||{}).forEach(ym=>{pool[ym]=(pool[ym]||0)+st.base[ym];});Object.keys(acq).forEach(ym=>{pool[ym]=(pool[ym]||0)+acq[ym]+(adjrM[ym]||0);});
@@ -5234,7 +5234,7 @@ function _verifSim(rh){
     yms.forEach(ym=>{if(left<=0||pool[ym]<=0||ym>pym&&!_rbw(k,ym)||exp(ym)<pym)return;const t=Math.min(pool[ym],left);pool[ym]-=t;left-=t;consA+=t;});if(left>0)matK.push({k,pym,left});matA+=left;});
   let appH=0;yms.forEach(ym=>{if(ym<asOfYM&&exp(ym)>=asOfYM)appH+=pool[ym];});
   const tabH=rh.tot.cumSol!=null?rh.tot.cumSol:rh.lines.reduce((t,l)=>t+(l.nature&&_rhValidAt(l,asOf)?Math.max(0,l.solde):0),0);
-  return{st,asOf,asOfYM,lw:rh.lastWeek,cutK,acq,nat,det:G.det,keys,lag,matK,adjr,consA:consA-adjr,xadj,consT,matA:matA-xadj,matT,wkA,appH,tabH,hasMat,appM:(st.mat||0)+xadj-matA,tabM:hasMat?rh.tot.stockAct:0};
+  return{st,asOf,asOfYM,lw:rh.lastWeek,cutK,acq,adjM,nat,det:G.det,keys,lag,matK,adjr,consA:consA-adjr,xadj,consT,matA:matA-xadj,matT,wkA,appH,tabH,hasMat,appM:(st.mat||0)+xadj-matA,tabM:hasMat?rh.tot.stockAct:0};
 }
 // Rendus que l'app a pris sur le matelas et le gestionnaire sur des heures acquises après coup : faire comme lui
 // (les plus récents d'abord, jusqu'au montant de l'écart) — ils prennent alors les heures du mois suivant
@@ -5252,89 +5252,88 @@ function rhCompareShow(rh,silent){
   const R=_verifSim(rh),fd=k=>new Date(k+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}).replace(/^1 /,'1er ');
   const head='<div class="sh"></div>'+(window._rvFrom?'<div class="nav-back" style="'+_navBackCss+'" onclick="_rvGoBack()">‹ '+(window._rvFrom==='rendus'?'Rendus':'Suivi')+'</div>':'')
     +'<div class="st" style="display:flex;justify-content:center;text-align:center;margin-bottom:2px">Tableau Gestion</div>';
-  const btn='<button style="width:100%;height:36px;margin-top:10px;font-size:12px;border:none;border-radius:10px;background:var(--btn);color:var(--text);cursor:pointer;font-family:var(--font)" onclick="rhCompareOpen()">Importer un tableau plus récent</button>';
+  const btn='<button class="rv-b2" onclick="rhCompareOpen()">Importer un tableau plus récent</button>';
   if(!R){if(S.profile)delete S.profile.rhCmp;if(silent)return;
     document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet rv-sheet tabmod">'+head
       +'<div class="hd-card" style="font-size:12px;padding:12px;line-height:1.5;margin-top:10px">'+_suPts(['Départ du calcul → '+_startTxt(S.profile&&S.profile.start),'Tableau du '+fd(dk(_rhEd(rh)))+' → pas plus récent que le départ, rien à vérifier'])+btn+'</div>'
       +'<div style="height:6px"></div><button class="mcancel mclose" onclick="closeModal()">Fermer</button></div></div>';return;}
-  const asOf=R.asOf,asOfYM=R.asOfYM;
+  const pr=S.profile||{},asOf=R.asOf,asOfYM=R.asOfYM;
   const MF=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
   const moisDe=ym=>{const m=MF[ym%12];return(/^[aeiouy]/.test(m)?'d’':'de ')+m;},MFc=ym=>MF[ym%12].replace(/^./,c=>c.toUpperCase());
   const fmtE=d=>Math.abs(d)<2?'=':d>0?'+'+fmtMin(d):'−'+fmtMin(-d),bad=d=>Math.abs(d)>=2;
   const dayL=k=>new Date(k+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'});
-  const NAT_T={fer:'Fériés',dim:'Dimanches',rh:'RH',hs:'Heures sup',extra:'Extra'},natL=k=>k.startsWith('autre:')?k.slice(6):_RH_NAT_LBL[k];
-  const cmp=(s,a)=>'<div class="rv-cmp"><span>Tableau <b>'+fmtMin(s)+'</b></span><span>App <b>'+fmtMin(a)+'</b></span></div>';
-  const items=[];let ignSum=0;
-  const item=(t,sub,v,body,neutral)=>items.push('<div class="rv-it" onclick="if(event.target.tagName!==\'BUTTON\'&&event.target.tagName!==\'A\')this.classList.toggle(\'on\')"><div class="rv-ih"><span class="rv-dot"></span><div class="rv-tt">'+t+'<small>'+sub+'</small></div><b class="rv-v'+(neutral?' n':/^\+/.test(v)?' pos':/^−/.test(v)?' neg':'')+'">'+v+'</b><i class="ti ti-chevron-down rv-ch"></i></div><div class="rv-ib">'+body+'</div></div>');
-  // Heures acquises par mois (écart vu de votre solde : + le tableau vous en compte plus)
+  const NAT_T={fer:'Fériés',dim:'Dimanches',rh:'RH travaillés',hs:'Heures sup',extra:'Heures en plus'},natL=k=>k.startsWith('autre:')?k.slice(6):NAT_T[k];
+  const tv=(t,a)=>'<div class="rv-cmp"><span>Tableau <b>'+fmtMin(t)+'</b></span><span>App <b>'+fmtMin(a)+'</b></span></div>';
+  const act=(k,v,on)=>'<button class="rv-b2" onclick="event.stopPropagation();rhIgnC(\''+k+'\','+Math.round(v)+','+(on?0:1)+')">'+(on?'Revenir au calcul de l’app':'Faire comme le tableau')+'</button>';
+  // Différences : une carte dépliable chacune — à voir (point orange) ou reprise du tableau (coche verte)
+  const todo=[],done=[];let ignSum=0;
+  const card=(o)=>(o.done?done:todo).push('<div class="rv-it" onclick="if(!event.target.closest(\'button,a\'))this.classList.toggle(\'on\')"><div class="rv-ih">'
+    +(o.done?'<span style="color:var(--green);font-size:12px;font-weight:700;width:7px;flex:none;display:flex;justify-content:center">✓</span>':'<span class="rv-dot"'+(o.info?' style="background:var(--text3)"':'')+'></span>')
+    +'<div class="rv-tt">'+o.t+'<small>'+o.sub+'</small></div><b class="rv-v'+(o.done||o.info?' n':o.v>0?' pos':o.v<0?' neg':' n')+'">'+(o.vt!=null?o.vt:fmtE(o.v))+'</b><i class="ti ti-chevron-down rv-ch"></i></div><div class="rv-ib">'+o.body+'</div></div>');
+  // 1. Heures acquises, par mois et par nature (+ : le tableau en compte plus)
   const tNat={};rh.lines.forEach(l=>{if(!l.nature)return;const k=_rhNatKey(l.nature);(tNat[l.ym]=tNat[l.ym]||{})[k]=((tNat[l.ym]||{})[k]||0)+l.acq;});
   const acqRows=[];
-  for(let ym=R.st.genFrom;ym<asOfYM;ym++){const T=tNat[ym]||{},A=R.nat[ym]||{},s=Object.values(T).reduce((a,b)=>a+b,0),a=R.acq[ym]||0;if(!s&&!a)continue;acqRows.push({ym,s,a});
+  for(let ym=R.st.genFrom;ym<asOfYM;ym++){const T=tNat[ym]||{},A=R.nat[ym]||{},s=Object.values(T).reduce((a,b)=>a+b,0),a=R.acq[ym]||0,adj=R.adjM[ym]||0;if(!s&&!a)continue;acqRows.push({ym,s,a,adj});
     const ks=[...new Set(Object.keys(A).filter(k=>A[k]>0).concat(Object.keys(T)))],diffs=ks.map(k=>({k,s:T[k]||0,a:k.startsWith('autre:')?0:(A[k]||0)})).filter(x=>bad(x.a-x.s)),used=new Set();
     const daysOf=k=>(k==='hs'?(R.det[ym+':hs']||[]).concat(R.det[ym+':ram']||[]):(R.det[ym+':'+k]||[])).map(x=>(/^\d{4}-/.test(x.lbl)?dayL(x.lbl):x.lbl)+' '+fmtMin(x.v));
-    diffs.filter(x=>x.a>x.s).forEach(x=>{const y=diffs.find(z=>z.a<z.s&&!used.has(z)&&Math.abs((z.a-z.s)+(x.a-x.s))<2);if(!y||used.has(x))return;used.add(x);used.add(y);const dl=daysOf(x.k);
-      item('Catégorie différente en '+MF[ym%12],natL(x.k)+' dans l’app, '+natL(y.k)+' dans le tableau',fmtMin(x.a-x.s),(dl.length?'Dans l’app : '+dl.join(' · ')+'<br>':'')+'Même durée des deux côtés : sans effet.',true);});
+    diffs.filter(x=>x.a>x.s).forEach(x=>{const y=diffs.find(z=>z.a<z.s&&!used.has(z)&&Math.abs((z.a-z.s)+(x.a-x.s))<2);if(!y||used.has(x))return;used.add(x);used.add(y);
+      card({t:'Catégorie différente en '+MF[ym%12],sub:fmtMin(x.a-x.s)+' en '+natL(x.k)+' dans l’app, en '+natL(y.k)+' au tableau',info:1,vt:'=',body:_suPts(['Même durée des deux côtés → sans effet sur le solde'])});});
     diffs.filter(x=>!used.has(x)).forEach(x=>{const e=x.s-x.a,ik='acq'+ym+x.k.replace(/[^a-z0-9]/gi,''),ig=_rhCIgn(ik,e),dl=daysOf(x.k);
-      item((x.k.startsWith('autre:')?natL(x.k)+' ':NAT_T[x.k]+' ')+moisDe(ym),(e>0?'Le tableau en compte plus':'L’app en compte plus')+(ig?' · comme le tableau':''),fmtE(e),
-        cmp(x.s,x.a)+(dl.length?'Dans l’app : '+dl.join(' · '):'')+'<div style="margin-top:6px">'+_rhIgnLink(ik,e,1)+'</div>',ig);});}
-  // Rendus d'une semaine citée qui diffèrent : faire comme le tableau (les heures du mois sont corrigées d'autant)
+      card({t:natL(x.k)+' '+moisDe(ym),sub:ig?'Repris du tableau':(e>0?'Le tableau en compte ':'L’app en compte ')+fmtMin(Math.abs(e))+' de plus',v:e,done:ig,
+        body:tv(x.s,x.a)+_suPts([dl.length?'Comptés par l’app → '+dl.join(' · '):'Rien compté par l’app ce mois-ci',ig?'L’app ajoute '+fmtE(e)+' à '+MF[ym%12]+' pour faire comme le tableau':'Faire comme le tableau → l’app ajoute '+fmtE(e)+' à '+MF[ym%12]])+act(ik,e,ig)});});}
+  // 2. Rendus des semaines citées par le gestionnaire
   Object.keys(rh.weeks||{}).map(Number).forEach(w=>{const mon=_rhWeekMon(asOf.getFullYear(),w);if(dk(new Date(mon.getTime()+6*864e5))<=R.st.from||(rh.lastWeek&&w>rh.lastWeek))return;
     const c=rh.weeks[w],a=R.wkA[w]||0,d=a-c;if(!bad(d))return;const ym=mon.getFullYear()*12+mon.getMonth(),ik='wkm'+ym+'s'+w,ig=_rhCIgn(ik,d);
-    item('Rendus de la S'+w,(d>0?'L’app en déduit plus':'Le tableau en déduit plus')+(ig?' · comme le tableau':''),fmtE(d),cmp(c,a)+'<div style="margin-top:6px">'+_rhIgnLink(ik,d,1)+'</div>',ig);});
-  // Écarts (tableau − app : + en votre faveur)
-  const eH=R.tabH-R.appH,eM=R.hasMat?R.tabM-R.appM:0,acqE=acqRows.reduce((t,r)=>t+r.s-r.a,0);
-  const consE=R.consA-R.consT,matE=R.matA-R.matT; // pris sur les heures / sur le matelas : app − tableau
-  // le gestionnaire prend parfois sur des heures acquises après coup plutôt que sur le matelas : le matelas monte, les heures baissent d'autant
+    card({t:'Rendus de la S'+w,sub:ig?'Repris du tableau':(d>0?'L’app en déduit ':'Le tableau en déduit ')+fmtMin(Math.abs(d))+' de plus',v:d,done:ig,
+      body:tv(c,a)+_suPts([ig?'L’app compte '+fmtE(d)+' d’heures pour faire comme le tableau':'Faire comme le tableau → l’app compte '+fmtE(d)+' d’heures'])+act(ik,d,ig)});});
+  // 3. Matelas ou heures : le gestionnaire prend parfois sur des heures acquises après coup (même total)
+  const eH=R.tabH-R.appH,eM=R.hasMat?R.tabM-R.appM:0,acqE=acqRows.reduce((t,r)=>t+r.s-r.a,0),consE=R.consA-R.consT,matE=R.matA-R.matT;
+  const xk=Object.keys(pr.ignRhC||{}).filter(k=>/^xfer\d+$/.test(k))[0],xv=xk?pr.ignRhC[xk]:0;
   const xfer=R.hasMat&&bad(matE)&&bad(consE)&&(matE>0)!==(consE>0)?Math.sign(matE)*Math.min(Math.abs(matE),Math.abs(consE)):0;
-  // Reports différents (accordés par le gestionnaire) : heures expirées à d'autres dates
+  if(bad(xfer)&&(matE>0&&R.matK.length||xk))card({t:'Matelas ou heures',sub:(matE>0?'Le gestionnaire a pris '+fmtMin(matE)+' sur vos heures, l’app sur le matelas':'Reprise à ajuster de '+fmtMin(-matE)),v:matE,
+    body:_suPts(['Rendus pris sur le matelas → tableau '+fmtMin(R.matT)+', app '+fmtMin(R.matA),'Même total : seul l’endroit où les heures sont prises change','Faire comme le tableau → '+fmtMin(Math.abs(matE))+(matE>0?' rendus au matelas, retirés des heures':' retirés du matelas, rendus aux heures')])
+      +'<button class="rv-b2" onclick="event.stopPropagation();rhXferAccept('+Math.round(matE)+')">Faire comme le tableau</button>'});
+  if(xk)card({t:'Matelas ou heures',sub:'Repris du tableau',vt:fmtMin(xv),done:1,
+    body:_suPts([fmtMin(xv)+' de rendus pris sur les heures '+moisDe(+xk.slice(4))+' au lieu du matelas, comme le gestionnaire'])+'<button class="rv-b2" onclick="event.stopPropagation();rhXferUndoAdj(\''+xk+'\')">Revenir au calcul de l’app</button>'});
+  // 4. Reports accordés par le gestionnaire
   const tRep=_rhRepOf(rh),repL=Object.keys(tRep).map(Number).filter(ym=>ym<asOfYM&&ym>=R.st.genFrom-3&&tRep[ym]!==getEphExtensions(ym)).sort((a,b)=>a-b);
-  if(repL.length)item('Reports',repL.map(ym=>MF[ym%12]+' : '+(tRep[ym]?'+'+tRep[ym]*3+' mois':'aucun')+' au tableau, '+(getEphExtensions(ym)?'+'+getEphExtensions(ym)*3+' mois':'aucun')+' dans l’app').join(' · '),'',
-    'Les reports sont accordés par le gestionnaire : reprendre les siens change la date d’expiration de ces heures dans l’app.<button class="rv-b2" onclick="rhApplyReports('+JSON.stringify(repL.map(ym=>[ym,tRep[ym]]))+')">Reprendre les reports du tableau</button>',true);
-  const restH=eH-acqE-consE; // heures expirées à d'autres dates (reports)
-  const sg=v=>'<b class="'+(v>0?'p':'m')+'">',whyH=[],whyM=[];
-  acqRows.filter(r=>bad(r.s-r.a)).forEach(r=>whyH.push(sg(r.s-r.a)+'heures acquises en '+MF[r.ym%12]+' ('+fmtE(r.s-r.a)+')</b>'));
-  if(bad(consE))whyH.push(sg(consE)+'rendus pris sur les heures ('+fmtMin(R.consT)+' au tableau, '+fmtMin(R.consA)+' dans l’app)</b>');
-  if(bad(restH)){whyH.push(sg(restH)+'heures expirées à d’autres dates ('+fmtE(restH)+(repL.length?', reports différents : '+repL.map(ym=>MF[ym%12]).join(', '):'')+')</b>');if(_rhCIgn('rest',restH))ignSum+=restH;}
-  if(bad(matE))whyM.push(sg(matE)+'rendus pris sur le matelas ('+fmtMin(R.matT)+' au tableau, '+fmtMin(R.matA)+' dans l’app)</b>');
+  if(repL.length)card({t:'Reports',sub:repL.map(ym=>MFc(ym)+' : '+(tRep[ym]?'+'+tRep[ym]*3+' mois':'aucun')+' au tableau').join(' · '),info:1,vt:'',
+    body:_suPts(repL.map(ym=>MFc(ym)+' → '+(tRep[ym]?'+'+tRep[ym]*3+' mois':'aucun')+' au tableau, '+(getEphExtensions(ym)?'+'+getEphExtensions(ym)*3+' mois':'aucun')+' dans l’app').concat(['Les reports sont accordés par le gestionnaire']))
+      +'<button class="rv-b2" onclick="event.stopPropagation();rhApplyReports('+JSON.stringify(repL.map(ym=>[ym,tRep[ym]]))+')">Faire comme le tableau</button>'});
+  // 5. Le reste : heures expirées à d'autres dates
+  const restH=eH-acqE-consE;
+  if(bad(restH)){const ig=_rhCIgn('rest',restH);if(ig)ignSum+=restH;
+    card({t:'Heures expirées',sub:ig?'Ignoré':(restH>0?'L’app en perd ':'Le tableau en perd ')+fmtMin(Math.abs(restH))+' de plus',v:restH,done:ig,
+      body:_suPts(['Heures arrivées à échéance à d’autres dates',repL.length?'Reports différents → voir « Reports »':'Souvent un report différent']).replace('</ul>','</ul>')+'<div style="margin-top:6px">'+_rhIgnLink('rest',restH)+'</div>'});}
   const dTot=eH+eM,de=dTot-ignSum; // + : le tableau vous laisse plus
   if(S.profile){const _c={ed:dk(asOf),d:Math.round(-dTot),de:Math.round(-de)};const _o=S.profile.rhCmp;if(!_o||_o.ed!==_c.ed||_o.d!==_c.d||_o.de!==_c.de){S.profile.rhCmp=_c;saveState();if(!silent)try{render();}catch(e){}}}
   if(silent)return;
-  const tile=(lbl,t,a,e)=>'<div style="font-size:11px;color:var(--text3);text-align:center;margin:2px 0 6px">'+lbl+'</div><div class="tg-hr"><div><b>'+fmtMin(t)+'</b><span>tableau</span></div><div><b style="color:var(--rend-text)">'+fmtMin(a)+'</b><span>app</span></div>'
-    +'<div><b style="color:'+(!bad(e)||e>0?'var(--green)':'var(--red)')+'">'+(bad(e)?fmtE(e):'✓')+'</b><span>écart</span></div></div>';
-  const why=(a)=>a.length?'<div class="rv-why" style="border-top:none;margin-top:2px;padding-top:0">Vient de : '+a.join(', ')+'.</div>':'';
-  const _hasX=Object.keys((S.profile&&S.profile.ignRhC)||{}).some(k=>/^xfer\d+$/.test(k));
-  let concl;if(!bad(eH)&&!bad(eM))concl='<div style="font-weight:600;margin:8px 0 2px;color:var(--green)">✓ Identique</div>';
-  else if(!bad(dTot)&&bad(xfer))concl='<div style="font-weight:600;margin:8px 0 2px;color:var(--green)">Même total'+(xfer>0?' · en votre faveur':'')+'</div><div class="rv-why" style="border-top:none;margin-top:0;padding-top:0">Le gestionnaire a pris '+fmtMin(Math.abs(xfer))+' de rendus '+(xfer>0?'sur des heures acquises après coup au lieu du matelas : votre matelas est plus haut au tableau, vos heures éphémères plus basses d’autant. Rien à corriger.':'sur le matelas au lieu des heures disponibles : votre matelas est plus bas au tableau.'+(_hasX?' Reprise du matelas à ajuster.':' À lui signaler.'))+'</div>'+((xfer>0&&R.matK.length)||(xfer<0&&_hasX)?'<button class="rv-b2" onclick="rhXferAccept('+Math.round(matE)+')">Faire comme le tableau</button>':'');
-  else concl='<div style="font-weight:600;margin:8px 0 2px;color:'+(dTot>0?'var(--green)':'var(--red)')+'">'+(dTot>0?'Écart en votre faveur : ':'À faire corriger : ')+fmtE(dTot)+' au total'+(!bad(de)?' · différences ignorées':'')+'</div>'
-    +(bad(xfer)?'<div class="rv-why" style="border-top:none;margin-top:0;padding-top:0">Dont '+fmtMin(Math.abs(xfer))+' de rendus que le gestionnaire a pris '+(xfer>0?'sur des heures acquises après coup, l’app sur le matelas faute d’heures ce jour-là : matelas plus haut au tableau, heures plus basses d’autant.':'sur le matelas, l’app sur des heures disponibles.')+'</div>'
-      +((xfer>0&&R.matK.length)||(xfer<0&&_hasX)?'<button class="rv-b2" onclick="rhXferAccept('+Math.round(matE)+')">Faire comme le tableau</button>':''):'')
-    +(repL.length&&bad(restH)?'<div class="rv-why" style="border-top:none;margin-top:4px;padding-top:0">Reports différents ('+repL.map(ym=>MF[ym%12]).join(', ')+') : voir « Reports » plus bas.</div>':'')
-    +(bad(restH)?'<div style="font-size:11px;margin-top:4px">'+_rhIgnLink('rest',restH)+'</div>':'');
-  Object.keys((S.profile&&S.profile.ignRhC)||{}).filter(k=>/^xfer\d+$/.test(k)).forEach(k=>{const ym=+k.slice(4);concl+='<div class="rv-why" style="border-top:none;margin-top:6px;padding-top:0;color:var(--text3)">'+fmtMin(S.profile.ignRhC[k])+' de rendus pris sur les heures '+moisDe(ym)+' au lieu du matelas, comme le tableau. <a style="color:var(--blue);cursor:pointer" onclick="rhXferUndoAdj(\''+k+'\')">Revenir au calcul de l’app</a></div>';});
-  const _xf=Object.keys((S.profile&&S.profile.rendFrom)||{});
-  if(_xf.length)concl+='<div class="rv-why" style="border-top:none;margin-top:6px;padding-top:0;color:var(--text3)">Rendus du '+_xf.sort().map(k=>new Date(k+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'})).join(', ')+' pris sur les heures du mois suivant, comme le tableau. <a style="color:var(--blue);cursor:pointer" onclick="rhXferUndo()">Revenir au calcul de l’app</a></div>';
+  // Résumé : deux lignes, puis une phrase
+  const row=(l,t,a,e)=>'<div style="display:grid;grid-template-columns:1fr 54px 64px 56px;gap:10px;align-items:baseline;padding:4px 0"><span style="font-size:12px;color:var(--text2)">'+l+'</span>'
+    +'<span style="font-size:12px;color:var(--text3);text-align:right">'+fmtMin(t)+'</span><span style="font-size:15px;font-weight:600;text-align:right;color:var(--rend-text)">'+fmtMin(a)+'</span>'
+    +'<span style="font-size:12px;font-weight:600;min-width:52px;text-align:right;color:'+(!bad(e)?'var(--green)':e>0?'var(--green)':'var(--red)')+'">'+(bad(e)?fmtE(e):'✓')+'</span></div>';
+  const ok=!bad(eH)&&!bad(eM),st=ok?'✓ Identique au tableau':!bad(dTot)?'Même total, répartition différente':(dTot>0?'En votre faveur : ':'À faire corriger : ')+fmtE(dTot);
+  const stC=ok||dTot>=0||!bad(dTot)?'var(--green)':'var(--red)';
+  const fold=(t,sub,body,open)=>'<div class="rv-sec" style="cursor:pointer" onclick="this.nextElementSibling.classList.toggle(\'on\');this.querySelector(\'.rv-ch\').classList.toggle(\'r\')">'+t+' <span>'+(sub||'')+' <i class="ti ti-chevron-down rv-ch"></i></span></div><div class="rv-det'+(open?' on':'')+'">'+body+'</div>';
+  const t3=(l,t,a,c,inv,note)=>'<tr'+(c?' class="'+c+'"':'')+'><td>'+l+'</td><td>'+(t?fmtMin(t):'—')+'</td><td>'+(a?fmtMin(a):'—')+'</td>'+(bad(t-a)?'<td class="'+((t-a>0)!==!!inv?'rc-pos':'rc-neg')+'">'+fmtE(t-a)+(note?'<br><small style="color:var(--text3);font-weight:400">'+note+'</small>':'')+'</td>':'<td><span class="rc-ok">✓</span></td>')+'</tr>';
+  // heures acquises : l'écart d'origine reste affiché (planning seul), avec « repris » quand l'app a fait comme le tableau
+  const acqTbl='<table class="rc-t"><tr><th></th><th>Tableau</th><th>App</th><th>Écart</th></tr>'+acqRows.map(r=>t3(MFc(r.ym),r.s,r.a-r.adj,'',0,bad(r.adj)&&!bad(r.s-r.a)?'repris':'')).join('')+'</table>';
   const wks=[...new Set(Object.keys(rh.weeks||{}).map(Number).filter(w=>dk(new Date(_rhWeekMon(asOf.getFullYear(),w).getTime()+6*864e5))>R.st.from).concat(Object.keys(R.wkA).map(Number)))].filter(w=>!rh.lastWeek||w<=rh.lastWeek).sort((a,b)=>a-b);
-  const wkRows=wks.map(w=>{const c=(rh.weeks||{})[w],a=R.wkA[w]||0,d=a-(c||0);
-    return '<tr'+(c==null?' style="opacity:.55"':'')+'><td>S'+w+'</td><td>'+(c!=null?fmtMin(c):'pas cité')+'</td><td>'+(a?fmtMin(a):'—')+'</td><td>'+(c==null?'':bad(d)?'<span class="'+(d>0?'rc-pos':'rc-neg')+'">'+fmtE(d)+'</span>':'<span class="rc-ok">✓</span>')+'</td></tr>';}).join('');
-  // inv : rendus (le tableau en déduit plus = en votre défaveur)
-  const t3=(l,t,a,c,inv)=>'<tr'+(c?' class="'+c+'"':'')+'><td>'+l+'</td><td>'+(t?fmtMin(t):'—')+'</td><td>'+(a?fmtMin(a):'—')+'</td>'+(bad(t-a)?'<td class="'+((t-a>0)!==!!inv?'rc-pos':'rc-neg')+'">'+fmtE(t-a)+'</td>':'<td><span class="rc-ok">✓</span></td>')+'</tr>';
-  const acqTbl='<table class="rc-t"><tr><th></th><th>Tableau</th><th>App</th><th>Écart</th></tr>'+acqRows.map(r=>t3(MFc(r.ym),r.s,r.a,bad(r.s-r.a)?'rc-hl':'')).join('')+'</table>';
-  const rTot=R.consT+R.matT,aTot=R.consA+R.matA;
-  const consTbl='<table class="rc-t"><tr><th></th><th>Tableau</th><th>App</th><th>Écart</th></tr>'+t3('Sur les heures',R.consT,R.consA,'',1)+(R.hasMat?t3('Sur le matelas',R.matT,R.matA,'',1):'')+t3('Total',rTot,aTot,'rc-tot',1)+'</table>'
-    +(wkRows?'<div class="rv-dh" style="font-size:11px;font-weight:400;color:var(--text3)">Par semaine (commentaires du tableau)</div><table class="rc-t"><tr><th></th><th></th><th></th><th></th></tr>'+wkRows+'</table>':'');
+  const consTbl='<table class="rc-t"><tr><th></th><th>Tableau</th><th>App</th><th>Écart</th></tr>'+t3('Sur les heures',R.consT,R.consA,'',1)+(R.hasMat?t3('Sur le matelas',R.matT,R.matA,'',1):'')+t3('Total',R.consT+R.matT,R.consA+R.matA,'rc-tot',1)+'</table>'
+    +(wks.length?'<div style="font-size:11px;color:var(--text3);margin:10px 0 2px">Par semaine (commentaires du tableau)</div><table class="rc-t">'+wks.map(w=>{const c=(rh.weeks||{})[w];return c==null?'<tr style="opacity:.55"><td>S'+w+'</td><td>pas cité</td><td>'+fmtMin(R.wkA[w]||0)+'</td><td></td></tr>':t3('S'+w,c,R.wkA[w]||0,'',1);}).join('')+'</table>':'');
   const html='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet rv-sheet tabmod">'+head
-    +'<div style="font-size:11px;color:var(--text3);text-align:center;margin:0 0 12px">tableau du '+fd(dk(asOf))+' · départ : '+_startTxt(R.st)+'</div>'
-    +'<div class="hd-card" style="font-size:11px;padding:10px 12px 12px">'
-    +tile('heures éphémères restantes',R.tabH,R.appH,eH)+why(whyH)
-    +(R.hasMat?'<div style="height:10px"></div>'+tile('matelas',R.tabM,R.appM,eM)+why(whyM):'')
-    +concl
-    +(R.lag.length?'<div class="rv-hn" style="border-top:none;padding-top:0;margin-top:6px"><i class="ti ti-clock"></i> <span><b>'+fmtMin(R.lag.reduce((t,k)=>t+getDur(new Date(k+'T12:00:00')),0))+'</b> de rendus après la S'+R.lw+', dernière semaine notée ('+R.lag.map(k=>new Date(k+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'})).join(', ')+') : pas encore au tableau, mis de côté.</span></div>':'')
+    +'<div style="font-size:11px;color:var(--text3);text-align:center;margin:0 0 12px">tableau du '+fd(dk(asOf))+' · départ : '+_startTxt(R.st).split(' · ')[0]+'</div>'
+    +'<div class="hd-card" style="padding:10px 14px 12px">'
+    +'<div style="display:grid;grid-template-columns:1fr 54px 64px 56px;gap:10px;font-size:10.5px;color:var(--text3);padding-bottom:2px"><span></span><span>tableau</span><span>app</span><span style="min-width:52px;text-align:right">écart</span></div>'
+    +row('Heures éphémères',R.tabH,R.appH,eH)+(R.hasMat?row('Matelas',R.tabM,R.appM,eM):'')
+    +'<div style="font-size:13px;font-weight:600;margin-top:8px;color:'+stC+'">'+st+'</div>'
+    +(todo.length?'<div style="font-size:11.5px;color:var(--text3);margin-top:2px">'+todo.length+' différence'+(todo.length>1?'s':'')+' à voir ci-dessous</div>':'')
+    +(R.lag.length?'<div style="font-size:11.5px;color:var(--text3);margin-top:4px">'+fmtMin(R.lag.reduce((t,k)=>t+getDur(new Date(k+'T12:00:00')),0))+' de rendus après la S'+R.lw+' : pas encore au tableau, mis de côté</div>':'')
     +'</div>'
-    +(acqRows.length?'<div class="rv-sec">Heures acquises <small>par mois, depuis le départ</small></div><div class="rv-det on">'+acqTbl+'</div>':'')
-    +'<div class="rv-sec">Rendus déduits <small>depuis le départ</small></div><div class="rv-det on">'+consTbl+'</div>'
-    +(items.length?'<div class="rv-sec">Différences <span>'+items.length+'</span></div>'+items.join(''):'')
-    +'<div class="rv-sec">Départ du calcul</div><div class="hd-card" style="padding:10px 12px;font-size:12px;line-height:1.5">'
-    +_suPts(['Départ → '+_startTxt(R.st),'Ce tableau sert à vérifier : il ne change ni le départ ni vos soldes','Changer de départ → Réglages, Départ du calcul'])+btn+'</div>'
+    +(todo.length+done.length?'<div class="rv-sec">Différences <span>'+(todo.length?todo.length+' à voir':'')+(todo.length&&done.length?' · ':'')+(done.length?done.length+' reprise'+(done.length>1?'s':''):'')+'</span></div>'+todo.join('')+done.join(''):'')
+    +(acqRows.length?fold('Heures acquises','par mois',acqTbl):'')
+    +fold('Rendus déduits','depuis le départ',consTbl)
+    +fold('Départ du calcul','',_suPts(['Départ → '+_startTxt(R.st),'Ce tableau sert à vérifier : il ne change pas le départ','Changer → Réglages, Départ du calcul'])+btn)
     +'<div style="height:6px"></div><button class="mcancel mclose" onclick="closeModal()">Fermer</button>'
     +'</div></div>';
   document.getElementById('modal-root').innerHTML=html;
