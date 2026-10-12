@@ -10,7 +10,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.37">
+<meta name="app-version" content="v6.38">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -1364,7 +1364,7 @@ function calcHSWeek(monday){
   const weekBase=gridRow.reduce(function(s,v){return s+(!v||v==='RH'||v==='SV'?0:(VAC[v]?VAC[v].dur:0));},0);
   let weekWorked=0;
   function _ceilHS(m){return m>0?Math.ceil(m/30)*30:0;}
-  let roundedSurplus=0;
+  let roundedSurplus=0;const days=[]; // détail jour par jour (fenêtre du mois)
   const isRam=isSemaineRamenée(monday);
   for(let i=0;i<7;i++){const d=new Date(monday);d.setDate(monday.getDate()+i);const key=dk(d);const{vac,absent,echange,ecSelf,cycleVac}=getVac(d);if(absent)continue;const _cg=(S.conges||{})[key];
     if(_cg&&(_cg==='cg'||_cg==='rend'||_cg==='rend-hist'||_cg==='absent'))continue;
@@ -1397,7 +1397,7 @@ function calcHSWeek(monday){
         _dayWorked=VAC[vac]?VAC[vac].dur:0;
       }
     }
-    weekWorked+=_dayWorked;
+    weekWorked+=_dayWorked;if(_dayWorked>0)days.push({key:key,vac:vac,base:_dayBase,worked:_dayWorked});
     roundedSurplus+=_ceilHS(Math.max(0,_dayWorked-_dayBase));
   }
   if(isRam){
@@ -1407,7 +1407,7 @@ function calcHSWeek(monday){
     const surplusTotal=ramMin+roundedSurplus;
     const rawLow=Math.min(surplusTotal,480);
     const rawHigh=Math.max(0,surplusTotal-480);
-    return{surplus:surplusTotal,weekBase,weekWorked:weekBase+surplusTotal,
+    return{days:days,surplus:surplusTotal,weekBase,weekWorked:weekBase+surplusTotal,
       rendusMin:rendusPure+rendusRam,rendusH:Math.round((rendusPure+rendusRam)/60*100)/100,
       rendusMinHS:rendusPure,rendusMinRam:rendusRam,isRam,rawLow,rawHigh};
   }
@@ -1415,7 +1415,7 @@ function calcHSWeek(monday){
   const rendusTotal=hsRenduFromSurplus(surplusTotal);
   const rawLow=Math.min(surplusTotal,480);
   const rawHigh=Math.max(0,surplusTotal-480);
-  return{surplus:surplusTotal,weekBase,weekWorked:weekWorked,
+  return{days:days,surplus:surplusTotal,weekBase,weekWorked:weekWorked,
     rendusMin:rendusTotal,rendusH:Math.round(rendusTotal/60*100)/100,
     rendusMinHS:rendusTotal,rendusMinRam:0,isRam,rawLow,rawHigh};
 }
@@ -6738,7 +6738,12 @@ function openMergedMoisModal(mym,tab){
     tot+=rowTotal;totLow+=low;totHigh+=high;totRawLow+=hsW.rawLow;totRawHigh+=hsW.rawHigh;
     hsRows+=_mmWk('_ph'+getISOWeek(mon),'Semaine '+getISOWeek(mon)+(hsW.isRam?' <span style="font-size:9px;font-weight:400;color:var(--text3)">dont 7h de ramenée</span>':''),
       '<div style="display:flex;gap:16px;align-items:center">'+(useRendu2?'<b style="width:52px;text-align:right;color:var(--text3)">'+fmtMin(hsW.rawLow+hsW.rawHigh)+'</b>':'')
-      +'<b style="width:52px;text-align:right;color:var(--blue)">'+fmtMin(rowTotal)+'</b></div>','');
+      +'<b style="width:52px;text-align:right;color:var(--blue)">'+fmtMin(rowTotal)+'</b></div>',
+      // dépliant : chaque jour travaillé, prévu au cycle → fait, et le dépassement
+      (hsW.days||[]).map(function(x){var d=new Date(x.key+'T12:00:00'),ex=x.worked-x.base;return _mmSub(d.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric'})+(x.vac?' · '+_h(vLbl(x.vac,getVAC(d))):''),
+        '<span>'+fmtMin(x.base)+' → <b>'+fmtMin(x.worked)+'</b>'+(ex>0?' <b style="color:var(--blue)">+'+fmtMin(ex)+'</b>':'')+'</span>');}).join('')
+      +_mmSub('Semaine','<span>'+fmtMin(hsW.weekBase)+' prévues → <b>'+fmtMin(hsW.weekWorked)+'</b></span>')
+      +(hsW.isRam?_mmSub('Semaine ramenée','<b>7h00</b>'):''));
   }
   for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd);const mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);const sun=new Date(mon);sun.setDate(mon.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mym)continue;const prevMois2=mon.getFullYear()*12+mon.getMonth()!==mym;makeHSRow(mon,prevMois2);}
   const hsSummary=useRendu2?(
