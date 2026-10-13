@@ -537,6 +537,8 @@ async function handle(request, env, ctx) {
       // même équipe seulement (antenne, pool cadre, coordination) : le cycle d'une autre équipe ne change pas les lignes
       var activeCycle = cycles.find(function(c){ return (c.pool || 'antenne') === (cycle.pool || 'antenne') && (!c.endDate || c.endDate > new Date().toISOString().slice(0,10)); });
       var weekCountChanged = !activeCycle || activeCycle.weeks.length !== cycle.weeks.length;
+      // nouvelle équipe (premier cycle cadre ou coordination) : personne n'a de ligne à choisir
+      if (!activeCycle && (cycle.pool || 'antenne') !== 'antenne') weekCountChanged = false;
       cycle.weekCountChanged = weekCountChanged;
       cycles.push(cycle);
       cycles.sort(function(a,b){ return a.startDate.localeCompare(b.startDate); });
@@ -573,6 +575,9 @@ async function handle(request, env, ctx) {
     if (path === '/get-cycle') {
       var currentOverride = await env.PLANNING_DB.get('global:cycle:current', { type: 'json' });
       var cycles = await env.PLANNING_DB.get('global:cycles', { type: 'json' }) || [];
+      // versions de l'app d'avant les équipes (sans « pools ») : seulement les cycles antenne, sinon elles prendraient
+      // le cycle cadre ou coordination le plus récent comme le leur
+      if (!body || !body.pools) cycles = cycles.filter(function(c){ return (c.pool || 'antenne') === 'antenne'; });
       var today = new Date().toISOString().slice(0,10);
       var futureCycle = cycles.filter(function(c){ return c.startDate > today; }).sort(function(a,b){ return a.startDate.localeCompare(b.startDate); })[0] || null;
       return resp({ currentOverride: currentOverride, futureCycle: futureCycle, cycles: cycles });
@@ -709,7 +714,7 @@ async function handle(request, env, ctx) {
         if (data2 && data2.userIds && data2.userIds.includes(session.userId)) {
           var cycles2 = await env.PLANNING_DB.get('global:cycles', { type: 'json' }) || [];
           var cycle2 = cycles2.find(function(c){ return c.id === data2.cycleId; });
-          if (cycle2) pending.push(cycle2);
+          if (cycle2 && (body && body.pools || (cycle2.pool || 'antenne') === 'antenne')) pending.push(cycle2);
         }
       }
       return resp({ pending: pending });
