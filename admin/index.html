@@ -1587,12 +1587,38 @@ async function loadCycles() {
   } catch(e) { el.innerHTML = '<div class="err">Erreur réseau</div>'; }
 }
 
+// Cycle Coordination relevé sur le planning de la semaine du 12 octobre 2026 (4 lignes, S1 → S4)
+// P du jeudi = soir 13h30-19h30, P du vendredi = journée 08h00-19h00 (l'inverse des Pj / Pv des anciens cycles) : vacations à part
+const COORD_2026 = {
+  name: 'Coordination 2026', startDate: '2026-10-12',
+  weeks: [
+    [null, null, 'M', 'M', 'M', null, 'RH'],
+    ['M', 'M', 'S', 'Pjs', null, null, 'RH'],
+    ['S', null, null, 'S', 'S', null, 'RH'],
+    [null, 'S', null, 'RH', 'Pvm', 'S', 'S']
+  ],
+  vacs: {
+    Pjs: { label: 'P', deb: '13h30', fin: '19h30', dur: 360, panier: false, type: 'week', days: [4], primes: { antenne: false, reel: false, coord: true } },
+    Pvm: { label: 'P', deb: '08h00', fin: '19h00', dur: 600, panier: false, type: 'week', days: [5], primes: { antenne: false, reel: false, coord: true } }
+  }
+};
+async function createCoord2026() {
+  try {
+    const ex = ((await (await fetch(API + '/admin/vacations', { method: 'POST', headers: adminHeaders(), body: '{}' })).json()).vacations) || {};
+    for (const [name, v] of Object.entries(COORD_2026.vacs)) {
+      if (!ex[name]) await fetch(API + '/admin/vacation/save', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ vacation: { name, ...v } }) });
+    }
+  } catch (e) { alert('Erreur réseau'); return; }
+  // éditeur pré-rempli : relire puis enregistrer (les vacations M, S, Pjs, Pvm y sont rattachées à l'enregistrement)
+  showCreateCycle({ name: COORD_2026.name, startDate: COORD_2026.startDate, endDate: null, pool: 'coord', weeks: COORD_2026.weeks.map(w => w.slice()) });
+}
 function renderCycles() {
   const el = document.getElementById('cycles-list');
   const cycles = _adminCycles || [];
   const mine = cycles.map((c, idx) => [c, idx]).filter(([c]) => _poolOf(c) === _admPool);
   el.innerHTML = (mine.length ? '' : '<div class="empty">Aucun cycle ' + POOL_L[_admPool] + ' enregistré.' + (_admPool === 'antenne' ? ' Le cycle par défaut est celui du code.' : '') + '</div>')
-    + (_admPool === 'antenne' ? '<button class="btn btn-sm" style="margin-bottom:8px" onclick="showEditCurrentCycle()">✏️ Modifier le cycle initial (hardcodé)</button>' : '');
+    + (_admPool === 'antenne' ? '<button class="btn btn-sm" style="margin-bottom:8px" onclick="showEditCurrentCycle()">✏️ Modifier le cycle initial (hardcodé)</button>' : '')
+    + (_admPool === 'coord' && !mine.some(([c]) => c.startDate === COORD_2026.startDate) ? '<button class="btn btn-sm btn-green" style="margin-bottom:8px" onclick="createCoord2026()">+ Cycle Coordination depuis le planning du 12 oct. 2026</button>' : '');
   {
     el.innerHTML += mine.map(([c, idx]) => {
       const start = c.startDate || '—';
@@ -1782,6 +1808,14 @@ async function doSaveCycle(existingId) {
       }
     } else {
       window._duplicatingFromCycleId = null;
+    }
+    // nouveau cycle : les vacations de sa grille qui existent déjà y sont rattachées
+    if (!existingId && newId && !srcId) {
+      try {
+        const all = ((await (await fetch(API + '/admin/vacations', { method: 'POST', headers: adminHeaders(), body: '{}' })).json()).vacations) || {};
+        const codes = [...new Set(weeks.flat().filter(c => c && c !== 'RH' && all[c]))];
+        for (const name of codes) await fetch(API + '/admin/vacation/addcycle', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ name, cycleId: newId }) });
+      } catch (e) {}
     }
     if (pool !== _admPool) { _admPool = pool; try { localStorage.setItem("adm_pool", pool); } catch(e) {} }
     loadCycles();
