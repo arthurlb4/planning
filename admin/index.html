@@ -591,8 +591,11 @@ function renderVacList() {
     const list = Object.keys(_allVacs).filter(n => n !== 'RH' && !g.has(n)).sort(byDeb);
     const chips = n => { const ps = _vacPools(_allVacs[n]); return '<div style="display:flex;gap:4px;flex-shrink:0" onclick="event.stopPropagation()">' + Object.keys(POOL_L).map(k =>
       `<label class="vchip sm" style="padding:3px 7px"><input type="checkbox" ${ps.includes(k) ? 'checked' : ''} onchange="setVacPool('${n}','${k}',this.checked)">${POOL_L[k]}</label>`).join('') + '</div>'; };
-    el.innerHTML = `<div class="alert alert-blue" style="font-size:12px">Vacations qui ne sont dans aucune grille (Réal…). Elles sont proposées dans « Autres » aux équipes cochées.</div>`
-      + (list.length ? list.map(n => _vacRow(n, _allVacs[n], chips(n))).join('') : '<p style="color:var(--text3);font-size:12px;padding:8px 0">Aucune.</p>');
+    // Réalisation : pas d'équipe ni de grille fixe, ses vacations restent ici ; puis les autres vacations hors grille
+    const real = list.filter(n => vacCat(n) === 'Réal'), rest = list.filter(n => vacCat(n) !== 'Réal');
+    el.innerHTML = `<div class="alert alert-blue" style="font-size:12px">Vacations qui ne sont dans aucune grille. Elles sont proposées dans « Autres » aux équipes cochées.</div>`
+      + H('Réalisation · pas de grille fixe') + (real.length ? real.map(n => _vacRow(n, _allVacs[n], chips(n))).join('') : '<p style="color:var(--text3);font-size:12px">—</p>')
+      + H('Autres') + (rest.length ? rest.map(n => _vacRow(n, _allVacs[n], chips(n))).join('') : '<p style="color:var(--text3);font-size:12px">—</p>');
     return;
   }
   const cyc = _allCycles.find(c => c.id === _vacActiveTab);
