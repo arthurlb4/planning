@@ -191,7 +191,6 @@ textarea{width:100%;padding:9px 12px;background:var(--bg);border:0.5px solid var
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:8px;flex-wrap:wrap">
       <div id="vac-tabs" style="display:flex;gap:4px;flex-wrap:wrap;background:var(--bg2);border-radius:var(--r);padding:3px;"></div>
       <div style="display:flex;gap:6px">
-        <button class="btn btn-sm btn-ghost" onclick="purgeStaleVacationCycleIds()" title="Supprimer les liens vers des cycles supprimés">Purger liens</button>
         <button class="btn btn-sm btn-green" onclick="showVacForm()">+ Ajouter</button>
       </div>
     </div>
@@ -216,19 +215,7 @@ textarea{width:100%;padding:9px 12px;background:var(--bg);border:0.5px solid var
     <h2 style="font-size:15px;margin-bottom:12px" id="vac-form-title">Nouvelle vacation</h2>
 
     <!-- Scope picker: shown before editing when vacation is shared between cycles -->
-    <div id="vf-scope-bar" style="display:none;margin-bottom:16px">
-      <p style="font-size:12px;color:var(--text2);margin:0 0 10px 0">Partagée avec <b id="vf-scope-other-cycles"></b> — que modifier ?</p>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        <button id="vf-scope-btn-all" onclick="setVacScope('all')" style="border:1.5px solid var(--border2);border-radius:10px;background:var(--bg);padding:12px 14px;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:4px;transition:border-color .15s,background .15s">
-          <span style="font-size:13px;font-weight:600;color:var(--text)">Tous les cycles</span>
-          <span style="font-size:11px;color:var(--text3)">Les changements s'appliquent partout</span>
-        </button>
-        <button id="vf-scope-btn-copy" onclick="setVacScope('copy')" style="border:1.5px solid var(--border2);border-radius:10px;background:var(--bg);padding:12px 14px;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:4px;transition:border-color .15s,background .15s">
-          <span style="font-size:13px;font-weight:600;color:var(--text)">Copier pour <span id="vf-scope-cur-cycle"></span></span>
-          <span style="font-size:11px;color:var(--text3)">Nouveau code : <b id="vf-scope-newcode"></b> · <span id="vf-scope-orig-cycle-names"></span> reste inchangée</span>
-        </button>
-      </div>
-    </div>
+    <div id="vf-scope-bar" style="display:none"></div>
 
     <!-- Fields wrapper: hidden until scope is chosen (when shared) -->
     <div id="vf-fields">
@@ -280,15 +267,14 @@ textarea{width:100%;padding:9px 12px;background:var(--bg);border:0.5px solid var
 
       <!-- Cycles -->
       <div class="field vf-sec" id="vf-cycles-field" style="display:none">
-        <div class="vf-h">Cycles</div>
+        <div class="vf-h" id="vf-cycles-h">Cycles</div>
         <div id="vf-cycles" class="vchips"></div>
       </div>
     </div><!-- /vf-fields -->
-
-    <button type="button" id="vf-replace-btn" class="btn btn-ghost btn-sm" style="display:none;margin-top:12px;width:100%" onclick="replaceInCycle(_editingVac)">Remplacer dans ce cycle par une autre vacation…</button>
     <!-- Actions -->
     <div style="display:flex;gap:8px;margin-top:14px">
       <button class="btn btn-green" id="vf-save-btn" style="flex:2" onclick="saveVac()">Enregistrer</button>
+      <button class="btn btn-ghost" id="vf-dup-btn" style="flex:1" onclick="dupVac()">Dupliquer</button>
       <button class="btn btn-ghost" style="flex:1" onclick="closeVacForm()">Annuler</button>
     </div>
     <div class="err" id="vf-err" style="margin-top:8px"></div>
@@ -549,7 +535,7 @@ function renderVacTabs() {
     const active = _vacActiveTab === c.id;
     return `<div class="tab${active?' active':''}" onclick="switchVacTab('${c.id}')" style="font-size:12px;padding:5px 10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${c.name||c.id}">${c.name||c.id}</div>`;
   });
-  tabs.push(`<div class="tab${_vacActiveTab==='none'?' active':''}" onclick="switchVacTab('none')" style="font-size:12px;padding:5px 10px">Sans cycle</div>`);
+  tabs.push(`<div class="tab${_vacActiveTab==='none'?' active':''}" onclick="switchVacTab('none')" style="font-size:12px;padding:5px 10px">Autres vacations</div>`);
   el.innerHTML = tabs.join('');
 }
 
@@ -580,219 +566,52 @@ function _vacBadges(v){var b='',pr=v.primes||{};if(v.panier)b+='<span class="vbd
   var d=_toMinAdmin(v.deb);if(d!=null&&d<240)b+='<span class="vbdg a" title="Prime matin (début avant 4h)">Matin</span>';if(v.mixte)b+='<span class="vbdg">Mixte</span>';return b;}
 // Vacations hors grille : par type (Cadre, Réal, Coordination, autres), puis par heure de début (liste déjà triée)
 var _HG_CATS=[['Cadre','Cadre'],['Réal','Réal'],['Coordination','Coordination'],['Général','Autres']];
+// Vacations : celles d'un cycle = les codes de sa grille (rien à rattacher) ; les autres (Réal…) sont proposées
+// aux équipes cochées. Toucher une vacation l'ouvre.
+function _gridCodes(c) { const by = { week: new Set(), sat: new Set(), sun: new Set() };
+  (c && c.weeks || []).forEach(w => (w || []).forEach((x, i) => { if (x && x !== 'RH' && x !== 'SV') by[i < 5 ? 'week' : i === 5 ? 'sat' : 'sun'].add(x); })); return by; }
+function _allGridCodes() { const s = new Set(); _allCycles.forEach(c => (c.weeks || []).forEach(w => (w || []).forEach(x => { if (x) s.add(x); }))); return s; }
+// Équipes à qui une vacation hors grille est proposée : son choix, sinon d'après ses anciens rattachements
+function _vacPools(v) { if (v && Array.isArray(v.pools)) return v.pools;
+  const s = new Set(); ((v && v.cycleIds) || []).forEach(id => { const c = _allCycles.find(x => x.id === id); if (c) s.add(_poolOf(c)); }); return [...s]; }
+function _vacRow(name, v, extra) {
+  const total = calcDur(fmtTimeToHHMM(v.deb || ''), fmtTimeToHHMM(v.fin || ''));
+  const pause = v.dur && total > v.dur ? ' · pause ' + fmtVacDur(total - v.dur) : '';
+  const inc = !v.mixte && (!(v.dur > 0) || !v.deb || !v.fin) ? '<span class="vbdg w">incomplète</span>' : '';
+  return `<div class="vrow" onclick="editVac('${name}')"><div class="vm"><div class="vn">${_esc(v.label || name)}${v.label && v.label !== name ? `<small>${_esc(name)}</small>` : ''}</div>`
+    + `<div class="vt">${v.deb || '—'} → ${v.fin || '—'} · ${fmtVacDur(v.dur || 0)}${pause}</div><div>${_vacBadges(v)}${inc}</div></div>${extra || ''}</div>`;
+}
 function renderVacList() {
-  const _detailsOpen = document.querySelector('#vac-list details')?.open ?? false;
   const el = document.getElementById('vac-list');
-  const entries = Object.entries(_allVacs).filter(([n]) => n !== 'RH').sort((a,b) => {
-    const da = _toMinAdmin(a[1].deb), db = _toMinAdmin(b[1].deb);
-    return (da||9999)-(db||9999);
-  });
-  const filtered = entries.filter(([name, v]) => {
-    if (_vacActiveTab === 'none') return !v.cycleIds || !v.cycleIds.length;
-    return (v.cycleIds || []).includes(_vacActiveTab);
-  });
-  if (!filtered.length) {
-    el.innerHTML = Object.keys(_allVacs).length === 0
-      ? '<p style="color:var(--text3);font-size:12px;padding:8px 0">Aucune vacation. Toucher Migrer ou Ajouter.</p>'
-      : '<p style="color:var(--text3);font-size:12px;padding:8px 0">Aucune vacation dans cet onglet.</p>';
+  const byDeb = (a, b) => (_toMinAdmin((_allVacs[a] || {}).deb) || 9999) - (_toMinAdmin((_allVacs[b] || {}).deb) || 9999);
+  const H = t => `<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin:14px 0 4px">${t}</div>`;
+  if (_vacActiveTab === 'none') {
+    // Hors de toute grille : proposées dans « Autres » aux équipes cochées
+    const g = _allGridCodes();
+    const list = Object.keys(_allVacs).filter(n => n !== 'RH' && !g.has(n)).sort(byDeb);
+    const chips = n => { const ps = _vacPools(_allVacs[n]); return '<div style="display:flex;gap:4px;flex-shrink:0" onclick="event.stopPropagation()">' + Object.keys(POOL_L).map(k =>
+      `<label class="vchip sm" style="padding:3px 7px"><input type="checkbox" ${ps.includes(k) ? 'checked' : ''} onchange="setVacPool('${n}','${k}',this.checked)">${POOL_L[k]}</label>`).join('') + '</div>'; };
+    el.innerHTML = `<div class="alert alert-blue" style="font-size:12px">Vacations qui ne sont dans aucune grille (Réal…). Elles sont proposées dans « Autres » aux équipes cochées.</div>`
+      + (list.length ? list.map(n => _vacRow(n, _allVacs[n], chips(n))).join('') : '<p style="color:var(--text3);font-size:12px;padding:8px 0">Aucune.</p>');
     return;
   }
-  // Codes présents dans la grille du cycle actif
-  const activeCycle = _allCycles.find(c => c.id === _vacActiveTab);
-  const gridCodes = activeCycle && activeCycle.weeks
-    ? new Set(activeCycle.weeks.flat().filter(c => c && c !== 'RH'))
-    : new Set();
-
-  // Copies rattachées au cycle alors que la grille utilise encore l'original de même label (ex. A3b vs A3)
-  const _lblOf = n => (_allVacs[n] && _allVacs[n].label) || n;
-  const swaps = [];
-  if (activeCycle) filtered.forEach(([n]) => {
-    if (gridCodes.has(n)) return;
-    const orig = [...gridCodes].find(g => g !== n && _lblOf(g) === _lblOf(n) && !((_allVacs[g]||{}).cycleIds||[]).includes(_vacActiveTab));
-    if (orig) swaps.push([orig, n]);
-  });
-  const swapHtml = swaps.map(([o, n]) => `<div class="alert alert-orange" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;font-size:12px">
-    <span style="flex:1;min-width:200px"><b>${_esc(n)}</b> est rattachée à ce cycle, mais la grille utilise encore <b>${_esc(o)}</b> (même label « ${_esc(_lblOf(n))} »).</span>
-    <button class="btn btn-sm" onclick="offerCycleGridSwap('${o}','${n}','${_vacActiveTab}').then(loadVacations)">Remplacer dans la grille</button></div>`).join('');
-
-  function _hasType(v, t) { const ts=(v.type||'week').split(','); return ts.includes('all')||ts.includes(t); }
-  const week = filtered.filter(([n,v]) => n !== 'RH' && _hasType(v,'week'));
-  const sat  = filtered.filter(([n,v]) => n !== 'RH' && _hasType(v,'sat'));
-  const sun  = filtered.filter(([n,v]) => n !== 'RH' && _hasType(v,'sun'));
-  const all  = filtered.filter(([n,v]) => (v.type||'').split(',').every(t => ['week','sat','sun'].includes(t)) ? false : (v.type||'')==='all');
-
-  function makeRows(rows, inCycle) {
-    return rows.map(([name, v]) => {
-      const total = calcDur(fmtTimeToHHMM(v.deb||''), fmtTimeToHHMM(v.fin||''));
-      const pause = v.dur && total > v.dur ? fmtVacDur(total - v.dur) : '—';
-      const chk = _selectedVacs.has(name) ? 'checked' : '';
-      const lblAttr = (v.label||name).replace(/&/g,'&amp;').replace(/"/g,'&quot;');
-      const unlinkBtn = (inCycle && _vacActiveTab && _vacActiveTab !== 'none')
-        ? `<button class="btn btn-sm btn-ghost" style="padding:4px 8px" title="Retirer du cycle" onclick="event.stopPropagation();unlinkFromCycle('${name}')">−</button>`
-        : '';
-      return `<tr data-vac="${name}" style="cursor:pointer" onmousedown="if(event.shiftKey||event.ctrlKey||event.metaKey)event.preventDefault()" onclick="rowClick(event,'${name}')">
-        <td onclick="event.stopPropagation()"><input type="checkbox" class="vac-chk" data-vac="${name}" data-lbl="${lblAttr}" ${chk} onchange="toggleVacSelect('${name}',this)"></td>
-        <td style="max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><b>${v.label||name}</b>${v.label&&v.label!==name?` <span style="font-size:10px;color:var(--text3)">(${name})</span>`:''}</td>
-        <td style="font-size:11px">${v.deb||'—'}</td>
-        <td style="font-size:11px">${v.fin||'—'}</td>
-        <td style="font-size:11px">${fmtVacDur(v.dur||0)}</td>
-        <td style="font-size:11px">${pause}</td>
-        <td style="text-align:center;font-weight:700">${v.panier?'P':'—'}</td>
-        <td style="text-align:center">${v.mixte?'✓':'—'}</td>
-        <td style="font-size:10px;white-space:nowrap;color:var(--orange)" title="Primes : A Antenne, R Réal, C Coordination, M matin">${[(v.primes||{}).antenne?'A':'',(v.primes||{}).reel?'R':'',(v.primes||{}).coord?'C':'',(_toMinAdmin(v.deb)!=null&&_toMinAdmin(v.deb)<240)?'M':''].join('')||'—'}</td>
-        <td style="display:flex;gap:3px;justify-content:flex-end">${unlinkBtn}<button class="btn btn-sm btn-red" style="padding:4px 7px" onclick="event.stopPropagation();deleteVac('${name}')">🗑</button></td>
-      </tr>`;
-    }).join('');
-  }
-  // Fixed column widths — nom gets explicit 70px so other columns don't get squeezed
-  const COLS = `<colgroup><col style="width:30px"><col style="width:60px"><col style="width:38px"><col style="width:38px"><col style="width:34px"><col style="width:30px"><col style="width:18px"><col style="width:18px"><col style="width:28px"><col style="width:70px"></colgroup>`;
-  function makeTable(rows, inCycle) {
-    if (!rows.length) return '<p style="color:var(--text3);font-size:11px">—</p>';
-    const names = rows.map(([n]) => n);
-    const namesJson = JSON.stringify(names);
-    const allChk = names.every(n => _selectedVacs.has(n)) ? 'checked' : '';
-    const namesEsc = namesJson.replace(/"/g, '&quot;');
-    const TH = `<thead><tr><th style="white-space:nowrap"><input type="checkbox" class="vac-sec-all" ${allChk} onchange="toggleAllVacsInSection(this,${namesEsc})"></th><th>Nom</th><th>Deb</th><th>Fin</th><th>Dur</th><th>Pau</th><th style="text-align:center" title="Panier repas">P</th><th style="text-align:center" title="Mixte">Mx</th><th title="Primes">Pr</th><th></th></tr></thead>`;
-    return `<div class="table-scroll"><table style="width:100%;table-layout:fixed">${COLS}${TH}<tbody>${makeRows(rows, inCycle)}</tbody></table></div>`;
-  }
-
-  const sections = [
-    { label: 'Semaine', rows: week },
-    { label: 'Samedi', rows: sat },
-    { label: 'Dimanche', rows: sun },
-  ];
-  const hasAll = all.length > 0;
-
-  const GRID = `display:grid;grid-template-columns:repeat(3,1fr);gap:16px;align-items:start`;
-  const SEC_LBL = `font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text3)`;
-
-  // Vacations disponibles à rattacher au cycle actif
-  let availHtml = '';
-  if (_vacActiveTab && _vacActiveTab !== 'none') {
-    // Already in DB but not linked
-    const avail = entries.filter(([name, v]) => !(v.cycleIds||[]).includes(_vacActiveTab));
-    // In VAC_STD_EXTRA but not yet in DB at all
-    const toCreate = Object.entries(VAC_STD_EXTRA).filter(([name]) => !_allVacs[name]);
-
-    const totalCount = avail.length + toCreate.length;
-    if (totalCount) {
-      function chip(name, v, onCreate) {
-        const lbl = v.label || name;
-        const action = onCreate ? `quickCreateAndLink('${name}')` : `quickAddToCycle('${name}')`;
-        const col = onCreate ? 'var(--blue)' : 'var(--text2)';
-        return `<button class="btn btn-sm btn-ghost" title="${v.deb}→${v.fin}" style="font-size:11px;color:${col};padding:3px 7px" onclick="${action}">+ ${lbl}</button>`;
-      }
-      function _avHasType(v, t) { const ts=(v.type||'week').split(','); return ts.includes('all')||ts.includes(t); }
-      function dayGrid(rows, onCreate) {
-        const cols = [
-          {lbl:'Semaine',  items: rows.filter(([,v])=>_avHasType(v,'week'))},
-          {lbl:'Samedi',   items: rows.filter(([,v])=>_avHasType(v,'sat'))},
-          {lbl:'Dimanche', items: rows.filter(([,v])=>_avHasType(v,'sun'))},
-        ];
-        if (!cols.some(c=>c.items.length)) return '';
-        return `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:6px">
-          ${cols.map(g=>`<div>
-            <div style="font-size:9px;color:var(--text3);margin-bottom:3px">${g.lbl}</div>
-            <div style="display:flex;flex-wrap:wrap;gap:3px">${g.items.length ? g.items.map(([n,v])=>chip(n,v,onCreate)).join('') : '<span style="font-size:10px;color:var(--text3)">—</span>'}</div>
-          </div>`).join('')}
-        </div>`;
-      }
-      function catSection(label, rows, onCreate, color) {
-        const grid = dayGrid(rows, onCreate);
-        if (!grid) return '';
-        return `<div style="margin-bottom:8px">
-          <div style="font-size:10px;font-weight:600;color:${color||'var(--text3)'};margin-bottom:3px;text-transform:uppercase;letter-spacing:.04em">${label}</div>
-          ${grid}
-        </div>`;
-      }
-      function byCat(rows, onCreate) {
-        const cats = ['Cycle','Coordination','Réal','Cadre'];
-        return cats.map(cat => {
-          const subset = rows.filter(([n]) => (vacCat(n)==='Général'?'Cycle':vacCat(n)) === cat);
-          return catSection(cat, subset, onCreate, onCreate?'var(--blue)':'var(--text3)');
-        }).join('');
-      }
-
-      const existingHtml = avail.length ? byCat(avail, false) : '';
-      const createHtml = toCreate.length
-        ? `<div style="font-size:10px;font-weight:600;color:var(--blue);margin:8px 0 3px;border-top:0.5px solid var(--border);padding-top:8px">À créer et rattacher</div>${byCat(toCreate, true)}`
-        : '';
-
-      availHtml = `<details style="margin-top:20px" ${_detailsOpen ? 'open' : ''}>
-        <summary style="cursor:pointer;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);user-select:none">
-          Vacations à ajouter au cycle (${totalCount})
-        </summary>
-        <div style="padding:6px 0">${existingHtml}${createHtml}</div>
-      </details>`;
-    }
-  }
-
-  const SPAN = `grid-column:1/-1`;
-
-  const CELL = `min-width:0`;
-  let out = `<div style="${GRID}">`;
-  sections.forEach(s => { out += `<div style="${SEC_LBL};${CELL}">${s.label}</div>`; });
-
-  if (gridCodes.size) {
-    out += `<div style="${SPAN};font-size:10px;color:var(--text3);margin-top:4px">Dans la grille du cycle</div>`;
-    sections.forEach(s => { out += `<div style="${CELL}">${makeTable(s.rows.filter(([n])=>gridCodes.has(n)))}</div>`; });
-
-    const outsideSections = sections.map(s => ({ ...s, rows: s.rows.filter(([n])=>!gridCodes.has(n)) }));
-    if (outsideSections.some(s => s.rows.length)) {
-      out += `<div style="${SPAN};font-size:10px;color:var(--text3);margin-top:14px">Hors grille · proposées dans « Autres vacations »</div>`;
-      _HG_CATS.forEach(([cat,lbl]) => {
-        const catSec = outsideSections.map(s => ({ ...s, rows: s.rows.filter(([n]) => vacCat(n) === cat) }));
-        if (!catSec.some(s => s.rows.length)) return;
-        out += `<div style="${SPAN};font-size:10px;font-style:italic;color:var(--text3);margin-top:8px">${lbl}</div>`;
-        catSec.forEach(s => { out += `<div style="${CELL}">${makeTable(s.rows, true)}</div>`; });
-      });
-    }
-  } else {
-    sections.forEach(s => { out += `<div style="${CELL}">${makeTable(s.rows)}</div>`; });
-  }
-
-  if (hasAll) {
-    out += `<div style="${SPAN};${SEC_LBL};margin-top:16px">Tous jours</div>`;
-    out += `<div style="${SPAN}">${makeTable(all)}</div>`;
-  }
-
-  out += '</div>';
-  // Alertes : vacations sans cycle (invisibles dans l'app) ; vacations incomplètes du cycle
-  let warn = '';
-  if (_vacActiveTab === 'none') warn += `<div class="alert alert-orange" style="font-size:12px">Ces vacations ne sont rattachées à aucun cycle : <b>elles n'apparaissent nulle part dans l'app</b>. Rattachez-les à un cycle (en les ouvrant) ou supprimez-les.</div>`;
-  else {
-    const bad = filtered.filter(([n,v]) => !v.mixte && (!(v.dur>0) || !v.deb || !v.fin));
-    const unused = gridCodes.size ? filtered.filter(([n,v]) => /[a-z]$/.test(n) && !gridCodes.has(n) && swaps.every(([o,c]) => c!==n) && !(v.dur>0)) : [];
-    if (bad.length) warn += `<div class="alert alert-orange" style="font-size:12px">Vacation${bad.length>1?'s':''} incomplète${bad.length>1?'s':''} (sans horaires ou à 0h00, non proposée${bad.length>1?'s':''} dans l'app) : <b>${bad.map(([n,v])=>_esc(v.label||n)+(v.label&&v.label!==n?' ('+_esc(n)+')':'')).join(', ')}</b>.</div>`;
-  }
-  if (_vacMobile()) {
-    // Mobile : un type de jour à la fois, en lignes lisibles (plus de colonnes côte à côte)
-    const sec = sections.find(x => x.label === ({week:'Semaine',sat:'Samedi',sun:'Dimanche'})[_vacDayTab]) || sections[0];
-    const seg = `<div class="vseg">${[['week','Semaine',week.length],['sat','Samedi',sat.length],['sun','Dimanche',sun.length]].map(([k,l,c])=>`<button class="${_vacDayTab===k?'on':''}" onclick="_vacDayTab='${k}';renderVacList()">${l} <span style="color:var(--text3);font-weight:400">${c}</span></button>`).join('')}</div>`;
-    const list = (rows, inCycle) => rows.map(([name, v]) => {
-      const total = calcDur(fmtTimeToHHMM(v.deb||''), fmtTimeToHHMM(v.fin||''));
-      const pause = v.dur && total > v.dur ? ' · pause '+fmtVacDur(total - v.dur) : '';
-      const unlink = (inCycle && _vacActiveTab && _vacActiveTab !== 'none') ? `<button class="btn btn-sm btn-ghost" title="Retirer du cycle" onclick="event.stopPropagation();unlinkFromCycle('${name}')">−</button>` : '';
-      const inc = !v.mixte && (!(v.dur>0) || !v.deb || !v.fin) ? '<span class="vbdg w">incomplète</span>' : '';
-      return `<div class="vrow" data-vac="${name}" onclick="rowClick(event,'${name}')"><input type="checkbox" class="vac-chk" data-vac="${name}" ${_selectedVacs.has(name)?'checked':''} onclick="event.stopPropagation()" onchange="toggleVacSelect('${name}',this)">`
-        +`<div class="vm"><div class="vn">${_esc(v.label||name)}${v.label&&v.label!==name?`<small>${_esc(name)}</small>`:''}</div><div class="vt">${v.deb||'—'} → ${v.fin||'—'} · ${fmtVacDur(v.dur||0)}${pause}</div><div>${_vacBadges(v)}${inc}</div></div>`
-        +`<div style="display:flex;gap:4px">${unlink}<button class="btn btn-sm btn-red" onclick="event.stopPropagation();deleteVac('${name}')">🗑</button></div></div>`;
-    }).join('') || '<p style="color:var(--text3);font-size:12px;padding:8px 0">—</p>';
-    const H = t => `<div style="${SEC_LBL};margin:14px 0 4px">${t}</div>`;
-    let m = seg;
-    if (gridCodes.size) {
-      m += H('Dans la grille du cycle') + list(sec.rows.filter(([n])=>gridCodes.has(n)));
-      const out2 = sec.rows.filter(([n])=>!gridCodes.has(n));
-      if (out2.length) {
-        m += H('Hors grille · proposées dans « Autres vacations »');
-        _HG_CATS.forEach(([cat,lbl]) => { const g = out2.filter(([n]) => vacCat(n) === cat); if (g.length) m += `<div style="font-size:11px;font-style:italic;color:var(--text3);margin:10px 0 2px">${lbl}</div>` + list(g, true); });
-      }
-    } else m += list(sec.rows);
-    if (hasAll) m += H('Tous jours') + list(all);
-    el.innerHTML = warn + swapHtml + m + availHtml;
-    return;
-  }
-  el.innerHTML = warn + swapHtml + out + availHtml;
+  const cyc = _allCycles.find(c => c.id === _vacActiveTab);
+  if (!cyc) { el.innerHTML = '<p style="color:var(--text3);font-size:12px;padding:8px 0">Aucun cycle pour cette équipe : en créer un dans l’onglet Cycles.</p>'; return; }
+  const by = _gridCodes(cyc), all = new Set([...by.week, ...by.sat, ...by.sun]);
+  const missing = [...all].filter(n => !_allVacs[n]);
+  let out = `<div style="font-size:12px;color:var(--text3);margin-bottom:4px">Les vacations de ce cycle sont celles de sa grille (onglet Cycles). Pour en ajouter une, la placer dans la grille.</div>`;
+  if (missing.length) out += `<div class="alert alert-orange" style="font-size:12px">Dans la grille mais pas encore créée${missing.length > 1 ? 's' : ''} : ${missing.map(n => `<button class="btn btn-sm" style="margin:2px" onclick="showVacForm(null,null);document.getElementById('vf-name').value='${n}';document.getElementById('vf-label').value='${n}'">Créer ${_esc(n)}</button>`).join('')}</div>`;
+  const col = (t, set) => H(t) + ([...set].filter(n => _allVacs[n]).sort(byDeb).map(n => _vacRow(n, _allVacs[n])).join('') || '<p style="color:var(--text3);font-size:12px">—</p>');
+  out += _vacMobile()
+    ? col('Semaine', by.week) + col('Samedi', by.sat) + col('Dimanche', by.sun)
+    : `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;align-items:start"><div>${col('Semaine', by.week)}</div><div>${col('Samedi', by.sat)}</div><div>${col('Dimanche', by.sun)}</div></div>`;
+  el.innerHTML = out;
+}
+async function setVacPool(name, pool, on) {
+  const v = _allVacs[name]; if (!v) return;
+  const ps = new Set(_vacPools(v)); if (on) ps.add(pool); else ps.delete(pool);
+  v.pools = [...ps];
+  try { await fetch(API + '/admin/vacation/save', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ vacation: { name, pools: v.pools } }) }); } catch (e) { alert('Erreur réseau'); }
 }
 function _toMinAdmin(t) {
   const m = /^(\d{1,2})h(\d{2})$/.exec((t||'').trim());
@@ -800,215 +619,11 @@ function _toMinAdmin(t) {
 }
 
 // ── Multi-sélection ──────────────────────────────────────────
-var _selectedVacs = new Set();
-var _lastClickedVac = null;
 
-function rowClick(event, name) {
-  if (event.ctrlKey || event.metaKey) {
-    event.preventDefault();
-    if (_selectedVacs.has(name)) _selectedVacs.delete(name); else _selectedVacs.add(name);
-    const chk = event.currentTarget.querySelector('.vac-chk');
-    if (chk) chk.checked = _selectedVacs.has(name);
-    _lastClickedVac = name;
-    renderSelBar();
-  } else if (event.shiftKey && _lastClickedVac) {
-    event.preventDefault();
-    const table = event.currentTarget.closest('table');
-    if (table) {
-      const rows = [...table.querySelectorAll('tr[data-vac]')];
-      const lastIdx = rows.findIndex(r => r.dataset.vac === _lastClickedVac);
-      const currIdx = rows.findIndex(r => r.dataset.vac === name);
-      if (lastIdx !== -1 && currIdx !== -1) {
-        const [s, e] = [Math.min(lastIdx, currIdx), Math.max(lastIdx, currIdx)];
-        for (let i = s; i <= e; i++) {
-          const n = rows[i].dataset.vac;
-          _selectedVacs.add(n);
-          const chk = rows[i].querySelector('.vac-chk');
-          if (chk) chk.checked = true;
-        }
-        renderSelBar();
-      }
-    }
-  } else {
-    _lastClickedVac = name;
-    editVac(name);
-  }
-}
-function toggleVacSelect(name, cb) {
-  if (cb.checked) _selectedVacs.add(name); else _selectedVacs.delete(name);
-  renderSelBar();
-}
-function clearVacSel() {
-  _selectedVacs.clear();
-  document.querySelectorAll('.vac-chk').forEach(cb => cb.checked = false);
-  document.querySelectorAll('.vac-sec-all').forEach(cb => cb.checked = false);
-  renderSelBar();
-}
-function toggleAllVacsInSection(cb, names) {
-  names.forEach(name => { if (cb.checked) _selectedVacs.add(name); else _selectedVacs.delete(name); });
-  document.querySelectorAll('.vac-chk').forEach(el => { if (names.includes(el.dataset.vac)) el.checked = cb.checked; });
-  renderSelBar();
-}
 
-function renderSelBar() {
-  const bar = document.getElementById('vac-sel-bar');
-  if (!bar) return;
-  if (!_selectedVacs.size) { bar.style.display = 'none'; return; }
-  bar.style.display = 'flex';
-  bar.innerHTML = `<b style="font-size:13px">${_selectedVacs.size} sélectionnée(s)</b>`
-    + `<button class="btn btn-sm" onclick="showBulkModal()">Modifier…</button>`
-    + `<button class="btn btn-sm btn-ghost" onclick="clearVacSel()">✕ Tout désélectionner</button>`;
-}
 
-function showBulkModal() {
-  const sSel = `style="width:auto;padding:5px 8px;border:0.5px solid var(--border);border-radius:var(--r);background:var(--bg);color:var(--text);font-size:13px"`;
-  const noChange = `<option value="">— Inchangé</option>`;
-  const yesNo = noChange + `<option value="1">✓ Oui</option><option value="0">✗ Non</option>`;
-  const lbl = `style="display:flex;align-items:center;gap:5px;font-size:13px;cursor:pointer"`;
-  const secLbl = `style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin-bottom:6px"`;
-  const sep = `<div style="width:1px;background:var(--border);align-self:stretch;margin:0 4px"></div>`;
-  const fieldInline = `style="display:flex;flex-direction:column;gap:3px"`;
 
-  const cycleRows = _allCycles.length ? `
-    <div class="field" style="margin-bottom:16px">
-      <label>Cycles</label>
-      <div style="display:flex;flex-direction:column;gap:4px;margin-top:4px">
-        ${_allCycles.map(c => `
-          <div style="display:flex;align-items:center;gap:8px">
-            <select data-bulkcyc="${c.id}" ${sSel}>
-              ${noChange}<option value="add">+ Ajouter</option><option value="remove">− Retirer</option>
-            </select>
-            <span style="font-size:13px">${c.name||c.id}</span>
-          </div>`).join('')}
-      </div>
-    </div>` : '';
 
-  document.getElementById('modal-content').innerHTML = `
-    <h2 style="font-size:15px;margin-bottom:16px">Modifier ${_selectedVacs.size} vacation(s)</h2>
-    ${cycleRows}
-    <div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start;background:var(--bg3);border-radius:var(--r);padding:10px 14px;margin-bottom:16px">
-      <div>
-        <div ${secLbl}>Type jour</div>
-        <div style="display:flex;gap:14px">
-          <label ${lbl}><input type="checkbox" id="bulk-type-week"> Semaine</label>
-          <label ${lbl}><input type="checkbox" id="bulk-type-sat"> Samedi</label>
-          <label ${lbl}><input type="checkbox" id="bulk-type-sun"> Dimanche</label>
-        </div>
-        <div style="font-size:10px;color:var(--text3);margin-top:5px">Non coché = inchangé</div>
-      </div>
-      ${sep}
-      <div>
-        <div ${secLbl}>Options</div>
-        <div style="display:flex;gap:14px;flex-wrap:wrap">
-          <div ${fieldInline}><span style="font-size:11px;color:var(--text3)">Panier</span><select id="bulk-panier" ${sSel}>${yesNo}</select></div>
-          <div ${fieldInline}><span style="font-size:11px;color:var(--text3)">Mixte</span><select id="bulk-mixte" ${sSel}>${yesNo}</select></div>
-        </div>
-      </div>
-      ${sep}
-      <div>
-        <div ${secLbl}>Primes</div>
-        <div style="display:flex;gap:14px;flex-wrap:wrap">
-          <div ${fieldInline}><span style="font-size:11px;color:var(--text3)">Antenne</span><select id="bulk-prime-antenne" ${sSel}>${yesNo}</select></div>
-          <div ${fieldInline}><span style="font-size:11px;color:var(--text3)">Réal</span><select id="bulk-prime-reel" ${sSel}>${yesNo}</select></div>
-          <div ${fieldInline}><span style="font-size:11px;color:var(--text3)">Coord</span><select id="bulk-prime-coord" ${sSel}>${yesNo}</select></div>
-        </div>
-      </div>
-    </div>
-    <div class="modal-btns">
-      <button class="btn btn-ghost" onclick="closeModal()">Annuler</button>
-      <button class="btn btn-green" onclick="applyBulkEdit()">Appliquer</button>
-    </div>`;
-  document.getElementById('modal-bg').style.display = 'flex';
-}
-
-async function applyBulkEdit() {
-  const panier = document.getElementById('bulk-panier').value;
-  const mixte  = document.getElementById('bulk-mixte').value;
-  const primeAntenne = document.getElementById('bulk-prime-antenne').value;
-  const primeReel    = document.getElementById('bulk-prime-reel').value;
-  const primeCoord   = document.getElementById('bulk-prime-coord').value;
-  const bulkTypeChecks = ['week','sat','sun'].filter(t => document.getElementById('bulk-type-'+t).checked);
-  const type = bulkTypeChecks.length > 0 ? bulkTypeChecks.join(',') : '';
-  const cycleChanges = [...document.querySelectorAll('[data-bulkcyc]')]
-    .map(s => ({ cycleId: s.dataset.bulkcyc, action: s.value }))
-    .filter(c => c.action);
-  const names = [..._selectedVacs];
-  const hasPrimeChange = primeAntenne !== '' || primeReel !== '' || primeCoord !== '';
-  const saveAttrs = panier !== '' || mixte !== '' || type !== '' || hasPrimeChange;
-  try {
-    // Sequential to avoid KV race conditions (parallel writes overwrite each other)
-    for (const name of names) {
-      const v = _allVacs[name] || {};
-      if (saveAttrs) {
-        const curPrimes = v.primes || { antenne: false, reel: false, coord: false };
-        const updated = { ...v, name,
-          ...(panier !== '' ? { panier: panier === '1' } : {}),
-          ...(mixte  !== '' ? { mixte:  mixte  === '1' } : {}),
-          ...(type   !== '' ? { type } : {}),
-          ...(hasPrimeChange ? { primes: {
-            antenne: primeAntenne !== '' ? primeAntenne === '1' : !!curPrimes.antenne,
-            reel:    primeReel    !== '' ? primeReel    === '1' : !!curPrimes.reel,
-            coord:   primeCoord   !== '' ? primeCoord   === '1' : !!curPrimes.coord,
-          }} : {}),
-        };
-        await fetch(API + '/admin/vacation/save', { method:'POST', headers:adminHeaders(), body:JSON.stringify({vacation:updated}) });
-        if (panier !== '') _allVacs[name].panier = panier === '1';
-        if (mixte  !== '') _allVacs[name].mixte  = mixte  === '1';
-        if (type   !== '') _allVacs[name].type   = type;
-        if (hasPrimeChange) _allVacs[name].primes = updated.primes;
-      }
-      for (const { cycleId, action } of cycleChanges) {
-        const ep = action === 'add' ? '/admin/vacation/addcycle' : '/admin/vacation/removecycle';
-        await fetch(API + ep, { method:'POST', headers:adminHeaders(), body:JSON.stringify({name,cycleId}) });
-        const ids = (_allVacs[name] && _allVacs[name].cycleIds) || [];
-        if (action === 'add' && !ids.includes(cycleId))
-          _allVacs[name].cycleIds = [...ids, cycleId];
-        else if (action === 'remove')
-          _allVacs[name].cycleIds = ids.filter(id => id !== cycleId);
-      }
-    }
-    closeModal(); clearVacSel(); renderVacList();
-  } catch(e) { alert('Erreur réseau'); }
-}
-
-async function toggleVacCycle(vacName, cycleId, add) {
-  const endpoint = add ? '/admin/vacation/addcycle' : '/admin/vacation/removecycle';
-  try {
-    await fetch(API + endpoint, { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ name: vacName, cycleId }) });
-  } catch(e) { alert('Erreur réseau'); }
-}
-async function unlinkFromCycle(name) {
-  if (!_vacActiveTab || _vacActiveTab === 'none') return;
-  try {
-    await fetch(API + '/admin/vacation/removecycle', { method:'POST', headers:adminHeaders(), body:JSON.stringify({ name, cycleId:_vacActiveTab }) });
-    if (_allVacs[name]) _allVacs[name].cycleIds = (_allVacs[name].cycleIds||[]).filter(id => id !== _vacActiveTab);
-    renderVacList();
-  } catch(e) { alert('Erreur réseau'); }
-}
-async function quickCreateAndLink(name) {
-  if (!_vacActiveTab || _vacActiveTab === 'none') return;
-  const v = VAC_STD_EXTRA[name];
-  if (!v) return;
-  try {
-    const res = await fetch(API + '/admin/vacation/save', { method:'POST', headers:adminHeaders(), body:JSON.stringify({ vacation:{name,...v} }) });
-    if (!res.ok) { alert('Erreur création'); return; }
-    await fetch(API + '/admin/vacation/addcycle', { method:'POST', headers:adminHeaders(), body:JSON.stringify({ name, cycleId:_vacActiveTab }) });
-    // Update local cache
-    _allVacs[name] = { ...v, cycleIds:[_vacActiveTab] };
-    renderVacList();
-  } catch(e) { alert('Erreur réseau'); }
-}
-async function quickAddToCycle(name) {
-  if (!_vacActiveTab || _vacActiveTab === 'none') return;
-  try {
-    await fetch(API + '/admin/vacation/addcycle', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ name, cycleId: _vacActiveTab }) });
-    // Update local cache immediately for snappy UI
-    if (_allVacs[name]) {
-      _allVacs[name].cycleIds = [...(_allVacs[name].cycleIds||[]), _vacActiveTab];
-    }
-    renderVacList();
-  } catch(e) { alert('Erreur réseau'); }
-}
 
 // Nouvelle vacation ou copie : le code suit le nom affiché, tel quel s'il est libre, sinon avec une lettre (A1 → A1b)
 function _vfSyncCode() {
@@ -1124,7 +739,6 @@ function closeVacForm() {
 function showVacForm(name, v) {
   _editingVac = name || null;
   window._vfCodeTouched = false;
-  document.getElementById('vf-replace-btn').style.display = name && _vacActiveTab && _vacActiveTab !== 'none' && ((v && v.cycleIds) || []).includes(_vacActiveTab) ? '' : 'none';
   document.getElementById('vac-modal-bg').style.display = 'flex';
   document.getElementById('vac-form-title').textContent = name ? `Modifier ${name}` : 'Nouvelle vacation';
   document.getElementById('vf-name').value = name || '';
@@ -1151,164 +765,37 @@ function showVacForm(name, v) {
   [1,2,3,4,5].forEach(d => { document.getElementById('vf-day-'+d).checked = !_days.length || _days.includes(d); });
   updateVfDaysVisibility();
   document.getElementById('vf-err').textContent = '';
-  window._vacSaveScope = null;
-  const linked = v ? (v.cycleIds || []) : [];
-  const sharedWith = (name && _vacActiveTab && _vacActiveTab !== 'none')
-    ? linked.filter(id => id !== _vacActiveTab && _allCycles.some(c => c.id === id))
-    : [];
-  const scopeBar = document.getElementById('vf-scope-bar');
-  const fieldsWrap = document.getElementById('vf-fields');
-  const saveBtn = document.getElementById('vf-save-btn');
-  if (sharedWith.length) {
-    const curCycle = _allCycles.find(c => c.id === _vacActiveTab);
-    const curName = curCycle?.name || 'ce cycle';
-    const otherNames = sharedWith.map(id => { const c = _allCycles.find(c => c.id === id); return c?.name || id; }).join(', ');
-    const newCode = incrementVacCode(name);
-    document.getElementById('vf-scope-other-cycles').textContent = otherNames;
-    document.getElementById('vf-scope-cur-cycle').textContent = curName;
-    document.getElementById('vf-scope-newcode').textContent = newCode;
-    document.getElementById('vf-scope-orig-cycle-names').textContent = otherNames;
-    window._vacScopeOrigName = name;
-    window._vacScopeCopyCode = newCode;
-    scopeBar.style.display = 'block';
-    // Reset scope button styles
-    const _sbtnStyle = 'border:1.5px solid var(--border2);border-radius:10px;background:var(--bg);padding:12px 14px;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:4px;transition:border-color .15s,background .15s';
-    document.getElementById('vf-scope-btn-all').style.cssText = _sbtnStyle;
-    document.getElementById('vf-scope-btn-copy').style.cssText = _sbtnStyle;
-    // Hide fields and save btn until scope chosen
-    fieldsWrap.style.display = 'none';
-    saveBtn.style.display = 'none';
-  } else {
-    scopeBar.style.display = 'none';
-    fieldsWrap.style.display = '';
-    saveBtn.style.display = '';
-    saveBtn.disabled = false;
+  document.getElementById('vf-scope-bar').style.display = 'none';
+  document.getElementById('vf-fields').style.display = '';
+  const saveBtn = document.getElementById('vf-save-btn'); saveBtn.style.display = ''; saveBtn.disabled = false;
+  document.getElementById('vf-dup-btn').style.display = name ? '' : 'none';
+  // Où elle sert : les cycles dont la grille la contient ; sinon, les équipes à qui elle est proposée (« Autres »)
+  const used = name ? _allCycles.filter(c => (c.weeks || []).some(w => (w || []).includes(name))) : [];
+  const cycField = document.getElementById('vf-cycles-field'), cycDiv = document.getElementById('vf-cycles'), cycH = document.getElementById('vf-cycles-h');
+  cycField.style.display = 'block';
+  if (used.length) { cycH.textContent = 'Utilisée dans'; cycDiv.innerHTML = used.map(c => `<span class="vbdg">${_esc(c.name || c.id)}</span>`).join(''); }
+  else {
+    const ps = v ? _vacPools(v) : (_vacActiveTab === 'none' ? [_admPool] : []);
+    cycH.textContent = 'Proposée dans « Autres » à';
+    cycDiv.innerHTML = Object.keys(POOL_L).map(k => `<label class="vchip"><input type="checkbox" data-pool="${k}" ${ps.includes(k) ? 'checked' : ''}>${POOL_L[k]}</label>`).join('');
   }
-  // Cycle membership checkboxes (only when editing an existing vacation, and not in copy scope)
-  const cycField = document.getElementById('vf-cycles-field');
-  const cycDiv = document.getElementById('vf-cycles');
-  if (name && _allCycles.length) {
-    cycField.style.display = 'block';
-    cycDiv.innerHTML = _allCycles.map(c =>
-      `<label class="vchip"><input type="checkbox" data-cyc="${c.id}" ${linked.includes(c.id)?'checked':''}>${c.name||c.id}</label>`
-    ).join('');
-  } else {
-    cycField.style.display = 'none';
-    cycDiv.innerHTML = '';
-  }
+}
+// Dupliquer : même vacation sous un nouveau code (à placer ensuite dans la grille d'un cycle)
+function dupVac() {
+  if (!_editingVac) return;
+  const code = incrementVacCode(_editingVac);
+  _editingVac = null;
+  document.getElementById('vf-name').disabled = false;
+  document.getElementById('vf-name').value = code;
+  if (!document.getElementById('vf-label').value) document.getElementById('vf-label').value = code;
+  document.getElementById('vac-form-title').textContent = 'Nouvelle vacation (copie)';
+  document.getElementById('vf-dup-btn').style.display = 'none';
 }
 
 function editVac(name) { showVacForm(name, _allVacs[name]); }
 
-function setVacScope(scope) {
-  window._vacSaveScope = scope;
-  const btnAll  = document.getElementById('vf-scope-btn-all');
-  const btnCopy = document.getElementById('vf-scope-btn-copy');
-  const base = 'border-radius:10px;padding:12px 14px;cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:4px;transition:border-color .15s,background .15s;border:1.5px solid ';
-  // Choix actif : pas de fond clair, seulement un liseré bleu épais
-  btnAll.style.cssText  = base + (scope === 'all'  ? 'var(--blue,#3b82f6);background:var(--bg);box-shadow:inset 0 0 0 1.5px var(--blue,#3b82f6)' : 'var(--border2);background:var(--bg)');
-  btnCopy.style.cssText = base + (scope === 'copy' ? 'var(--blue,#3b82f6);background:var(--bg);box-shadow:inset 0 0 0 1.5px var(--blue,#3b82f6)' : 'var(--border2);background:var(--bg)');
-  const fieldsWrap = document.getElementById('vf-fields');
-  const saveBtn = document.getElementById('vf-save-btn');
-  fieldsWrap.style.display = '';
-  saveBtn.style.display = '';
-  saveBtn.disabled = false;
-  window._vfCodeTouched = false;
-  if (scope === 'copy') {
-    document.getElementById('vf-name').value = window._vacScopeCopyCode;
-    document.getElementById('vf-name').disabled = false;
-    // Keep original label: if none set, use original code so display name is unchanged
-    if (!document.getElementById('vf-label').value) {
-      document.getElementById('vf-label').value = window._vacScopeOrigName;
-    }
-    // La copie garde la catégorie de l'original
-    if (!document.getElementById('vf-cat').value) {
-      const oc = vacCat(window._vacScopeOrigName);
-      document.getElementById('vf-cat').value = oc === 'Général' ? '' : oc;
-    }
-    document.getElementById('vac-form-title').textContent = 'Copier comme nouvelle vacation';
-    document.getElementById('vf-cycles-field').style.display = 'none';
-  } else {
-    document.getElementById('vf-name').value = window._vacScopeOrigName;
-    document.getElementById('vf-name').disabled = true;
-    document.getElementById('vac-form-title').textContent = `Modifier ${window._vacScopeOrigName}`;
-    document.getElementById('vf-cycles-field').style.display = 'block';
-  }
-}
 
-// Copie d'une vacation pour un cycle : proposer de remplacer l'original par la copie,
-// dans les vacations du cycle (l'original en est retiré) et dans sa grille (onglet Cycles)
-function offerReplaceCopy(oldName, newName, cycleId, newVac) {
-  return new Promise(resolve => {
-    const cyc = _allCycles.find(c => c.id === cycleId) || (_adminCycles||[]).find(c => c.id === cycleId);
-    const inGrid = code => cyc && cyc.weeks ? cyc.weeks.flat().filter(c => c === code).length : 0;
-    const isLinked = code => ((_allVacs[code] && _allVacs[code].cycleIds) || []).includes(cycleId);
-    const n = inGrid(oldName), linked = isLinked(oldName);
-    // Autres vacations du cycle que la nouvelle peut remplacer aussi (ex. As1 + Ad1 → Aw1) : celles des jours qu'elle couvre
-    // … et de la même catégorie (Cadre, Réal, Coordination, Général)
-    const nv = newVac || _allVacs[newName] || {}, nts = String(nv.type || 'week').split(',');
-    const ncat = nv.cat ? (nv.cat === 'Vidéo' ? 'Réal' : nv.cat) : vacCat(oldName);
-    const extras = Object.entries(_allVacs).filter(([c, v]) => c !== oldName && c !== newName && c !== 'RH' && !v.mixte && (isLinked(c) || inGrid(c))
-      && vacCat(c) === ncat
-      && String(v.type || 'week').split(',').some(t => nts.includes(t) || t === 'all'))
-      .sort((a, b) => (_toMinAdmin(a[1].deb) || 0) - (_toMinAdmin(b[1].deb) || 0));
-    if (!linked && !n && !extras.length) { resolve(); return; }
-    const cn = _esc((cyc && cyc.name) || 'ce cycle'), o = _esc(oldName), nw = _esc(newName);
-    const mc = document.getElementById('modal-content');
-    mc.innerHTML = `<h2 style="margin-bottom:6px">Remplacer ${o} par ${nw} ?</h2>
-      <p style="font-size:13px;color:var(--text2);margin-bottom:14px">Dans <b>${cn}</b>, <b>${nw}</b> peut prendre la place de <b>${o}</b>. Les autres cycles ne changent pas.</p>
-      <div class="vchips" style="flex-direction:column;align-items:stretch;margin-bottom:12px">
-        ${linked ? `<label class="vchip" style="justify-content:flex-start"><input type="checkbox" id="rc-vacs" checked>Dans les vacations du cycle (${o} en est retirée)</label>` : ''}
-        ${n ? `<label class="vchip" style="justify-content:flex-start"><input type="checkbox" id="rc-grid" checked>Dans la grille du cycle (${n} case${n>1?'s':''})</label>` : ''}
-      </div>
-      ${extras.length ? `<div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">${nw} remplace aussi :</div>
-      <div class="vchips" style="margin-bottom:6px">${extras.map(([c, v]) => `<label class="vchip sm"><input type="checkbox" class="rc-extra" value="${_esc(c)}">${_esc(v.label || c)}${inGrid(c) ? ` · ${inGrid(c)} case${inGrid(c)>1?'s':''}` : ''}</label>`).join('')}</div>
-      <div style="font-size:11px;color:var(--text3);margin-bottom:12px">Retirées des vacations du cycle et remplacées dans sa grille.</div>` : ''}
-      <div class="modal-btns"><button class="btn btn-ghost" id="rc-no">Garder les deux</button><button class="btn btn-green" id="rc-yes">Remplacer</button></div>`;
-    document.getElementById('modal-bg').style.display = 'flex';
-    document.getElementById('rc-no').onclick = () => { closeModal(); resolve(); };
-    document.getElementById('rc-yes').onclick = async () => {
-      const doVacs = !!(document.getElementById('rc-vacs') || {}).checked, doGrid = !!(document.getElementById('rc-grid') || {}).checked;
-      const more = [...document.querySelectorAll('.rc-extra:checked')].map(i => i.value);
-      closeModal();
-      const unlink = async code => {
-        await fetch(API + '/admin/vacation/removecycle', { method:'POST', headers:adminHeaders(), body:JSON.stringify({ name: code, cycleId }) });
-        if (_allVacs[code]) _allVacs[code].cycleIds = (_allVacs[code].cycleIds||[]).filter(id => id !== cycleId);
-      };
-      if (doVacs) await unlink(oldName);
-      for (const c of more) if (isLinked(c)) await unlink(c);
-      const repl = new Set([...(doGrid ? [oldName] : []), ...more]);
-      if (repl.size && cyc && cyc.weeks && cyc.weeks.flat().some(c => repl.has(c))) {
-        const weeks = cyc.weeks.map(w => w.map(c => repl.has(c) ? newName : c));
-        const res = await fetch(API + '/admin/cycle/update', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ cycle: { id: cyc.id, weeks } }) });
-        if (res.ok) { cyc.weeks = weeks; const ac = (_adminCycles||[]).find(c => c.id === cycleId); if (ac) ac.weeks = weeks; }
-        else alert('Erreur lors de la mise à jour de la grille');
-      }
-      resolve();
-    };
-  });
-}
-// Depuis la fiche d'une vacation : la remplacer dans ce cycle par une autre (ex. Ad1 → Aw1)
-function replaceInCycle(oldName) {
-  const cycleId = _vacActiveTab; if (!cycleId || cycleId === 'none') return;
-  const opts = Object.entries(_allVacs).filter(([c, v]) => c !== oldName && c !== 'RH' && !v.mixte).sort((a, b) => String(a[1].label||a[0]).localeCompare(String(b[1].label||b[0])))
-    .map(([c, v]) => `<option value="${_esc(c)}">${_esc(v.label || c)}${v.label && v.label !== c ? ' (' + _esc(c) + ')' : ''} · ${v.deb||'—'}–${v.fin||'—'}</option>`).join('');
-  document.getElementById('modal-content').innerHTML = `<h2 style="margin-bottom:6px">Remplacer ${_esc(oldName)} dans ce cycle</h2>
-    <p style="font-size:13px;color:var(--text2);margin-bottom:10px">Par quelle vacation ?</p>
-    <select id="ric-sel" style="width:100%;height:44px;font-size:16px;margin-bottom:6px">${opts}</select>
-    <div class="modal-btns"><button class="btn btn-ghost" onclick="closeModal()">Annuler</button><button class="btn btn-green" id="ric-ok">Continuer</button></div>`;
-  document.getElementById('modal-bg').style.display = 'flex';
-  document.getElementById('ric-ok').onclick = async () => {
-    const nn = document.getElementById('ric-sel').value; closeModal(); closeVacForm();
-    if (!((_allVacs[nn] && _allVacs[nn].cycleIds) || []).includes(cycleId)) {
-      await fetch(API + '/admin/vacation/addcycle', { method:'POST', headers:adminHeaders(), body:JSON.stringify({ name: nn, cycleId }) });
-      if (_allVacs[nn]) _allVacs[nn].cycleIds = [...(_allVacs[nn].cycleIds||[]), cycleId];
-    }
-    await offerReplaceCopy(oldName, nn, cycleId); loadVacations();
-  };
-}
 // Bandeau « Remplacer dans la grille » (copie rattachée, grille encore sur l'original)
-async function offerCycleGridSwap(oldName, newName, cycleId) { return offerReplaceCopy(oldName, newName, cycleId); }
 
 async function saveVac() {
   // Code vide : on reprend le nom affiché
@@ -1336,110 +823,22 @@ async function saveVac() {
   if (!dur) { errEl.textContent = 'Durée invalide.'; return; }
   const vacation = { name, ...(label ? {label} : {}), cat, deb: fmtHHMMToH(deb), fin: fmtHHMMToH(fin), dur, panier, mixte: mixte || false, primes, type, ...(days.length ? {days} : {}) };
 
-  // Scope: 'copy' = create new vacation for this cycle only
-  if (_editingVac && window._vacSaveScope === 'copy') {
-    window._duplicateUnlinkOld = _editingVac;
-    _editingVac = null;
-  }
-  window._vacSaveScope = null;
+  const poolBoxes = document.querySelectorAll('#vf-cycles input[data-pool]');
+  if (poolBoxes.length) vacation.pools = [...poolBoxes].filter(b => b.checked).map(b => b.dataset.pool);
   // Nouvelle vacation : ne jamais écraser une vacation existante portant le même code
-  if (!_editingVac && _allVacs[name]) { errEl.textContent = `Le code « ${name} » existe déjà : choisissez-en un autre (ex. ${incrementVacCode(name)}).`; if (window._duplicateUnlinkOld) { _editingVac = window._duplicateUnlinkOld; window._vacSaveScope = 'copy'; window._duplicateUnlinkOld = null; } return; }
+  if (!_editingVac && _allVacs[name]) { errEl.textContent = `Le code « ${name} » existe déjà : choisissez-en un autre (ex. ${incrementVacCode(name)}).`; return; }
 
   try {
     const res = await fetch(API + '/admin/vacation/save', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ vacation }) });
     const data = await res.json();
     if (!res.ok) { errEl.textContent = data.error || 'Erreur'; return; }
-    const isNew = !_editingVac;
-    if (isNew && _vacActiveTab && _vacActiveTab !== 'none') {
-      // New vacation: auto-link to active cycle tab
-      await fetch(API + '/admin/vacation/addcycle', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ name, cycleId: _vacActiveTab }) });
-      // If this was a "duplicate for this cycle" operation, unlink the old vacation
-      if (window._duplicateUnlinkOld) {
-        const oldName = window._duplicateUnlinkOld;
-        window._duplicateUnlinkOld = null;
-        await offerReplaceCopy(oldName, name, _vacActiveTab, vacation);
-      }
-    } else if (!isNew) {
-      // Existing vacation: apply cycle checkbox changes
-      const boxes = document.querySelectorAll('#vf-cycles input[data-cyc]');
-      const oldLinked = (_allVacs[name] && _allVacs[name].cycleIds) || [];
-      await Promise.all([...boxes].map(cb => {
-        const cyc = cb.dataset.cyc, was = oldLinked.includes(cyc), is = cb.checked;
-        if (is && !was) return fetch(API + '/admin/vacation/addcycle', { method:'POST', headers:adminHeaders(), body:JSON.stringify({name, cycleId:cyc}) });
-        if (!is && was) return fetch(API + '/admin/vacation/removecycle', { method:'POST', headers:adminHeaders(), body:JSON.stringify({name, cycleId:cyc}) });
-      }));
-    }
     closeVacForm();
     loadVacations();
   } catch(e) { errEl.textContent = 'Erreur réseau'; }
 }
 
-function showVacCycleConflictModal(vacName, otherCycleIds) {
-  const curCycle = _allCycles.find(c => c.id === _vacActiveTab);
-  const curName = curCycle?.name || _vacActiveTab || '(cycle actuel)';
-  const otherNames = otherCycleIds.map(id => { const c = _allCycles.find(c => c.id === id); return c?.name || id; });
-  const newCode = incrementVacCode(vacName);
-  const mc = document.getElementById('modal-content');
-  mc.innerHTML = `
-    <h2 style="margin-bottom:4px">Vacation partagée</h2>
-    <p style="font-size:13px;color:var(--text2);margin-bottom:16px">
-      <b>${vacName}</b> est utilisée dans plusieurs cycles :
-    </p>
-    <div style="background:var(--bg2);border-radius:var(--r);padding:10px 14px;margin-bottom:20px;font-size:13px;display:flex;flex-direction:column;gap:4px">
-      <div style="display:flex;align-items:center;gap:8px">
-        <span style="width:8px;height:8px;border-radius:50%;background:var(--blue);flex-shrink:0"></span>
-        <span><b>${curName}</b> <span style="color:var(--text3);font-size:11px">(cycle actuel)</span></span>
-      </div>
-      ${otherNames.map(n => `<div style="display:flex;align-items:center;gap:8px">
-        <span style="width:8px;height:8px;border-radius:50%;background:var(--border2);flex-shrink:0"></span>
-        <span style="color:var(--text2)">${n}</span>
-      </div>`).join('')}
-    </div>
-    <p style="font-size:12px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px">Que faire ?</p>
-    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px">
-      <button class="btn btn-orange" style="text-align:left;display:flex;flex-direction:column;align-items:flex-start;padding:10px 14px;gap:2px" onclick="closeModal();saveVacForAll()">
-        <span style="font-weight:600">Modifier dans tous les cycles</span>
-        <span style="font-size:11px;font-weight:400;opacity:.8">Les changements s'appliquent à <b>${curName}</b> et à <b>${otherNames.join(', ')}</b></span>
-      </button>
-      <button class="btn" style="text-align:left;display:flex;flex-direction:column;align-items:flex-start;padding:10px 14px;gap:2px" onclick="closeModal();saveVacDuplicate()">
-        <span style="font-weight:600">Créer une copie <b>${newCode}</b> pour ${curName}</span>
-        <span style="font-size:11px;font-weight:400;opacity:.8"><b>${vacName}</b> reste inchangée dans ${otherNames.join(', ')}</span>
-      </button>
-    </div>
-    <div class="modal-btns"><button class="btn btn-ghost" onclick="closeModal()">Annuler</button></div>`;
-  document.getElementById('modal-bg').style.display = 'flex';
-}
 
-function saveVacForAll() {
-  window._forceSaveAllCycles = true;
-  window._pendingVacData = null;
-  saveVac();
-}
 
-async function saveVacDuplicate() {
-  const src = window._pendingVacData;
-  const oldName = _editingVac;
-  window._pendingVacData = null;
-  if (!src) return;
-  const newName = incrementVacCode(oldName);
-  const errEl = document.getElementById('vf-err');
-  errEl.textContent = 'Duplication en cours…';
-  try {
-    // Save new vacation with incremented code, inherit category from original
-    const srcCat = (_allVacs[oldName]&&_allVacs[oldName].cat)||vacCat(oldName);
-    const vacation = { ...src, name: newName, ...(srcCat&&srcCat!=='Général'?{cat:srcCat}:{}) };
-    const res = await fetch(API + '/admin/vacation/save', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ vacation }) });
-    if (!res.ok) { errEl.textContent = 'Erreur lors de la duplication'; return; }
-    // Link new vacation to current cycle
-    if (_vacActiveTab && _vacActiveTab !== 'none') {
-      await fetch(API + '/admin/vacation/addcycle', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ name: newName, cycleId: _vacActiveTab }) });
-    }
-    // Proposer de remplacer l'original par la copie dans ce cycle (vacations et grille)
-    if (_vacActiveTab && _vacActiveTab !== 'none') await offerReplaceCopy(oldName, newName, _vacActiveTab, vacation);
-    closeVacForm();
-    loadVacations();
-  } catch(e) { errEl.textContent = 'Erreur réseau'; }
-}
 
 async function deleteVac(name) {
   if (!confirm(`Supprimer la vacation "${name}" ?`)) return;
@@ -1447,22 +846,6 @@ async function deleteVac(name) {
   if (res.ok) loadVacations();
 }
 
-async function purgeStaleVacationCycleIds() {
-  const validIds = new Set(_allCycles.map(c => c.id));
-  const toRemove = [];
-  for (const [name, v] of Object.entries(_allVacs)) {
-    for (const id of (v.cycleIds || [])) {
-      if (!validIds.has(id)) toRemove.push({ name, cycleId: id });
-    }
-  }
-  if (!toRemove.length) { alert('Aucune référence obsolète trouvée.'); return; }
-  if (!confirm(`Purger ${toRemove.length} lien(s) vers des cycles supprimés ?`)) return;
-  for (const { name, cycleId } of toRemove) {
-    await fetch(API + '/admin/vacation/removecycle', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ name, cycleId }) });
-  }
-  await loadVacations();
-  alert(`${toRemove.length} lien(s) supprimé(s).`);
-}
 
 
 async function loadUsers() {
@@ -1574,7 +957,7 @@ async function cleanupLines() {
 
 // CYCLES
 // Équipes : chaque cycle appartient à une équipe (sans précision : antenne). L'app prend les cycles de l'équipe du profil.
-const POOL_L = { antenne: 'Antenne', cadre: 'Pool cadre', coord: 'Coordination' };
+const POOL_L = { antenne: 'Antenne', cadre: 'Cadre', coord: 'Coordination' };
 async function loadCycles() {
   const el = document.getElementById('cycles-list');
   el.innerHTML = '<div class="empty">Chargement...</div>';

@@ -624,6 +624,8 @@ async function handle(request, env, ctx) {
         cycleIds: existing.cycleIds || [],
         ...(vac.label ? { label: vac.label } : existing.label ? { label: existing.label } : {}),
         ...(vac.days && vac.days.length ? { days: vac.days } : {}),
+        // équipes à qui une vacation hors grille est proposée ([] : à personne)
+        ...(Array.isArray(vac.pools) ? { pools: vac.pools.filter(function(p){ return ['antenne','cadre','coord'].indexOf(p) >= 0; }) } : Array.isArray(existing.pools) ? { pools: existing.pools } : {}),
         // cat '' = revenir à la catégorie automatique
         ...(vac.cat !== undefined ? (vac.cat ? { cat: vac.cat } : {}) : existing.cat ? { cat: existing.cat } : {})
       };

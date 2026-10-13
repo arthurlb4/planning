@@ -10,7 +10,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.62">
+<meta name="app-version" content="v6.63">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -1299,7 +1299,7 @@ function getVAC(date){
       // vacations de la grille du cycle : reconnues même sans être rattachées au cycle dans l'admin
       (activeCycle.weeks||[]).forEach(function(w){(w||[]).forEach(function(x){if(x)mine[x]=1;});});
       Object.entries(_globalVacs).forEach(function([name,v]){
-        if(!v.cycleIds||!v.cycleIds.length||v.cycleIds.includes(activeCycle.id)||mine[name]||v.cycleIds.some(function(id){return oth[id];})||othC[name]){
+        if(Array.isArray(v.pools)?(mine[name]||othC[name]||v.pools.indexOf(_poolAt(date))>=0):(!v.cycleIds||!v.cycleIds.length||v.cycleIds.includes(activeCycle.id)||mine[name]||v.cycleIds.some(function(id){return oth[id];})||othC[name])){
           cycVacs[name]=v;
         }
       });
@@ -8943,8 +8943,8 @@ function _autreVacHtml(k,ex){
     const allGrid=new Set();(_globalCycles||[]).forEach(function(c){(c.weeks||[]).forEach(function(w){(w||[]).forEach(function(x){if(x)allGrid.add(x);});});});
     const myAc=_activeCycleOf(me,key),TP={Antenne:'antenne',Cadre:'cadre',Coordination:'coord'};
     if(myAc)Object.keys(_globalVacs).filter(function(n){var v=_globalVacs[n],ts=String(v.type||'week').split(',');
-        return ok(n)&&!allGrid.has(n)&&(v.cycleIds||[]).includes(myAc.id)&&(ts.includes('all')||ts.includes(dt));})
-      .forEach(function(n){var c=vacCat(n);if(TP[c]&&(has[TP[c]]||TP[c]===me))return;add(c,n);});
+        return ok(n)&&!allGrid.has(n)&&(Array.isArray(v.pools)?v.pools.indexOf(me)>=0:(v.cycleIds||[]).includes(myAc.id))&&(ts.includes('all')||ts.includes(dt));})
+      .forEach(function(n){var c=vacCat(n);if(!Array.isArray(_globalVacs[n].pools)&&TP[c]&&(has[TP[c]]||TP[c]===me))return;add(c,n);}); // cases cochées dans l'admin : respectées telles quelles
     window._autreVacsForDay=out;
   }
   if(window._autreVacsForDay&&window._autreVacsForDay.length){

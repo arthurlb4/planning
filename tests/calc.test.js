@@ -446,5 +446,12 @@ function situation(opts) {
     var k7=dk(_dAdd(start,6)),p7=_streakPos(k7),n7=_ruleNotes(k7).filter(function(z){return z.add;});_addStreakRendu(k7);var x7=S.extraRendus[k7];S.overrides={};S.extraRendus={};
     return [r<540,n1.some(function(z){return z.lvl==='red';}),p7>=7,n7.length===1,x7&&x7.dur===420];})()`), [true, true, true, true, true]); }
 
+// Vacation hors grille proposée aux équipes cochées (pools) : la Réal proposée au cadre, pas à l'antenne
+{ const a = load('2026-10-11');
+  eq('Autres : vacation hors grille proposée aux équipes cochées', a.run(`(function(){_globalCycles=[{id:'a1',pool:'antenne',startDate:'2026-01-01',weeks:[[null,null,null,null,null,null,'RH']]},{id:'c1',pool:'cadre',startDate:'2026-01-01',weeks:[[null,null,null,null,null,null,'RH']]}];
+    _globalVacs={Xr:{deb:'06h00',fin:'14h00',dur:480,type:'week',cycleIds:['a1'],pools:['cadre'],cat:'Réal'}};
+    var r=[];['antenne','cadre'].forEach(function(p){S.profile.pool=p;window._cycleVacsShown=[];r.push(_autreVacHtml('2026-10-14').indexOf('Xr')>0,!!getVAC(new Date(2026,9,14,12)).Xr);});
+    delete S.profile.pool;_globalCycles=[];_globalVacs={};return r;})()`), [false, false, true, true]); }
+
 console.log('\n' + (count - fails) + '/' + count + ' contrôles réussis');
 if (fails) process.exit(1);
