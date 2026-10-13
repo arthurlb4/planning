@@ -999,10 +999,10 @@ async function handle(request, env, ctx) {
         if (!user.profiles) user.profiles = {};
         var profileName = data && data.profile && data.profile.name || profileId;
         // Quota KV : ne réécrire le compte que si le profil est nouveau ou renommé
-        if (!user.profiles[profileId] || user.profiles[profileId].name !== profileName) {
+        if (!user.profiles[profileId] || user.profiles[profileId].name !== profileName || (profileName !== profileId && user.name !== profileName)) {
           user.profiles[profileId] = { name: profileName, updatedAt: Date.now() };
-          // nom du compte (admin, connexion) : suit le nom du profil quand le compte n'en a qu'un
-          if (Object.keys(user.profiles).length === 1 && profileName !== profileId) user.name = profileName;
+          // nom du compte (admin, connexion) : suit le nom du profil (l'app n'a plus qu'un profil par compte)
+          if (profileName !== profileId) user.name = profileName;
           await env.PLANNING_DB.put('user:' + session.userId, JSON.stringify(user));
         }
       }
