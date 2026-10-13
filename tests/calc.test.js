@@ -433,5 +433,18 @@ function situation(opts) {
     _lineBefore('p1',pick,'2026-06-03');
     return [lineIdx(getMonday(lm))===pick,lineIdx(getMonday(D))===after,lineIdx(getMonday(NOW))===now,S.conges[rest]==='cg',_us[_us.length-1].l.indexOf('Ligne avant le')===0];})()`), [true, true, true, true, true]); }
 
+// Règles de travail : repos entre deux vacations (11h, 9h à la demande) et jours au-delà du 6e d'affilée (7h de rendus)
+{ const a = load('2026-10-13');
+  eq('Règles : repos court et 7e jour d’affilée', a.run(`(function(){render=function(){};saveState=function(){};openDay=function(){};
+    var V=getVAC(new Date(2026,9,14,12)),late=null,early=null;Object.keys(V).forEach(function(n){var v=V[n];if(!v.deb||!(v.dur>0))return;var a=_toMinApp(v.deb),b=_toMinApp(v.fin);if(b<a&&!late)late=n;if(a<240&&!early)early=n;});
+    var base=null;for(var i=0;i<60&&!base;i++){var d=new Date(2026,9,1+i,12),d2=new Date(2026,9,2+i,12);if(_shiftOf(d)&&_shiftOf(d2))base=dk(d);}
+    var k2=dk(_dAdd(base,1));S.overrides={};S.overrides[base]={vac:late,fromSV:false,echange:false};S.overrides[k2]={vac:early,fromSV:false,echange:false};
+    var r=_restBefore(k2),n1=_ruleNotes(k2);
+    S.overrides={};var start=null;for(var j=0;j<60&&!start;j++){var x=new Date(2026,9,1+j,12);if(!_shiftOf(x))start=dk(x);}
+    var V2=getVAC(new Date(start+'T12:00:00')),any=Object.keys(V2).filter(function(n){return V2[n].deb&&V2[n].dur>0;})[0];
+    for(var m=0;m<8;m++){var kk=dk(_dAdd(start,m));S.overrides[kk]={vac:any,fromSV:true,echange:false};}
+    var k7=dk(_dAdd(start,6)),p7=_streakPos(k7),n7=_ruleNotes(k7).filter(function(z){return z.add;});_addStreakRendu(k7);var x7=S.extraRendus[k7];S.overrides={};S.extraRendus={};
+    return [r<540,n1.some(function(z){return z.lvl==='red';}),p7>=7,n7.length===1,x7&&x7.dur===420];})()`), [true, true, true, true, true]); }
+
 console.log('\n' + (count - fails) + '/' + count + ' contrôles réussis');
 if (fails) process.exit(1);

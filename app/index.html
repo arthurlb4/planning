@@ -10,7 +10,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.54">
+<meta name="app-version" content="v6.55">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -1345,6 +1345,31 @@ function _h(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&
 function getDur(date){const{vac}=getVac(date);const VAC=getVAC();const d=(vac&&vac!=='RH'&&VAC[vac])?VAC[vac].dur:0;
   // demi-journée de congé exceptionnel complétée par des rendus : le rendu ne compte que l'autre moitié
   if(d&&S.excInfo){const k=dk(date),x=S.excInfo[k];if(x&&x.half&&x.rest==='rend'&&/^rend/.test((S.conges||{})[k]||''))return Math.round(d/2);}return d;}
+// ── Règles de travail ──
+// Repos quotidien : 11h entre deux vacations, abaissable à 9h à la demande du salarié.
+// Au-delà de 6 jours travaillés d'affilée : 7h de rendus par jour en plus.
+var RULES={repos:660,reposMin:540,joursMax:6,rendJourSup:420};
+// Vacation réellement faite ce jour : début et fin en minutes depuis minuit du jour (fin après minuit : > 1440)
+function _shiftOf(d){var k=dk(d),g=getVac(d),c=(S.conges||{})[k];if(c||!g.vac||g.vac==='RH'||g.absent||(g.echange&&!g.ecSelf))return null;
+  var V=getVAC(d)[g.vac];if(!V||!V.deb||!V.fin||!(V.dur>0))return null;var a=_toMinApp(V.deb),b=_toMinApp(V.fin);if(a==null||b==null)return null;if(b<=a)b+=1440;return{s:a,e:b,v:g.vac};}
+function _dAdd(k,n){var d=new Date(k+'T12:00:00');d.setDate(d.getDate()+n);return d;}
+// Repos entre la vacation de la veille et celle du jour (null : pas deux vacations de suite)
+function _restBefore(k){var a=_shiftOf(_dAdd(k,-1)),b=_shiftOf(_dAdd(k,0));return a&&b?1440-a.e+b.s:null;}
+// Rang du jour dans une suite de jours travaillés d'affilée (0 : jour non travaillé)
+function _streakPos(k){if(!_shiftOf(_dAdd(k,0)))return 0;var n=1;while(n<60&&_shiftOf(_dAdd(k,-n)))n++;return n;}
+// Ce que les règles disent d'un jour : repos trop court avant ou après, jour au-delà du 6e d'affilée
+function _ruleNotes(k){var L=[],fd=function(n){var d=_dAdd(k,n);return d.getDate()+' '+MCs[d.getMonth()];};
+  [[_restBefore(k),-1],[_restBefore(dk(_dAdd(k,1))),1]].forEach(function(x){var r=x[0];if(r==null||r>=RULES.repos)return;
+    var od=_dAdd(k,x[1]),o=_shiftOf(od),ol=vLbl(o.v,getVAC(od)),w=x[1]<0?'après la '+ol+' de la veille':'avant la '+ol+' du lendemain';
+    L.push(r<RULES.reposMin?{lvl:'red',txt:'Repos de '+fmtMin(r)+' '+w+' : moins de 9h, non autorisé'}:{lvl:'amber',txt:'Repos de '+fmtMin(r)+' '+w+' : moins de 11h, possible seulement à ta demande'});});
+  var p=_streakPos(k);if(p>RULES.joursMax){var x=(S.extraRendus||{})[k];L.push({lvl:'amber',txt:p+'e jour travaillé d’affilée : '+fmtMin(RULES.rendJourSup)+' de rendus dues',add:!(x&&x.dur>0),k:k});}
+  return L;}
+function _ruleHtml(k){var L=_ruleNotes(k);if(!L.length)return '';
+  return L.map(function(n){return '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;margin:-4px 0 10px;border-radius:10px;font-size:12px;line-height:1.4;background:'+(n.lvl==='red'?'rgba(192,57,43,.18);color:#f3c2bb':'rgba(200,128,72,.16);color:var(--text)')+'"><i class="ti ti-alert-triangle" style="font-size:15px;flex-shrink:0;color:'+(n.lvl==='red'?'var(--red)':'var(--amber)')+'"></i><span style="flex:1">'+n.txt+'</span>'
+    +(n.add?'<button class="adj-pill" style="width:auto;height:28px;padding:0 12px;font-size:12px;flex-shrink:0" onclick="event.stopPropagation();_addStreakRendu(\''+n.k+'\')">+ '+fmtMin(RULES.rendJourSup)+'</button>':'')+'</div>';}).join('');}
+function _addStreakRendu(k){pushUndo('Rendus du '+_streakPos(k)+'e jour d’affilée');if(!S.extraRendus)S.extraRendus={};S.extraRendus[k]={dur:RULES.rendJourSup,label:_streakPos(k)+'e jour d’affilée'};saveState();render();openDay(k);}
+// Après un changement : une alerte pour les jours touchés et leurs voisins
+function _ruleToast(keys){var seen={},msg=null;keys.forEach(function(k){if(!k||msg)return;[-1,0,1].forEach(function(n){var kk=dk(_dAdd(k,n));if(seen[kk]||msg)return;seen[kk]=1;var L=_ruleNotes(kk);if(L.length){var d=_dAdd(kk,0);msg='⚠ '+d.getDate()+' '+MCs[d.getMonth()]+' : '+L[0].txt;}});});if(msg)setTimeout(function(){_infoToast(msg);},400);}
 // Congés pour événements familiaux (accord collectif, art. IX.2.4) : rémunérés, ni congés payés ni rendus
 const EXC_M={rentree:{l:'Rentrée scolaire',s:'Rentrée',half:1,info:'½ journée · enfant en maternelle, élémentaire ou 6ᵉ'},enfant:{l:'Enfant malade',s:'Enf.',info:'6 j/an · 9 avec 2 enfants · 12 avec 3+ (avec conjoint ou parent malade)'},
   proche:{l:'Conjoint ou parent malade',s:'Malad.',info:'compté avec enfant malade : 6 j/an · 9 · 12'},mariage:{l:'Mariage / PACS',s:'Mar.',info:'5 j (2 j pour un enfant ou un parent)'},
@@ -3660,23 +3685,6 @@ function _dayNavSetup(key){
   _swipeNav(function(nd){var dt=new Date(key+'T12:00:00');dt.setDate(dt.getDate()+nd);openDay(dk(dt));});
 }
 // Repos entre deux vacations (11 h minimum) : simple signalement, rien n'est bloqué
-function _shiftSpan(d){
-  var k=dk(d),g=getVac(d),cg=(S.conges||{})[k];
-  if(g.absent||cg==='cg'||cg==='rend'||cg==='rend-hist'||cg==='absent'||(g.echange&&!g.ecSelf)||!g.vac||g.vac==='RH')return null;
-  var V=getVAC(d)[g.vac];if(!V||!V.deb||!V.fin)return null;
-  var a=_toMinApp(V.deb),b=_toMinApp(V.fin);if(a==null||b==null)return null;
-  var base=Math.round(new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime()/60000);
-  return{start:base+a,end:base+(b>a?b:b+1440),vac:g.vac};
-}
-function _restWarn(key){
-  var d=new Date(key+'T12:00:00'),me=_shiftSpan(d);if(!me)return '';
-  var p=new Date(d);p.setDate(p.getDate()-1);var n=new Date(d);n.setDate(n.getDate()+1);
-  var pv=_shiftSpan(p),nx=_shiftSpan(n),out=[];
-  if(pv&&me.start-pv.end<660)out.push('repos de '+fmtMin(me.start-pv.end)+' après la '+pv.vac+' de la veille');
-  if(nx&&nx.start-me.end<660)out.push('repos de '+fmtMin(nx.start-me.end)+' avant la '+nx.vac+' du lendemain');
-  if(!out.length)return '';
-  return '<div style="font-size:12px;color:var(--amber);margin-top:5px;display:flex;gap:6px;align-items:baseline"><i class="ti ti-moon-stars" style="font-size:13px"></i><span>Moins de 11 h : '+out.join(' ; ')+'</span></div>';
-}
 // Note libre sur un jour (visible dans la fiche du jour)
 // Note / heures en plus : retour à l'écran d'où on vient (fiche du jour ou « Modifier le jour »)
 function _addBack(key){var f=window._addFrom;window._addFrom=null;pendingKey=key;if(f==='modif')openCustomVacModal();else openDay(key);}
@@ -3876,7 +3884,6 @@ function openDay(key){
       +'<div style="font-size:12px;color:'+(_given?'var(--text3);text-decoration:line-through':'var(--text2)')+';margin-top:3px">'+VAC[vac].deb+'→'+VAC[vac].fin+' · '+fmtMin(dur)+'</div>'
       +(echange?'<div style="font-size:12px;color:#e09a9a;margin-top:3px;display:flex;align-items:center;gap:5px"><i class="ti ti-arrows-exchange" style="font-size:14px"></i>'+_mvTxt(key,_given)+'</div>':'')
       +(epvHtml&&!_given?'<div style="margin-top:3px">'+epvHtml+'</div>':'')
-      +(_given?'':_restWarn(key))
       +_wlHtml+(_isResv?'<div style="font-size:12px;color:var(--amber);margin-top:3px">● Couvert sous réserve d’un report automatique (7h ou moins restantes)</div>':'')
       +_exrHtml
       +_noteHtml
@@ -3890,7 +3897,7 @@ function openDay(key){
       +'</div>';
   }
 
-  document.getElementById('modal-root').innerHTML=`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet daymod"><div class="sh"></div>${_dayBox}${vgHtml}<div style="height:16px"></div>${_excDayLine(key)}${ah}<button class="mcancel mclose" onclick="closeModal()">Fermer</button></div></div>`;
+  document.getElementById('modal-root').innerHTML=`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet daymod"><div class="sh"></div>${_dayBox}${key?_ruleHtml(key):''}${vgHtml}<div style="height:16px"></div>${_excDayLine(key)}${ah}<button class="mcancel mclose" onclick="closeModal()">Fermer</button></div></div>`;
   if(_note){var _ns=document.querySelector('#modal-root .ti-note');if(_ns)_ns.nextElementSibling.textContent=_note;}
   try{_dayVgSize();}catch(e){}
   _dayFixH();
@@ -8622,7 +8629,7 @@ function _cvSaveMove(){var W=window._cvW||{when:'day'},key=pendingKey,m=window._
   _cvSaveExtras();
   var ML={autre:'horaires',forme:'formation',formateur:'formateur',detache:'détachement',syndic:'détachement syndical'};
   logH(ex?'Échange: '+fmtDate(oD)+' <-> '+fmtDate(fD)+' ('+vLbl(V,VF)+')':fmtDate(oD)+' -> '+fmtDate(fD)+' ('+ML[m]+')',ex?'#c88048':'#62aadc',fKey);
-  saveState();render();gcalTrigger();popCell(fKey);openDay(key);}
+  saveState();render();gcalTrigger();popCell(fKey);openDay(key);_ruleToast([oKey,fKey]);}
 // Option « Heures valables un an » : chaque mois de rendus expire à la fin du 12e mois (plus de menu de report)
 function exp12Set(on){pushUndo(on?'Heures valables un an':'Expiration par reports');if(!S.profile)S.profile={};if(on)S.profile.exp12=true;else delete S.profile.exp12;saveState();render();_infoToast(on?'✓ Heures valables un an':'Expiration à 3 mois, avec reports');}
 // Échange : la page Modifier, sur « un autre jour » et le motif Échange
@@ -8845,7 +8852,7 @@ function confirmCustomVac(){
     if(o&&(!!o.formation!==formation||(o.motif||'autre')!==motif)){pushUndo('Option modifiée');o.formation=formation;o.motif=motif;}
   }
   saveState();render();gcalTrigger();
-  if(key){popCell(key);openDay(key);}else closeModal();
+  if(key){popCell(key);openDay(key);_ruleToast([key]);}else closeModal();
 }
 
 // Autres vacations du jour, par catégorie (fiche du jour : à la place de la grille ; échange : fenêtre à part)
