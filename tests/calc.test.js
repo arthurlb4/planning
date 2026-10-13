@@ -424,5 +424,14 @@ function situation(opts) {
     var lf=new Date(lm);lf.setDate(lf.getDate()+7);var n0=getCycleLen(lm),d0=Math.round((lm-ANCHOR)/(7*864e5));pr.origAnchor=((7-d0)%n0+n0)%n0;pr.lineHistory=[{anchorLine:pr.anchorLine,from:dk(lf)}];
     return [dk(lm),lineIdx(lm),lineIdx(getMonday(NOW))];})()`), ['2026-06-01', 7, 3]); }
 
+// Changer de ligne « Avant le » : ligne d'avant fixée, ligne d'après inchangée, rien d'effacé ; jours qui comptent autrement listés
+{ const a = load('2026-10-11');
+  eq('Ligne avant une date', a.run(`(function(){render=function(){};saveState=function(){};closeModal=function(){};_infoToast=function(){};
+    _aid='p1';_profs={p1:S};var now=lineIdx(getMonday(NOW)),D=new Date(2026,5,1,12),lm=new Date(2026,4,25,12),after=lineIdx(getMonday(D)),
+      rest=null;for(var i=0;i<7;i++){var x=new Date(2026,4,25+i,12);var c=getCycleVac(x).cycleVac;if(c&&c!=='RH'){rest=dk(x);break;}}
+    S.conges={};S.conges[rest]='cg';var N=getCycleLen(lm),pick=(lineIdx(lm)+1)%N;
+    _lineBefore('p1',pick,'2026-06-03');
+    return [lineIdx(getMonday(lm))===pick,lineIdx(getMonday(D))===after,lineIdx(getMonday(NOW))===now,S.conges[rest]==='cg',_us[_us.length-1].l.indexOf('Ligne avant le')===0];})()`), [true, true, true, true, true]); }
+
 console.log('\n' + (count - fails) + '/' + count + ' contrôles réussis');
 if (fails) process.exit(1);

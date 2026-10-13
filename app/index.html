@@ -10,7 +10,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.48">
+<meta name="app-version" content="v6.49">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -4791,9 +4791,9 @@ function _suStep2(){
   var sel='<select data-k="fromYM" onchange="_suRead();_suDraw()" class="su-msel">'+M.map(function(ym){return '<option value="'+ym+'"'+(f===ym?' selected':'')+'>'+capitalize(_suMoisL(ym))+(ym===_SU_REC_YM?' · recommandé':ym===top?(late?' · le plus récent':' · ce mois-ci'):'')+'</option>';}).join('')+'</select>';
   return _suHd('Depuis quel mois&nbsp;?',2)
     +sel
+    +(f<TODAY_YM?'<div style="margin-top:6px">'+_suLcHtml(f)+'</div>':'')
     +'<div class="su-note" style="margin-top:10px">'+_suPts(['Entrez ce qui s’écarte du cycle depuis ce mois','Échanges, horaires, absences, formations, rendus','L’app compare ensuite vos heures au tableau Gestion et aux bulletins'])+'</div>'
     +_suFromSum(f)
-    +(f<TODAY_YM?_suLcHtml(f):'')
     +'<button class="su-btn" onclick="_suGo(4)">Continuer</button>';
 }
 // Cas rare : changement de ligne entre le mois de départ et aujourd'hui → date du changement et ligne d'avant (la semaine qui le précède)
@@ -8283,6 +8283,11 @@ function openChangeLigneModal(pid){
     +'<input type="radio" name="cl-scope" value="from" onchange="updateChangeLigneSelect(\''+pid+'\','+_curVisual+')"> À partir de'
     +'<input type="date" id="cl-date" value="'+today+'" oninput="updateChangeLigneSelect(\''+pid+'\','+_curVisual+')" style="height:32px;padding:4px 8px;border:0.5px solid var(--border);border-radius:var(--r);font-size:12px;background:var(--bg2);color:var(--text);margin-left:4px">'
     +'</label>'
+    // ligne d'avant un changement oublié : rien n'est effacé, la ligne actuelle reste
+    +'<label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-top:8px;cursor:pointer">'
+    +'<input type="radio" name="cl-scope" value="before" onchange="updateChangeLigneSelect(\''+pid+'\','+_curVisual+')"> Avant le'
+    +'<input type="date" id="cl-dateb" value="'+today+'" max="'+today+'" oninput="updateChangeLigneSelect(\''+pid+'\','+_curVisual+')" style="height:32px;padding:4px 8px;border:0.5px solid var(--border);border-radius:var(--r);font-size:12px;background:var(--bg2);color:var(--text);margin-left:4px">'
+    +'</label>'
     +'</div>'
     +'<div style="margin-bottom:12px">'
     +'<label style="font-size:10px;color:var(--text3);display:block;margin-bottom:4px" id="cl-cycle-lbl"></label>'
@@ -8298,7 +8303,9 @@ function openChangeLigneModal(pid){
 function updateChangeLigneSelect(pid, curVisual){
   const scope=[...document.querySelectorAll('input[name="cl-scope"]')].find(function(r){return r.checked;});
   const scopeVal=scope?scope.value:'total';
-  const fromDate=scopeVal==='from'?(document.getElementById('cl-date')||{value:dk(NOW)}).value:dk(NOW);
+  let fromDate=scopeVal==='from'?(document.getElementById('cl-date')||{value:dk(NOW)}).value:dk(NOW);
+  // Avant le : ligne de la semaine qui précède cette date
+  if(scopeVal==='before'){const _b=(document.getElementById('cl-dateb')||{}).value;if(_b){const _m=getMonday(new Date(_b+'T12:00:00'));_m.setDate(_m.getDate()-7);fromDate=dk(_m);}}
   // Get the grid for the target date
   const targetDate=new Date(fromDate+'T12:00:00');
   const kvGrid=getActiveCycleGrid(targetDate);
@@ -8314,7 +8321,7 @@ function updateChangeLigneSelect(pid, curVisual){
     const k=fromDate;return c.startDate<=k&&(!c.endDate||c.endDate>=k);
   });
   const lbl=document.getElementById('cl-cycle-lbl');
-  if(lbl)lbl.textContent='Ligne dans '+(activeCyc?activeCyc.name:'le cycle actuel');
+  if(lbl)lbl.textContent=scopeVal==='before'?'Ligne la semaine du '+targetDate.getDate()+' '+MCs[targetDate.getMonth()]:'Ligne dans '+(activeCyc?activeCyc.name:'le cycle actuel');
   const sel=document.getElementById('cl-line');
   if(!sel)return;
   sel.innerHTML=Array.from({length:nLines},function(_,i){
@@ -8330,8 +8337,9 @@ function confirmChangeLigne(pid){
   const li=document.getElementById('cl-line');if(!li)return;
   const scope=[...document.querySelectorAll('input[name="cl-scope"]')].find(function(r){return r.checked;});
   const scopeVal=scope?scope.value:'total';
-  const fromDate=scopeVal==='from'?(document.getElementById('cl-date')||{value:''}).value:'';
+  const fromDate=scopeVal==='from'?(document.getElementById('cl-date')||{value:''}).value:scopeVal==='before'?(document.getElementById('cl-dateb')||{value:''}).value:'';
   const chosenVisual=parseInt(li.value);
+  if(scopeVal==='before'){if(!fromDate){alert('Date requise.');return;}_lineBefore(pid,chosenVisual,fromDate);return;}
 
   if(scopeVal==='total'){
     const _diffNow=Math.round((getMonday(NOW)-ANCHOR)/(7*864e5));
@@ -8400,6 +8408,36 @@ function applyChangeLigne(pid,chosenVisual,scopeVal,fromDate){
   }
 }
 
+// « Avant le » : ligne (et équipe) suivie avant une date, la ligne d'après ne change pas. Rien n'est effacé ;
+// ce qui compte autrement avec la nouvelle ligne (congés, rendus, modifications) est listé ensuite
+function _lineBefore(pid,chosen,dateStr){const pr=_profs[pid];if(!pr)return;
+  const D=getMonday(new Date(dateStr+'T12:00:00')),Dk=dk(D),lm=new Date(D);lm.setDate(lm.getDate()-7);
+  const _np=window._poolTmp&&POOLS[window._poolTmp]?window._poolTmp:null;window._poolTmp=null;
+  // avant : vacation prévue et valeur des jours posés avant la date
+  const keys=Object.keys(Object.assign({},pr.conges||{},pr.overrides||{})).filter(function(k){return k<Dk;}).sort(),was={};
+  keys.forEach(function(k){const d=new Date(k+'T12:00:00');was[k]={c:getCycleVac(d).cycleVac,v:getDur(d)};});
+  pushUndo('Ligne avant le '+fmtDate(D));
+  const P=pr.profile,h=(P.lineHistory||[]).slice().sort(function(a,b){return a.from<b.from?-1:1;}),hasP=h.some(function(x){return x.pool;})||(_np&&_np!==_poolAt(D));
+  // ligne en place à la date : gardée telle quelle à partir de la date
+  let aD=P.origAnchor!==undefined?P.origAnchor:(P.anchorLine!==undefined?P.anchorLine:ANCHOR_L);h.forEach(function(x){if(x.from<=Dk)aD=x.anchorLine;});
+  const pD=_poolAt(D);
+  const nh=h.filter(function(x){return x.from>=Dk;});
+  if(!nh.length||nh[0].from!==Dk)nh.unshift({anchorLine:aD,from:Dk});
+  if(hasP){if(!nh[0].pool)nh[0].pool=pD;}
+  P.lineHistory=nh;
+  if(hasP){P.origPool=_np||pD;}
+  window._poolTmp=_np;try{const n=getCycleLen(lm),df=Math.round((lm-ANCHOR)/(7*864e5));P.origAnchor=((chosen-df)%n+n)%n;}finally{window._poolTmp=null;}
+  P.anchorLine=nh[nh.length-1].anchorLine;
+  _profs[pid]=pr;if(pid===_aid)S=pr;saveState();closeModal();render();
+  // après : ce qui change
+  const L=[];keys.forEach(function(k){const d=new Date(k+'T12:00:00'),c=getCycleVac(d).cycleVac,v=getDur(d),o=was[k],cg=(S.conges||{})[k],ov=(S.overrides||{})[k],rest=!c||c==='RH',wrest=!o.c||o.c==='RH';
+    if(cg&&/^(cp|cg|rend)/.test(cg)){if(rest&&!wrest)L.push([k,(/^rend/.test(cg)?'Rendu':'Congé')+' sur un repos']);else if(/^rend/.test(cg)&&v!==o.v)L.push([k,'Rendu '+fmtMin(o.v)+' → '+fmtMin(v)]);}
+    else if(ov&&!ov.echange&&ov.vac&&ov.vac===c)L.push([k,'Modification identique à la vacation prévue']);});
+  if(!L.length){_infoToast('✓ Ligne avant le '+fmtDate(D)+' enregistrée');return;}
+  document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="sh"></div><div class="st">Avec la nouvelle ligne</div>'
+    +'<div class="ss" style="margin-bottom:12px">'+L.length+' jour'+(L.length>1?'s':'')+' compte'+(L.length>1?'nt':'')+' autrement :</div>'
+    +L.map(function(x){const d=new Date(x[0]+'T12:00:00');return '<div class="srow" style="cursor:pointer" onclick="openDay(\''+x[0]+'\')"><div class="slbl">'+d.getDate()+' '+MCs[d.getMonth()]+' '+d.getFullYear()+'</div><div style="font-size:12px;color:var(--text2)">'+x[1]+' ›</div></div>';}).join('')
+    +'<button class="mcancel" onclick="closeModal()">OK</button></div></div>';}
 function getCycleVacWithHistory(date,pr){
   if(!pr||!pr.profile||!pr.profile.lineHistory||!pr.profile.lineHistory.length)return null;
   const key=dk(date);
