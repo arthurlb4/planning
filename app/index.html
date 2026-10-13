@@ -10,7 +10,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.58">
+<meta name="app-version" content="v6.59">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -9644,17 +9644,18 @@ function _cloudSaveFailed(pid,msg){
 }
 // Nouvelle version publiée : l'app s'ouvre sur la copie gardée (pas d'écran blanc au lancement), puis se recharge
 // une fois sur la nouvelle, que le service worker vient de mettre de côté (une seule fois par version : jamais de boucle)
+// Appelée au lancement (avant tout modal) et au retour au premier plan ; renvoie true si l'app se recharge
 function _verCheck(){
-  fetch(location.href,{cache:'no-store',headers:{'Cache-Control':'no-cache, no-store','Pragma':'no-cache'}})
+  return fetch(location.href,{cache:'no-store',headers:{'Cache-Control':'no-cache, no-store','Pragma':'no-cache'}})
     .then(function(r){return r.text();})
     .then(function(html){
-      var m=html.match(/name="app-version" content="([^"]+)"/);if(!m||m[1]===_appVer||_syncAbort)return;
+      var m=html.match(/name="app-version" content="([^"]+)"/);if(!m||m[1]===_appVer||_syncAbort)return false;
       // inscription : rechargée tant qu'il n'y a rien à perdre (début), sinon un lien le propose
       if(document.getElementById('setup')&&SU)_suSave(); // inscription : saisie gardée, reprise à la même étape après rechargement
-      if(!document.getElementById('setup')&&document.getElementById('modal-root').innerHTML)return; // pas pendant une saisie
-      var k='pl_ver_rl';try{if(sessionStorage.getItem(k)===m[1])return;sessionStorage.setItem(k,m[1]);}catch(e){}
-      location.reload();
-    }).catch(function(){});
+      if(!document.getElementById('setup')&&document.getElementById('modal-root').innerHTML)return false; // pas pendant une saisie
+      var k='pl_ver_rl';try{if(sessionStorage.getItem(k)===m[1])return false;sessionStorage.setItem(k,m[1]);}catch(e){}
+      location.reload();return true;
+    }).catch(function(){return false;});
 }
 async function cloudSave(pid){
   if(!window._authToken||!_profs[pid])return;
@@ -9788,7 +9789,9 @@ async function cloudLoadAll(){
   }catch(e){console.warn('cloud load all error',e);}
   window._cloudReady=true;try{render();}catch(e){}
   gcalLoad();
-  checkPendingLineChoice();
+  // au lancement, l'app s'ouvre sur la copie gardée : si une version plus récente existe, elle se recharge dessus
+  // avant toute question (sinon une ancienne version pouvait proposer un cycle d'une autre équipe)
+  _verCheck().then(function(rl){if(!rl)checkPendingLineChoice();});
   gcalStartPoll();
   window.addEventListener('focus',function(){cloudRefresh();});
   // Sync on visibility change (mobile: app comes back to foreground)
