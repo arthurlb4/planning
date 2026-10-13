@@ -1001,6 +1001,8 @@ async function handle(request, env, ctx) {
         // Quota KV : ne réécrire le compte que si le profil est nouveau ou renommé
         if (!user.profiles[profileId] || user.profiles[profileId].name !== profileName) {
           user.profiles[profileId] = { name: profileName, updatedAt: Date.now() };
+          // nom du compte (admin, connexion) : suit le nom du profil quand le compte n'en a qu'un
+          if (Object.keys(user.profiles).length === 1 && profileName !== profileId) user.name = profileName;
           await env.PLANNING_DB.put('user:' + session.userId, JSON.stringify(user));
         }
       }
