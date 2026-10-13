@@ -402,12 +402,21 @@ export default {
   scheduled: (event, env, ctx) => scheduled(event, env, ctx),
 };
 
+// Version minimale de l'app : à relever lors d'un changement de données que les versions plus anciennes liraient mal.
+// L'app envoie sa version (?av=v6.61) ; plus ancienne → 426, l'app se recharge sur la dernière version.
+// Les versions d'avant ce mécanisme n'envoient rien et ne sont pas concernées.
+var MIN_APP = '';
+function _verNum(v) { return String(v || '').replace(/^v/, '').split('.').map(function (x) { return parseInt(x, 10) || 0; }); }
+function _verLt(a, b) { var x = _verNum(a), y = _verNum(b); for (var i = 0; i < Math.max(x.length, y.length); i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; }
+
 async function handle(request, env, ctx) {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
     try {
     var url = new URL(request.url);
     var path = url.pathname;
     var body = await request.json().catch(function(){ return {}; });
+    var appVer = url.searchParams.get('av');
+    if (MIN_APP && appVer && !path.startsWith('/admin') && _verLt(appVer, MIN_APP)) return resp({ error: 'update', min: MIN_APP }, 426);
 
     // ============================================================
     // ADMIN ROUTES
