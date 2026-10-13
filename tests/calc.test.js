@@ -453,5 +453,12 @@ function situation(opts) {
     var r=[];['antenne','cadre'].forEach(function(p){S.profile.pool=p;window._cycleVacsShown=[];r.push(_autreVacHtml('2026-10-14').indexOf('Xr')>0,!!getVAC(new Date(2026,9,14,12)).Xr);});
     delete S.profile.pool;_globalCycles=[];_globalVacs={};return r;})()`), [false, false, true, true]); }
 
+// Vacation hors grille : seulement pendant sa période de validité
+{ const a = load('2026-10-11');
+  eq('Autres : période de validité d’une vacation hors grille', a.run(`(function(){_globalCycles=[{id:'a1',pool:'antenne',startDate:'2026-01-01',weeks:[[null,null,null,null,null,null,'RH']]}];
+    _globalVacs={Xr:{deb:'06h00',fin:'14h00',dur:480,type:'week',pools:['antenne'],from:'2026-10-01',to:'2026-10-31',cat:'Réal'}};
+    var r=['2026-10-14','2026-11-04'].map(function(k){window._cycleVacsShown=[];return [_autreVacHtml(k).indexOf('Xr')>0,!!getVAC(new Date(k+'T12:00:00')).Xr];});
+    _globalCycles=[];_globalVacs={};return r;})()`), [[true, true], [false, false]]); }
+
 console.log('\n' + (count - fails) + '/' + count + ' contrôles réussis');
 if (fails) process.exit(1);
