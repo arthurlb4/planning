@@ -10,7 +10,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.64">
+<meta name="app-version" content="v6.65">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -1358,7 +1358,7 @@ function getDur(date){const{vac}=getVac(date);const VAC=getVAC();const d=(vac&&v
 var RULES={repos:660,reposMin:540,joursMax:6,rendJourSup:420};
 // Vacation réellement faite ce jour : début et fin en minutes depuis minuit du jour (fin après minuit : > 1440)
 function _shiftOf(d){var k=dk(d),g=getVac(d),c=(S.conges||{})[k];if(c||!g.vac||g.vac==='RH'||g.absent||(g.echange&&!g.ecSelf))return null;
-  var V=getVAC(d)[g.vac];if(!V||!V.deb||!V.fin||!(V.dur>0))return null;var a=_toMinApp(V.deb),b=_toMinApp(V.fin);if(a==null||b==null)return null;if(b<=a)b+=1440;return{s:a,e:b,v:g.vac};}
+  var V=(S.customVacs||{})[g.vac]||_globalVacs[g.vac]||VAC_STD[g.vac];if(!V||!V.deb||!V.fin||!(V.dur>0))return null; /* même ordre que getVAC, sans reconstruire la liste */var a=_toMinApp(V.deb),b=_toMinApp(V.fin);if(a==null||b==null)return null;if(b<=a)b+=1440;return{s:a,e:b,v:g.vac};}
 function _dAdd(k,n){var d=new Date(k+'T12:00:00');d.setDate(d.getDate()+n);return d;}
 // Repos entre la vacation de la veille et celle du jour (null : pas deux vacations de suite)
 function _restBefore(k){var a=_shiftOf(_dAdd(k,-1)),b=_shiftOf(_dAdd(k,0));return a&&b?1440-a.e+b.s:null;}
@@ -1369,20 +1369,26 @@ function _ruleNotes(k){var L=[],fd=function(n){var d=_dAdd(k,n);return d.getDate
   [[_restBefore(k),-1],[_restBefore(dk(_dAdd(k,1))),1]].forEach(function(x){var r=x[0];if(r==null||r>=RULES.repos)return;
     var od=_dAdd(k,x[1]),o=_shiftOf(od),ol=vLbl(o.v,getVAC(od)),w=x[1]<0?'après la '+ol+' de la veille':'avant la '+ol+' du lendemain';
     L.push(r<RULES.reposMin?{lvl:'red',txt:'Repos de '+fmtMin(r)+' '+w+' : moins de 9h, non autorisé'}:{lvl:'amber',txt:'Repos de '+fmtMin(r)+' '+w+' : moins de 11h, possible uniquement sur demande du salarié'});});
-  var p=_streakPos(k);if(p>RULES.joursMax){var x=(S.extraRendus||{})[k];L.push({lvl:'amber',txt:p+'e jour travaillé d’affilée : '+fmtMin(RULES.rendJourSup)+' de rendus dues',add:!(x&&x.dur>0),k:k});}
+  var p=_streakPos(k);if(p>RULES.joursMax)L.push({lvl:'amber',txt:p+'e jour travaillé d’affilée : '+fmtMin(RULES.rendJourSup)+' de rendus comptées'});
   return L;}
+// Alerte validée (repos accepté, jours d'affilée voulus) : plus de liseré ni de ligne dans Suivi
+function _ruleOk(k){return !!((S.ruleOk||{})[k]);}
+// Valider / annuler : le jour et, pour un repos trop court, la veille ou le lendemain concernés
+function _ruleSet(k,on){pushUndo(on?'Alerte validée':'Validation retirée');if(!S.ruleOk)S.ruleOk={};var ks=[k],rb=_restBefore(k),ra=_restBefore(dk(_dAdd(k,1)));
+  if(rb!=null&&rb<RULES.repos)ks.push(dk(_dAdd(k,-1)));if(ra!=null&&ra<RULES.repos)ks.push(dk(_dAdd(k,1)));
+  ks.forEach(function(x){if(on)S.ruleOk[x]=1;else delete S.ruleOk[x];});saveState();render();openDay(k);}
 // Jour à signaler (liseré du calendrier) : repos trop court avant ou après, ou jour au-delà du 6e sans ses rendus
-function _ruleBad(k){var me=_shiftOf(_dAdd(k,0));if(!me)return false;var rb=_restBefore(k),ra=_restBefore(dk(_dAdd(k,1)));
+function _ruleBad(k){if(_ruleOk(k))return false;var me=_shiftOf(_dAdd(k,0));if(!me)return false;var rb=_restBefore(k),ra=_restBefore(dk(_dAdd(k,1)));
   if((rb!=null&&rb<RULES.repos)||(ra!=null&&ra<RULES.repos))return true;
-  if(_streakPos(k)>RULES.joursMax){var x=(S.extraRendus||{})[k];return !(x&&x.dur>0);}return false;}
+  return _streakPos(k)>RULES.joursMax;}
 // Jours à signaler sur une période (Suivi) : repos trop courts (jour d'après), jours au-delà du 6e sans rendus
 function _ruleScan(from,to){var R=[],J=[],d=new Date(from+'T12:00:00'),e=new Date(to+'T12:00:00');
-  for(;d<=e;d.setDate(d.getDate()+1)){var k=dk(d),rb=_restBefore(k);if(rb!=null&&rb<RULES.repos)R.push(k);
-    if(_streakPos(k)>RULES.joursMax){var x=(S.extraRendus||{})[k];if(!(x&&x.dur>0))J.push(k);}}
+  for(;d<=e;d.setDate(d.getDate()+1)){var k=dk(d);if(_ruleOk(k))continue;var rb=_restBefore(k);if(rb!=null&&rb<RULES.repos)R.push(k);
+    if(_streakPos(k)>RULES.joursMax)J.push(k);}
   return{rest:R,streak:J};}
-function _ruleHtml(k){var L=_ruleNotes(k);if(!L.length)return '';
-  return L.map(function(n){return '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;margin:-4px 0 10px;border-radius:10px;font-size:12px;line-height:1.4;background:'+(n.lvl==='red'?'rgba(192,57,43,.18);color:#f3c2bb':'rgba(200,128,72,.16);color:var(--text)')+'"><i class="ti ti-alert-triangle" style="font-size:15px;flex-shrink:0;color:'+(n.lvl==='red'?'var(--red)':'var(--amber)')+'"></i><span style="flex:1">'+n.txt+'</span>'
-    +(n.add?'<button class="adj-pill" style="width:auto;height:28px;padding:0 12px;font-size:12px;flex-shrink:0" onclick="event.stopPropagation();_addStreakRendu(\''+n.k+'\')">+ '+fmtMin(RULES.rendJourSup)+'</button>':'')+'</div>';}).join('');}
+function _ruleHtml(k){var L=_ruleNotes(k);if(!L.length)return '';var ok=_ruleOk(k);
+  return L.map(function(n,i){return '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;margin:-4px 0 10px;border-radius:10px;font-size:12px;line-height:1.4;background:'+(n.lvl==='red'?'rgba(192,57,43,.18);color:#f3c2bb':'rgba(200,128,72,.16);color:var(--text)')+'"><i class="ti ti-alert-triangle" style="font-size:15px;flex-shrink:0;color:'+(n.lvl==='red'?'var(--red)':'var(--amber)')+'"></i><span style="flex:1">'+n.txt+'</span>'
+    +(i===L.length-1?'<button class="adj-pill" style="width:auto;height:28px;padding:0 12px;font-size:12px;flex-shrink:0" onclick="event.stopPropagation();_ruleSet(\''+k+'\','+(!ok)+')">'+(ok?'✓ Validé':'Valider')+'</button>':'')+'</div>';}).join('');}
 function _addStreakRendu(k){pushUndo('Rendus du '+_streakPos(k)+'e jour d’affilée');if(!S.extraRendus)S.extraRendus={};S.extraRendus[k]={dur:RULES.rendJourSup,label:_streakPos(k)+'e jour d’affilée'};saveState();render();openDay(k);}
 // Après un changement : une alerte pour les jours touchés et leurs voisins
 function _ruleToast(keys){var seen={},msg=null;keys.forEach(function(k){if(!k||msg)return;[-1,0,1].forEach(function(n){var kk=dk(_dAdd(k,n));if(seen[kk]||msg)return;seen[kk]=1;var L=_ruleNotes(kk);if(L.length){var d=_dAdd(kk,0);msg='⚠ '+d.getDate()+' '+MCs[d.getMonth()]+' : '+L[0].txt;}});});if(msg)setTimeout(function(){_infoToast(msg);},400);}
@@ -1613,6 +1619,14 @@ const dur=VAC[vac]?VAC[vac].dur:0;
     var sunYm=sun.getFullYear()*12+sun.getMonth();
     if(sunYm>=createdYM)add(sunYm,'extra',(S.extraRendus[key].dur||0),key);
   });
+  // Au-delà de 6 jours travaillés d'affilée : 7h de rendus par jour en plus, comptées d'office (sauf si déjà ajoutées à la main)
+  // Le cycle seul ne dépasse jamais 6 jours : on ne regarde qu'autour des changements (modifications, échanges, semaines échangées, lignes)
+  try{var _c0=dk(new Date(Math.floor(createdYM/12),createdYM%12,1,12)),_cand={},_near=function(k,a,b){for(var n=a;n<=b;n++)_cand[dk(_dAdd(k,n))]=1;};
+    Object.keys(S.overrides||{}).forEach(function(k){_near(k,0,2*RULES.joursMax);});
+    Object.keys(S.weekLines||{}).forEach(function(k){_near(k,0,6+2*RULES.joursMax);});
+    ((S.profile&&S.profile.lineHistory)||[]).forEach(function(h){if(h.from)_near(h.from,0,2*RULES.joursMax);});
+    Object.keys(_cand).sort().forEach(function(k){if(k<_c0||((S.extraRendus||{})[k]&&S.extraRendus[k].dur>0))return;var p=_streakPos(k);if(p>RULES.joursMax){
+      var _mon=getMonday(new Date(k+'T12:00:00')),_sun=new Date(_mon);_sun.setDate(_mon.getDate()+6);add(_sun.getFullYear()*12+_sun.getMonth(),'extra',RULES.rendJourSup,k+' ('+p+'e jour d’affilée)');}});}catch(e){}
   return withDetail?{gen:gen,det:det}:gen;
 }
 // Compute potential gen for a single month with given settings (used for preview)
@@ -3405,7 +3419,7 @@ function _suiviFacts(c,o,E){var L=[],M=function(ym){return _deMois(ym).replace(/
   // règles de travail : du mois dernier aux 2 mois à venir
   try{var f0=new Date(NOW.getFullYear(),NOW.getMonth()-1,1,12),f1=new Date(NOW.getFullYear(),NOW.getMonth()+3,0,12),RS=_ruleScan(dk(f0),dk(f1)),fd=function(k){var d=new Date(k+'T12:00:00');return d.getDate()+' '+MCs[d.getMonth()];};
     if(RS.rest.length)row('ti-alert-triangle','var(--red)','Repos de moins de 11h : '+RS.rest.slice(0,3).map(fd).join(', ')+(RS.rest.length>3?'…':''),'pendingKey=\''+RS.rest[0]+'\';openDay(\''+RS.rest[0]+'\')');
-    if(RS.streak.length)row('ti-alert-triangle','var(--amber)','Au-delà de 6 jours d’affilée, rendus à ajouter : '+RS.streak.slice(0,3).map(fd).join(', ')+(RS.streak.length>3?'…':''),'pendingKey=\''+RS.streak[0]+'\';openDay(\''+RS.streak[0]+'\')');}catch(e){}
+    if(RS.streak.length)row('ti-alert-triangle','var(--amber)','Au-delà de 6 jours d’affilée : '+RS.streak.slice(0,3).map(fd).join(', ')+(RS.streak.length>3?'…':''),'pendingKey=\''+RS.streak[0]+'\';openDay(\''+RS.streak[0]+'\')');}catch(e){}
   try{var cs=calcSoldes(),ex=0;Object.keys(cs.realAvail).forEach(function(ym){if(getExpYm(+ym)===TODAY_YM)ex+=cs.realAvail[ym]||0;});
     if(ex>=1)row('ti-hourglass-low','var(--rend-text)',fmtMin(Math.round(ex))+' de rendus expirent fin '+ML[TODAY_YM%12].toLowerCase(),'openMergedRenduCgModal(6,0)');}catch(e){}
   return '<div class="hd-card" style="padding:4px 12px 2px;margin-bottom:8px">'+(L.length?L.join('').replace('border-top:0.5px solid var(--border2);',''):'<div style="display:flex;align-items:center;gap:10px;padding:10px 2px;font-size:13px;color:var(--green)"><i class="ti ti-circle-check" style="font-size:16px"></i>Tout est à jour</div>')+'</div>';}

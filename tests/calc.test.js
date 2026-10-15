@@ -443,8 +443,9 @@ function situation(opts) {
     S.overrides={};var start=null;for(var j=0;j<60&&!start;j++){var x=new Date(2026,9,1+j,12);if(!_shiftOf(x))start=dk(x);}
     var V2=getVAC(new Date(start+'T12:00:00')),any=Object.keys(V2).filter(function(n){return V2[n].deb&&V2[n].dur>0;})[0];
     for(var m=0;m<8;m++){var kk=dk(_dAdd(start,m));S.overrides[kk]={vac:any,fromSV:true,echange:false};}
-    var k7=dk(_dAdd(start,6)),p7=_streakPos(k7),n7=_ruleNotes(k7).filter(function(z){return z.add;});_addStreakRendu(k7);var x7=S.extraRendus[k7];S.overrides={};S.extraRendus={};
-    return [r<540,n1.some(function(z){return z.lvl==='red';}),p7>=7,n7.length===1,x7&&x7.dur===420];})()`), [true, true, true, true, true]); }
+    var k7=dk(_dAdd(start,6)),p7=_streakPos(k7),G=buildGen(true),ym=(function(){var m=getMonday(new Date(k7+'T12:00:00')),u=new Date(m);u.setDate(m.getDate()+6);return u.getFullYear()*12+u.getMonth();})();
+    var auto=(G.det[ym+':extra']||[]).some(function(x){return /affilée/.test(JSON.stringify(x));}),b0=_ruleBad(k7);_ruleSet(k7,true);var b1=_ruleBad(k7);S.overrides={};S.extraRendus={};S.ruleOk={};
+    return [r<540,n1.some(function(z){return z.lvl==='red';}),p7>=7,auto,b0&&!b1];})()`), [true, true, true, true, true]); }
 
 // Vacation hors grille proposée aux équipes cochées (pools) : la Réal proposée au cadre, pas à l'antenne
 { const a = load('2026-10-11');
