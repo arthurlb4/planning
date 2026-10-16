@@ -10,7 +10,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.65">
+<meta name="app-version" content="v6.67">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -1145,6 +1145,7 @@ function saveState(){
   // seulement le profil actif (les autres n'ont pas changé : les dater les ferait passer pour plus récents que le cloud)
   if(_profs[_aid]&&_profs[_aid].profile)_profs[_aid].profile._lastSaved=_ts;
   try{localStorage.setItem('pl_v8',JSON.stringify({p:_profs,a:_aid,u:_plU()}));}catch(e){}
+  if(S&&S.profile&&S.profile.ical&&S.profile.ical!=='1')_icalSoon(); // agenda par abonnement : remis à jour
   // Cloud sync debounced (5s)
   clearTimeout(window._cloudSyncTimer);
   window._cloudSyncTimer=setTimeout(function(){
@@ -3421,8 +3422,24 @@ function _suiviFacts(c,o,E){var L=[],M=function(ym){return _deMois(ym).replace(/
     if(RS.rest.length)row('ti-alert-triangle','var(--red)','Repos de moins de 11h : '+RS.rest.slice(0,3).map(fd).join(', ')+(RS.rest.length>3?'…':''),'pendingKey=\''+RS.rest[0]+'\';openDay(\''+RS.rest[0]+'\')');
     if(RS.streak.length)row('ti-alert-triangle','var(--amber)','Au-delà de 6 jours d’affilée : '+RS.streak.slice(0,3).map(fd).join(', ')+(RS.streak.length>3?'…':''),'pendingKey=\''+RS.streak[0]+'\';openDay(\''+RS.streak[0]+'\')');}catch(e){}
   try{var cs=calcSoldes(),ex=0;Object.keys(cs.realAvail).forEach(function(ym){if(getExpYm(+ym)===TODAY_YM)ex+=cs.realAvail[ym]||0;});
-    if(ex>=1)row('ti-hourglass-low','var(--rend-text)',fmtMin(Math.round(ex))+' de rendus expirent fin '+ML[TODAY_YM%12].toLowerCase(),'openMergedRenduCgModal(6,0)');}catch(e){}
+    if(ex>=1)row('ti-hourglass-low','var(--rend-text)',fmtMin(Math.round(ex))+' de rendus expirent fin '+ML[TODAY_YM%12].toLowerCase(),'openRenduAdvice()');}catch(e){}
   return '<div class="hd-card" style="padding:4px 12px 2px;margin-bottom:8px">'+(L.length?L.join('').replace('border-top:0.5px solid var(--border2);',''):'<div style="display:flex;align-items:center;gap:10px;padding:10px 2px;font-size:13px;color:var(--green)"><i class="ti ti-circle-check" style="font-size:16px"></i>Tout est à jour</div>')+'</div>';}
+// Conseil de pose : heures qui expirent le plus tôt, et les jours travaillés d'ici là qui les couvrent
+function _renduAdvice(){var cs=calcSoldes(),by={};Object.keys(cs.realAvail||{}).forEach(function(ym){var h=cs.realAvail[ym]||0,e=getExpYm(+ym);if(h>=1&&e>=TODAY_YM)by[e]=(by[e]||0)+h;});
+  var E=Object.keys(by).map(Number).sort(function(a,b){return a-b;})[0];if(E==null)return null;
+  var end=new Date(Math.floor(E/12),E%12+1,0,12),d=new Date(NOW);d.setDate(d.getDate()+1);d.setHours(12,0,0,0);var days=[],cum=0,need=Math.round(by[E]);
+  for(;d<=end;d.setDate(d.getDate()+1)){var k=dk(d);if((S.conges||{})[k]||!_shiftOf(d))continue;var m=getDur(d);if(!(m>0))continue;cum+=m;days.push({k:k,m:m,c:cum});}
+  return{E:E,h:need,end:end,days:days,n:days.filter(function(x){return x.c-x.m<need;}).length};}
+function openRenduAdvice(){var A=_renduAdvice();if(!A){openMergedRenduCgModal(6,0);return;}
+  if(!document.body.classList.contains('modal-open'))_lockBodyScroll();window._modalBack=function(){openMergedRenduCgModal(6,2);};
+  var fd=function(k){var x=new Date(k+'T12:00:00');return ['dim.','lun.','mar.','mer.','jeu.','ven.','sam.'][x.getDay()]+' '+x.getDate()+' '+MCs[x.getMonth()];};
+  var cov=A.days.length&&A.days[A.days.length-1].c>=A.h,h='<div class="sheet"><div class="sh"></div><div class="nav-back" style="'+_navBackCss+'" onclick="openMergedRenduCgModal(6,2)">‹ Suivi</div><div class="st">Poser les rendus qui expirent</div>'
+    +'<div class="hd-card" style="font-size:13px;line-height:1.5"><b>'+fmtMin(A.h)+'</b> expirent le '+A.end.getDate()+' '+ML[A.end.getMonth()].toLowerCase()+'.<br>'
+    +(A.days.length?(cov?A.n+' jour'+(A.n>1?'s':'')+' travaillé'+(A.n>1?'s':'')+' suffi'+(A.n>1?'sent':'t')+' à les poser.':'Les '+A.days.length+' jours travaillés d’ici là ne suffisent pas ('+fmtMin(A.days[A.days.length-1].c)+').'):'Plus aucun jour travaillé d’ici là.')+'</div>'
+    +A.days.map(function(x,i){var inN=i<A.n;return '<div class="srow" style="cursor:pointer;'+(inN?'':'opacity:.5')+'" onclick="pendingKey=\''+x.k+'\';openDay(\''+x.k+'\')"><div class="slbl">'+fd(x.k)+' <span style="color:var(--text3);font-size:11px">'+vLbl(getVac(new Date(x.k+'T12:00:00')).vac,getVAC(new Date(x.k+'T12:00:00')))+'</span></div><div style="font-size:12px;color:var(--text2)">'+fmtMin(x.m)+' <span style="color:var(--text3)">· cumul '+fmtMin(x.c)+'</span> ›</div></div>';}).join('')
+    +'<div style="font-size:11.5px;color:var(--text3);margin:10px 2px">Toucher un jour pour y poser un rendu. Ce n’est qu’une suggestion.</div>'
+    +'<button class="mcancel" onclick="closeModal()">Fermer</button></div>';
+  document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()">'+h+'</div>';}
 // Paie de l'année (calendrier des bulletins) : tous les mois de l'année, toucher un mois ouvre sa page Paie
 function openBulletinsCal(y){
   if(y==null)y=window._svYear||NOW.getFullYear();window._svYear=y;
@@ -7767,6 +7784,12 @@ function openSettingsModal(tab){
     +'<div class="srow" '+_sr+'><div class="slbl">Effacer'+_inf('événements Google Agenda')+'</div><button '+_bS+' id="gcal-clear-btn" onclick="gcalClear()">Effacer</button></div>'
     +'<div class="srow" '+_sr+'><div class="slbl">Déconnecter'+_inf('retirer l’accès')+'</div><button '+_bS+' id="gcal-disconnect-btn" onclick="gcalDisconnect()">Déconnecter</button></div>'
     +'</div>'
+    +_sh+'Agenda iPhone / Outlook</div>'+_co
+    +(pr.profile.ical&&pr.profile.ical!=='1'
+      ?'<div class="srow" '+_sr+'><div class="slbl">Lien d’abonnement'+_inf('à ajouter dans Calendrier ou Outlook, mis à jour tout seul')+'</div><button '+_bS+' onclick="icalCopy()">Copier</button></div>'
+        +'<div class="srow" '+_sr+'><div class="slbl">iPhone'+_inf('ajoute l’agenda directement')+'</div><a class="adj-pill" href="'+_icalUrl(pr.profile.ical).replace(/^https:/,'webcal:')+'" style="width:120px;height:32px;font-size:12px;flex-shrink:0;text-decoration:none;color:var(--text);display:flex;align-items:center;justify-content:center">S’abonner</a></div>'
+        +'<div class="srow" '+_sr+'><div class="slbl">Désactiver'+_inf('le lien ne fonctionne plus')+'</div><button '+_bS+' onclick="icalToggle(false)">Désactiver</button></div>'
+      :'<div class="srow" '+_sr+'><div class="slbl">Abonnement'+_inf('le planning dans l’agenda de l’iPhone ou d’Outlook, sans Google')+'</div><button '+_bS+' onclick="icalToggle(true)">Activer</button></div>')
     +_sh+'Notifications</div>'+_co
     +'<div class="srow" '+_sr+'><div class="slbl">Rappels <span style="display:block;color:var(--text3);font-size:10.5px;margin-top:2px;line-height:1.35">heures qui expirent (14 j et 3 j avant), bulletin le 1er, tableau Gestion le 20</span></div>'
     +'<div style="display:flex;align-items:center;flex-shrink:0">'+(_pOn?'<button class="adj-pill" style="width:auto;height:26px;padding:0 12px;font-size:11px;margin-right:8px;flex-shrink:0" onclick="pushTest(this)">Tester</button>':'')
@@ -10605,6 +10628,26 @@ function gcalBuildDayEvent(dateKey){
   return{summary,description,start:startObj,end:endObj,colorId,extendedProperties:{private:{planningKey:dateKey,planningProfile:(S.profile&&S.profile.name)||'',planningType:congesType||vac}}};
 }
 
+// ── Agenda par abonnement (iPhone, Outlook…) : mêmes événements que Google Agenda, du mois dernier à un an ──
+function _icalEvents(){var out=[],d=new Date(NOW);d.setDate(d.getDate()-45);var e=new Date(NOW);e.setDate(e.getDate()+400);
+  var z=function(x){return x.toISOString().replace(/[-:]/g,'').replace(/\.\d+/,'');},dd=function(k){return k.replace(/-/g,'');};
+  for(;d<=e;d.setDate(d.getDate()+1)){var k=dk(d),ev=null;try{ev=gcalBuildDayEvent(k);}catch(x){}if(!ev)continue;
+    var o={u:k,s:ev.summary,d:ev.description||''};
+    if(ev.start.date){o.ad=1;o.a=dd(ev.start.date);o.b=dd(ev.end.date);}
+    else{o.a=z(new Date(ev.start.dateTime));o.b=z(new Date(ev.end.dateTime));}
+    out.push(o);}
+  return out;}
+function _icalUrl(tok){return CLOUD_API+'/ical/'+tok+'.ics';}
+var _icalT=null;
+function _icalSoon(){clearTimeout(_icalT);_icalT=setTimeout(_icalPush,4000);}
+async function _icalPush(){if(!window._authToken||!(S.profile&&S.profile.ical))return null;
+  try{var r=await fetch(CLOUD_API+'/ical/publish',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({name:(S.profile.name||''),events:_icalEvents()})});var j=await r.json();
+    if(j&&j.tok&&S.profile.ical!==j.tok){S.profile.ical=j.tok;saveState();}return j&&j.tok;}catch(e){return null;}}
+async function icalToggle(on){
+  if(on){S.profile.ical='1';var t=await _icalPush();if(!t){delete S.profile.ical;_infoToast('Connexion impossible');}else _infoToast('✓ Lien d’agenda créé');}
+  else{if(!confirm('Désactiver le lien ? Les agendas abonnés ne seront plus mis à jour.'))return;try{await fetch(CLOUD_API+'/ical/disable',{method:'POST',headers:cloudHeaders(),body:'{}'});}catch(e){}delete S.profile.ical;}
+  saveState();openSettingsModal(0);}
+function icalCopy(){var u=_icalUrl(S.profile.ical);try{navigator.clipboard.writeText(u);_infoToast('✓ Lien copié');}catch(e){prompt('Lien à copier :',u);}}
 function gcalWriteStatus(status,current,total){
   if(!window._authToken||!gcalTokens)return;
   fetch(CLOUD_API+'/sync-status',{
