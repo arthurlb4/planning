@@ -10,7 +10,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.69">
+<meta name="app-version" content="v6.70">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -815,7 +815,7 @@ button:not(.sv-tile):not(.dx-mini):not(.sh-x),select,input:not([type=checkbox]):
 @keyframes vgIn{from{opacity:0;transform:translateY(4px)}}.vg-in{animation:vgIn .18s ease}
 .mb.vt.exsel{box-shadow:inset 0 0 0 1.5px var(--blue)!important}
 /* Tuiles et cases : coins plus arrondis, dans le style des pilules (pas le calendrier) */
-.bloc,.hd-card,.sv-tile,.sv-card,.fold,.hd3,.ucard,.dx-box,.rv-hero,.rv-it,.rv-ok,.rv-det,.rc-sum,.rc-start,.rc-m,.rc-choice,.dbox,.minfo,.chip-info,.dropdown,#lp-menu{border-radius:22px!important}
+.bloc,.hd-card,.sv-tile,.sv-card,.fold,.hd3,.ucard,.dx-box,.rv-hero,.rv-it,.rv-ok,.rv-det,.rc-sum,.rc-start,.rc-m,.rc-choice,.dbox,.rule-note,.minfo,.chip-info,.dropdown,#lp-menu{border-radius:22px!important}
 .dx-mbtn{border-radius:999px!important}
 .sv2-col,.dx-mini:not(.dx-mbtn),.rc-cbtn,.eph-urow.clk,.fold .rc-tap{border-radius:16px!important}
 @media(min-width:721px){.sheet{border-radius:26px}}
@@ -1373,9 +1373,11 @@ function _ruleNotes(k){var L=[],fd=function(n){var d=_dAdd(k,n);return d.getDate
   var p=_streakPos(k);if(p>RULES.joursMax)L.push({lvl:'amber',txt:p+'e jour travaillé d’affilée : '+fmtMin(RULES.rendJourSup)+' de rendus comptées'});
   return L;}
 // Alerte validée (repos accepté, jours d'affilée voulus) : plus de liseré ni de ligne dans Suivi
-function _ruleOk(k){return !!((S.ruleOk||{})[k]);}
+// Repos de moins de 9h : interdit, ne se valide pas
+function _ruleHard(k){var rb=_restBefore(k),ra=_restBefore(dk(_dAdd(k,1)));return (rb!=null&&rb<RULES.reposMin)||(ra!=null&&ra<RULES.reposMin);}
+function _ruleOk(k){return !!((S.ruleOk||{})[k])&&!_ruleHard(k);}
 // Valider / annuler : le jour et, pour un repos trop court, la veille ou le lendemain concernés
-function _ruleSet(k,on){pushUndo(on?'Alerte validée':'Validation retirée');if(!S.ruleOk)S.ruleOk={};var ks=[k],rb=_restBefore(k),ra=_restBefore(dk(_dAdd(k,1)));
+function _ruleSet(k,on){if(on&&_ruleHard(k))return;pushUndo(on?'Alerte validée':'Validation retirée');if(!S.ruleOk)S.ruleOk={};var ks=[k],rb=_restBefore(k),ra=_restBefore(dk(_dAdd(k,1)));
   if(rb!=null&&rb<RULES.repos)ks.push(dk(_dAdd(k,-1)));if(ra!=null&&ra<RULES.repos)ks.push(dk(_dAdd(k,1)));
   ks.forEach(function(x){if(on)S.ruleOk[x]=1;else delete S.ruleOk[x];});saveState();render();openDay(k);}
 // Jour à signaler (liseré du calendrier) : repos trop court avant ou après, ou jour au-delà du 6e sans ses rendus
@@ -1388,8 +1390,8 @@ function _ruleScan(from,to){var R=[],J=[],d=new Date(from+'T12:00:00'),e=new Dat
     if(_streakPos(k)>RULES.joursMax)J.push(k);}
   return{rest:R,streak:J};}
 function _ruleHtml(k){var L=_ruleNotes(k);if(!L.length)return '';var ok=_ruleOk(k);
-  return L.map(function(n,i){return '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;margin:-4px 0 10px;border-radius:10px;font-size:12px;line-height:1.4;background:'+(n.lvl==='red'?'rgba(192,57,43,.18);color:#f3c2bb':'rgba(200,128,72,.16);color:var(--text)')+'"><i class="ti ti-alert-triangle" style="font-size:15px;flex-shrink:0;color:'+(n.lvl==='red'?'var(--red)':'var(--amber)')+'"></i><span style="flex:1">'+n.txt+'</span>'
-    +(i===L.length-1?'<button class="adj-pill" style="width:auto;height:28px;padding:0 12px;font-size:12px;flex-shrink:0" onclick="event.stopPropagation();_ruleSet(\''+k+'\','+(!ok)+')">'+(ok?'✓ Validé':'Valider')+'</button>':'')+'</div>';}).join('');}
+  return L.map(function(n,i){return '<div class="rule-note" style="display:flex;align-items:center;gap:10px;padding:10px 14px;margin:-4px 0 10px;font-size:12px;line-height:1.4;background:'+(n.lvl==='red'?'rgba(192,57,43,.18);color:#f3c2bb':'rgba(200,128,72,.16);color:var(--text)')+'"><i class="ti ti-alert-triangle" style="font-size:15px;flex-shrink:0;color:'+(n.lvl==='red'?'var(--red)':'var(--amber)')+'"></i><span style="flex:1">'+n.txt+'</span>'
+    +(i===L.length-1&&!_ruleHard(k)?'<button class="adj-pill" style="width:auto;height:28px;padding:0 12px;font-size:12px;flex-shrink:0" onclick="event.stopPropagation();_ruleSet(\''+k+'\','+(!ok)+')">'+(ok?'✓ Validé':'Valider')+'</button>':'')+'</div>';}).join('');}
 function _addStreakRendu(k){pushUndo('Rendus du '+_streakPos(k)+'e jour d’affilée');if(!S.extraRendus)S.extraRendus={};S.extraRendus[k]={dur:RULES.rendJourSup,label:_streakPos(k)+'e jour d’affilée'};saveState();render();openDay(k);}
 // Après un changement : une alerte pour les jours touchés et leurs voisins
 function _ruleToast(keys){var seen={},msg=null;keys.forEach(function(k){if(!k||msg)return;[-1,0,1].forEach(function(n){var kk=dk(_dAdd(k,n));if(seen[kk]||msg)return;seen[kk]=1;var L=_ruleNotes(kk);if(L.length){var d=_dAdd(kk,0);msg='⚠ '+d.getDate()+' '+MCs[d.getMonth()]+' : '+L[0].txt;}});});if(msg)setTimeout(function(){_infoToast(msg);},400);}
