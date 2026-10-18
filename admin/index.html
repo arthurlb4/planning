@@ -159,6 +159,7 @@ textarea{width:100%;padding:9px 12px;background:var(--bg);border:0.5px solid var
       <span id="user-count" style="font-size:12px;color:var(--text3)"></span>
       <button class="btn btn-sm" onclick="loadUsers()">↻ Rafraîchir</button>
     </div>
+    <div id="adm-extra"></div>
     <div id="users-table"></div>
   </div>
 
@@ -867,7 +868,43 @@ async function deleteVac(name) {
 
 
 
+// Message à tous (affiché une fois à l'ouverture de l'app) et choix de ligne des nouveaux cycles
+async function loadAdminExtras() {
+  const el = document.getElementById('adm-extra'); if (!el) return;
+  let an = null, ch = [];
+  try { an = (await (await fetch(API + '/announce', { method: 'POST', headers: adminHeaders(), body: '{}' })).json()).announce; } catch (e) {}
+  try { ch = (await (await fetch(API + '/admin/line-choices', { method: 'POST', headers: adminHeaders(), body: '{}' })).json()).choices || []; } catch (e) {}
+  const card = 'background:var(--bg2);border:0.5px solid var(--border);border-radius:14px;padding:12px 14px;margin-bottom:12px';
+  const poolOpt = k => `<option value="${k}"${an && an.pool === k ? ' selected' : ''}>${k === 'all' ? 'Toutes les équipes' : POOL_L[k]}</option>`;
+  let h = `<div style="${card}"><div style="font-weight:600;margin-bottom:8px">Message à tous</div>`
+    + (an ? `<div class="alert alert-blue" style="font-size:12px;white-space:pre-wrap">${_esc(an.text)}<div style="color:var(--text3);margin-top:4px">${an.pool === 'all' ? 'Toutes les équipes' : POOL_L[an.pool]} · publié le ${new Date(an.at).toLocaleDateString('fr-FR')}</div></div>` : '')
+    + `<textarea id="an-text" rows="3" placeholder="Ex. : nouveau cycle au 31 août, choisissez votre ligne" style="width:100%;box-sizing:border-box;margin-bottom:8px"></textarea>`
+    + `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><select id="an-pool">${['all', 'antenne', 'cadre', 'coord'].map(poolOpt).join('')}</select>`
+    + `<button class="btn btn-sm btn-green" onclick="publishAnnounce()">Publier</button>`
+    + (an ? `<button class="btn btn-sm btn-ghost" onclick="clearAnnounce()">Retirer</button>` : '')
+    + `<span style="font-size:11px;color:var(--text3)">Affiché une fois à chaque utilisateur, à l'ouverture de l'app.</span></div></div>`;
+  if (ch.length) h += `<div style="${card}"><div style="font-weight:600;margin-bottom:8px">Choix de ligne des nouveaux cycles</div>`
+    + ch.sort((a, b) => a.cycle.startDate < b.cycle.startDate ? 1 : -1).map(c => {
+      const n = c.pending.length + c.done.length;
+      return `<div style="padding:6px 0;border-top:0.5px solid var(--border)"><b>${_esc(c.cycle.name || '')}</b> <span style="color:var(--text3);font-size:12px">${POOL_L[c.cycle.pool] || ''} · ${c.done.length}/${n} ont choisi</span>`
+        + (c.pending.length ? `<div style="font-size:12px;color:var(--orange);margin-top:3px">En attente : ${c.pending.map(_esc).join(', ')}</div>` : '<div style="font-size:12px;color:var(--green);margin-top:3px">Tout le monde a choisi</div>')
+        + (c.done.length ? `<div style="font-size:12px;color:var(--text3);margin-top:2px">Ont choisi : ${c.done.map(_esc).join(', ')}</div>` : '') + '</div>';
+    }).join('') + '</div>';
+  el.innerHTML = h;
+}
+async function publishAnnounce() {
+  const text = document.getElementById('an-text').value.trim(); if (!text) return;
+  const pool = document.getElementById('an-pool').value;
+  if (!confirm('Publier ce message ? Il s’affichera à l’ouverture de l’app.')) return;
+  await fetch(API + '/admin/announce', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ text, pool }) });
+  loadAdminExtras();
+}
+async function clearAnnounce() {
+  await fetch(API + '/admin/announce', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ action: 'clear' }) });
+  loadAdminExtras();
+}
 async function loadUsers() {
+  loadAdminExtras();
   const el = document.getElementById('users-table');
   el.innerHTML = '<div class="empty">Chargement...</div>';
   try {

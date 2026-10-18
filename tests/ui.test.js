@@ -24,6 +24,8 @@ function mockApi(route) {
   else if (p === '/get-vacations' || p === '/admin/vacations') body = { vacations: FIX.vacations };
   else if (p === '/admin/users') body = { users: [] };
   else if (p === '/pending-line-choice') body = { pending: [] };
+  else if (p === '/announce') body = { announce: { id: 't1', text: 'Message de test', pool: 'all', at: 0 } };
+  else if (p === '/admin/line-choices') body = { choices: [{ cycle: { id: 'c', name: 'Cycle test', pool: 'antenne', startDate: '2026-08-31' }, pending: ['Alice'], done: ['Bob'] }] };
   route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 }
 
@@ -79,6 +81,13 @@ function mockApi(route) {
     else ok('Réglages : défilement au doigt (contenu assez long pour défiler)', false, 'contenu trop court pour tester');
     await p.evaluate(() => closeModal());
 
+    // message de l'admin : une fois
+    await p.evaluate(() => { closeModal(); delete S.profile.annSeen; return _checkAnnounce(); }); await p.waitForTimeout(300);
+    ok('Message de l’admin affiché', await p.evaluate(() => /Message de test/.test(document.getElementById('modal-root').textContent)));
+    await p.evaluate(() => { const b = [...document.querySelectorAll('#modal-root button')].find(x => x.textContent === 'OK'); b.click(); });
+    await p.evaluate(() => _checkAnnounce()); await p.waitForTimeout(300);
+    ok('Message de l’admin : pas deux fois', await p.evaluate(() => !document.getElementById('modal-root').innerHTML));
+
     // Suivi
     const sv = await p.evaluate(() => { openMergedRenduCgModal(6, 2); return (document.getElementById('modal-root').textContent || '').length > 50; });
     ok('Suivi', sv); await p.evaluate(() => closeModal());
@@ -98,6 +107,8 @@ function mockApi(route) {
     // ── Admin ──
     { const { ctx, p } = await page({ viewport: { width: 1200, height: 900 }, isMobile: false, hasTouch: false }, () => { sessionStorage.setItem('admin_token', 'test'); });
       await p.goto(base + '/admin/'); await p.waitForTimeout(1200);
+      await p.evaluate(() => switchTab('users')); await p.waitForTimeout(600);
+      ok('Admin : message à tous et choix de ligne', await p.evaluate(() => { const t = document.getElementById('adm-extra').textContent; return /Message à tous/.test(t) && /1\/2 ont choisi/.test(t) && /Alice/.test(t); }));
       await p.evaluate(() => switchTab('vacations')); await p.waitForTimeout(800);
       ok('Admin : vacations d’un cycle', await p.evaluate(() => document.querySelectorAll('#vac-list .vrow').length > 0));
       await p.evaluate(() => switchVacTab('none')); await p.waitForTimeout(200);

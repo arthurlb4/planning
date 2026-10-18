@@ -742,13 +742,41 @@ async function handle(request, env, ctx) {
       var pendingData = await env.PLANNING_DB.get(pendingKey, { type: 'json' });
       if (pendingData) {
         pendingData.userIds = pendingData.userIds.filter(function(id){ return id !== session.userId; });
-        if (pendingData.userIds.length === 0) {
-          await env.PLANNING_DB.delete(pendingKey);
-        } else {
-          await env.PLANNING_DB.put(pendingKey, JSON.stringify(pendingData));
-        }
+        // gardé pour l'admin (qui a choisi sa ligne), même quand plus personne n'est en attente
+        pendingData.done = (pendingData.done || []).filter(function(id){ return id !== session.userId; }).concat([session.userId]);
+        await env.PLANNING_DB.put(pendingKey, JSON.stringify(pendingData));
       }
       return resp({ ok: true });
+    }
+
+    // ── Message à tous (affiché à l'ouverture de l'app, une fois) ──
+    if (path === '/announce') {
+      return resp({ announce: await env.PLANNING_DB.get('global:announce', { type: 'json' }) });
+    }
+    if (path === '/admin/announce') {
+      if (!await verifyAdmin(request, env)) return resp({ error: 'Non autorise' }, 401);
+      if (body.action === 'clear') { await env.PLANNING_DB.delete('global:announce'); return resp({ ok: true }); }
+      var txt = String(body.text || '').trim().slice(0, 1000);
+      if (!txt) return resp({ error: 'Message vide' }, 400);
+      var an = { id: randToken(6), text: txt, pool: ['antenne', 'cadre', 'coord'].indexOf(body.pool) >= 0 ? body.pool : 'all', at: Date.now() };
+      await env.PLANNING_DB.put('global:announce', JSON.stringify(an));
+      return resp({ ok: true, announce: an });
+    }
+    // ── Qui a choisi sa ligne dans les nouveaux cycles ──
+    if (path === '/admin/line-choices') {
+      if (!await verifyAdmin(request, env)) return resp({ error: 'Non autorise' }, 401);
+      var cyc = await env.PLANNING_DB.get('global:cycles', { type: 'json' }) || [];
+      var lst = await env.PLANNING_DB.list({ prefix: 'global:pending_line_choice:' }), outL = [], names = {};
+      var nameOf = async function (id) { if (names[id] === undefined) { var u = await env.PLANNING_DB.get('user:' + id, { type: 'json' }); names[id] = u ? (u.name || u.email || id) : null; } return names[id]; };
+      for (var kk of lst.keys) {
+        var pd = await env.PLANNING_DB.get(kk.name, { type: 'json' }); if (!pd) continue;
+        var cy = cyc.find(function (c) { return c.id === pd.cycleId; }); if (!cy) continue;
+        var pend = [], dn = [];
+        for (var id1 of (pd.userIds || [])) { var n1 = await nameOf(id1); if (n1) pend.push(n1); }
+        for (var id2 of (pd.done || [])) { var n2 = await nameOf(id2); if (n2) dn.push(n2); }
+        outL.push({ cycle: { id: cy.id, name: cy.name, pool: cy.pool || 'antenne', startDate: cy.startDate }, pending: pend, done: dn });
+      }
+      return resp({ choices: outL });
     }
 
     if (path === '/lines/register') {

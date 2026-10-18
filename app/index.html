@@ -10,7 +10,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.72">
+<meta name="app-version" content="v6.73">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -9832,7 +9832,7 @@ async function cloudLoadAll(){
   gcalLoad();
   // au lancement, l'app s'ouvre sur la copie gardée : si une version plus récente existe, elle se recharge dessus
   // avant toute question (sinon une ancienne version pouvait proposer un cycle d'une autre équipe)
-  _verCheck().then(function(rl){if(!rl)checkPendingLineChoice();});
+  _verCheck().then(function(rl){if(!rl){checkPendingLineChoice();setTimeout(_checkAnnounce,1200);}});
   gcalStartPoll();
   window.addEventListener('focus',function(){cloudRefresh();});
   // Sync on visibility change (mobile: app comes back to foreground)
@@ -10359,6 +10359,16 @@ async function gcalSync(){
   }
 }
 
+// Message de l'admin : affiché une fois, à l'ouverture (pas par-dessus une autre fenêtre : ce sera la fois suivante)
+async function _checkAnnounce(){if(!window._authToken)return;try{
+  var a=(await (await fetch(CLOUD_API+'/announce',{method:'POST',headers:cloudHeaders(),body:'{}'})).json()).announce;
+  if(!a||!a.id||!a.text||(a.pool&&a.pool!=='all'&&a.pool!==_pool())||(S.profile&&S.profile.annSeen===a.id))return;
+  if(document.getElementById('modal-root').innerHTML||document.getElementById('setup'))return;
+  _lockBodyScroll();window._annId=a.id;
+  document.getElementById('modal-root').innerHTML='<div class="overlay"><div class="sheet"><div class="sh"></div><div class="st">Message</div>'
+    +'<div class="hd-card" style="font-size:14px;line-height:1.5;white-space:pre-wrap;padding:14px">'+_h(a.text)+'</div>'
+    +'<button class="mb wide" style="background:var(--blue);color:#fff;margin-top:8px" onclick="S.profile.annSeen=window._annId;saveState();closeModal()">OK</button></div></div>';
+}catch(e){}}
 async function checkPendingLineChoice(){
   if(!window._authToken)return;
   try{
