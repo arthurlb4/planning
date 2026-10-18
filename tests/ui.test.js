@@ -88,6 +88,30 @@ function mockApi(route) {
     await p.evaluate(() => _checkAnnounce()); await p.waitForTimeout(300);
     ok('Message de l’admin : pas deux fois', await p.evaluate(() => !document.getElementById('modal-root').innerHTML));
 
+    // deux appareils : le serveur refuse (autre appareil passé avant), l'app fusionne puis renvoie
+    { const bodies = [];
+      await p.route(/workers\.dev\/data\/save/, route => { const b = JSON.parse(route.request().postData()); bodies.push(b);
+        if (bodies.length === 1) { const remote = JSON.parse(JSON.stringify(b.data)); remote.notes = Object.assign({}, remote.notes, { '2026-12-01': 'autre appareil' }); remote.profile = Object.assign({}, remote.profile, { _lastSaved: Date.now() + 60000 });
+          route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'conflict', rev: 'r1', data: remote }) }); }
+        else route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, rev: 'r2' }) }); });
+      const merged = await p.evaluate(async () => { const pid = _aid; _cbase[pid] = { rev: 'r0', str: JSON.stringify(S) };
+        S.notes = Object.assign({}, S.notes, { '2026-12-02': 'ici' }); try { localStorage.removeItem(_syncKey(pid)); } catch (e) {}
+        await cloudSave(pid); return [S.notes['2026-12-01'], S.notes['2026-12-02'], _cbase[pid].rev]; });
+      ok('Deux appareils : fusion des deux modifications', merged[0] === 'autre appareil' && merged[1] === 'ici', JSON.stringify(merged));
+      ok('Deux appareils : envoi sur la version du serveur', bodies.length === 2 && bodies[0].base === 'r0' && !bodies[1].base && merged[2] === 'r2', JSON.stringify(bodies.map(b => b.base)));
+      await p.unroute(/workers\.dev\/data\/save/); }
+    // lecture en retard du serveur (version plus ancienne que celle de départ) : pas de fusion, rien ne revient en arrière
+    { const bodies = [];
+      await p.route(/workers\.dev\/data\/save/, route => { const b = JSON.parse(route.request().postData()); bodies.push(b);
+        if (bodies.length === 1) { const old = JSON.parse(JSON.stringify(b.data)); old.notes = {}; old.profile = Object.assign({}, old.profile, { _lastSaved: 1 });
+          route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'conflict', rev: 'old', data: old }) }); }
+        else route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, rev: 'r3' }) }); });
+      const kept = await p.evaluate(async () => { const pid = _aid; S.profile._lastSaved = Date.now(); _cbase[pid] = { rev: 'r2', str: JSON.stringify(S) };
+        S.notes = Object.assign({}, S.notes, { '2026-12-03': 'encore ici' }); try { localStorage.removeItem(_syncKey(pid)); } catch (e) {}
+        await cloudSave(pid); return [S.notes['2026-12-02'], S.notes['2026-12-03']]; });
+      ok('Deux appareils : version en retard du serveur ignorée', kept[0] === 'ici' && kept[1] === 'encore ici' && bodies.length === 2, JSON.stringify(kept));
+      await p.unroute(/workers\.dev\/data\/save/); }
+
     // Suivi
     const sv = await p.evaluate(() => { openMergedRenduCgModal(6, 2); return (document.getElementById('modal-root').textContent || '').length > 50; });
     ok('Suivi', sv); await p.evaluate(() => closeModal());

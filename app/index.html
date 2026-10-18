@@ -10,7 +10,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.73">
+<meta name="app-version" content="v6.74">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -9698,21 +9698,46 @@ function _verCheck(){
       location.reload();return true;
     }).catch(function(){return false;});
 }
-async function cloudSave(pid){
+// ── Deux appareils : chaque envoi dit sur quelle version du serveur il repose (_cbase). Si un autre appareil a
+// enregistré entre-temps, le serveur refuse (409) et renvoie sa version : on fusionne les trois (base, ici, serveur)
+// clé par clé — ce qui n'a changé que d'un côté est pris de ce côté ; changé des deux côtés : ce qui est ici l'emporte.
+var _cbase={};
+function _isObj(x){return x&&typeof x==='object'&&!Array.isArray(x);}
+function _merge3(b,l,r){var J=JSON.stringify;if(J(l)===J(b))return r;if(J(r)===J(b))return l;
+  if(_isObj(l)&&_isObj(r)){var o={},ks={};Object.keys(l).forEach(function(k){ks[k]=1;});Object.keys(r).forEach(function(k){ks[k]=1;});
+    Object.keys(ks).forEach(function(k){var v=_merge3(_isObj(b)?b[k]:undefined,l[k],r[k]);if(v!==undefined)o[k]=v;});return o;}
+  return l;}
+async function cloudSave(pid,_retry){
   if(!window._authToken||!_profs[pid])return;
   // Rien de nouveau depuis la dernière synchro réussie → pas d'écriture (quota KV)
   var sig=_syncSig(_profs[pid]),sigKey=_syncKey(pid);
   try{if(localStorage.getItem(sigKey)===sig){setSyncStatus('ok');pushSyncAlerts();return;}}catch(e){}
   setSyncStatus('pending');
   try{
-    var res=await fetch(CLOUD_API+'/data/save',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({profileId:pid,data:_profs[pid]})});
+    var sent=JSON.stringify(_profs[pid]),cb=_cbase[pid];
+    var res=await fetch(CLOUD_API+'/data/save',{method:'POST',headers:cloudHeaders(),body:'{"profileId":'+JSON.stringify(pid)+',"data":'+sent+(cb&&cb.rev&&!_retry?',"base":'+JSON.stringify(cb.rev):'')+'}'});
     if(res.status===401){await _sessionExpired();return;}
+    if(res.status===409&&!_retry){var cj=null;try{cj=await res.json();}catch(e){}
+      // version du serveur pas plus récente que celle de départ (lecture en retard du serveur) : rien d'un autre appareil
+      var _ts=function(d){return (d&&d.profile&&d.profile._lastSaved)||0;},_bs=null;try{_bs=JSON.parse(cb&&cb.str||'null');}catch(e){}
+      if(cj&&cj.data&&_bs&&_ts(cj.data)<=_ts(_bs))return cloudSave(pid,2);
+      if(cj&&cj.data&&cb){try{
+        // version d'ici gardée 30 jours (Réglages → Restaurer), puis fusion et nouvel envoi sur la version du serveur
+        try{localStorage.setItem('pl_bak',JSON.stringify({at:Date.now(),u:_plU(),pid:pid,d:_profs[pid]}));}catch(e){}
+        var mg=_merge3(JSON.parse(cb.str),_profs[pid],cj.data);_profs[pid]=mg;if(pid===_aid){S=mg;try{render();}catch(e){}}
+        _cbase[pid]={rev:cj.rev,str:JSON.stringify(cj.data)};
+        try{localStorage.setItem('pl_v8',JSON.stringify({p:_profs,a:_aid,u:_plU()}));}catch(e){}
+        _infoToast('Modifications d’un autre appareil reprises');
+        return cloudSave(pid,1);}catch(e){console.warn('merge error',e);}}
+      return cloudSave(pid,2); // fusion impossible : enregistré comme avant (la version d'ici l'emporte)
+    }
     if(!res.ok){
       var err='';try{err=(await res.json()).error||'';}catch(e){}
       console.warn('cloud save failed',res.status,err);
       _cloudSaveFailed(pid,'erreur '+res.status+(err?' : '+err:''));
     }else{
       window._syncErr='';window._sessionIsExpired=false;window._lastSyncOk=Date.now();clearTimeout(window._syncRetryTimer);
+      try{var rj=await res.json();if(rj&&rj.rev)_cbase[pid]={rev:rj.rev,str:sent};}catch(e){}
       try{localStorage.setItem(sigKey,sig);}catch(e){}
       setSyncStatus('ok');
       pushSyncAlerts();
@@ -9728,6 +9753,7 @@ async function cloudLoad(pid){
     const text=await res.text();
     if(!text||text.trim()==='')return null;
     const data=JSON.parse(text);
+    window._clLast=data.data&&data.rev?{pid:pid,rev:data.rev,str:JSON.stringify(data.data)}:null;
     return data.data||null;
   }catch(e){console.warn('cloud load error',e);return null;}
 }
@@ -9750,7 +9776,7 @@ async function cloudRefresh(){
   // L'utilisateur a modifié entre-temps, ou une fenêtre est ouverte : ne pas écraser
   if(_syncSig(_profs[pid])!==localSig||document.getElementById('modal-root').innerHTML)return;
   try{localStorage.setItem('pl_bak',JSON.stringify({at:Date.now(),u:_plU(),pid:pid,d:_profs[pid]}));}catch(e){} // version remplacée, gardée (Réglages → Profil → Restaurer)
-  _profs[pid]=cloud;S=cloud;_us=[];_rs=[];
+  _profs[pid]=cloud;S=cloud;_us=[];_rs=[];if(window._clLast&&window._clLast.pid===pid)_cbase[pid]={rev:window._clLast.rev,str:window._clLast.str};
   try{localStorage.setItem('pl_v8',JSON.stringify({p:_profs,a:_aid,u:_plU()}));localStorage.setItem(sigKey,cloudSig);}catch(e){}
   applyTheme();render();updateUrBtns();
   var hpn=document.getElementById('hdr-profile-name');if(hpn&&S.profile)hpn.textContent=S.profile.name||'Profil';
@@ -9797,6 +9823,7 @@ async function cloudLoadAll(){
     } else {
       for(const pid of Object.keys(profiles)){
         const cloudData=await cloudLoad(pid);
+        if(cloudData&&window._clLast&&window._clLast.pid===pid)_cbase[pid]={rev:window._clLast.rev,str:window._clLast.str};
         if(cloudData){
           var _localTs=(_profs[pid]&&_profs[pid].profile&&_profs[pid].profile._lastSaved)||0;
           var _cloudTs=(cloudData.profile&&cloudData.profile._lastSaved)||0;

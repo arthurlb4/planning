@@ -409,6 +409,9 @@ var MIN_APP = '';
 function _verNum(v) { return String(v || '').replace(/^v/, '').split('.').map(function (x) { return parseInt(x, 10) || 0; }); }
 function _verLt(a, b) { var x = _verNum(a), y = _verNum(b); for (var i = 0; i < Math.max(x.length, y.length); i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); } return false; }
 
+// Version d'un profil enregistré : empreinte du texte stocké (l'app la renvoie pour dire sur quelle version elle a travaillé)
+function _rev(str) { var h = 5381; str = str || ''; for (var i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0; return (h >>> 0).toString(36) + '.' + str.length; }
+
 async function handle(request, env, ctx) {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
     try {
@@ -1072,15 +1075,23 @@ async function handle(request, env, ctx) {
       var profileId = body.profileId, data = body.data;
       if (!profileId || !data) return resp({ error: 'Donnees manquantes' }, 400);
       var dataKey = 'data:' + session.userId + ':' + profileId, newStr = JSON.stringify(data);
+      var prevStr = null;
+      try { prevStr = await env.PLANNING_DB.get(dataKey); } catch (e) {}
+      // Un autre appareil a enregistré depuis la version sur laquelle l'app a travaillé : refus, avec la version actuelle
+      // (l'app fusionne les deux puis renvoie). Sans « base » (anciennes versions de l'app) : enregistré comme avant.
+      if (body.base && prevStr && _rev(prevStr) !== body.base) {
+        var cur = null; try { cur = JSON.parse(prevStr); } catch (e) {}
+        return resp({ error: 'conflict', rev: _rev(prevStr), data: cur }, 409);
+      }
       // Historique : la version d'avant le premier enregistrement du jour est gardée 60 jours (une par jour)
       try {
-        var prevStr = await env.PLANNING_DB.get(dataKey);
         if (prevStr && prevStr !== newStr) {
           var bakKey = 'bak:' + session.userId + ':' + profileId + ':' + new Date().toISOString().slice(0, 10);
           if (!(await env.PLANNING_DB.get(bakKey))) await env.PLANNING_DB.put(bakKey, prevStr, { expirationTtl: 60 * 86400 });
         }
       } catch (e) {}
       await env.PLANNING_DB.put(dataKey, newStr);
+      var newRev = _rev(newStr);
       var user = await env.PLANNING_DB.get('user:' + session.userId, { type: 'json' });
       if (user) {
         if (!user.profiles) user.profiles = {};
@@ -1093,7 +1104,7 @@ async function handle(request, env, ctx) {
           await env.PLANNING_DB.put('user:' + session.userId, JSON.stringify(user));
         }
       }
-      return resp({ ok: true });
+      return resp({ ok: true, rev: newRev });
     }
 
     if (path === '/data/load') {
@@ -1101,8 +1112,9 @@ async function handle(request, env, ctx) {
       if (!session) return resp({ error: 'Non authentifie' }, 401);
       var profileId = body.profileId;
       if (!profileId) return resp({ error: 'ProfileId manquant' }, 400);
-      var data = await env.PLANNING_DB.get('data:' + session.userId + ':' + profileId, { type: 'json' });
-      return resp({ data: data });
+      var dstr = await env.PLANNING_DB.get('data:' + session.userId + ':' + profileId);
+      var data = null; try { data = dstr ? JSON.parse(dstr) : null; } catch (e) {}
+      return resp({ data: data, rev: dstr ? _rev(dstr) : null });
     }
 
     // Historique des versions d'un profil (une par jour, 60 jours) : liste des dates, puis lecture d'une version

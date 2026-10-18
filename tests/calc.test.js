@@ -461,5 +461,15 @@ function situation(opts) {
     var r=['2026-10-14','2026-11-04'].map(function(k){window._cycleVacsShown=[];return [_autreVacHtml(k).indexOf('Xr')>0,!!getVAC(new Date(k+'T12:00:00')).Xr];});
     _globalCycles=[];_globalVacs={};return r;})()`), [[true, true], [false, false]]); }
 
+// Deux appareils : fusion base / ici / serveur — ce qui n'a changé que d'un côté est gardé, changé des deux côtés : ici l'emporte
+{ const a = load('2026-10-11');
+  eq('Fusion de deux appareils', a.run(`(function(){
+    var b={overrides:{a:{vac:'B1'},d:{vac:'C1'}},conges:{x:'cg'},profile:{name:'A',matelas:10},list:[1,2]};
+    var l={overrides:{a:{vac:'B1'},b:{vac:'D1'}},conges:{x:'cg'},profile:{name:'A',matelas:12},list:[1,2,3]};   // ajout b, retrait d, matelas changé, liste changée
+    var r={overrides:{a:{vac:'A2'},c:{vac:'D2'},d:{vac:'C1'}},conges:{x:'cg',y:'rend'},profile:{name:'Ab',matelas:11},list:[1,2]}; // a changé, ajout c et y, nom changé, matelas changé
+    var m=_merge3(b,l,r);
+    return JSON.stringify([m.overrides,m.conges,m.profile,m.list]);})()`),
+    JSON.stringify([{a:{vac:'A2'},b:{vac:'D1'},c:{vac:'D2'}},{x:'cg',y:'rend'},{name:'Ab',matelas:12},[1,2,3]])); }
+
 console.log('\n' + (count - fails) + '/' + count + ' contrôles réussis');
 if (fails) process.exit(1);
