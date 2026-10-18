@@ -10,7 +10,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.70">
+<meta name="app-version" content="v6.71">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -1386,9 +1386,11 @@ function _ruleBad(k){if(_ruleOk(k))return false;var me=_shiftOf(_dAdd(k,0));if(!
   return _streakPos(k)>RULES.joursMax;}
 // Jours à signaler sur une période (Suivi) : repos trop courts (jour d'après), jours au-delà du 6e sans rendus
 function _ruleScan(from,to){var R=[],J=[],d=new Date(from+'T12:00:00'),e=new Date(to+'T12:00:00');
-  for(;d<=e;d.setDate(d.getDate()+1)){var k=dk(d);if(_ruleOk(k))continue;var rb=_restBefore(k);if(rb!=null&&rb<RULES.repos)R.push(k);
+  var H=[];for(;d<=e;d.setDate(d.getDate()+1)){var k=dk(d);if(_ruleOk(k))continue;var rb=_restBefore(k);if(rb!=null&&rb<RULES.repos)(rb<RULES.reposMin?H:R).push(k);
     if(_streakPos(k)>RULES.joursMax)J.push(k);}
-  return{rest:R,streak:J};}
+  return{hard:H,rest:R,streak:J};}
+// Période regardée par Suivi et l'accueil : du mois dernier aux 2 mois à venir
+function _ruleScanNow(){return _ruleScan(dk(new Date(NOW.getFullYear(),NOW.getMonth()-1,1,12)),dk(new Date(NOW.getFullYear(),NOW.getMonth()+3,0,12)));}
 function _ruleHtml(k){var L=_ruleNotes(k);if(!L.length)return '';var ok=_ruleOk(k);
   return L.map(function(n,i){return '<div class="rule-note" style="display:flex;align-items:center;gap:10px;padding:10px 14px;margin:-4px 0 10px;font-size:12px;line-height:1.4;background:'+(n.lvl==='red'?'rgba(192,57,43,.18);color:#f3c2bb':'rgba(200,128,72,.16);color:var(--text)')+'"><i class="ti ti-alert-triangle" style="font-size:15px;flex-shrink:0;color:'+(n.lvl==='red'?'var(--red)':'var(--amber)')+'"></i><span style="flex:1">'+n.txt+'</span>'
     +(i===L.length-1&&!_ruleHard(k)?'<button class="adj-pill" style="width:auto;height:28px;padding:0 12px;font-size:12px;flex-shrink:0" onclick="event.stopPropagation();_ruleSet(\''+k+'\','+(!ok)+')">'+(ok?'✓ Validé':'Valider')+'</button>':'')+'</div>';}).join('');}
@@ -2430,6 +2432,7 @@ function _recapCol(col,y){
   // toutes les années : un écart non corrigé ne disparaît pas au 1er janvier
   Object.keys(S.bulletins||{}).forEach(function(k){n++;var c;try{c=_bulCompare(S.bulletins[k]);}catch(e){return;}if(c.status==='ecart'&&!_bulIgn(+k,c))bad+=(c.badList&&c.badList.length)||1;});
   var c=S.profile&&S.profile.rhCmp;if(c){n++;if(Math.abs(_rhDe(c))>=2)bad++;} // tableau Gestion : tout écart non ignoré, favorable ou non
+  try{var RS=_ruleScanNow(),nr=RS.hard.length+RS.rest.length+RS.streak.length;if(nr){n++;bad+=nr;}}catch(e){} // règles de travail : un par jour signalé, comme dans Suivi
   var val=!n?'—':bad?'⚠ '+bad:'✓',color=bad?'var(--amber)':'var(--green)',sub=!n?'bilan':bad?'à vérifier':'conforme';
   return col('Suivi',val,color,sub,'openMergedRenduCgModal(6,2)');
 }
@@ -3420,11 +3423,10 @@ function _suiviFacts(c,o,E){var L=[],M=function(ym){return _deMois(ym).replace(/
   if(E&&E.nBad)row('ti-alert-circle','var(--amber)','Paie : '+E.nBad+' bulletin'+(E.nBad>1?'s':'')+' avec écart','openBulletinsCal()');
   if(E&&E.nB&&!(S.bulletins||{})[TODAY_YM-1])row('ti-file-import','var(--blue)','Bulletin '+_deMois(TODAY_YM-1)+' : pas importé','window._bulFrom=\'recap\';importBulletins()');
   // règles de travail : du mois dernier aux 2 mois à venir
-  try{var f0=new Date(NOW.getFullYear(),NOW.getMonth()-1,1,12),f1=new Date(NOW.getFullYear(),NOW.getMonth()+3,0,12),RS=_ruleScan(dk(f0),dk(f1)),fd=function(k){var d=new Date(k+'T12:00:00');return d.getDate()+' '+MCs[d.getMonth()];};
-    if(RS.rest.length)row('ti-alert-triangle','var(--red)','Repos de moins de 11h : '+RS.rest.slice(0,3).map(fd).join(', ')+(RS.rest.length>3?'…':''),'pendingKey=\''+RS.rest[0]+'\';openDay(\''+RS.rest[0]+'\')');
+  try{var RS=_ruleScanNow(),fd=function(k){var d=new Date(k+'T12:00:00');return d.getDate()+' '+MCs[d.getMonth()];};
+    if(RS.hard.length)row('ti-alert-triangle','var(--red)','Repos de moins de 9h : '+RS.hard.slice(0,3).map(fd).join(', ')+(RS.hard.length>3?'…':''),'pendingKey=\''+RS.hard[0]+'\';openDay(\''+RS.hard[0]+'\')');
+    if(RS.rest.length)row('ti-alert-triangle','var(--amber)','Repos de moins de 11h : '+RS.rest.slice(0,3).map(fd).join(', ')+(RS.rest.length>3?'…':''),'pendingKey=\''+RS.rest[0]+'\';openDay(\''+RS.rest[0]+'\')');
     if(RS.streak.length)row('ti-alert-triangle','var(--amber)','Au-delà de 6 jours d’affilée : '+RS.streak.slice(0,3).map(fd).join(', ')+(RS.streak.length>3?'…':''),'pendingKey=\''+RS.streak[0]+'\';openDay(\''+RS.streak[0]+'\')');}catch(e){}
-  try{var cs=calcSoldes(),ex=0;Object.keys(cs.realAvail).forEach(function(ym){if(getExpYm(+ym)===TODAY_YM)ex+=cs.realAvail[ym]||0;});
-    if(ex>=1)row('ti-hourglass-low','var(--rend-text)',fmtMin(Math.round(ex))+' de rendus expirent fin '+ML[TODAY_YM%12].toLowerCase(),'openRenduAdvice()');}catch(e){}
   return '<div class="hd-card" style="padding:4px 12px 2px;margin-bottom:8px">'+(L.length?L.join('').replace('border-top:0.5px solid var(--border2);',''):'<div style="display:flex;align-items:center;gap:10px;padding:10px 2px;font-size:13px;color:var(--green)"><i class="ti ti-circle-check" style="font-size:16px"></i>Tout est à jour</div>')+'</div>';}
 // Conseil de pose : heures qui expirent le plus tôt, et les jours travaillés d'ici là qui les couvrent
 function _renduAdvice(){var cs=calcSoldes(),by={};Object.keys(cs.realAvail||{}).forEach(function(ym){var h=cs.realAvail[ym]||0,e=getExpYm(+ym);if(h>=1&&e>=TODAY_YM)by[e]=(by[e]||0)+h;});
