@@ -151,6 +151,7 @@ function mockApi(route) {
       ok('Admin : supprimer une vacation de grille bloqué', await p.evaluate(async () => { const g = [..._allGridCodes()].find(n => _allVacs[n]); closeVacForm(); editVac(g);
         const b = document.getElementById('vf-del-btn'); if (b.style.display === 'none') return false; await deleteVac(g); return /Impossible/.test(document.getElementById('vf-err').textContent); }));
       await p.evaluate(() => { closeVacForm(); switchTab('cycles'); }); await p.waitForTimeout(600);
+      ok('Admin : bouton cycles coordination passés', await p.evaluate(() => { switchPool('coord'); const b = [...document.querySelectorAll('#cycles-list button')].some(x => /2025-2026 et Été 2026/.test(x.textContent)); switchPool('antenne'); return b; }));
       ok('Admin : cycles', await p.evaluate(() => document.querySelectorAll('#cycles-list .cycle-card').length > 0));
       await ctx.close(); }
   } catch (e) { ok('Tests des écrans sans exception', false, e.stack); }

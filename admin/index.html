@@ -1084,6 +1084,23 @@ const COORD_2026 = {
     Pvm: { label: 'P', deb: '08h00', fin: '19h00', dur: 600, panier: false, type: 'week', days: [5], primes: { antenne: false, reel: false, coord: true } }
   }
 };
+// Plannings coordination de 2025-2026 et de l'été 2026 : même grille de 4 semaines que 2026-2027
+const COORD_PAST = [
+  { name: 'Coordination 2025-2026', startDate: '2025-09-01', endDate: null },
+  { name: 'Coordination Été 2026', startDate: '2026-07-06', endDate: '2026-08-30' }
+];
+async function createCoordPast() {
+  const have = (_adminCycles || []).filter(c => _poolOf(c) === 'coord').map(c => c.startDate);
+  const todo = COORD_PAST.filter(x => !have.includes(x.startDate));
+  if (!todo.length || !confirm('Créer ' + todo.map(x => '« ' + x.name + ' »').join(' et ') + ' avec la grille du cycle Coordination 2026-2027 ?')) return;
+  try {
+    for (const x of todo) {
+      const r = await fetch(API + '/admin/cycle/create', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ cycle: { name: x.name, startDate: x.startDate, endDate: x.endDate, anchor: x.startDate, weeks: COORD_2026.weeks.map(w => w.slice()), pool: 'coord' } }) });
+      if (!r.ok) { alert('Erreur : ' + ((await r.json()).error || r.status)); break; }
+    }
+  } catch (e) { alert('Erreur réseau'); }
+  loadCycles();
+}
 async function createCoord2026() {
   try {
     const ex = ((await (await fetch(API + '/admin/vacations', { method: 'POST', headers: adminHeaders(), body: '{}' })).json()).vacations) || {};
@@ -1100,7 +1117,7 @@ function renderCycles() {
   const mine = cycles.map((c, idx) => [c, idx]).filter(([c]) => _poolOf(c) === _admPool);
   el.innerHTML = (mine.length ? '' : '<div class="empty">Aucun cycle ' + POOL_L[_admPool] + ' enregistré.' + (_admPool === 'antenne' ? ' Le cycle par défaut est celui du code.' : '') + '</div>')
     + (_admPool === 'antenne' ? '<button class="btn btn-sm" style="margin-bottom:8px" onclick="showEditCurrentCycle()">✏️ Modifier le cycle initial (hardcodé)</button>' : '')
-    + (_admPool === 'coord' && !mine.some(([c]) => c.startDate === COORD_2026.startDate) ? '<button class="btn btn-sm btn-green" style="margin-bottom:8px" onclick="createCoord2026()">+ Cycle Coordination depuis le planning du 12 oct. 2026</button>' : '');
+    + (_admPool === 'coord' && COORD_PAST.some(x => !mine.some(([c]) => c.startDate === x.startDate)) ? '<button class="btn btn-sm btn-green" style="margin-bottom:8px" onclick="createCoordPast()">+ Cycles Coordination 2025-2026 et Été 2026 (même grille)</button>' : '');
   {
     el.innerHTML += mine.map(([c, idx]) => {
       const start = c.startDate || '—';
