@@ -139,6 +139,8 @@ function mockApi(route) {
       ok('Admin : autres vacations', await p.evaluate(() => document.querySelectorAll('#vac-list .vrow').length > 0));
       const ed = await p.evaluate(() => { const n = Object.keys(_allVacs)[0]; editVac(n); return document.getElementById('vac-modal-bg').style.display === 'flex'; });
       ok('Admin : ouvrir une vacation', ed);
+      ok('Admin : supprimer une vacation de grille bloqué', await p.evaluate(async () => { const g = [..._allGridCodes()].find(n => _allVacs[n]); closeVacForm(); editVac(g);
+        const b = document.getElementById('vf-del-btn'); if (b.style.display === 'none') return false; await deleteVac(g); return /Impossible/.test(document.getElementById('vf-err').textContent); }));
       await p.evaluate(() => { closeVacForm(); switchTab('cycles'); }); await p.waitForTimeout(600);
       ok('Admin : cycles', await p.evaluate(() => document.querySelectorAll('#cycles-list .cycle-card').length > 0));
       await ctx.close(); }

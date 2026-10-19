@@ -280,6 +280,7 @@ textarea{width:100%;padding:9px 12px;background:var(--bg);border:0.5px solid var
       <button class="btn btn-ghost" id="vf-dup-btn" style="flex:1" onclick="dupVac()">Dupliquer</button>
       <button class="btn btn-ghost" style="flex:1" onclick="closeVacForm()">Annuler</button>
     </div>
+    <button class="btn btn-sm btn-red" id="vf-del-btn" style="margin-top:10px;display:none" onclick="deleteVac(_editingVac)">Supprimer cette vacation</button>
     <div class="err" id="vf-err" style="margin-top:8px"></div>
   </div>
 </div>
@@ -795,6 +796,7 @@ function showVacForm(name, v) {
   [1,2,3,4,5].forEach(d => { document.getElementById('vf-day-'+d).checked = !_days.length || _days.includes(d); });
   updateVfDaysVisibility();
   document.getElementById('vf-err').textContent = '';
+  document.getElementById('vf-del-btn').style.display = name ? '' : 'none';
   document.getElementById('vf-scope-bar').style.display = 'none';
   document.getElementById('vf-fields').style.display = '';
   const saveBtn = document.getElementById('vf-save-btn'); saveBtn.style.display = ''; saveBtn.disabled = false;
@@ -874,9 +876,18 @@ async function saveVac() {
 
 
 async function deleteVac(name) {
-  if (!confirm(`Supprimer la vacation "${name}" ?`)) return;
-  const res = await fetch(API + '/admin/vacation/delete', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ name }) });
-  if (res.ok) loadVacations();
+  if (!name) return;
+  const errEl = document.getElementById('vf-err');
+  // dans une grille : elle serait aussitôt « à créer » et les jours de ce cycle perdraient leurs horaires
+  const inCyc = _allCycles.filter(c => (c.weeks || []).some(w => (w || []).includes(name))).map(c => c.name || c.id);
+  if (inCyc.length) { errEl.textContent = `Impossible : « ${name} » est dans la grille de ${inCyc.join(', ')}. La retirer d’abord de la grille (onglet Cycles).`; return; }
+  // les jours déjà posés ne gardent que le code : ils perdraient leurs horaires
+  if (!confirm(`Supprimer la vacation « ${name} » ?\n\nLes jours où quelqu’un l’a déjà posée n’auront plus d’horaires. Pour simplement ne plus la proposer, mettre plutôt une date de fin (« Valable au »).`)) return;
+  try {
+    const res = await fetch(API + '/admin/vacation/delete', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({ name }) });
+    if (!res.ok) { errEl.textContent = 'Erreur'; return; }
+    closeVacForm(); loadVacations();
+  } catch (e) { errEl.textContent = 'Erreur réseau'; }
 }
 
 
