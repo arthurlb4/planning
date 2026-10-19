@@ -18,11 +18,14 @@ const server = http.createServer((req, res) => {
 });
 
 // Faux serveur de données : cycles et vacations figés, le reste vide
+const SENT = {};
 function mockApi(route) {
   const u = new URL(route.request().url()), p = u.pathname; let body = {};
+  try { SENT[p] = JSON.parse(route.request().postData() || 'null'); } catch (e) {}
   if (p === '/get-cycle' || p === '/cycles' || p === '/admin/cycles') body = { cycles: FIX.cycles };
   else if (p === '/get-vacations' || p === '/admin/vacations') body = { vacations: FIX.vacations };
-  else if (p === '/admin/users') body = { users: [] };
+  else if (p === '/admin/users') body = { users: [{ userId: 'a', name: 'Alice' }, { userId: 'b', name: 'Bob' }, { userId: 'c', name: 'Chloé' }] };
+  else if (p === '/admin/lines') body = { lines: { S2: [{ userId: 'a', userName: 'Alice', profileName: 'Alice', weekVacs: [] }], S10: [{ userId: 'b', userName: 'Bob', profileName: 'Bob', pool: 'cadre', weekVacs: [] }] } };
   else if (p === '/pending-line-choice') body = { pending: [] };
   else if (p === '/announce') body = { announce: { id: 't1', text: 'Message de test', pool: 'all', at: 0 } };
   else if (p === '/admin/line-choices') body = { choices: [{ cycle: { id: 'c', name: 'Cycle test', pool: 'antenne', startDate: '2026-08-31' }, pending: ['Alice'], done: ['Bob'] }] };
@@ -62,6 +65,10 @@ function mockApi(route) {
     // inscription éventuelle retirée : on teste l'app elle-même
     await p.evaluate(() => { const s = document.getElementById('setup'); if (s) s.remove(); if (!_aid) { _aid = 'p1'; _profs = { p1: S }; } render(); });
     ok('Calendrier affiché', await p.evaluate(() => document.querySelectorAll('#cal .dci[data-key]').length >= 28));
+    await p.evaluate(() => { try { Object.keys(localStorage).filter(k => k.startsWith('pl_lsig')).forEach(k => localStorage.removeItem(k)); } catch (e) {} return _lineSync(); });
+    const lr = SENT['/lines/register'];
+    if (process.env.SHOW) console.log(JSON.stringify(lr));
+    ok('Ligne de la semaine envoyée au serveur', lr && /^S\d+$/.test(lr.ligne) && lr.pool && lr.weekVacs.length === 7, JSON.stringify(lr));
 
     // fiche du jour, Modifier
     const day = await p.evaluate(() => { const k = dk(NOW); pendingKey = k; openDay(k); return !!document.querySelector('#modal-root .dbox'); });
@@ -133,6 +140,8 @@ function mockApi(route) {
       await p.goto(base + '/admin/'); await p.waitForTimeout(1200);
       await p.evaluate(() => switchTab('users')); await p.waitForTimeout(600);
       ok('Admin : message à tous et choix de ligne', await p.evaluate(() => { const t = document.getElementById('adm-extra').textContent; return /Message à tous/.test(t) && /1\/2 ont choisi/.test(t) && /Alice/.test(t); }));
+      await p.evaluate(() => switchTab('lines')); await p.waitForTimeout(600);
+      ok('Admin : lignes par équipe et comptes sans ligne', await p.evaluate(() => { const t = document.getElementById('lines-grid').textContent; return /Antenne/.test(t) && /Cadre/.test(t) && /Pas encore de ligne connue \(1\) : Chloé/.test(t); }));
       await p.evaluate(() => switchTab('vacations')); await p.waitForTimeout(800);
       ok('Admin : vacations d’un cycle', await p.evaluate(() => document.querySelectorAll('#vac-list .vrow').length > 0));
       await p.evaluate(() => switchVacHors()); await p.waitForTimeout(200);

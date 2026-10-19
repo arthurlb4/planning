@@ -995,12 +995,20 @@ async function loadLines() {
   const el = document.getElementById('lines-grid');
   el.innerHTML = '<div class="empty">Chargement...</div>';
   try {
-    const res = await fetch(API + '/admin/lines', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({}) });
+    const [res, ures] = await Promise.all([fetch(API + '/admin/lines', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({}) }),
+      fetch(API + '/admin/users', { method: 'POST', headers: adminHeaders(), body: JSON.stringify({}) }).catch(() => null)]);
     const data = await res.json();
-    const lines = data.lines || {};
-    const keys = Object.keys(lines).sort();
-    if (!keys.length) { el.innerHTML = '<div class="empty">Aucune ligne enregistrée</div>'; return; }
-    el.innerHTML = '<div class="line-grid">' + keys.map(l => {
+    const all = data.lines || {};
+    let accts = []; try { accts = ures && ures.ok ? ((await ures.json()).users || []) : []; } catch (e) {}
+    // par équipe (S1 antenne et S1 cadre ne sont pas la même ligne) ; inscriptions d'avant les équipes : antenne
+    const byPool = {}, seen = new Set();
+    Object.keys(all).forEach(l => (all[l] || []).forEach(u => { const p = u.pool || 'antenne'; seen.add(u.userId); ((byPool[p] = byPool[p] || {})[l] = byPool[p][l] || []).push(u); }));
+    const lnum = l => parseInt(String(l).slice(1)) || 0;
+    const none = accts.filter(u => !seen.has(u.userId)).map(u => u.name || u.email || u.userId).sort((a, b) => a.localeCompare(b));
+    if (!Object.keys(byPool).length && !none.length) { el.innerHTML = '<div class="empty">Aucune ligne enregistrée</div>'; return; }
+    el.innerHTML = Object.keys(POOL_L).filter(p => byPool[p]).map(p => { const lines = byPool[p], keys = Object.keys(lines).sort((a, b) => lnum(a) - lnum(b));
+      return `<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin:14px 0 6px">${POOL_L[p]}</div>`
+    + '<div class="line-grid">' + keys.map(l => {
       const users = lines[l] || [];
       return '<div class="line-card">'
         + '<div class="line-name">' + l + '</div>'
@@ -1020,7 +1028,8 @@ async function loadLines() {
               + '</div>' + row;
           }).join('')
         + '</div>';
-    }).join('') + '</div>'
+    }).join('') + '</div>'; }).join('')
+      + (none.length ? `<div class="alert alert-orange" style="margin-top:14px">Pas encore de ligne connue (${none.length}) : ${none.map(_esc).join(', ')}<div style="color:var(--text3);margin-top:4px">La ligne apparaît dès que la personne ouvre l'app à jour.</div></div>` : '')
       + '<button class="btn btn-sm btn-ghost" style="margin-top:8px" onclick="cleanupLines()">🧹 Nettoyer les comptes supprimés</button>';
   } catch(e) { el.innerHTML = '<div class="err">Erreur réseau</div>'; }
 }

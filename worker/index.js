@@ -827,7 +827,7 @@ async function handle(request, env, ctx) {
         if (cleaned.length > 0) linesMap[ligne] = cleaned; else delete linesMap[ligne];
       }
       if (!linesMap[ligne]) linesMap[ligne] = [];
-      linesMap[ligne].push({ userId: session.userId, userName: cleanName(body.userName) || session.userId, profileId: profileId, profileName: cleanName(profileName) || profileId, weekVacs: body.weekVacs || [], regLine: body.regLine !== undefined ? body.regLine : parseInt(ligne.slice(1))-1, regWeek: body.regWeek || getMondayKey() });
+      linesMap[ligne].push({ userId: session.userId, userName: cleanName(body.userName) || session.userId, profileId: profileId, profileName: cleanName(profileName) || profileId, pool: ['antenne', 'cadre', 'coord'].indexOf(body.pool) >= 0 ? body.pool : 'antenne', weekVacs: body.weekVacs || [], regLine: body.regLine !== undefined ? body.regLine : parseInt(ligne.slice(1))-1, regWeek: body.regWeek || getMondayKey() });
       // Quota KV : les écritures sont limitées (lectures ~100x moins chères) → n'écrire que ce qui a changé
       // Ordre stable (sinon chaque ré-inscription réordonne la ligne et force une écriture)
       for (var l2 in linesMap) linesMap[l2].sort(function(a, b){ return (a.userId + ':' + a.profileId).localeCompare(b.userId + ':' + b.profileId); });

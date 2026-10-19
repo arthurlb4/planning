@@ -10,7 +10,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.75">
+<meta name="app-version" content="v6.76">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -1146,6 +1146,7 @@ function saveState(){
   if(_profs[_aid]&&_profs[_aid].profile)_profs[_aid].profile._lastSaved=_ts;
   try{localStorage.setItem('pl_v8',JSON.stringify({p:_profs,a:_aid,u:_plU()}));}catch(e){}
   if(S&&S.profile&&S.profile.ical&&S.profile.ical!=='1')_icalSoon(); // agenda par abonnement : remis à jour
+  _lineSoon(); // ligne de la semaine (admin Lignes, collègues par ligne)
   // Cloud sync debounced (5s)
   clearTimeout(window._cloudSyncTimer);
   window._cloudSyncTimer=setTimeout(function(){
@@ -7205,6 +7206,7 @@ function _wvAdjustLines(data,monDate,nLines){
   var adjustedLines={};
   Object.keys(linesData).forEach(function(lineName){
     (linesData[lineName]||[]).forEach(function(user){
+      if((user.pool||'antenne')!==_poolAt(dk(_viewedMon)))return; // autre équipe : autres lignes
       var nl=lineName;
       if(user.regWeek&&user.regLine!==undefined){
         var _regMon=new Date(user.regWeek+'T12:00:00');
@@ -9162,6 +9164,7 @@ function init(){
     autoReportEph();
     render();
     setTimeout(pushSyncAlerts,3000);
+    _lineSoon();
     setTimeout(_verCheck,1500);
     const hpn=document.getElementById('hdr-profile-name');
     if(hpn&&S&&S.profile)hpn.textContent=S.profile.name||'Profil';
@@ -10667,6 +10670,19 @@ function _icalEvents(){var out=[],d=new Date(NOW);d.setDate(d.getDate()-45);var 
   return out;}
 function _icalUrl(tok){return CLOUD_API+'/ical/'+tok+'.ics';}
 var _icalT=null;
+// Ligne de la semaine envoyée au serveur (admin « Lignes », collègues par ligne dans l'échange de semaine) :
+// seulement quand elle a changé (quota d'écritures du serveur)
+var _lsT;function _lineSoon(){clearTimeout(_lsT);_lsT=setTimeout(_lineSync,6000);}
+function _wkCodes(mon){var r=[];for(var d=0;d<7;d++){var dt=new Date(mon.getTime()+d*864e5),k=dk(dt),g=getVac(dt),c=(S.conges||{})[k];
+  r.push(g.absent?'Abs':c==='cg'?'CG':(c==='rend'||c==='rend-hist')?'REND':(g.vac||'-'));}return r;}
+async function _lineSync(){if(!window._authToken||!window._cloudReady||!_aid||!S||!S.profile)return;
+  try{var mon=getMonday(NOW),mk=dk(mon),li=_lineIdxBase(mon),all={};
+    for(var i=1;i<=26;i++){var m=new Date(mon.getTime()+i*7*864e5),w=_wkCodes(m);if(w.some(function(x){return x==='CG'||x==='REND'||x==='Abs';}))all[dk(m)]=w;}
+    var nm=S.profile.name||(window._authUser&&window._authUser.name)||'';
+    var sig=JSON.stringify({ligne:'S'+(li+1),profileId:_aid,profileName:nm,userName:nm,pool:_poolAt(mk),regLine:li,regWeek:mk,weekVacs:_wkCodes(mon),allWeekVacs:all});
+    var sk='pl_lsig_'+_aid;try{if(localStorage.getItem(sk)===sig)return;}catch(e){}
+    var r=await fetch(CLOUD_API+'/lines/register',{method:'POST',headers:cloudHeaders(),body:sig});
+    if(r.ok)try{localStorage.setItem(sk,sig);}catch(e){}}catch(e){}}
 function _icalSoon(){clearTimeout(_icalT);_icalT=setTimeout(_icalPush,4000);}
 async function _icalPush(){if(!window._authToken||!(S.profile&&S.profile.ical))return null;
   try{var r=await fetch(CLOUD_API+'/ical/publish',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({name:(S.profile.name||''),events:_icalEvents()})});var j=await r.json();
