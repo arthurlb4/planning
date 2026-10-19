@@ -121,6 +121,21 @@ async function verifyAdmin(request, env) {
   return true;
 }
 
+// Équipes d'un compte à une date (tous ses profils ; changement d'équipe « à partir de » dans lineHistory)
+async function userPoolsAt(env, user, date) {
+  var out = [];
+  for (var pid of Object.keys(user.profiles || {})) {
+    var d = await env.PLANNING_DB.get('data:' + user.userId + ':' + pid, { type: 'json' });
+    var pr = (d && d.profile) || {}, p = pr.pool || 'antenne', h = Array.isArray(pr.lineHistory) ? pr.lineHistory : [];
+    if (h.some(function (x) { return x && x.pool; })) {
+      p = pr.origPool || 'antenne';
+      h.slice().sort(function (a, b) { return a.from < b.from ? -1 : 1; }).forEach(function (x) { if (x && x.pool && x.from <= date) p = x.pool; });
+    }
+    if (out.indexOf(p) < 0) out.push(p);
+  }
+  return out.length ? out : ['antenne'];
+}
+
 // Met à jour uniquement les jetons Google du profil, sur une relecture fraîche :
 // ne jamais réécrire tout le profil avec une copie lue plus tôt (écraserait les modifs envoyées entre-temps)
 async function saveGTokens(env, userId, profileId, tokens) {
@@ -561,7 +576,8 @@ async function handle(request, env, ctx) {
         for (var key of list.keys) {
           if (key.name.startsWith('user:email:')) continue;
           var user = await env.PLANNING_DB.get(key.name, { type: 'json' });
-          if (user) pendingUsers.push(user.userId);
+          // seulement les gens de l'équipe du cycle
+          if (user && (await userPoolsAt(env, user, cycle.startDate)).indexOf(cycle.pool || 'antenne') >= 0) pendingUsers.push(user.userId);
         }
         await env.PLANNING_DB.put('global:pending_line_choice:' + cycle.id, JSON.stringify({ cycleId: cycle.id, userIds: pendingUsers }));
       }
@@ -731,7 +747,10 @@ async function handle(request, env, ctx) {
         if (data2 && data2.userIds && data2.userIds.includes(session.userId)) {
           var cycles2 = await env.PLANNING_DB.get('global:cycles', { type: 'json' }) || [];
           var cycle2 = cycles2.find(function(c){ return c.id === data2.cycleId; });
-          if (cycle2 && (body && body.pools || (cycle2.pool || 'antenne') === 'antenne')) pending.push(cycle2);
+          if (cycle2 && (body && body.pools || (cycle2.pool || 'antenne') === 'antenne')) {
+            var u2 = await env.PLANNING_DB.get('user:' + session.userId, { type: 'json' });
+            if (!u2 || (await userPoolsAt(env, u2, cycle2.startDate)).indexOf(cycle2.pool || 'antenne') >= 0) pending.push(cycle2);
+          }
         }
       }
       return resp({ pending: pending });
@@ -775,7 +794,12 @@ async function handle(request, env, ctx) {
         var pd = await env.PLANNING_DB.get(kk.name, { type: 'json' }); if (!pd) continue;
         var cy = cyc.find(function (c) { return c.id === pd.cycleId; }); if (!cy) continue;
         var pend = [], dn = [];
-        for (var id1 of (pd.userIds || [])) { var n1 = await nameOf(id1); if (n1) pend.push(n1); }
+        // en attente : seulement les gens de l'équipe du cycle (les listes faites avant ce tri comptaient tout le monde)
+        var keep = [];
+        for (var id1 of (pd.userIds || [])) { var u1 = await env.PLANNING_DB.get('user:' + id1, { type: 'json' }); if (!u1) continue;
+          if ((await userPoolsAt(env, u1, cy.startDate)).indexOf(cy.pool || 'antenne') < 0) continue;
+          keep.push(id1); var n1 = await nameOf(id1); if (n1) pend.push(n1); }
+        if (keep.length !== (pd.userIds || []).length) { pd.userIds = keep; await env.PLANNING_DB.put(kk.name, JSON.stringify(pd)); }
         for (var id2 of (pd.done || [])) { var n2 = await nameOf(id2); if (n2) dn.push(n2); }
         outL.push({ cycle: { id: cy.id, name: cy.name, pool: cy.pool || 'antenne', startDate: cy.startDate }, pending: pend, done: dn });
       }
