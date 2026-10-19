@@ -1080,7 +1080,7 @@ async function handle(request, env, ctx) {
       var esc = function (t) { return String(t || '').replace(/\\/g, '\\\\').replace(/;/g, '\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n'); };
       var stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
       var L = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//franceinfo planning//FR', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
-        'X-WR-CALNAME:' + esc('Planning' + (data.name ? ' ' + data.name : '')), 'X-PUBLISHED-TTL:PT1H', 'REFRESH-INTERVAL;VALUE=DURATION:PT1H'];
+        'X-WR-CALNAME:' + esc('Planning' + (data.name ? ' ' + data.name : '')), 'X-PUBLISHED-TTL:PT15M', 'REFRESH-INTERVAL;VALUE=DURATION:PT15M'];
       (data.events || []).forEach(function (e) {
         if (!e || !e.u || !e.a || !e.b) return;
         L.push('BEGIN:VEVENT', 'UID:' + esc(e.u) + '@franceinfoplanning', 'DTSTAMP:' + stamp,
