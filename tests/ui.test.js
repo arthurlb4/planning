@@ -135,7 +135,7 @@ function mockApi(route) {
       ok('Admin : message à tous et choix de ligne', await p.evaluate(() => { const t = document.getElementById('adm-extra').textContent; return /Message à tous/.test(t) && /1\/2 ont choisi/.test(t) && /Alice/.test(t); }));
       await p.evaluate(() => switchTab('vacations')); await p.waitForTimeout(800);
       ok('Admin : vacations d’un cycle', await p.evaluate(() => document.querySelectorAll('#vac-list .vrow').length > 0));
-      await p.evaluate(() => switchVacTab('none')); await p.waitForTimeout(200);
+      await p.evaluate(() => switchVacHors()); await p.waitForTimeout(200);
       ok('Admin : autres vacations', await p.evaluate(() => document.querySelectorAll('#vac-list .vrow').length > 0));
       const ed = await p.evaluate(() => { const n = Object.keys(_allVacs)[0]; editVac(n); return document.getElementById('vac-modal-bg').style.display === 'flex'; });
       ok('Admin : ouvrir une vacation', ed);

@@ -483,11 +483,14 @@ var _allVacs = {};
 var _vacActiveTab = null; // cycle id or 'none'
 // Grande catégorie (équipe) affichée dans Cycles et Vacations
 var _admPool = (function(){ try { return localStorage.getItem('adm_pool') || 'antenne'; } catch(e) { return 'antenne'; } })();
+var _vacHors = (function(){ try { return localStorage.getItem('adm_vac_hors') === '1'; } catch(e) { return false; } })();
 function _poolOf(c) { return (c && c.pool) || 'antenne'; }
 function renderPoolBars() {
   const n = {}; (_allCycles.length ? _allCycles : _adminCycles || []).forEach(c => { n[_poolOf(c)] = (n[_poolOf(c)] || 0) + 1; });
-  const html = Object.keys(POOL_L).map(k => `<div class="tab${_admPool===k?' active':''}" onclick="switchPool('${k}')">${POOL_L[k]}${n[k]?' <span style="opacity:.55">'+n[k]+'</span>':''}</div>`).join('');
-  ['cyc-pools','vac-pools'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = html; });
+  const html = h => Object.keys(POOL_L).map(k => `<div class="tab${_admPool===k&&!h?' active':''}" onclick="switchPool('${k}')">${POOL_L[k]}${n[k]?' <span style="opacity:.55">'+n[k]+'</span>':''}</div>`).join('');
+  const c = document.getElementById('cyc-pools'); if (c) c.innerHTML = html(false);
+  // Vacations : 4e onglet pour celles qui ne sont dans aucune grille (les mêmes pour toutes les équipes)
+  const v = document.getElementById('vac-pools'); if (v) v.innerHTML = html(_vacHors) + `<div class="tab${_vacHors?' active':''}" onclick="switchVacHors()">Hors grille</div>`;
 }
 function _pickPoolCycle() {
   const today = new Date().toISOString().slice(0, 10);
@@ -496,8 +499,14 @@ function _pickPoolCycle() {
   list.forEach(c => { if (c.startDate <= today && (!c.endDate || c.endDate >= today)) act = c; });
   return act ? act.id : (list[0] ? list[0].id : 'none');
 }
+function switchVacHors() {
+  _vacHors = true; _vacActiveTab = 'none';
+  try { localStorage.setItem('adm_vac_hors', '1'); } catch(e) {}
+  renderPoolBars(); renderVacTabs(); renderVacList(); closeVacForm();
+}
 function switchPool(k) {
   _admPool = k;
+  if (_vacHors && document.getElementById('vac-list')) { _vacHors = false; _vacActiveTab = null; try { localStorage.removeItem('adm_vac_hors'); } catch(e) {} }
   try { localStorage.setItem('adm_pool', k); } catch(e) {}
   renderPoolBars();
   if (document.getElementById('cycles-list') && _adminCycles) renderCycles();
@@ -524,7 +533,8 @@ async function loadVacations() {
     _allCycles = (cdata.cycles || []).sort((a,b) => a.startDate < b.startDate ? -1 : 1);
     // Onglet par défaut : cycle en cours de l'équipe affichée
     const cur = _allCycles.find(c => c.id === _vacActiveTab);
-    if (_vacActiveTab === null || (_vacActiveTab !== 'none' && (!cur || _poolOf(cur) !== _admPool))) _vacActiveTab = _pickPoolCycle();
+    if (_vacHors) _vacActiveTab = 'none';
+    else if (_vacActiveTab === null || _vacActiveTab === 'none' || !cur || _poolOf(cur) !== _admPool) _vacActiveTab = _pickPoolCycle();
     renderPoolBars();
     renderVacTabs();
     renderVacList();
@@ -534,11 +544,12 @@ async function loadVacations() {
 function renderVacTabs() {
   const el = document.getElementById('vac-tabs');
   if (!el) return;
+  if (_vacHors) { el.innerHTML = ''; el.style.display = 'none'; return; }
+  el.style.display = '';
   const tabs = _allCycles.filter(c => _poolOf(c) === _admPool).map(c => {
     const active = _vacActiveTab === c.id;
     return `<div class="tab${active?' active':''}" onclick="switchVacTab('${c.id}')" style="font-size:12px;padding:5px 10px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${c.name||c.id}">${c.name||c.id}</div>`;
   });
-  tabs.push(`<div class="tab${_vacActiveTab==='none'?' active':''}" onclick="switchVacTab('none')" style="font-size:12px;padding:5px 10px">Autres vacations</div>`);
   el.innerHTML = tabs.join('');
 }
 
@@ -600,7 +611,7 @@ function renderVacList() {
   const el = document.getElementById('vac-list');
   const byDeb = (a, b) => (_toMinAdmin((_allVacs[a] || {}).deb) || 9999) - (_toMinAdmin((_allVacs[b] || {}).deb) || 9999);
   const H = t => `<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin:14px 0 4px">${t}</div>`;
-  if (_vacActiveTab === 'none') {
+  if (_vacHors) {
     // Hors de toute grille : proposées dans « Autres » aux équipes cochées
     const g = _allGridCodes();
     const list = Object.keys(_allVacs).filter(n => n !== 'RH' && !g.has(n)).sort(byDeb);
@@ -794,7 +805,7 @@ function showVacForm(name, v) {
   cycField.style.display = 'block';
   if (used.length) { cycH.textContent = 'Utilisée dans'; cycDiv.innerHTML = used.map(c => `<span class="vbdg">${_esc(c.name || c.id)}</span>`).join(''); }
   else {
-    const ps = v ? _vacPools(v) : (_vacActiveTab === 'none' ? [_admPool] : []);
+    const ps = v ? _vacPools(v) : (_vacHors ? Object.keys(POOL_L) : []);
     const pd = v ? _vacPeriod(v) : { from: null, to: null };
     cycH.textContent = 'Hors grille : équipes qui la voient';
     cycDiv.innerHTML = Object.keys(POOL_L).map(k => `<label class="vchip"><input type="checkbox" data-pool="${k}" ${ps.includes(k) ? 'checked' : ''}>${POOL_L[k]}</label>`).join('')
