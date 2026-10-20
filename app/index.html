@@ -10,7 +10,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.77">
+<meta name="app-version" content="v6.78">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -9214,6 +9214,9 @@ function init(){
   function _swW(mv){const l=mv.getBoundingClientRect().left;return mv.offsetWidth+Math.max(16,2*Math.round(l));}
   // On déplace les .cal-wrap eux-mêmes (pas leur parent) : un parent transformé couperait l'effet verre
   function _swMv(){return document.getElementById('month-view');}
+  // PC : le calendrier n'est pas rendu invisible sous le mois arrivé (Chrome réaffichait alors un instant l'ancien mois
+  // en le rendant de nouveau visible) ; la page arrivée, opaque, le couvre de toute façon
+  function _pgDesk(){return window.matchMedia&&matchMedia('(min-width:721px)').matches&&!/iPhone|iPad|Android/.test(navigator.userAgent);}
   function _swWrap(){return document.querySelector('#month-view > .cal-wrap');}
   // Aperçu du mois précédent (d=-1) ou suivant (d=1), posé exactement sur le calendrier puis décalé
   // Calendrier d'un mois donné, posé exactement sur le calendrier affiché (puis décalé par translateX)
@@ -9250,7 +9253,7 @@ function init(){
       // Le mois arrivé (aperçu) reste par-dessus le temps que le calendrier soit repeint (iPhone)
       const keep=_swPeek;_swPeek={};
       render();_syncWknNow();
-      const w3=_swWrap()||wrap;w3.style.opacity='0.001';
+      const w3=_swWrap()||wrap;if(!_pgDesk())w3.style.opacity='0.001';
       requestAnimationFrame(function(){requestAnimationFrame(function(){setTimeout(function(){w3.style.opacity='';Object.keys(keep).forEach(function(k){keep[k].remove();});},220);});});
       _slideBusy=false;
     };
@@ -9394,7 +9397,7 @@ function init(){
       // iPhone : le calendrier qui vient de recevoir le nouveau mois se repeint par morceaux, et l'ancien mois
       // apparaissait par endroits. La page voisine (déjà à sa place, identique) reste par-dessus le temps que
       // le calendrier soit repeint, puis elle est retirée.
-      if(_swapped){_pgUnlinger();w.style.opacity='0.001';_pgLinger={pages:_pages,w:w};}
+      if(_swapped){_pgUnlinger();if(!_pgDesk())w.style.opacity='0.001';_pgLinger={pages:_pages,w:w};}
       // Sider, label et compteurs mis à jour dès l'image suivante, sans redessiner le calendrier une seconde fois
       clearTimeout(_pgRenderT);cancelAnimationFrame(_pgRenderT);
       _pgRenderT=requestAnimationFrame(function _r(){
