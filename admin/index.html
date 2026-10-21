@@ -614,7 +614,8 @@ function _periodTxt(p) { return p.from && p.to ? 'du ' + _fmtD(p.from) + ' au ' 
 function _vacRow(name, v, extra) {
   const total = calcDur(fmtTimeToHHMM(v.deb || ''), fmtTimeToHHMM(v.fin || ''));
   const pause = v.dur && total > v.dur ? ' · pause ' + fmtVacDur(total - v.dur) : '';
-  const inc = !v.mixte && (!(v.dur > 0) || !v.deb || !v.fin) ? '<span class="vbdg w">incomplète</span>' : '';
+  const inc = (!v.mixte && (!(v.dur > 0) || !v.deb || !v.fin) ? '<span class="vbdg w">incomplète</span>' : '')
+    + (_vacHors && (!_vacPools(v).length || ((p => p.to && p.to < new Date().toISOString().slice(0, 10))(_vacPeriod(v)))) ? '<span class="vbdg w">proposée à personne</span>' : '');
   return `<div class="vrow" onclick="editVac('${name}')"><div class="vm"><div class="vn">${_esc(v.label || name)}${v.label && v.label !== name ? `<small>${_esc(name)}</small>` : ''}</div>`
     + `<div class="vt">${v.deb || '—'} → ${v.fin || '—'} · ${fmtVacDur(v.dur || 0)}${pause}</div><div>${_vacBadges(v)}${inc}</div></div>${extra || ''}</div>`;
 }
@@ -630,7 +631,12 @@ function renderVacList() {
       `<label class="vchip sm" style="padding:3px 7px"><input type="checkbox" ${ps.includes(k) ? 'checked' : ''} onchange="setVacPool('${n}','${k}',this.checked)">${POOL_L[k]}</label>`).join('') + `<span class="vper">${_periodTxt(pd)}</span></div>`; };
     // Réalisation : pas d'équipe ni de grille fixe, ses vacations restent ici ; puis les autres vacations hors grille
     const real = list.filter(n => vacCat(n) === 'Réal'), rest = list.filter(n => vacCat(n) !== 'Réal');
-    el.innerHTML = `<div class="alert alert-blue" style="font-size:12px">Vacations qui ne sont dans aucune grille : cocher les équipes qui peuvent la choisir. Les vacations des grilles, elles, sont déjà proposées automatiquement aux autres équipes, dans « Autres ».</div>`
+    // Vues par personne : aucune équipe cochée, ou période terminée
+    const today = new Date().toISOString().slice(0, 10);
+    const why = n => { const v = _allVacs[n]; if (!_vacPools(v).length) return 'aucune équipe cochée'; const pd = _vacPeriod(v); return pd.to && pd.to < today ? 'période terminée' : ''; };
+    const hidden = list.filter(n => why(n));
+    el.innerHTML = (hidden.length ? `<div class="alert alert-orange" style="font-size:12px">Proposée${hidden.length > 1 ? 's' : ''} à personne : ${hidden.map(n => `<b>${_esc(n)}</b> (${why(n)})`).join(', ')}. Cocher une équipe, effacer la date de fin, ou supprimer la vacation si elle ne sert plus.</div>` : '')
+      + `<div class="alert alert-blue" style="font-size:12px">Vacations qui ne sont dans aucune grille : cocher les équipes qui peuvent la choisir. Les vacations des grilles, elles, sont déjà proposées automatiquement aux autres équipes, dans « Autres ».</div>`
       + H('Réalisation · pas de grille fixe') + (real.length ? real.map(n => _vacRow(n, _allVacs[n], chips(n))).join('') : '<p style="color:var(--text3);font-size:12px">—</p>')
       + H('Autres') + (rest.length ? rest.map(n => _vacRow(n, _allVacs[n], chips(n))).join('') : '<p style="color:var(--text3);font-size:12px">—</p>');
     return;

@@ -1053,46 +1053,6 @@ async function handle(request, env, ctx) {
     // DATA
     // ============================================================
 
-    // ── Agenda par abonnement (iPhone, Outlook…) : l'app envoie ses événements, le lien .ics les sert ──
-    if (path === '/ical/publish') {
-      var session = await verifySession(request, env);
-      if (!session) return resp({ error: 'Non authentifie' }, 401);
-      var key = 'ical:' + session.userId, cur = await env.PLANNING_DB.get(key, { type: 'json' }) || {};
-      var tok = cur.tok || randToken(16);
-      var evs = Array.isArray(body.events) ? body.events.slice(0, 1500) : [];
-      await env.PLANNING_DB.put(key, JSON.stringify({ tok: tok, name: String(body.name || '').slice(0, 60), events: evs, at: Date.now() }));
-      if (!cur.tok) await env.PLANNING_DB.put('icaltok:' + tok, session.userId);
-      return resp({ ok: true, tok: tok });
-    }
-    if (path === '/ical/disable') {
-      var session = await verifySession(request, env);
-      if (!session) return resp({ error: 'Non authentifie' }, 401);
-      var key = 'ical:' + session.userId, cur = await env.PLANNING_DB.get(key, { type: 'json' });
-      if (cur && cur.tok) await env.PLANNING_DB.delete('icaltok:' + cur.tok);
-      await env.PLANNING_DB.delete(key);
-      return resp({ ok: true });
-    }
-    var icm = /^\/ical\/([A-Za-z0-9]+)\.ics$/.exec(path);
-    if (icm) {
-      var uid = await env.PLANNING_DB.get('icaltok:' + icm[1]);
-      var data = uid ? await env.PLANNING_DB.get('ical:' + uid, { type: 'json' }) : null;
-      if (!data) return new Response('Not found', { status: 404 });
-      var esc = function (t) { return String(t || '').replace(/\\/g, '\\\\').replace(/;/g, '\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n'); };
-      var stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
-      var L = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//franceinfo planning//FR', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
-        'X-WR-CALNAME:' + esc('Planning' + (data.name ? ' ' + data.name : '')), 'X-PUBLISHED-TTL:PT15M', 'REFRESH-INTERVAL;VALUE=DURATION:PT15M'];
-      (data.events || []).forEach(function (e) {
-        if (!e || !e.u || !e.a || !e.b) return;
-        L.push('BEGIN:VEVENT', 'UID:' + esc(e.u) + '@franceinfoplanning', 'DTSTAMP:' + stamp,
-          e.ad ? 'DTSTART;VALUE=DATE:' + e.a : 'DTSTART:' + e.a, e.ad ? 'DTEND;VALUE=DATE:' + e.b : 'DTEND:' + e.b,
-          'SUMMARY:' + esc(e.s));
-        if (e.d) L.push('DESCRIPTION:' + esc(e.d));
-        L.push('END:VEVENT');
-      });
-      L.push('END:VCALENDAR');
-      return new Response(L.join('\r\n') + '\r\n', { status: 200, headers: { 'Content-Type': 'text/calendar; charset=utf-8', 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' } });
-    }
-
     if (path === '/data/save') {
       var session = await verifySession(request, env);
       if (!session) return resp({ error: 'Non authentifie' }, 401);

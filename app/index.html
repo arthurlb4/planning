@@ -10,7 +10,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.81">
+<meta name="app-version" content="v6.82">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -1151,7 +1151,6 @@ function saveState(){
   // seulement le profil actif (les autres n'ont pas changé : les dater les ferait passer pour plus récents que le cloud)
   if(_profs[_aid]&&_profs[_aid].profile)_profs[_aid].profile._lastSaved=_ts;
   try{localStorage.setItem('pl_v8',JSON.stringify({p:_profs,a:_aid,u:_plU()}));}catch(e){}
-  if(S&&S.profile&&S.profile.ical&&S.profile.ical!=='1')_icalSoon(); // agenda par abonnement : remis à jour
   _lineSoon(); // ligne de la semaine (admin Lignes, collègues par ligne)
   // Cloud sync debounced (5s)
   clearTimeout(window._cloudSyncTimer);
@@ -1407,7 +1406,7 @@ function _ruleToast(keys){var seen={},msg=null;keys.forEach(function(k){if(!k||m
 // Congés pour événements familiaux (accord collectif, art. IX.2.4) : rémunérés, ni congés payés ni rendus
 const EXC_M={rentree:{l:'Rentrée scolaire',s:'Rentrée',half:1,info:'½ journée · enfant en maternelle, élémentaire ou 6ᵉ'},enfant:{l:'Enfant malade',s:'Enf.',info:'6 j/an · 9 avec 2 enfants · 12 avec 3+ (avec conjoint ou parent malade)'},
   proche:{l:'Conjoint ou parent malade',s:'Malad.',info:'compté avec enfant malade : 6 j/an · 9 · 12'},mariage:{l:'Mariage / PACS',s:'Mar.',info:'5 j (2 j pour un enfant ou un parent)'},
-  naissance:{l:'Naissance / adoption',s:'Naiss.',info:'3 j, à prendre dans les 15 jours'},deces:{l:'Décès',s:'Décès',info:'2 à 5 j selon le lien'},demenag:{l:'Déménagement',s:'Démén.',info:'2 j'},maladie:{l:'Arrêt maladie',s:'Mal.',info:'Arrêt de travail : la journée n’est pas comptée'},autre:{l:'Autre congé exceptionnel',s:'Exc.',opt:1},greve:{l:'Grève',s:'Grève',greve:1},nonrem:{l:'Absence non rémunérée',s:'Abs.NR',greve:1}};
+  naissance:{l:'Naissance / adoption',s:'Naiss.',info:'3 j, à prendre dans les 15 jours'},maternite:{l:'Congé maternité',s:'Mat.',info:'16 semaines en général (6 avant, 10 après la naissance) · à poser avec « Plusieurs jours »'},paternite:{l:'Congé paternité',s:'Pat.',info:'25 jours calendaires (32 pour des naissances multiples), après les 3 j de naissance · à poser avec « Plusieurs jours »'},deces:{l:'Décès',s:'Décès',info:'2 à 5 j selon le lien'},demenag:{l:'Déménagement',s:'Démén.',info:'2 j'},maladie:{l:'Arrêt maladie',s:'Mal.',info:'Arrêt de travail : la journée n’est pas comptée'},autre:{l:'Autre congé exceptionnel',s:'Exc.',opt:1},greve:{l:'Grève',s:'Grève',greve:1},nonrem:{l:'Absence non rémunérée',s:'Abs.NR',greve:1}};
 function _excOf(k){var x=(S.excInfo||{})[k];if(!x)return null;var c=(S.conges||{})[k];
   // valable seulement si le jour est toujours posé comme ça (absence, ou rendu pour la ½ journée complétée)
   if(x.g&&x.g!=='j')return c?null:x;if(x.half&&x.rest==='rend'&&!c)return Object.assign({},x,{rest:'work'});if(x.half?(x.rest==='rend'?(c!=='rend'&&c!=='rend-hist'):!!c):c!=='absent')return null;return x;}
@@ -7811,12 +7810,6 @@ function openSettingsModal(tab){
     +'<div class="srow" '+_sr+'><div class="slbl">Effacer'+_inf('événements Google Agenda')+'</div><button '+_bS+' id="gcal-clear-btn" onclick="gcalClear()">Effacer</button></div>'
     +'<div class="srow" '+_sr+'><div class="slbl">Déconnecter'+_inf('retirer l’accès')+'</div><button '+_bS+' id="gcal-disconnect-btn" onclick="gcalDisconnect()">Déconnecter</button></div>'
     +'</div>'
-    +_sh+'Agenda iPhone / Outlook</div>'+_co
-    +(pr.profile.ical&&pr.profile.ical!=='1'
-      ?'<div class="srow" '+_sr+'><div class="slbl">Lien d’abonnement'+_inf('à ajouter dans Calendrier ou Outlook, mis à jour tout seul')+'</div><button '+_bS+' onclick="icalCopy()">Copier</button></div>'
-        +'<div class="srow" '+_sr+'><div class="slbl">iPhone'+_inf('ajoute l’agenda directement')+'</div><a class="adj-pill" href="'+_icalUrl(pr.profile.ical).replace(/^https:/,'webcal:')+'" style="width:120px;height:32px;font-size:12px;flex-shrink:0;text-decoration:none;color:var(--text);display:flex;align-items:center;justify-content:center">S’abonner</a></div>'
-        +'<div class="srow" '+_sr+'><div class="slbl">Désactiver'+_inf('le lien ne fonctionne plus')+'</div><button '+_bS+' onclick="icalToggle(false)">Désactiver</button></div>'
-      :'<div class="srow" '+_sr+'><div class="slbl">Abonnement'+_inf('le planning dans l’agenda de l’iPhone ou d’Outlook, sans Google')+'</div><button '+_bS+' onclick="icalToggle(true)">Activer</button></div>')
     +_sh+'Notifications</div>'+_co
     +'<div class="srow" '+_sr+'><div class="slbl">Rappels <span style="display:block;color:var(--text3);font-size:10.5px;margin-top:2px;line-height:1.35">heures qui expirent (14 j et 3 j avant), bulletin le 1er, tableau Gestion le 20</span></div>'
     +'<div style="display:flex;align-items:center;flex-shrink:0">'+(_pOn?'<button class="adj-pill" style="width:auto;height:26px;padding:0 12px;font-size:11px;margin-right:8px;flex-shrink:0" onclick="pushTest(this)">Tester</button>':'')
@@ -9265,7 +9258,7 @@ function init(){
     try{curY=y;curM=m;renderMonth(t[0].querySelector('tr'),t[1]);}
     finally{curY=sy;curM=sm;}
     try{_renderCycBadges(t[1]);}catch(e){}
-    _syncWknNow(); // numéros et tuiles de semaines (ramenées, congés) comme sur le calendrier
+    _syncWknNow(el); // numéros et tuiles de semaines (ramenées, congés) comme sur le calendrier
     return el;
   }
   // Flèches et bouton « auj. » : même glissement que le geste, vers n'importe quel mois
@@ -10154,12 +10147,12 @@ function _revealBody(){
 }
 function syncWknHeight(){setTimeout(_syncWknNow,0);}
 // Met en forme les numéros de semaine (tuiles ramenées / congés) sans attendre
-function _syncWknNow(){
+function _syncWknNow(root){ // root : seulement ce calendrier (mois voisin préparé), sans toucher au mois affiché
     const dayCell=document.querySelector('.dc');
     if(!dayCell)return;
     const sampleTd=document.querySelector('.cal td:not(.wkn)');
     const tdPad=sampleTd?Math.round(parseFloat(getComputedStyle(sampleTd).paddingTop))||7:7;
-    document.querySelectorAll('td.wkn').forEach(function(td){
+    (root||document).querySelectorAll('td.wkn').forEach(function(td){
       const num=td.getAttribute('data-wn')||td.textContent.trim();
       if(!td.getAttribute('data-wn'))td.setAttribute('data-wn',num);
       // Get actual computed background of cal-wrap for opaque badge
@@ -10696,20 +10689,6 @@ function gcalBuildDayEvent(dateKey){
   return{summary,description,start:startObj,end:endObj,colorId,extendedProperties:{private:{planningKey:dateKey,planningProfile:(S.profile&&S.profile.name)||'',planningType:congesType||vac}}};
 }
 
-// ── Agenda par abonnement (iPhone, Outlook…) : mêmes événements que Google Agenda, du mois dernier à un an ──
-function _icalEvents(){var out=[],d=new Date(NOW);d.setDate(d.getDate()-45);var e=new Date(NOW);e.setDate(e.getDate()+400);
-  var z=function(x){return x.toISOString().replace(/[-:]/g,'').replace(/\.\d+/,'');},dd=function(k){return k.replace(/-/g,'');};
-  for(;d<=e;d.setDate(d.getDate()+1)){var k=dk(d),ev=null;try{ev=gcalBuildDayEvent(k);}catch(x){}if(!ev)continue;
-    // un seul agenda = une seule couleur : le type se voit au pictogramme devant le titre
-    var c=(S.conges||{})[k],g=getVac(new Date(k+'T12:00:00')),pic=c==='cg'?'🟢':/^rend/.test(c||'')?'🟡':c==='absent'||(g.echange&&!g.ecSelf)?'⚪':(g.ov||g.echange)?'🟣':'🔵';
-    var ttl=ev.summary,w=c==='cg'?'Congé':/^rend/.test(c||'')?'Rendu':null;if(w&&ttl!==w)ttl=w+' ('+ttl+')';
-    var o={u:k,s:pic+' '+ttl,d:ev.description||''};
-    if(ev.start.date){o.ad=1;o.a=dd(ev.start.date);o.b=dd(ev.end.date);}
-    else{o.a=z(new Date(ev.start.dateTime));o.b=z(new Date(ev.end.dateTime));}
-    out.push(o);}
-  return out;}
-function _icalUrl(tok){return CLOUD_API+'/ical/'+tok+'.ics';}
-var _icalT=null;
 // Ligne de la semaine envoyée au serveur (admin « Lignes », collègues par ligne dans l'échange de semaine) :
 // seulement quand elle a changé (quota d'écritures du serveur)
 var _lsT;function _lineSoon(){clearTimeout(_lsT);_lsT=setTimeout(_lineSync,6000);}
@@ -10723,15 +10702,6 @@ async function _lineSync(){if(!window._authToken||!window._cloudReady||!_aid||!S
     var sk='pl_lsig_'+_aid;try{if(localStorage.getItem(sk)===sig)return;}catch(e){}
     var r=await fetch(CLOUD_API+'/lines/register',{method:'POST',headers:cloudHeaders(),body:sig});
     if(r.ok)try{localStorage.setItem(sk,sig);}catch(e){}}catch(e){}}
-function _icalSoon(){clearTimeout(_icalT);_icalT=setTimeout(_icalPush,4000);}
-async function _icalPush(){if(!window._authToken||!(S.profile&&S.profile.ical))return null;
-  try{var r=await fetch(CLOUD_API+'/ical/publish',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({name:(S.profile.name||''),events:_icalEvents()})});var j=await r.json();
-    if(j&&j.tok&&S.profile.ical!==j.tok){S.profile.ical=j.tok;saveState();}return j&&j.tok;}catch(e){return null;}}
-async function icalToggle(on){
-  if(on){S.profile.ical='1';var t=await _icalPush();if(!t){delete S.profile.ical;_infoToast('Connexion impossible');}else _infoToast('✓ Lien d’agenda créé');}
-  else{if(!confirm('Désactiver le lien ? Les agendas abonnés ne seront plus mis à jour.'))return;try{await fetch(CLOUD_API+'/ical/disable',{method:'POST',headers:cloudHeaders(),body:'{}'});}catch(e){}delete S.profile.ical;}
-  saveState();openSettingsModal(0);}
-function icalCopy(){var u=_icalUrl(S.profile.ical);try{navigator.clipboard.writeText(u);_infoToast('✓ Lien copié');}catch(e){prompt('Lien à copier :',u);}}
 function gcalWriteStatus(status,current,total){
   if(!window._authToken||!gcalTokens)return;
   fetch(CLOUD_API+'/sync-status',{
@@ -10845,6 +10815,40 @@ function gcalDisconnect(){
   }).observe(mr,{childList:true});
 })();
 
+
+// ── PC : clavier (← → changent de mois, Échap ferme), pavé tactile (glissé à deux doigts) et souris (glisser le calendrier) ──
+(function(){
+  function busy(){return !!(document.querySelector('#modal-root .overlay')||document.getElementById('lp-menu')||document.getElementById('setup'));}
+  function typing(e){var t=e.target;return t&&(t.isContentEditable||/^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName));}
+  document.addEventListener('keydown',function(e){
+    if(e.metaKey||e.ctrlKey||e.altKey||typing(e))return;
+    if(e.key==='Escape'){if(document.getElementById('lp-menu')){_closeDayMenu();e.preventDefault();}else if(document.querySelector('#modal-root .overlay')){closeModal();e.preventDefault();}return;}
+    if((e.key==='ArrowLeft'||e.key==='ArrowRight')&&!busy()){e.preventDefault();navDir(e.key==='ArrowLeft'?-1:1);}
+  });
+  // Glissé horizontal à deux doigts : un mois par geste (le geste se termine quand les événements s'arrêtent)
+  var acc=0,fired=false,wT=0;
+  document.addEventListener('wheel',function(e){
+    if(busy()||Math.abs(e.deltaX)<=Math.abs(e.deltaY))return;
+    var cal=document.getElementById('month-view'),ann=document.getElementById('ann-wrap');
+    if(!((cal&&cal.contains(e.target))||(ann&&ann.contains(e.target))))return;
+    e.preventDefault();clearTimeout(wT);wT=setTimeout(function(){acc=0;fired=false;},180);
+    if(fired)return;acc+=e.deltaX;if(Math.abs(acc)>50){fired=true;navDir(acc>0?1:-1);}
+  },{passive:false});
+  // Souris : glisser le calendrier vers la gauche ou la droite (le clic qui termine le glissé n'ouvre pas le jour)
+  var x0=null,y0=0,moved=false,eat=false;
+  document.addEventListener('pointerdown',function(e){
+    if(e.pointerType!=='mouse'||e.button!==0||busy())return;
+    var cal=document.getElementById('month-view'),ann=document.getElementById('ann-wrap');
+    if(!((cal&&cal.contains(e.target))||(ann&&ann.contains(e.target))))return;
+    x0=e.clientX;y0=e.clientY;moved=false;
+  });
+  document.addEventListener('pointermove',function(e){
+    if(x0===null||e.pointerType!=='mouse')return;
+    var dx=e.clientX-x0;if(!moved&&Math.abs(dx)>60&&Math.abs(dx)>Math.abs(e.clientY-y0)*1.5){moved=true;eat=true;navDir(dx<0?1:-1);}
+  });
+  document.addEventListener('pointerup',function(){x0=null;setTimeout(function(){eat=false;},0);});
+  document.addEventListener('click',function(e){if(eat){eat=false;e.stopPropagation();e.preventDefault();}},true);
+})();
 </script>
 
 <script>if('serviceWorker'in navigator){navigator.serviceWorker.register('./sw.js').catch(function(){});}</script>

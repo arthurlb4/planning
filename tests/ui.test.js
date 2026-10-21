@@ -69,6 +69,19 @@ function mockApi(route) {
     const lr = SENT['/lines/register'];
     if (process.env.SHOW) console.log(JSON.stringify(lr));
     ok('Ligne de la semaine envoyée au serveur', lr && /^S\d+$/.test(lr.ligne) && lr.pool && lr.weekVacs.length === 7, JSON.stringify(lr));
+    // PC : flèches du clavier, Échap, glissé à deux doigts sur le pavé tactile, glisser à la souris
+    await p.waitForTimeout(1500); await p.evaluate(() => { if (document.querySelector('#modal-root .overlay')) closeModal(); }); await p.waitForTimeout(400); // message à tous éventuel
+    { const m0 = await p.evaluate(() => curY * 12 + curM);
+      await p.keyboard.press('ArrowRight'); await p.waitForTimeout(1300);
+      const m1 = await p.evaluate(() => curY * 12 + curM);
+      await p.keyboard.press('ArrowLeft'); await p.waitForTimeout(1300);
+      const m2 = await p.evaluate(() => curY * 12 + curM);
+      await p.evaluate(() => { const r = document.getElementById('month-view').getBoundingClientRect(); document.getElementById('cal').dispatchEvent(new WheelEvent('wheel', { deltaX: 80, deltaY: 2, bubbles: true, cancelable: true, clientX: r.left + 50, clientY: r.top + 50 })); });
+      await p.waitForTimeout(1300); const m3 = await p.evaluate(() => curY * 12 + curM);
+      ok('PC : flèches et pavé tactile changent de mois', m1 === m0 + 1 && m2 === m0 && m3 === m0 + 1, [m0, m1, m2, m3].join(','));
+      await p.evaluate(() => navDir(-1)); await p.waitForTimeout(1300);
+      await p.evaluate(() => openSettingsModal(0)); await p.waitForTimeout(300); await p.keyboard.press('Escape'); await p.waitForTimeout(400);
+      ok('PC : Échap ferme la fenêtre', await p.evaluate(() => !document.querySelector('#modal-root .overlay'))); }
 
     // fiche du jour, Modifier
     const day = await p.evaluate(() => { const k = dk(NOW); pendingKey = k; openDay(k); return !!document.querySelector('#modal-root .dbox'); });
@@ -146,6 +159,7 @@ function mockApi(route) {
       ok('Admin : vacations d’un cycle', await p.evaluate(() => document.querySelectorAll('#vac-list .vrow').length > 0));
       await p.evaluate(() => switchVacHors()); await p.waitForTimeout(200);
       ok('Admin : autres vacations', await p.evaluate(() => document.querySelectorAll('#vac-list .vrow').length > 0));
+      ok('Admin : vacations hors grille proposées à personne signalées', await p.evaluate(() => { const n = Object.keys(_allVacs).find(k => !_allGridCodes().has(k) && k !== 'RH'); const sv = _allVacs[n].pools; _allVacs[n].pools = []; renderVacList(); const r = /Proposée[s]? à personne/.test(document.getElementById('vac-list').textContent); _allVacs[n].pools = sv; renderVacList(); return r; }));
       const ed = await p.evaluate(() => { const n = Object.keys(_allVacs)[0]; editVac(n); return document.getElementById('vac-modal-bg').style.display === 'flex'; });
       ok('Admin : ouvrir une vacation', ed);
       ok('Admin : supprimer une vacation de grille bloqué', await p.evaluate(async () => { const g = [..._allGridCodes()].find(n => _allVacs[n]); closeVacForm(); editVac(g);
