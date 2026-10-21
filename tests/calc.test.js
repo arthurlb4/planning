@@ -471,5 +471,16 @@ function situation(opts) {
     return JSON.stringify([m.overrides,m.conges,m.profile,m.list]);})()`),
     JSON.stringify([{a:{vac:'A2'},b:{vac:'D1'},c:{vac:'D2'}},{x:'cg',y:'rend'},{name:'Ab',matelas:12},[1,2,3]])); }
 
+// Autre congé exceptionnel « compté comme travaillé » (vacation supprimée par la direction) : la semaine ramenée
+// et les heures de la semaine sont gardées ; « non compté » ou absence sans motif : la semaine ramenée est perdue
+{ const a = load('2026-10-21');
+  eq('Congé exceptionnel compté comme travaillé : semaine ramenée gardée', a.run(`(function(){var mon=new Date(2026,10,9,12),w=null;
+    for(var i=0;i<6&&!w;i++){var d=new Date(mon);d.setDate(mon.getDate()+i);var k=dk(d);if(FERIES.has(k))continue;var c=getCycleVac(d).cycleVac;if(c&&c!=='RH')w=k;}
+    if(!w||!isSemaineRamenée(mon))return 'pas de semaine ramenée testable';var h0=calcHSWeek(mon);
+    S.overrides[w]={absent:true};S.conges[w]='absent';S.excInfo={};S.excInfo[w]={m:'autre',tw:1};var h1=calcHSWeek(mon),r1=isSemaineRamenée(mon);
+    delete S.excInfo[w].tw;var r2=isSemaineRamenée(mon);delete S.excInfo[w];var r3=isSemaineRamenée(mon);
+    S.excInfo[w]={m:'maladie'};var r4=isSemaineRamenée(mon);delete S.overrides[w];delete S.conges[w];S.excInfo={};
+    return [r1,h1.surplus===h0.surplus,h1.weekWorked===h0.weekWorked,r2,r3,r4];})()`), [true, true, true, false, false, false]); }
+
 console.log('\n' + (count - fails) + '/' + count + ' contrôles réussis');
 if (fails) process.exit(1);
