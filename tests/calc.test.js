@@ -482,5 +482,13 @@ function situation(opts) {
     S.excInfo[w]={m:'maladie'};var r4=isSemaineRamenée(mon);delete S.overrides[w];delete S.conges[w];S.excInfo={};
     return [r1,h1.surplus===h0.surplus,h1.weekWorked===h0.weekWorked,r2,r3,r4];})()`), [true, true, true, false, false, false]); }
 
+// Autre congé exceptionnel : chaque élément gardé (nuit, primes, matin, panier, majorations) revient comme si la vacation prévue était faite
+{ const a = load('2026-10-21');
+  eq('Congé exceptionnel : tout gardé = comme travaillé ; rien gardé = moins', a.run(`(function(){var y=2026,m=10,all=function(){var p=calcPrimesMois(y,m),r=calcDimRHFerMinsMois(y,m);return [p.antenne,p.reel,p.coord,p.matin,calcNuitMois(y,m),calcPaniersMois(y,m),r.dim,r.rh,r.fer];};
+    var w=[];for(var i=2;i<=29;i++){var d=new Date(y,m,i,12),c=getCycleVac(d).cycleVac;if(c&&c!=='RH'&&!(S.conges||{})[dk(d)]&&!(S.overrides||{})[dk(d)])w.push(dk(d));}
+    var before=all();S.excInfo={};w.forEach(function(k){S.overrides[k]={absent:true};S.conges[k]='absent';S.excInfo[k]={m:'autre',tw:1,mj:1,nt:1,pr:1,mt:1,pn:1};});
+    var kept=all();w.forEach(function(k){S.excInfo[k]={m:'autre'};});var none=all();w.forEach(function(k){delete S.overrides[k];delete S.conges[k];});S.excInfo={};
+    return [JSON.stringify(kept)===JSON.stringify(before),none.every(function(v,i){return v<=before[i];})&&none.some(function(v,i){return v<before[i];}),before.some(function(v){return v>0;})];})()`), [true, true, true]); }
+
 console.log('\n' + (count - fails) + '/' + count + ' contrôles réussis');
 if (fails) process.exit(1);

@@ -10,7 +10,7 @@
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.80">
+<meta name="app-version" content="v6.81">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -1413,7 +1413,14 @@ function _excOf(k){var x=(S.excInfo||{})[k];if(!x)return null;var c=(S.conges||{
   if(x.g&&x.g!=='j')return c?null:x;if(x.half&&x.rest==='rend'&&!c)return Object.assign({},x,{rest:'work'});if(x.half?(x.rest==='rend'?(c!=='rend'&&c!=='rend-hist'):!!c):c!=='absent')return null;return x;}
 // Autre congé exceptionnel « compté comme travaillé » (ex. vacation supprimée par la direction) : les heures de la vacation
 // prévue comptent pour les heures sup et la semaine ramenée ; la journée reste un repos pour les règles de repos
-function _excAssim(k){var x=_excOf(k);return !!(x&&x.m==='autre'&&x.tw);}
+// Ce que garde le jour : tw heures (heures sup, semaine ramenée), mj majorations dimanche/férié/RH, nt nuit,
+// pr primes antenne/réal/coord, mt prime du matin, pn panier — toujours d'après la vacation prévue au cycle
+var EXC_KEEP=[['tw','Heures','heures sup et semaine ramenée'],['mj','Majorations','dimanche, férié, RH'],['nt','Heures de nuit',''],['pr','Primes','antenne, réal, coord'],['mt','Prime du matin',''],['pn','Panier','']];
+function _excKeep(k,f){var x=_excOf(k);return !!(x&&x.m==='autre'&&x[f]);}
+function _excAssim(k){return _excKeep(k,'tw');}
+// Jour d'absence gardé pour un calcul : la vacation prévue au cycle, comme si elle avait été faite
+function _gvK(d,f){var g=getVac(d);return g.absent&&_excKeep(dk(d),f)?Object.assign({},g,{vac:g.cycleVac,absent:false}):g;}
+function _cgK(k,f){var c=(S.conges||{})[k];return c==='absent'&&_excKeep(k,f)?undefined:c;}
 function _excL(x){return x?(x.lbl||EXC_M[x.m].l):'';}
 // Jours pris par motif sur l'année (½ journée = 0,5 ; enfant et proche malades comptés ensemble)
 function _excUsed(m,y){var n=0;Object.keys(S.excInfo||{}).forEach(function(k){if(+k.slice(0,4)!==y)return;var x=_excOf(k);if(!x)return;
@@ -1596,8 +1603,8 @@ function buildGen(withDetail){
   for(let y=2025;y<=2030;y++)for(let m=0;m<12;m++){
     const ym=y*12+m;if(ym<createdYM||ym>TODAY_YM&&ym>maxYMDisplay)continue;
     const last=new Date(y,m+1,0).getDate();
-    for(let d=1;d<=last;d++){const date=new Date(y,m,d),key=dk(date);const v2e=getVac(date);const{vac,absent,echange,ecSelf}=v2e;if(!vac||vac==='RH'||absent)continue;if(echange&&!ecSelf)continue;// ec2: I give away, no rendu for me
-const cKey=(S.conges||{})[key];if(cKey==='rend'||cKey==='rend-hist'||cKey==='cg'||cKey==='absent')continue;// vacation posée: pas de rendu dim/fer/RH
+    for(let d=1;d<=last;d++){const date=new Date(y,m,d),key=dk(date);const v2e=_gvK(date,'mj');const{vac,absent,echange,ecSelf}=v2e;if(!vac||vac==='RH'||absent)continue;if(echange&&!ecSelf)continue;// ec2: I give away, no rendu for me
+const cKey=_cgK(key,'mj');if(cKey==='rend'||cKey==='rend-hist'||cKey==='cg'||cKey==='absent')continue;// vacation posée: pas de rendu dim/fer/RH
 const dur=VAC[vac]?VAC[vac].dur:0;
       const isFer2=FERIES.has(key),isDim2=date.getDay()===0,isRH2=isRHDay(date);
       const _dMon=getMonday(date);const _dSun=new Date(_dMon);_dSun.setDate(_dMon.getDate()+6);const _dSunYm=_dSun.getFullYear()*12+_dSun.getMonth();
@@ -1667,9 +1674,9 @@ function buildPotentialForYM(ym,sett){
       const sunInScope=sunYm>=createdYM&&(sunYm<=TODAY_YM||sunYm<=maxYM);
       if(sett.hsRendu&&sunInScope){const hsW=calcHSWeek(mon);if(hsW.rendusMinHS>0)res.hs+=hsW.rendusMinHS;if(hsW.rendusMinRam>0)res.ram+=hsW.rendusMinRam;}
     }
-    const key=dk(d);const v2e=getVac(d);const{vac,absent,echange,ecSelf}=v2e;
+    const key=dk(d);const v2e=_gvK(d,'mj');const{vac,absent,echange,ecSelf}=v2e;
     if(!vac||vac==='RH'||absent)continue;if(echange&&!ecSelf)continue;
-    const cKey=(S.conges||{})[key];if(cKey==='rend'||cKey==='rend-hist'||cKey==='cg'||cKey==='absent')continue;
+    const cKey=_cgK(key,'mj');if(cKey==='rend'||cKey==='rend-hist'||cKey==='cg'||cKey==='absent')continue;
     const dur=VAC2[vac]?VAC2[vac].dur:0;
     const isFer=FERIES.has(key),isDim=d.getDay()===0,isRH=isRHDay(d);
     const ferF=isFer&&sett.ferRendu?2.0:0,dimF=isDim&&sett.dimRendu?0.5:0,rhF=(!echange&&!isDim&&isRH&&sett.rhRendu)?0.5:0;
@@ -2572,12 +2579,12 @@ function ephBarColor(moLeft,isExp){
 
 function calcPaniersMois(y,m){
   let c=0;const mym=y*12+m,seenW=new Set(),last=new Date(y,m+1,0).getDate();
-  for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd),mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);const sun=new Date(mon);sun.setDate(mon.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mym)continue;for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);const key=dk(d);const _g=getVac(d);if(_g.echange&&!_g.ecSelf)continue;if(isPanier(d)&&!(S.conges||{})[key])c++;}}
+  for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd),mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);const sun=new Date(mon);sun.setDate(mon.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mym)continue;for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);const key=dk(d);const _g=getVac(d);if(_g.echange&&!_g.ecSelf)continue;if(isPanier(d)&&!(S.conges||{})[key])c++;else if(_excKeep(key,'pn')){const _kv=getVAC(d)[getCycleVac(d).cycleVac];if(_kv&&_kv.panier)c++;}}}
   return c;
 }
 function calcPrimesMois(y,m){
   let antenne=0,reel=0,coord=0,matin=0;const mym=y*12+m,seenW=new Set(),last=new Date(y,m+1,0).getDate();const VAC=getVAC();
-  for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd),mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);const sun=new Date(mon);sun.setDate(mon.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mym)continue;for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);const key=dk(d);if((S.conges||{})[key])continue;const{vac,absent,echange,ecSelf}=getVac(d);if(absent)continue;if(echange&&!ecSelf)continue;if(!vac||vac==='RH')continue;const pvac=getPayVac(d);const v=VAC[pvac];if(!v)continue;if(_isMatin(d,v))matin++;if(!v.primes)continue;if(v.primes.antenne)antenne++;if(v.primes.reel)reel++;if(v.primes.coord)coord++;}}
+  for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd),mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);const sun=new Date(mon);sun.setDate(mon.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mym)continue;for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);const key=dk(d);if(_excKeep(key,'pr')||_excKeep(key,'mt')){const _kv=VAC[getCycleVac(d).cycleVac];if(_kv){if(_excKeep(key,'mt')&&_isMatin(d,_kv))matin++;if(_excKeep(key,'pr')&&_kv.primes){if(_kv.primes.antenne)antenne++;if(_kv.primes.reel)reel++;if(_kv.primes.coord)coord++;}}continue;}if((S.conges||{})[key])continue;const{vac,absent,echange,ecSelf}=getVac(d);if(absent)continue;if(echange&&!ecSelf)continue;if(!vac||vac==='RH')continue;const pvac=getPayVac(d);const v=VAC[pvac];if(!v)continue;if(_isMatin(d,v))matin++;if(!v.primes)continue;if(v.primes.antenne)antenne++;if(v.primes.reel)reel++;if(v.primes.coord)coord++;}}
   return{antenne,reel,coord,matin};
 }
 function fmtEuro(n){if(!isFinite(n)||isNaN(n))n=0;const abs=Math.abs(n).toFixed(2);const[int,dec]=abs.split('.');const intFmt=int.replace(/\B(?=(\d{3})+(?!\d))/g,' ');return(n<0?'-':'')+intFmt+','+dec+' €';}
@@ -2607,7 +2614,7 @@ function getHeuresForYM(ym){return _getHistVal((S.profile||{}).heuresHistory,(S.
 function calcDimRHFerMinsMois(y,m){
   const mym=y*12+m,sett=settingsForYM(mym),seenW=new Set(),last=new Date(y,m+1,0).getDate();const VAC=getVAC();let dim=0,rh=0,fer=0;
   for(let dd=-6;dd<last;dd++){const date=new Date(y,m,1+dd),mon=getMonday(date),mk=dk(mon);if(seenW.has(mk))continue;seenW.add(mk);const sun=new Date(mon);sun.setDate(mon.getDate()+6);if(sun.getFullYear()*12+sun.getMonth()!==mym)continue;
-    for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);const key=dk(d);const cKey=(S.conges||{})[key];if(cKey&&(cKey==='cg'||cKey==='rend'||cKey==='rend-hist'||cKey==='absent'))continue;const{vac:_rawVac,absent,echange,ecSelf}=getVac(d);if(!_rawVac||_rawVac==='RH'||absent)continue;if(echange&&!ecSelf)continue;const dur=VAC[_rawVac]?VAC[_rawVac].dur:0;if(!dur)continue;const isFer=FERIES.has(key),isDim=d.getDay()===0,isRH=isRHDay(d);
+    for(let i=0;i<7;i++){const d=new Date(mon);d.setDate(mon.getDate()+i);const key=dk(d);const cKey=_cgK(key,'mj');if(cKey&&(cKey==='cg'||cKey==='rend'||cKey==='rend-hist'||cKey==='absent'))continue;const{vac:_rawVac,absent,echange,ecSelf}=_gvK(d,'mj');if(!_rawVac||_rawVac==='RH'||absent)continue;if(echange&&!ecSelf)continue;const dur=VAC[_rawVac]?VAC[_rawVac].dur:0;if(!dur)continue;const isFer=FERIES.has(key),isDim=d.getDay()===0,isRH=isRHDay(d);
       // férié se cumule avec dimanche ou RH (comme buildGen) ; dimanche et RH, eux, ne se cumulent pas
       if(isFer&&!sett.ferRendu)fer+=dur;
       if(isDim&&!sett.dimRendu)dim+=dur;
@@ -3242,6 +3249,7 @@ function calcNuitWeek(monday){
   for(let i=0;i<7;i++){
     const d=new Date(monday);d.setDate(monday.getDate()+i);
     const key=dk(d);const{vac,absent,echange,ecSelf}=getVac(d);
+    if(_excKeep(key,'nt')){nuit+=calcNuitMinShift(VAC[getCycleVac(d).cycleVac])||0;continue;}
     if(absent)continue;
     const _cg=(S.conges||{})[key];
     if(_cg&&(_cg==='cg'||_cg==='rend'||_cg==='rend-hist'||_cg==='absent'))continue;
@@ -4411,7 +4419,7 @@ function openPoseModal(type,fromMenu){
       +'<div id="_exc-g" style="display:none;margin-bottom:10px"><span class="bpseg" id="_exc-gv" data-v="j" style="display:flex">'+[['h','1 heure'],['dj','½ journée'],['j','journée']].map(function(o){return '<span style="flex:1;text-align:center"'+(o[0]==='j'?' class="on"':'')+' onclick="var g=this.parentNode;g.dataset.v=\''+o[0]+'\';[].forEach.call(g.children,function(c){c.classList.toggle(\'on\',c===this);},this)">'+o[1]+'</span>';}).join('')+'</span>'
       +'<details style="margin-top:6px;font-size:11px;color:var(--text3);line-height:1.45"><summary style="cursor:pointer;color:var(--blue)">Règles de décompte</summary><div style="margin-top:4px">'+getGreveConf().txt+'</div></details></div>'
       +'<div id="_exc-o" style="display:none;margin-bottom:10px"><input id="_exc-lbl" maxlength="40" placeholder="Précision (facultatif)" style="'+_sel+';font-size:13px;margin-bottom:8px">'
-      +'<span class="bpseg" id="_exc-tw" data-v="1" style="display:flex">'+[['1','compté comme travaillé'],['0','non compté']].map(function(o,i){return '<span style="flex:1;text-align:center"'+(i?'':' class="on"')+' onclick="var g=this.parentNode;g.dataset.v=\''+o[0]+'\';[].forEach.call(g.children,function(c){c.classList.toggle(\'on\',c===this);},this);_excPick()">'+o[1]+'</span>';}).join('')+'</span></div>'
+      +_excKeepRows(null)+'</div>'
       +'<div id="_exc-h" style="display:none;margin-bottom:10px"><div style="font-size:11px;color:var(--text3);margin-bottom:5px">L’autre moitié de la vacation</div>'
       +'<span class="bpseg" id="_exc-r" data-v="work" style="display:flex">'+['work','rend'].map(function(v,i){return '<span style="flex:1;text-align:center"'+(i?'':' class="on"')+' onclick="var g=this.parentNode;g.dataset.v=\''+v+'\';[].forEach.call(g.children,function(c){c.classList.toggle(\'on\',c===this);},this)">'+(v==='work'?'travaillée':'en rendus')+'</span>';}).join('')+'</span></div>';
     window._excYear=_y;}
@@ -4458,16 +4466,26 @@ function openPoseModal(type,fromMenu){
 
 // Fiche du jour : la ½ journée de congé exceptionnel (la journée reste travaillée ou en rendu pour l'autre moitié)
 function _excDayLine(k){var x=_excOf(k);if(x&&x.g&&x.g!=='j')return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:var(--text2);margin:-6px 0 10px"><span>'+EXC_M[x.m].l+' · '+(x.g==='h'?'1 heure':'½ journée')+' décomptée</span><a style="color:var(--blue);cursor:pointer;white-space:nowrap" onclick="_excRemove(\''+k+'\')">Retirer</a></div>';
-  if(x&&x.m==='autre')return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:var(--text2);margin:-6px 0 10px"><span>'+_h(_excL(x))+' · '+(x.tw?'compté comme travaillé':'non compté')+'</span><a style="color:var(--blue);cursor:pointer;white-space:nowrap" onclick="_excTw(\''+k+'\')">'+(x.tw?'Ne pas compter':'Compter comme travaillé')+'</a></div>';
+  if(x&&x.m==='autre'){var kp=EXC_KEEP.filter(function(e){return x[e[0]];}).map(function(e){return e[1].toLowerCase();});
+    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:var(--text2);margin:-6px 0 10px"><span>'+_h(_excL(x))+' · '+(kp.length?'garde : '+kp.join(', '):'rien n’est gardé')+'</span><a style="color:var(--blue);cursor:pointer;white-space:nowrap" onclick="_excKeepSheet(\''+k+'\')">Régler</a></div>';}
   if(!x||!x.half)return '';
   return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;color:var(--text2);margin:-6px 0 10px"><span>½ '+EXC_M[x.m].l.toLowerCase()+' · autre moitié '+(x.rest==='rend'?'en rendu':'travaillée')+'</span>'
     +(x.rest==='rend'?'':'<a style="color:var(--blue);cursor:pointer;white-space:nowrap" onclick="_excRemove(\''+k+'\')">Retirer</a>')+'</div>';}
-function _excOpt(m){var o={m:m};if(((document.getElementById('_exc-tw')||{}).dataset||{}).v!=='0')o.tw=1;var l=((document.getElementById('_exc-lbl')||{}).value||'').trim().slice(0,40);if(l)o.lbl=l;return o;}
-function _excTw(k){var x=(S.excInfo||{})[k];if(!x)return;pushUndo(x.tw?'Congé exceptionnel : non compté':'Congé exceptionnel : compté comme travaillé');if(x.tw)delete x.tw;else x.tw=1;saveState();render();openDay(k);}
+// Interrupteurs « ce que garde le jour » : dans le formulaire (k nul) ou sur un jour déjà posé
+function _excKeepRows(k){var x=k?(S.excInfo||{})[k]||{}:null;
+  return '<div class="exc-keep" style="background:var(--bg2);border-radius:16px;padding:2px 12px">'+EXC_KEEP.map(function(e,i){var on=x?!!x[e[0]]:e[0]!=='pn';
+    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0'+(i?';border-top:0.5px solid var(--border2)':'')+'"><div style="font-size:13px">'+e[1]+(e[2]?'<div style="font-size:11px;color:var(--text3)">'+e[2]+'</div>':'')+'</div>'
+      +'<label class="tgl"><input type="checkbox" data-f="'+e[0]+'"'+(on?' checked':'')+(k?' onchange="_excSet(\''+k+'\',\''+e[0]+'\',this.checked)"':'')+'><span class="tgl-s"></span></label></div>';}).join('')+'</div>';}
+function _excSet(k,f,on){var x=(S.excInfo||{})[k];if(!x)return;pushUndo('Congé exceptionnel : réglage');if(on)x[f]=1;else delete x[f];saveState();render();}
+function _excOpt(m){var o={m:m};document.querySelectorAll('#_exc-o .exc-keep input[data-f]').forEach(function(c){if(c.checked)o[c.dataset.f]=1;});var l=((document.getElementById('_exc-lbl')||{}).value||'').trim().slice(0,40);if(l)o.lbl=l;return o;}
+function _excKeepSheet(k){var x=(S.excInfo||{})[k];if(!x)return;
+  document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)openDay(\''+k+'\')"><div class="sheet"><div class="sh"></div><div class="st">'+_h(_excL(x))+'</div>'
+    +'<div style="font-size:12px;color:var(--text3);margin:-4px 0 10px">Ce que garde la journée, d’après la vacation prévue au cycle. La journée reste un repos pour les règles de repos.</div>'
+    +_excKeepRows(k)+'<button class="mcancel" onclick="openDay(\''+k+'\')">OK</button></div></div>';}
 function _excRemove(k){pushUndo('Congé exceptionnel retiré');var x=(S.excInfo||{})[k];if(x&&x.rest==='rend'&&S.conges)delete S.conges[k];if(S.excInfo)delete S.excInfo[k];saveState();render();openDay(k);}
 function _excPick(){var m=(document.getElementById('_exc-m')||{}).value,i=document.getElementById('_exc-i'),h=document.getElementById('_exc-h'),X=EXC_M[m];
   if(h)h.style.display=X&&X.half?'block':'none';var oo=document.getElementById('_exc-o');if(oo)oo.style.display=X&&X.opt?'block':'none';
-  if(X&&X.opt){var tw=((document.getElementById('_exc-tw')||{}).dataset||{}).v!=='0';if(i)i.textContent=tw?'Les heures de la vacation prévue comptent pour les heures sup et la semaine ramenée ; la journée reste un repos pour les règles de repos.':'Ni congé ni rendu : la journée n’est pas comptée (la semaine ramenée est perdue).';return;}
+  if(X&&X.opt){if(i)i.textContent='Ce que garde la journée, d’après la vacation prévue au cycle. Elle reste un repos pour les règles de repos.';return;}
   var gg=document.getElementById('_exc-g');if(gg)gg.style.display=X&&X.greve?'block':'none';
   if(X&&X.greve){var G=getGreveConf();if(i)i.textContent='Retenue : 1/'+G.h+'ᵉ l’heure · 1/'+G.dj+'ᵉ la ½ journée · 1/'+G.j+'ᵉ la journée du salaire mensuel';return;}
   if(i)i.textContent=X?((X.info||'')+(m!=='autre'?' · déjà pris en '+window._excYear+' : '+String(_excUsed(m,window._excYear)).replace('.',',')+' j':'')):'Ni congé ni rendu : la journée n’est pas comptée.';}
