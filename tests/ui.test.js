@@ -71,6 +71,11 @@ function mockApi(route) {
     ok('Ligne de la semaine envoyée au serveur', lr && /^S\d+$/.test(lr.ligne) && lr.pool && lr.weekVacs.length === 7, JSON.stringify(lr));
     // PC : flèches du clavier, Échap, glissé à deux doigts sur le pavé tactile, glisser à la souris
     await p.waitForTimeout(1500); await p.evaluate(() => { if (document.querySelector('#modal-root .overlay')) closeModal(); }); await p.waitForTimeout(400); // message à tous éventuel
+    // Téléphone : premier appui sur un bouton de l'en-tête → bulle avec son nom ; Sirhius ne s'ouvre qu'au deuxième appui
+    { const r = await p.evaluate(async () => { let opened = 0; const o = window.openExternalUrl; window.openExternalUrl = () => { opened++; };
+        const b = document.querySelector('.ibtn[data-ext]'); b.click(); await new Promise(z => setTimeout(z, 100)); const t = (document.getElementById('tip-bub') || {}).textContent || '';
+        const o1 = opened; b.click(); window.openExternalUrl = o; return [/Sirhius/.test(t), o1, opened]; });
+      ok('En-tête : nom au premier appui, ouverture au suivant', r[0] && r[1] === 0 && r[2] === 1, JSON.stringify(r)); }
     { const m0 = await p.evaluate(() => curY * 12 + curM);
       await p.keyboard.press('ArrowRight'); await p.waitForTimeout(1300);
       const m1 = await p.evaluate(() => curY * 12 + curM);
