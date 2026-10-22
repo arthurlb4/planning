@@ -27,7 +27,7 @@ html{--bt-img:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' vi
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v7.03">
+<meta name="app-version" content="v7.04">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -1638,11 +1638,11 @@ function getEphExtensions(ym){
   return Math.max(mv,av);
 }
 function getBaseExpYm(ym){return ym+3;}
-// Ordre de consommation des heures éphémères : celles qui expirent le plus tôt d'abord (à date égale, les plus anciennes),
-// comme le gestionnaire — sans report c'est l'ordre d'acquisition ; un mois reporté passe après ceux qui vont expirer
+// Ordre de consommation des heures éphémères : les plus anciennes d'abord (ordre d'acquisition), comme le gestionnaire
+// (règle confirmée par la RH en octobre 2026) — un mois reporté reste pris avant les suivants, même s'il expire plus tard
 // Rendu pris par le gestionnaire sur des heures acquises après coup (accepté depuis la comparaison) : ce mois-là lui est ouvert
 function _rbw(k,ym){var f=S.profile&&S.profile.rendFrom,r=f&&f[k];return r!=null&&+r===ym;}
-function _fifoYms(yms){return yms.map(Number).sort(function(a,b){return getExpYm(a)-getExpYm(b)||a-b;});}
+function _fifoYms(yms){return yms.map(Number).sort(function(a,b){return a-b;});}
 function getExpYm(ym){return ym+3+getEphExtensions(ym)*3;}
 
 // BUILD GEN
@@ -5333,8 +5333,8 @@ function rhApplyReports(list){
 }
 // ── Départ du calcul ──
 // Une date de départ et les soldes à cette date : le matelas à part, les heures éphémères par mois d'acquisition.
-// Ensuite l'app compte seule : heures acquises d'après le planning, rendus posés après le départ (heures qui expirent le plus tôt
-// encore valables d'abord, sinon le matelas). Les tableaux Gestion plus récents servent à vérifier : ils ne changent rien.
+// Ensuite l'app compte seule : heures acquises d'après le planning, rendus posés après le départ (heures les plus anciennes
+// encore valables d'abord, comme le gestionnaire, sinon le matelas). Les tableaux Gestion plus récents servent à vérifier : ils ne changent rien.
 // pr.start = {k:'tab'|'mois'|'man', d: jour de départ, from: rendus comptés après ce jour, genFrom: premier mois d'heures acquises
 //   comptées par l'app, mat: matelas (min), base:{ym:min} heures éphémères restantes, rep:{ym:n} reports,
 //   cons/stk:{ym:min} déjà déduit au tableau de départ, recon:{cap,ed} soldes reconstitués d'après un tableau plus récent, src: son jour}
@@ -5546,7 +5546,7 @@ function rhCompareShow(rh,silent){
   if(repL.length)card({t:'Reports',sub:repL.map(ym=>MFc(ym)+' : '+(tRep[ym]?'+'+tRep[ym]*3+' mois':'aucun')+' au tableau').join(' · '),info:1,vt:'',
     body:_suPts(repL.map(ym=>MFc(ym)+' → '+(tRep[ym]?'+'+tRep[ym]*3+' mois':'aucun')+' au tableau, '+(getEphExtensions(ym)?'+'+getEphExtensions(ym)*3+' mois':'aucun')+' dans l’app').concat(['Les reports sont accordés par le gestionnaire']))
       +'<button class="rv-b2" onclick="event.stopPropagation();rhApplyReports('+JSON.stringify(repL.map(ym=>[ym,tRep[ym]]))+')">Faire comme le tableau</button>'});
-  // 4b. Heures restantes mois par mois : le gestionnaire ne prend pas toujours les heures qui expirent le plus tôt
+  // 4b. Heures restantes mois par mois : le tableau peut différer de l'app (reports, consommations saisies autrement)
   const MS=ym=>MF[ym%12]+(Math.floor(ym/12)!==asOf.getFullYear()?' '+Math.floor(ym/12):''),fdS=d=>d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'});
   const vOf=l=>{const v=l.rep?(l.validRep||l.valid):l.valid;return v?new Date(v.getUTCFullYear(),v.getUTCMonth(),v.getUTCDate(),12):null;};
   const tRem={},tExp={},tLost={},stD=new Date(R.st.d+'T12:00:00');
@@ -6496,7 +6496,7 @@ function openMergedRenduCgModal(limit,tab){
     +'<div style="font-size:9px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Étapes du calcul</div>'
     +'<ol style="margin:0;padding-left:16px;font-size:9px;color:var(--text3);line-height:1.9">'
     +'<li>Heures générées par mois (colonne Généré)</li>'
-    +'<li>Rendus passés : consomment d’abord les heures qui expirent le plus tôt (colonne −Posés)</li>'
+    +'<li>Rendus passés : consomment d’abord les heures les plus anciennes, comme le gestionnaire (colonne −Posés)</li>'
     +'<li>Ce qui reste = stock actif (colonne Reste, total ci-dessus)</li>'
     +'<li>Rendus futurs : réservent ce qu\'ils ne peuvent couvrir avec du stock généré plus tard</li>'
     +'<li>Ce qui reste = le dispo</li>'
