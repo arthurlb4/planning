@@ -27,7 +27,7 @@ html{--bt-img:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' vi
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v7.20">
+<meta name="app-version" content="v7.21">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -2615,7 +2615,7 @@ function _renderSideV2(d){
     +'<div class="sv2-t"><span>Paie</span></div>'
     +'<div class="sv2-pay" style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:10px"><span class="sv2-lbl" style="font-size:11px">'+(_bu?'Brut du bulletin':'Brut estimé')+'</span>'
     +'<span class="sv2-val" style="font-size:22px;color:'+(brutOk||_bu?'var(--gold-pay)':'var(--text3)')+'">'+(_bu?fmtEuro(_bu.brut):brutOk?fmtEuro(pt.total):'—')+'</span></div>'
-    +(function(){var n=_bu&&_bu.netAv!=null?_bu.netAv:null,e=n==null&&(_bu||brutOk)?_netEst(d.mym,_bu?_bu.brut:pt.total,_bu?_bulHS(_bu):((pt.vars||{}).supHSlow||0)+((pt.vars||{}).supHShigh||0)):null;if(n==null&&!e)return '';
+    +(function(){var n=_bu&&_bu.netAv!=null?_bu.netAv:null,e=n==null&&(_bu||brutOk)?_netEst(d.mym,_bu?_bu.brut:pt.total,_bu?_bulPan(_bu):(pt.vars||{}).supPaniers||0):null;if(n==null&&!e)return '';
       return '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:-6px 0 10px"><span class="sv2-lbl" style="font-size:11px">'+(n!=null?'Net avant impôt du bulletin':'Net avant impôt estimé')+'</span>'
         +'<span style="font-size:15px;font-weight:600;color:var(--text)">'+(n!=null?fmtEuro(n):'≈ '+fmtEuro(Math.round(e.net)).replace(/,00(?=\D*$)/,''))+'</span></div>';})()
     +'<div class="sv2-sub sv2-pl"><span>Inclut les variables '+deMois(prevMn)+'</span>'
@@ -2835,27 +2835,26 @@ function calcNetPaye(brut,paniers,ym){
   return{net:r2(nav-pas),brut,cot,pas,pasTaux:getPasTauxForYM(ym!=null?ym:TODAY_YM)};
 }
 // Net avant impôt estimé d'un mois (l'impôt dépend d'un taux qui change, il n'est pas compté).
-// Net avant impôt = brut − cotisations. Les cotisations ont une part proportionnelle au brut (retraite, CSG…) et une part
-// fixe (mutuelle). Avec au moins deux bulletins de bruts différents, les deux parts sont tirées des bulletins de la personne
-// (droite qui passe au plus près de ses bulletins) ; avec un seul, tout est compté en proportion de ce bulletin.
-// Heures sup : 11,31 % de cotisations salariales en moins sur leur montant (réduction sur les HS), retirée des bulletins
-// puis rajoutée selon les HS du mois estimé. Sans bulletin lu : calcul avec les taux de cotisation moyens.
-var _HS_EXO=0.1131;
+// Sur le bulletin : net avant impôt = brut − cotisations + paniers (la prime de panier n'est pas dans le brut et ne paie
+// pas de cotisations). Cotisations = une part fixe (mutuelle sur le plafond de la Sécurité sociale…) + un pourcentage du brut.
+// Avec au moins deux bulletins de bruts différents, les deux parts sont tirées des bulletins de la personne (droite qui passe
+// au plus près) ; avec un seul, tout est compté en pourcentage. Sans bulletin lu : taux de cotisation moyens.
+function _bulPan(b){return b&&b.paniers?b.paniers.mt||0:0;}
 function _bulHS(b){return (b&&b.rap||[]).reduce(function(s,r){return s+(r.k==='hsLow'||r.k==='hsHigh'?r.mt||0:0);},0);}
 function _netModel(ym){
   var bs=S.bulletins||{},ks=Object.keys(bs).map(Number).filter(function(k){var b=bs[k];return b&&b.brut>0&&b.netAv!=null&&k<=Math.max(ym,TODAY_YM);}).sort(function(a,b){return b-a;}).slice(0,6);
   if(!ks.length)return null;
-  var P=ks.map(function(k){var b=bs[k];return [b.brut,b.netAv-_HS_EXO*_bulHS(b)];}),n=P.length;
+  var P=ks.map(function(k){var b=bs[k];return [b.brut,b.netAv-_bulPan(b)];}),n=P.length;
   if(n>=2){var mx=P.reduce(function(s,p){return s+p[0];},0)/n,my=P.reduce(function(s,p){return s+p[1];},0)/n,sxx=0,sxy=0;
     P.forEach(function(p){sxx+=(p[0]-mx)*(p[0]-mx);sxy+=(p[0]-mx)*(p[1]-my);});
     var lo=Math.min.apply(null,P.map(function(p){return p[0];})),hi=Math.max.apply(null,P.map(function(p){return p[0];}));
     if(hi-lo>=200&&sxx>0){var A=sxy/sxx,B=my-A*mx;if(A>0.6&&A<0.92&&B>-400&&B<50)return{A:A,B:B,from:ks[0],n:n};}}
   return{A:P[0][1]/P[0][0],B:0,from:ks[0],n:1};
 }
-function _netEst(ym,brut,hs){
-  var r2=function(v){return Math.round(v*100)/100;},m=_netModel(ym);
-  if(!m){var c=calcNetPaye(brut,0,ym);return{net:r2(c.net+c.pas),from:null};}
-  return{net:r2(brut*m.A+m.B+_HS_EXO*(hs||0)),from:m.from,n:m.n,fixe:r2(-m.B)};
+function _netEst(ym,brut,pan){
+  var r2=function(v){return Math.round(v*100)/100;},m=_netModel(ym);pan=pan||0;
+  if(!m){var c=calcNetPaye(brut,0,ym);return{net:r2(c.net+c.pas+pan),from:null};}
+  return{net:r2(brut*m.A+m.B+pan),from:m.from,n:m.n,fixe:r2(-m.B)};
 }
 // ================================================================
 // BULLETIN DE PAIE : import du PDF (lu sur l'appareil) et comparaison avec le calcul de l'app
@@ -2901,7 +2900,7 @@ function _bulParse(lines){
     if((m=/^ABSENCE NON REMUNEREE(?: (\d+))? (\d+,\d+) (\d+,\d+) (-?\d+,\d+)$/.exec(t))){if(!b.absNR)b.absNR={q:0,mt:0,div:m[1]?+m[1]:null};b.absNR.q+=_bulNum(m[2]);b.absNR.mt=Math.round((b.absNR.mt+_bulNum(m[4]))*100)/100;return;}
     // Nets en bas du bulletin : avant impôt, imposable, à payer (pour estimer le net des mois sans bulletin)
     if(b.netAv==null&&(m=/^NET [AÀ] PAYER AVANT IMP[OÔ]T.*?(-?\d+,\d+)$/.exec(t))){b.netAv=_bulNum(m[1]);return;}
-    if(b.netImp==null&&(m=/^NET (?:FISCAL|IMPOSABLE)\b.*?(-?\d+,\d+)$/.exec(t))){b.netImp=_bulNum(m[1]);return;}
+    if(b.netImp==null&&(m=/(?:^| )NET IMPOSABLE (-?\d+,\d+)/.exec(t))){b.netImp=_bulNum(m[1]);return;}
     if(b.net==null&&!/AVANT/.test(t)&&(m=/^NET (?:[AÀ] PAYER|PAY[EÉ])\b.*?(-?\d+,\d+)$/.exec(t))){b.net=_bulNum(m[1]);return;}
     if((m=/(?:^| )MESURE NAO (.+?) (-?\d+,\d+)$/.exec(t))){b.nao[m[1]]=_bulNum(m[2]);return;}
     // « SALAIRE DE QUALIFICATION base taux montant » : base temps plein (→ palier) et taux de travail (→ contrat)
