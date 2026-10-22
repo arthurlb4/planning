@@ -39,6 +39,7 @@ function situation(opts) {
   eq('Juin : 11h01 perdues fin septembre', a.run('calcSoldes().preExpiry'), { [YM(2026, 6)]: 661 });
   eq('Libre à poser en septembre = 32h24', a.run('calcTrueDispo(' + YM(2026, 9) + ').total'), 1944);
   eq('Libre à poser en octobre = 21h23', a.run('calcTrueDispo(' + YM(2026, 10) + ').total'), 1283);
+  eq('Courbe des heures restantes : septembre 32h24, octobre 21h23, novembre 3h23 (juillet expiré)', a.run('JSON.stringify(_rendRestYear(2026).slice(8,11))'), JSON.stringify([1944, 1283, 203]));
 }
 // 2. Même situation avec juin reporté : rien n'est perdu
 {
@@ -127,6 +128,7 @@ function situation(opts) {
     + 'var f2=_bulCompare(o).fixed.filter(function(f){return f.lbl==="Av. indiv. acquis";})[0],D2=_bulPayDiffs();S.profile.primesFixesCustom=[];S.bulletins=sv;return JSON.stringify([o.avInd,D.av&&D.av.v,f1.ok,f2.ok,D2.av]);})()'), JSON.stringify([93.81, 93.81, false, true, null]));
   // Format d'un autre bulletin : « SUPPL. FAMILIAL » abrégé, groupe dans l'en-tête, relevé de présence collé à droite
   eq('Bulletin : nets lus ; net avant impôt estimé au taux de cotisations du bulletin, réduction sur les HS comptée', a.run('(function(){var o=_bulParse(["PERIODE DE PAIE DU 01/09/2026 AU 30/09/2026","RAP 202608 HEURES SUP 125% 10,00 30,000 300,00","**TOTAL BRUT PAYE 4000,00","NET A PAYER AVANT IMPOT SUR LE REVENU 3120,00","NET IMPOSABLE 3240,00","NET A PAYER 2925,60"]),sv=S.bulletins;S.bulletins={};S.bulletins[o.ym]=o;var e0=_netEst(o.ym+1,2000,0),e1=_netEst(o.ym+1,4000,300);S.bulletins=sv;return JSON.stringify([o.netAv,o.netImp,o.net,_bulHS(o),e0.net,e1.net,e0.from===o.ym]);})()'), JSON.stringify([3120, 3240, 2925.6, 300, 1543.04, 3120, true]));
+  eq('Net : deux bulletins de bruts différents → part fixe (mutuelle) et part proportionnelle séparées', a.run('(function(){var sv=S.bulletins;S.bulletins={};S.bulletins[2026*12+7]={brut:3500,netAv:2662,rap:[]};S.bulletins[2026*12+8]={brut:4500,netAv:3442,rap:[]};var e=_netEst(2026*12+9,4000,0);S.bulletins=sv;return JSON.stringify([e.net,e.fixe,e.n]);})()'), JSON.stringify([3052, 68, 2]));
   eq('Bulletin : suppl. familial abrégé, groupe de l’en-tête, relevé de présence retiré', a.run('(function(){var o=_bulParse(["PERIODE DE PAIE DU 01/08/2026 AU 31/08/2026","GRILLE DE QUALIFICATION GRP5 HEURES CONTRACTUELLES","SALAIRE DE QUALIFICATION 2356,34 100,000 2356,34 J 16 JUI 1,00","PRIME ANCIENNETE 2091,75 235,53 S 16 MAI 1,00 CPACO","INDEMNITE MENSUELLE GPE 154,00 M 27 MAI 1,00 CPACO","SUPPL. FAMILIAL 156,42","bpradiofrancedemat V. 2022 MESURE NAO CDI 2023 130,00","**TOTAL BRUT PAYE 3719,74"]);return JSON.stringify([o.supFam,o.grp,o.salQ,o.anc,o.gpe,o.nao]);})()'), JSON.stringify([156.42, 5, 2356.34, 235.53, 154, {'CDI 2023':130}]));
   eq('Bulletin : HS en quart d’heure signalées, rattrapage d’avril à part', a.run('(function(){var c=_bulCompare(_b);return JSON.stringify([c.alerts.filter(function(x){return /Heures sup/.test(x);}).length,c.late.length,c.late[0].ym]);})()'), JSON.stringify([1, 1, YM(2026, 4)]));
   // Le rattrapage d'avril (payé en août) complète le bulletin de mai, qui comptait les variables d'avril
