@@ -27,7 +27,7 @@ html{--bt-img:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' vi
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v6.94">
+<meta name="app-version" content="v6.95">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -9772,10 +9772,22 @@ function _verCheck(){
       // inscription : rechargée tant qu'il n'y a rien à perdre (début), sinon un lien le propose
       if(document.getElementById('setup')&&SU)_suSave(); // inscription : saisie gardée, reprise à la même étape après rechargement
       if(!document.getElementById('setup')&&document.getElementById('modal-root').innerHTML)return false; // pas pendant une saisie
-      var k='pl_ver_rl';try{if(sessionStorage.getItem(k)===m[1])return false;sessionStorage.setItem(k,m[1]);}catch(e){}
-      location.reload();return true;
+      var k='pl_ver_rl';try{if(sessionStorage.getItem(k)===m[1])return false;}catch(e){}
+      // Inscription en cours : rechargée tout de suite (rien à perdre, saisie gardée)
+      if(document.getElementById('setup')){try{sessionStorage.setItem(k,m[1]);}catch(e){}location.reload();return true;}
+      // Sinon : rechargée quand l'app passe en arrière-plan, sans que ça se voie (un rechargement à l'écran fait un écran noir
+      // sur iPhone) ; la nouvelle version est de toute façon celle qui s'ouvrira la prochaine fois
+      window._verPending=m[1];return false;
     }).catch(function(){return false;});
 }
+document.addEventListener('visibilitychange',function(){
+  if(!document.hidden||!window._verPending||document.querySelector('#modal-root .overlay'))return;
+  try{sessionStorage.setItem('pl_ver_rl',window._verPending);}catch(e){}window._verPending=null;
+  // enregistrement en ligne en attente (5 s après une modification) : envoyé avant de recharger
+  var go=function(){location.reload();},p=null;
+  try{if(window._cloudSyncTimer&&_aid){clearTimeout(window._cloudSyncTimer);window._cloudSyncTimer=null;p=cloudSave(_aid);}}catch(e){}
+  if(p&&p.then){var t=setTimeout(go,2500);p.then(function(){clearTimeout(t);go();},function(){clearTimeout(t);go();});}else go();
+});
 // ── Deux appareils : chaque envoi dit sur quelle version du serveur il repose (_cbase). Si un autre appareil a
 // enregistré entre-temps, le serveur refuse (409) et renvoie sa version : on fusionne les trois (base, ici, serveur)
 // clé par clé — ce qui n'a changé que d'un côté est pris de ce côté ; changé des deux côtés : ce qui est ici l'emporte.
