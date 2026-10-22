@@ -67,6 +67,21 @@ function mockApi(route) {
     ok('Calendrier affiché', await p.evaluate(() => document.querySelectorAll('#cal .dci[data-key]').length >= 28));
     await p.evaluate(() => { try { Object.keys(localStorage).filter(k => k.startsWith('pl_lsig')).forEach(k => localStorage.removeItem(k)); } catch (e) {} return _lineSync(); });
     ok('Tableau Gestion : fichier original envoyé à part', await p.evaluate(async () => { await _rhUpload(new File([new Uint8Array([80, 75, 3, 4, 1, 2])], 'tableau.xlsx')); return !!(S.profile.rhFile && S.profile.rhFile.name === 'tableau.xlsx'); }) && SENT['/file/rh/save'] && SENT['/file/rh/save'].b64 === 'UEsDBAEC', JSON.stringify(SENT['/file/rh/save']));
+    // Prime fixe : mois de début au choix, arrêt à partir d'un mois choisi
+    ok('Prime fixe : versée depuis un mois choisi', await p.evaluate(() => { openAddPrimeFixeModal(TODAY_YM, true); document.getElementById('_apf-label').value = 'Test'; document.getElementById('_apf-montant').value = '12';
+      const sel = document.getElementById('_apf-debut'), v = TODAY_YM - 5; sel.value = String(v); sel.dispatchEvent(new Event('change')); _confirmAddPrimeFixe(TODAY_YM);
+      const pf = S.profile.primesFixesCustom.find(x => x.label === 'Test'); return !!pf && pf.debutYM === v && getPrimesFixesCustomForYM(TODAY_YM - 5).includes(pf) && !getPrimesFixesCustomForYM(TODAY_YM - 6).includes(pf); }));
+    ok('Prime fixe : arrêtée à partir d’un mois choisi', await p.evaluate(() => { const pf = S.profile.primesFixesCustom.find(x => x.label === 'Test'); openDeletePrimeFixeModal(pf.id, TODAY_YM);
+      document.getElementById('_dpf-from').value = String(TODAY_YM - 2); _deletePrimeFixeFrom(pf.id, TODAY_YM, +document.getElementById('_dpf-from').value); const r = pf.finYM === TODAY_YM - 3;
+      S.profile.primesFixesCustom = S.profile.primesFixesCustom.filter(x => x !== pf); closeModal(); return r; }));
+    // Questions et messages dans l'app, plus de fenêtre du navigateur
+    { let nat = 0; p.on('dialog', d => { nat++; d.dismiss(); });
+      const r = await p.evaluate(async () => { const a = _ask('Question ?\n\nDétail', { ok: 'Oui' }); await new Promise(r => setTimeout(r, 50)); const el = document.getElementById('ask');
+        const txt = el && el.querySelector('.ak-t').textContent + '|' + el.querySelector('.ak-m').textContent + '|' + el.querySelector('.ok').textContent; el.querySelector('.ok').click();
+        const b = _ask('Montant', { input: '3' }); await new Promise(r => setTimeout(r, 50)); document.querySelector('#ask input').value = '4,5'; document.querySelector('#ask .ok').click();
+        alert('Libellé requis.'); return [txt, await a, await b, document.getElementById('undo-toast').textContent]; });
+      ok('Question dans l’app (titre, détail, réponse)', r[0] === 'Question ?|Détail|Oui' && r[1] === true && r[2] === '4,5' && r[3] === 'Libellé requis.', JSON.stringify(r));
+      ok('Aucune fenêtre du navigateur', nat === 0); await p.waitForTimeout(300); }
     const lr = SENT['/lines/register'];
     if (process.env.SHOW) console.log(JSON.stringify(lr));
     ok('Ligne de la semaine envoyée au serveur', lr && /^S\d+$/.test(lr.ligne) && lr.pool && lr.weekVacs.length === 7, JSON.stringify(lr));

@@ -27,7 +27,7 @@ html{--bt-img:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' vi
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v7.11">
+<meta name="app-version" content="v7.12">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -295,6 +295,21 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 #undo-toast{max-width:calc(100vw - 32px);box-sizing:border-box}#undo-toast>span{overflow:hidden;text-overflow:ellipsis}
 #undo-toast button{border:none;border-radius:999px;padding:7px 14px;background:rgba(98,150,190,.22);color:#8fbbe0;font:600 13px var(--font);cursor:pointer}
 @media (prefers-reduced-motion:reduce){#undo-toast{transition:opacity .2s ease}}
+#undo-toast.wrap{white-space:normal;border-radius:18px;padding:10px 18px;text-align:center;line-height:1.35;width:max-content}
+/* Question de l'app (à la place des fenêtres du navigateur) */
+#ask{position:fixed;inset:0;z-index:600;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(0,0,0,.4);opacity:0;transition:opacity .18s ease}
+#ask.on{opacity:1}
+#ask .ak{width:100%;max-width:320px;border-radius:20px;padding:20px 18px 14px;background:rgba(40,40,38,.92);-webkit-backdrop-filter:blur(28px) saturate(170%);backdrop-filter:blur(28px) saturate(170%);
+  box-shadow:inset .5px .5px 0 rgba(255,250,243,.16),0 18px 50px rgba(0,0,0,.55);transform:scale(.94);transition:transform .22s cubic-bezier(.2,.9,.3,1.15)}
+#ask.on .ak{transform:none}
+#ask .ak-t{font:600 15px/1.35 var(--font);color:var(--text);text-align:center;white-space:pre-line}
+#ask .ak-m{font:13px/1.45 var(--font);color:var(--text2);text-align:center;white-space:pre-line;margin-top:8px}
+#ask input{width:100%;box-sizing:border-box;height:42px;margin-top:14px;padding:0 12px;border:0.5px solid var(--border);border-radius:12px;background:var(--bg2);color:var(--text);font:15px var(--font)}
+#ask .ak-b{display:flex;gap:8px;margin-top:16px}
+#ask .ak-b button{flex:1;min-height:42px;border-radius:12px;border:0.5px solid var(--border);background:var(--btn);color:var(--text);font:500 14px var(--font);cursor:pointer;padding:0 8px}
+#ask .ak-b button.ok{background:var(--blue);border-color:transparent;color:#fff;font-weight:600}
+#ask .ak-b button.ok.del{background:var(--red)}
+@media (prefers-reduced-motion:reduce){#ask .ak{transition:none}}
 /* Appui long sur un jour : menu rapide */
 .dci{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 .dci.lp-on{transform:scale(1.1);z-index:5;box-shadow:0 10px 26px rgba(0,0,0,.55)}
@@ -2726,14 +2741,16 @@ function calcVariablesMois(y,m,overrideTauxH){
   const total=supDim+supRH+supFer+supHSlow+supHShigh+supNuit+supAbsResto+supAntenne+supMatin+supReal+supCoord+supSpec+supMonet;
   return{total,supSpec,supMonet,monetMin,specList:dpr.list,tauxH,supDim,supRH,supFer,supHSlow,supHShigh,supNuit,supPaniers,panierRate,tx,supAbsResto,absRestoRate,supAntenne,supMatin,supReal,supCoord,dimMin:drf.dim,rhMin:drf.rh,ferMin:drf.fer,hsLow:hs.low,hsHigh:hs.high,nuitMin,paniers,antenne:primes.antenne,matin:primes.matin,reel:primes.reel,coord:primes.coord};
 }
+function _pfPeriod(p){var M=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'],f=function(x){return M[x%12]+' '+Math.floor(x/12);};
+  return (p.debutYM>0?' · depuis '+f(p.debutYM):'')+(p.finYM!=null?' · jusqu’à '+f(p.finYM):'');}
 function getPrimesFixesCustomForYM(ym){
   const primes=(S.profile&&S.profile.primesFixesCustom)||[];
   return primes.filter(function(p){return p.debutYM<=ym&&(p.finYM==null||ym<=p.finYM);});
 }
 // Complément CP (10ᵉ des variables, payé en janvier) : le montant réel du bulletin remplace l'estimation
-function editCompCP(y,mym){
+async function editCompCP(y,mym){
   var pr=S.profile||{},cur=pr.compCPManual&&pr.compCPManual[y]!=null?String(pr.compCPManual[y]).replace('.',','):'';
-  var v=prompt('Complément CP (« 10ème EPV ») sur le bulletin de janvier '+y+', en euros.\nLaisser vide pour revenir au calcul automatique.',cur);
+  var v=await _ask('Complément CP de janvier '+y+'\n\n« 10ème EPV » sur le bulletin, en euros. Laisser vide pour revenir au calcul automatique.',{input:cur,placeholder:'0,00',ok:'Enregistrer'});
   if(v===null)return;
   v=v.trim().replace(/\s/g,'').replace(',','.');
   if(!pr.compCPManual)pr.compCPManual={};
@@ -2868,7 +2885,27 @@ function _infoToast(msg){
   t.innerHTML='<span></span>';t.firstChild.textContent=msg;
   clearTimeout(window._utHide);requestAnimationFrame(function(){t.classList.add('on');});
   window._utHide=setTimeout(_hideUndoToast,5000);
+  t.classList.toggle('wrap',msg.length>38);
 }
+// Messages du navigateur (« franceinfoplanning.com indique… ») remplacés par ceux de l'app
+window.alert=function(m){_infoToast(String(m));};
+// Question dans l'app : _ask(texte,{ok,cancel,del,input}) → promesse (true/false, ou le texte saisi / null)
+// Première ligne du texte en titre, le reste en détail.
+function _ask(msg,o){o=o||{};return new Promise(function(res){
+  var old=document.getElementById('ask');if(old)old.remove();
+  var parts=String(msg).split('\n\n'),d=document.createElement('div');d.id='ask';d.setAttribute('role','alertdialog');
+  d.innerHTML='<div class="ak"><div class="ak-t"></div>'+(parts.length>1?'<div class="ak-m"></div>':'')+(o.input!=null?'<input inputmode="decimal">':'')
+    +'<div class="ak-b"><button type="button" class="no"></button><button type="button" class="ok'+(o.del?' del':'')+'"></button></div></div>';
+  d.querySelector('.ak-t').textContent=parts[0];if(parts.length>1)d.querySelector('.ak-m').textContent=parts.slice(1).join('\n\n');
+  d.querySelector('.no').textContent=o.cancel||'Annuler';d.querySelector('.ok').textContent=o.ok||'OK';
+  var inp=d.querySelector('input');if(inp){inp.value=o.input;inp.placeholder=o.placeholder||'';}
+  function done(v){document.removeEventListener('keydown',key,true);d.classList.remove('on');setTimeout(function(){d.remove();},180);res(v);}
+  function key(e){if(e.key==='Escape'){e.stopPropagation();e.preventDefault();done(inp?null:false);}else if(e.key==='Enter'){e.preventDefault();done(inp?inp.value:true);}}
+  d.querySelector('.no').onclick=function(){done(inp?null:false);};d.querySelector('.ok').onclick=function(){done(inp?inp.value:true);};
+  d.onclick=function(e){if(e.target===d)done(inp?null:false);};
+  document.addEventListener('keydown',key,true);document.body.appendChild(d);
+  requestAnimationFrame(function(){d.classList.add('on');if(inp){inp.focus();inp.select();}});
+});}
 // ── Réglages de paie lus sur les bulletins : palier, contrat, groupe, ancienneté (et mois d'anniversaire) ──
 function _bulPaySet(b){
   var r={},ym=b.ym,base=b.salQBase||b.salQ,t=b.taux>0?b.taux:null,k=(t||100)/100,near=function(a,v){return Math.abs(a-v)<0.02||Math.abs(a*k-v)<0.02;};
@@ -3051,8 +3088,8 @@ async function _importBulletinFiles(files,after){{
 function _regHas(key){try{var a=JSON.parse(localStorage.getItem(key)||'null');return !!(a&&a.length);}catch(e){return false;}}
 function _regFiles(key){var a=null;try{a=JSON.parse(localStorage.getItem(key)||'null');localStorage.removeItem(key);}catch(e){}
   if(!a||!a.length)return null;return a.map(function(f){var p=String(f.data).split(','),bin=atob(p[1]||''),u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);var b=new Blob([u]);b.name=f.name;return b;});}
-function deleteBulletin(ym){
-  if(!confirm('Retirer le bulletin '+_deMois(ym)+' '+Math.floor(ym/12)+' ?'))return;
+async function deleteBulletin(ym){
+  if(!await _ask('Retirer le bulletin '+_deMois(ym)+' '+Math.floor(ym/12)+' ?',{ok:'Retirer',del:1}))return;
   if(S.bulletins)delete S.bulletins[ym];saveState();openBulletinModal(ym);
 }
 function useBulletinCompCP(ym){
@@ -4894,7 +4931,7 @@ function _rhCmpRefresh(){try{var rh=_rhStored();if(rh)rhCompareShow(rh,true);}ca
 async function _rhFile(f,mode){
   try{const cells=await _xlsxRead(f);const rh=_rhParse(cells,f.name),pr=S.profile||{},st=pr.start,ek=dk(_rhEd(rh));
     // départ demandé, ou tableau pas plus récent que le départ : proposer d'en faire le départ du calcul
-    if(mode==='start'||!st||ek<=st.d){if(mode==='start'||confirm('Tableau du '+_rhEd(rh).toLocaleDateString('fr-FR')+' : '+(st?(ek===st.d?'même date que votre départ':'plus ancien que votre départ')+' ('+_startTxt(st)+').\n\n':'')+'En faire le départ du calcul ?\n\nSes soldes (matelas, heures, reports) deviennent ceux du départ ; les rendus posés après sa dernière semaine notée sont décomptés par l’app.')){
+    if(mode==='start'||!st||ek<=st.d){if(mode==='start'||await _ask('Tableau du '+_rhEd(rh).toLocaleDateString('fr-FR')+' : '+(st?(ek===st.d?'même date que votre départ':'plus ancien que votre départ')+' ('+_startTxt(st)+').\n\n':'')+'En faire le départ du calcul ?\n\nSes soldes (matelas, heures, reports) deviennent ceux du départ ; les rendus posés après sa dernière semaine notée sont décomptés par l’app.',{ok:'En faire le départ',cancel:'Non'})){
         pushUndo('Départ du calcul changé');_startApply(_startFromTable(rh));_rhUpload(f);render();closeModal();_infoToast('✓ Départ : tableau du '+_rhEd(rh).toLocaleDateString('fr-FR',{day:'numeric',month:'short'}));
         const L=_rhStored();if(L&&dk(_rhEd(L))>ek){window._rvFrom=null;rhCompareShow(L);}}
       return;}
@@ -5378,9 +5415,9 @@ function _ephSplit(){
     yms.forEach(ym=>{if(left<=0||getExpYm(ym)<pym)return;const room=(R.cap[ym]||0)-(out[ym]-(R.base[ym]||0));if(room<=0)return;const t=Math.min(room,left);out[ym]+=t;left-=t;});});
   return out;
 }
-function rhImportUndo(){
+async function rhImportUndo(){
   const pr=S.profile,b=pr&&pr._rhImportBackup;if(!b)return;
-  if(!confirm('Annuler l’import du tableau Gestion et revenir aux valeurs précédentes ?'))return;
+  if(!await _ask('Annuler l’import du tableau Gestion ?\n\nLes valeurs d’avant l’import reviennent.',{ok:'Annuler l’import',cancel:'Garder'}))return;
   pr.matelas=b.matelas;pr.ephSolde=b.ephSolde;pr.ephSoldeCreatedYM=b.ephSoldeCreatedYM;if(b.ephRecon)pr.ephRecon=b.ephRecon;
   if(b.ephSoldeSplit)pr.ephSoldeSplit=b.ephSoldeSplit;else delete pr.ephSoldeSplit;
   if(b.ephBaseDate)pr.ephBaseDate=b.ephBaseDate;else delete pr.ephBaseDate;
@@ -5420,8 +5457,8 @@ function rhApplySplit(on){
   saveState();render();rhCompareShow(rh);
 }
 // Onglet Rendus : reprendre le report du tableau Gestion pour un mois
-function rendusTakeRep(ym,n,limit){
-  if(!confirm('Reprendre le report du tableau Gestion pour ce mois ?'))return;
+async function rendusTakeRep(ym,n,limit){
+  if(!await _ask('Reprendre le report du tableau Gestion pour ce mois ?',{ok:'Reprendre'}))return;
   pushUndo('Report modifié');if(!S.ephExtend)S.ephExtend={};if(n>0)S.ephExtend[ym]=n;else delete S.ephExtend[ym];
   saveState();render();openMergedRenduCgModal(limit,0);
 }
@@ -5757,7 +5794,7 @@ function _applyPoseMatelas(type,startKey,endKey){
   logH(fmtDate(_s)+(_s<_e?' au '+fmtDate(_e):'')+' -> '+_label,'#88b862',startKey);
   saveState();closeModal();render();gcalTrigger();
 }
-function applyPose(type,startKey,unique){
+async function applyPose(type,startKey,unique){
   const endKey=unique?startKey:(document.getElementById('pose-until').value||startKey);
   const start=new Date(startKey+'T12:00:00');
   const end=new Date(endKey+'T12:00:00');
@@ -5771,7 +5808,7 @@ function applyPose(type,startKey,unique){
   }
   // Absence sur des jours déjà en congé ou en rendu : les remplacer seulement après confirmation
   if(type==='absent'){var _ab=0,_dAb=new Date(start);while(_dAb<=end){const _x=(S.conges||{})[dk(_dAb)];if(_x==='cg'||_x==='rend'||_x==='rend-hist')_ab++;_dAb.setDate(_dAb.getDate()+1);}
-    if(_ab&&!confirm(_ab+' jour'+(_ab>1?'s':'')+' déjà posé'+(_ab>1?'s':'')+' en congé ou en rendu ser'+(_ab>1?'ont':'a')+' remplacé'+(_ab>1?'s':'')+' par l’absence. Continuer ?'))return;}
+    if(_ab&&!await _ask(_ab+' jour'+(_ab>1?'s':'')+' déjà posé'+(_ab>1?'s':'')+' en congé ou en rendu ser'+(_ab>1?'ont':'a')+' remplacé'+(_ab>1?'s':'')+' par l’absence.',{ok:'Remplacer'}))return;}
 
   // Solde check: congés
   if(type==='cg'){
@@ -8048,7 +8085,7 @@ function openSettingsModal(tab){
       var pfc=pr.profile.primesFixesCustom||[];
       var rows=pfc.filter(function(p){return (p.finYM==null||p.finYM>=TODAY_YM)&&!/INDIV/i.test(p.label);}).map(function(p){
         return '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:0.5px solid var(--border)">'
-          +'<span style="font-size:12px;color:var(--text2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_h(p.label)+'</span>'
+          +'<span style="font-size:12px;color:var(--text2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_h(p.label)+'<span style="color:var(--text3)">'+_pfPeriod(p)+'</span></span>'
           +'<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">'
           +'<span style="font-size:12px;color:var(--amber)">+'+fmtEuro(p.montant)+'</span>'
           +'<button onclick="openDeletePrimeFixeModal(\''+p.id+'\',TODAY_YM);window._pfFromSettings=true" style="width:20px;height:20px;border-radius:50%;border:0.5px solid var(--border);background:transparent;color:var(--red);cursor:pointer;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center">×</button>'
@@ -8349,6 +8386,9 @@ function _setSupFamilialResult(v,date){
 function _confirmSupFamilialToujours(){_setSupFamilialResult(parseFloat((document.getElementById('_sft-v')||{}).value)||0,'');}
 function _confirmSupFamilialDate(){var s=_depGetDate();if(s)_setSupFamilialResult(parseFloat((document.getElementById('_sft-v')||{}).value)||0,s);}
 
+// Mois pour un <select> : un an devant à trois ans en arrière, « Depuis toujours » (0) en tête si demandé
+function _ymOpts(sel,always){var ML=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'],h=always?'<option value="0"'+(sel===0?' selected':'')+'>Depuis toujours</option>':'';
+  for(var x=Math.max(TODAY_YM+12,sel);x>=Math.min(TODAY_YM-36,sel||TODAY_YM);x--)h+='<option value="'+x+'"'+(x===sel?' selected':'')+'>'+ML[x%12]+' '+Math.floor(x/12)+'</option>';return h;}
 function openAddPrimeFixeModal(ym,fromSettings,av){
   window._pfFromSettings=!!fromSettings;window._apfAv=!!av; // av : prime d'avantage individuel acquis (remplace la précédente)
   var y=Math.floor(ym/12),m=ym%12;
@@ -8360,11 +8400,8 @@ function openAddPrimeFixeModal(ym,fromSettings,av){
     +(av?'':'<input id="_apf-label" type="text" placeholder="ex: Prime de nuit fixe" style="width:100%;height:44px;box-sizing:border-box;padding:0 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--bg2);color:var(--text);margin-bottom:12px">')
     +'<label style="font-size:12px;color:var(--text3);display:block;margin-bottom:4px">Montant (€ / mois)</label>'
     +'<input id="_apf-montant" type="number" min="0" step="0.01" placeholder="0,00" style="width:100%;height:44px;box-sizing:border-box;padding:0 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--bg2);color:var(--text);margin-bottom:12px">'
-    +'<label style="font-size:12px;color:var(--text3);display:block;margin-bottom:6px">Début</label>'
-    +'<div style="display:flex;gap:8px;margin-bottom:16px">'
-    +'<button id="_apf-debut-cem" onclick="document.getElementById(\'_apf-debut-cem\').style.background=\'var(--blue)\';document.getElementById(\'_apf-debut-cem\').style.color=\'#fff\';document.getElementById(\'_apf-debut-tj\').style.background=\'var(--btn)\';document.getElementById(\'_apf-debut-tj\').style.color=\'var(--text)\';window._apfDebut='+ym+';" style="flex:1;height:36px;font-size:12px;border:0.5px solid var(--border);border-radius:var(--r);cursor:pointer;font-family:var(--font);background:var(--blue);color:#fff">Ce mois</button>'
-    +'<button id="_apf-debut-tj" onclick="document.getElementById(\'_apf-debut-tj\').style.background=\'var(--blue)\';document.getElementById(\'_apf-debut-tj\').style.color=\'#fff\';document.getElementById(\'_apf-debut-cem\').style.background=\'var(--btn)\';document.getElementById(\'_apf-debut-cem\').style.color=\'var(--text)\';window._apfDebut=0;" style="flex:1;height:36px;font-size:12px;border:0.5px solid var(--border);border-radius:var(--r);cursor:pointer;font-family:var(--font);background:var(--btn);color:var(--text)">Depuis toujours</button>'
-    +'</div>'
+    +'<label style="font-size:12px;color:var(--text3);display:block;margin-bottom:4px">Versée depuis</label>'
+    +'<select id="_apf-debut" onchange="window._apfDebut=+this.value" style="width:100%;height:44px;box-sizing:border-box;padding:0 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--bg2);color:var(--text);margin-bottom:16px">'+_ymOpts(ym,true)+'</select>'
     +'<button class="mb" style="width:100%;height:44px;font-size:14px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);margin-bottom:8px" onclick="_confirmAddPrimeFixe('+ym+')">'+(av?'Enregistrer':'Ajouter')+'</button>'
     +'<button class="mcancel" onclick="closeModal()">Annuler</button>'
     +'</div></div>';
@@ -8393,9 +8430,11 @@ function openDeletePrimeFixeModal(id,ym){
   _lockBodyScroll();
   document.getElementById('modal-root').innerHTML=
     '<div class="overlay" onclick="if(event.target===this)closeModal()">'
-    +'<div class="sheet"><div class="sh"></div><div class="st">Supprimer la prime</div>'
-    +'<div class="ss" style="margin-bottom:16px">« '+p.label+' » — '+fmtEuro(p.montant)+'/mois</div>'
-    +'<button class="mb" style="width:100%;height:44px;font-size:13px;background:var(--btn);color:var(--text);border:0.5px solid var(--border);border-radius:var(--r);margin-bottom:8px" onclick="_deletePrimeFixeFrom(\''+id+'\','+ym+','+ym+')">Supprimer depuis '+ML[m]+' '+y+'</button>'
+    +'<div class="sheet"><div class="sh"></div><div class="st">Arrêter la prime</div>'
+    +'<div class="ss" style="margin-bottom:16px">«'+' '+_h(p.label)+' '+'» — '+fmtEuro(p.montant)+'/mois'+(p.debutYM>0?', depuis '+ML[p.debutYM%12]+' '+Math.floor(p.debutYM/12):'')+'</div>'
+    +'<label style="font-size:12px;color:var(--text3);display:block;margin-bottom:4px">Plus versée à partir de</label>'
+    +'<select id="_dpf-from" style="width:100%;height:44px;box-sizing:border-box;padding:0 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:14px;background:var(--bg2);color:var(--text);margin-bottom:8px">'+_ymOpts(Math.max(ym,p.debutYM+1),false)+'</select>'
+    +'<button class="mb" style="width:100%;height:44px;font-size:13px;background:var(--btn);color:var(--text);border:0.5px solid var(--border);border-radius:var(--r);margin-bottom:8px" onclick="_deletePrimeFixeFrom(\''+id+'\','+ym+',+document.getElementById(\'_dpf-from\').value)">Arrêter à partir de ce mois</button>'
     +'<button class="mb del" style="width:100%;height:44px;font-size:13px;border-radius:var(--r);margin-bottom:8px" onclick="_deletePrimeFixeFrom(\''+id+'\','+ym+',null)">Supprimer entièrement</button>'
     +'<button class="mcancel" onclick="closeModal()">Annuler</button>'
     +'</div></div>';
@@ -8519,9 +8558,7 @@ function applySettingsFromDD(pid,el){
   const _hpn=document.getElementById('hdr-profile-name');if(_hpn&&S.profile)_hpn.textContent=S.profile.name||'Profil';
   // If line changed and Google connected, clear calendar then re-sync
   if(gcalTokens&&oldLine!==undefined&&oldLine!==newLine){
-    if(confirm('La ligne a changé. Vider le calendrier Google et le re-synchroniser ?')){
-      gcalClear().then(function(){setTimeout(gcalHandleClick,500);});
-    }
+    _ask('La ligne a changé.\n\nVider le calendrier Google et le re-synchroniser ?',{ok:'Re-synchroniser',cancel:'Plus tard'}).then(function(ok){if(ok)gcalClear(true).then(function(){setTimeout(gcalHandleClick,500);});});
   }
 }
 
@@ -8668,9 +8705,7 @@ function applyChangeLigne(pid,chosenVisual,scopeVal,fromDate){
   _profs[pid]=pr;if(pid===_aid)S=pr;
   saveState();closeModal();render();gcalUpdateBtn();
   if(gcalTokens){
-    if(confirm('La ligne a changé. Vider le calendrier Google et re-synchroniser ?')){
-      gcalClear().then(function(){setTimeout(gcalHandleClick,500);});
-    }
+    _ask('La ligne a changé.\n\nVider le calendrier Google et le re-synchroniser ?',{ok:'Re-synchroniser',cancel:'Plus tard'}).then(function(ok){if(ok)gcalClear(true).then(function(){setTimeout(gcalHandleClick,500);});});
   }
 }
 
@@ -8842,7 +8877,7 @@ function _cvExGrid(fk){var W=window._cvW||{},d=new Date(fk+'T12:00:00'),VAC=getV
     +'<div class="cv-hint" id="cv-exhint" style="margin:8px 2px 4px">'+(W.exHs?'Les heures faites comptent : ce qui dépasse part en heures sup. Primes de la vacation faite.':'Les heures prévues comptent (pas d’heures sup). Primes de la vacation faite.')+'</div>'
     +'<button type="button" class="adj-pill" style="width:auto;padding:0 14px;height:30px;font-size:12px;margin:8px 0 2px" onclick="_cvSetWhen(\'week\')">Échanger toute la semaine…</button>';}
 // Enregistre un déplacement (motif) ou un échange : jour cédé (non travaillé) et jour fait, liés l'un à l'autre
-function _cvSaveMove(){var W=window._cvW||{when:'day'},key=pendingKey,m=window._cvMotif,ex=m==='echange',oKey=key,fKey=key;
+async function _cvSaveMove(){var W=window._cvW||{when:'day'},key=pendingKey,m=window._cvMotif,ex=m==='echange',oKey=key,fKey=key;
   if(W.when==='other'){if(!W.other){alert('Choisir l’autre jour.');return;}if(W.role==='give')fKey=W.other;else oKey=W.other;}
   if(ex&&!W.exVac){alert('Choisir la vacation faite.');return;}
   var oD=new Date(oKey+'T12:00:00'),fD=new Date(fKey+'T12:00:00'),oCyc=getCycleVac(oD).cycleVac,fCyc=getCycleVac(fD).cycleVac,VF=getVAC(fD);
@@ -8854,7 +8889,7 @@ function _cvSaveMove(){var W=window._cvW||{when:'day'},key=pendingKey,m=window._
     var pr={};if(prime)pr[prime]=true;nv={deb:deb,fin:fin,dur:dur,panier:pan,hidden:true,label:name||deb+'–'+fin,primes:pr};}
   // Jour fait déjà occupé (vacation, congé, rendu) : remplacer ou annuler
   if(oKey!==fKey){var fo=(S.overrides||{})[fKey],lk=fo&&fo.echange&&fo.pair===oKey,fg=getVac(fD),cg=(S.conges||{})[fKey];
-    if(!lk&&(cg||(fg.vac&&fg.vac!=='RH'&&!fg.absent&&!(fg.echange&&!fg.ecSelf)))&&!confirm('Le '+fmtDate(fD)+' a déjà '+(cg?'un congé ou un rendu':'une vacation ('+vLbl(fg.vac,VF)+')')+'. Remplacer ?'))return;}
+    if(!lk&&(cg||(fg.vac&&fg.vac!=='RH'&&!fg.absent&&!(fg.echange&&!fg.ecSelf)))&&!await _ask('Le '+fmtDate(fD)+' a déjà '+(cg?'un congé ou un rendu':'une vacation ('+vLbl(fg.vac,VF)+')')+'. Remplacer ?'))return;}
   pushUndo(ex?'Échange enregistré':'Déplacement enregistré');if(!S.overrides)S.overrides={};
   // liens d'un ancien échange / déplacement de ces jours : défaits
   [oKey,fKey].forEach(function(k){var o=S.overrides[k];if(o&&o.echange&&o.pair&&o.pair!==k&&o.pair!==oKey&&o.pair!==fKey){var p=S.overrides[o.pair];if(p&&p.echange&&p.pair===k)delete S.overrides[o.pair];}});
@@ -9694,8 +9729,8 @@ function gcalHandleClick(){
   if(!gcalTokens){gcalConnect();return;}
   if(window._gcalErr){
     // Sur mobile l'info-bulle n'apparaît pas : afficher la cause de l'échec
-    if(window._gcalReconnect){if(confirm('Synchro Google Agenda impossible ('+window._gcalErr+').\n\nL\'autorisation Google a expiré : reconnecter Google Agenda maintenant ?'))gcalConnect();return;}
-    if(confirm('Dernière synchro Google Agenda en échec : '+window._gcalErr+'\n\nOK = reconnecter Google Agenda · Annuler = simplement réessayer')){gcalConnect();return;}
+    if(window._gcalReconnect){_ask('Synchro Google Agenda impossible\n\nL’autorisation Google a expiré ('+window._gcalErr+').',{ok:'Reconnecter'}).then(function(ok){if(ok)gcalConnect();});return;}
+    _ask('Dernière synchro Google Agenda en échec\n\n'+window._gcalErr,{ok:'Reconnecter',cancel:'Réessayer'}).then(function(ok){if(ok)gcalConnect();else gcalSync();});return;
   }
   gcalSync();
 }
@@ -9856,8 +9891,8 @@ async function _sessionExpired(){
   var el=document.getElementById('sync-status');if(el)el.title='Session expirée — les modifications sont gardées sur cet appareil. Toucher pour se reconnecter : elles seront envoyées ensuite.';
   if(!window._sessionExpiredAsked){window._sessionExpiredAsked=true;setTimeout(_relogin,300);}
 }
-function _relogin(){
-  if(!confirm('La session a expiré : les modifications ne sont plus synchronisées.\n\nSe reconnecter maintenant ? Les modifications faites sur cet appareil sont conservées.'))return;
+async function _relogin(){
+  if(!await _ask('Session expirée\n\nLes modifications ne sont plus synchronisées. Celles faites sur cet appareil sont conservées.',{ok:'Se reconnecter',cancel:'Plus tard'}))return;
   try{localStorage.setItem('pl_v8',JSON.stringify({p:_profs,a:_aid,u:_plU()}));}catch(e){}
   localStorage.removeItem('auth_token');localStorage.removeItem('auth_user');
   window.location.href=BASE;
@@ -10155,10 +10190,10 @@ async function _histOpen(){var pid=_aid,dates=[];
     +'<div style="font-size:11.5px;color:var(--text3);margin-top:4px;line-height:1.45">'+(vs[i]?_bakSum(vs[i]):'illisible')+'</div></div>';}).join(''));}
 async function _histRestore(dt){var data=null;try{var r=await fetch(CLOUD_API+'/data/backup',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({profileId:_aid,date:dt})});data=(await r.json()).data;}catch(e){}
   if(!data){_infoToast('Version introuvable');return;}
-  if(!confirm('Remettre les données d’avant le '+new Date(dt+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long'})+' ?\n\nLes données actuelles restent dans l’historique d’aujourd’hui.'))return;
+  if(!await _ask('Remettre les données d’avant le '+new Date(dt+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long'})+' ?\n\nLes données actuelles restent dans l’historique d’aujourd’hui.',{ok:'Remettre'}))return;
   pushUndo('Sauvegarde restaurée');_snapApply(data);saveState();cloudSave(_aid);window._modalBack=null;closeModal();render();}
-function _restoreBak(){var k=null;try{k=JSON.parse(localStorage.getItem('pl_bak')||'null');}catch(e){}if(!k||!k.d)return;
-  if(!confirm('Remettre la version d’avant enregistrée sur cet appareil ('+((k.d.profile||{}).name||'profil')+') ?\n\nElle remplace les données actuelles, ici et dans le cloud.'))return;
+async function _restoreBak(){var k=null;try{k=JSON.parse(localStorage.getItem('pl_bak')||'null');}catch(e){}if(!k||!k.d)return;
+  if(!await _ask('Remettre la version d’avant enregistrée sur cet appareil ('+((k.d.profile||{}).name||'profil')+') ?\n\nElle remplace les données actuelles, ici et dans le cloud.',{ok:'Remettre'}))return;
   if(k.pid===_aid){pushUndo('Version d’avant restaurée');_snapApply(k.d);}else{_us=[];_rs=[];_profs[k.pid]=k.d;_aid=k.pid;S=_profs[_aid];}try{localStorage.removeItem('pl_bak');}catch(e){}
   saveState();cloudSave(_aid);render();closeModal();_infoToast('✓ Version d’avant restaurée');}
 document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden'&&window._authToken&&_aid&&window._syncStatus==='pending'){clearTimeout(window._cloudSyncTimer);cloudSave(_aid);}});
@@ -10926,9 +10961,9 @@ function gcalStartPoll(){
   gcalPollOnce();
 }
 
-async function gcalClear(){
+async function gcalClear(asked){
   if(!gcalTokens){alert('Google Agenda non connecté.');return;}
-  if(!confirm('Supprimer tous les événements du calendrier franceinfo ?'))return;
+  if(!asked&&!await _ask('Supprimer tous les événements du calendrier franceinfo ?',{ok:'Supprimer',del:1}))return;
   if(_syncAbort){_syncAbort.abort();_syncAbort=null;}
   clearTimeout(_syncTimer);_syncTimer=null;
   const token=await gcalGetToken();
