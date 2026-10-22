@@ -369,16 +369,17 @@ function situation(opts) {
   eq('Report du tableau (+3 mois) sur juin repris ensuite', a.run('(function(){rhApplyReports([[' + YM(2026, 6) + ',1]]);autoReportEph();return getEphExtensions(' + YM(2026, 6) + ');})()'), 1);
 }
 
-// Heures que le tableau laisse expirer : l'app prend aussi les plus anciennes d'abord (avril reporté avant juin), elle les perd aussi : pas d'écart
+// Heures expirées que le tableau compte encore (« Alerte », sans report) : l'app suit le solde du tableau (elle les garde)
+// et les signale « sans report officiel », avec la question dans le mail
 { const a = load('2026-10-25');
-  eq('Juin perdu au tableau (10h le 30/09), perdu aussi dans l’app : rien à signaler', a.run(`(function(){render=function(){};saveState=function(){};
+  eq('Juin expiré le 30/09 mais encore compté au tableau : gardé par l’app, signalé, question dans le mail', a.run(`(function(){render=function(){};saveState=function(){};
     S.settings=Object.assign(S.settings||{},{dimRendu:false,rhRendu:false,ferRendu:false,hsRendu:false});S.conges={};S.extraRendus={'2026-04-05':{dur:600},'2026-06-07':{dur:600}};
     _startApply(_startManual('2026-04-01',0,0));S.ephExtend={};S.ephExtend[${YM(2026, 4)}]=1;S.noAuto={};getDur=function(){return 600;};S.conges['2026-09-10']='rend';recalcAllMatelas();
     var U=function(y,m,d){return new Date(Date.UTC(y,m,d));};
     var rh={edition:new Date(2026,9,20,12),tot:{},lastWeek:0,weeks:{},lines:[{ym:${YM(2026, 4)},nature:'Dimanche',acq:600,cons:600,solde:0,stock:0,rep:1,valid:U(2026,6,31),validRep:U(2026,9,31),com:''},
       {ym:${YM(2026, 6)},nature:'Dimanche',acq:600,cons:0,solde:600,stock:0,rep:0,valid:U(2026,8,30),com:''}]};
-    rhCompareShow(rh,true);S.profile.rhTable={cells:{},name:'x'};var c=S.profile.rhCmp,m=_gmRh();return [JSON.stringify(c.lost),!!(m&&m.L.some(function(l){return l.indexOf('expiré le 30')>=0;}))];})()`),
-    ['[]', false]); }
+    rhCompareShow(rh,true);S.profile.rhTable={cells:{},name:'x'};var c=S.profile.rhCmp,m=_gmRh();return [JSON.stringify(c.lost),!!(m&&m.L.some(function(l){return l.indexOf('validité le 30')>=0;})),getExpYm(${YM(2026, 6)})>=${YM(2026, 10)}];})()`),
+    ['[{"ym":' + YM(2026, 6) + ',"min":600,"v":"2026-09-30"}]', true, true]); }
 
 // Annuler : instantané complet (rendus, départ, reprises du tableau), libellé gardé, rétablir
 { const a = load('2026-10-11');

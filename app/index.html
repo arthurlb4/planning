@@ -27,7 +27,7 @@ html{--bt-img:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' vi
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v7.04">
+<meta name="app-version" content="v7.05">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -1643,7 +1643,11 @@ function getBaseExpYm(ym){return ym+3;}
 // Rendu pris par le gestionnaire sur des heures acquises après coup (accepté depuis la comparaison) : ce mois-là lui est ouvert
 function _rbw(k,ym){var f=S.profile&&S.profile.rendFrom,r=f&&f[k];return r!=null&&+r===ym;}
 function _fifoYms(yms){return yms.map(Number).sort(function(a,b){return a-b;});}
-function getExpYm(ym){return ym+3+getEphExtensions(ym)*3;}
+// Heures dont la validité est passée mais que le dernier tableau Gestion compte encore dans son solde (« Alerte », sans report) :
+// le solde du tableau fait foi, elles restent utilisables jusqu'à la fin du mois qui suit ce tableau (un tableau plus récent
+// qui ne les compte plus les retire) ; signalées à part, comme « sans report officiel »
+function _rhGraceYm(ym){var g=S&&S.profile&&S.profile.rhGrace;return g&&g[ym]!=null?+g[ym]:null;}
+function getExpYm(ym){var b=ym+3+getEphExtensions(ym)*3,g=_rhGraceYm(ym);return g!=null?Math.max(b,g+1):b;}
 
 // BUILD GEN
 // ================================================================
@@ -2508,7 +2512,7 @@ function _recapCol(col,y){
   // un point par problème (ligne en écart non ignorée), comme la case Écart Paie de Suivi, et non un par bulletin
   // toutes les années : un écart non corrigé ne disparaît pas au 1er janvier
   Object.keys(S.bulletins||{}).forEach(function(k){n++;var c;try{c=_bulCompare(S.bulletins[k]);}catch(e){return;}if(c.status==='ecart'&&!_bulIgn(+k,c))bad+=(c.badList&&c.badList.length)||1;});
-  var c=S.profile&&S.profile.rhCmp;if(c){n++;if(Math.abs(_rhDe(c))>=2)bad++;} // tableau Gestion : tout écart non ignoré, favorable ou non
+  var c=S.profile&&S.profile.rhCmp;if(c){n++;bad+=c.n||0;} // tableau Gestion : ses différences et ses heures sans report, comme les lignes de Suivi
   try{var RS=_ruleScanNow(),nr=RS.hard.length+RS.rest.length+RS.streak.length;if(nr){n++;bad+=nr;}}catch(e){} // règles de travail : un par jour signalé, comme dans Suivi
   var val=!n?'—':bad?'⚠ '+bad:'✓',color=bad?'var(--amber)':'var(--green)',sub=!n?'bilan':bad?'à vérifier':'conforme';
   return col('Suivi',val,color,sub,'openMergedRenduCgModal(6,2)');
@@ -3494,11 +3498,13 @@ function _suiviSimple(y){
 // En haut de Suivi : les faits, une ligne chacun (différences, imports manquants, heures qui expirent), sans conseil
 function _suiviFacts(c,o,E){var L=[],M=function(ym){return _deMois(ym).replace(/^d[e’']\s?/,'')+(Math.floor(ym/12)!==NOW.getFullYear()?' '+Math.floor(ym/12):'');},
     row=function(ic,col,t,fn){L.push('<div onclick="'+fn+'" style="display:flex;align-items:center;gap:10px;padding:9px 2px;border-top:0.5px solid var(--border2);cursor:pointer"><i class="ti '+ic+'" style="color:'+col+';font-size:16px"></i><span style="flex:1;font-size:13px">'+t+'</span><i class="ti ti-chevron-right" style="color:var(--text3);font-size:14px"></i></div>');};
-  if(c&&c.n)row('ti-alert-circle','var(--amber)','Tableau Gestion : '+c.n+' différence'+(c.n>1?'s':''),'rhOpenFromRecap()');
+  var _nl=(c&&c.lost||[]).length,_nd=c?Math.max(0,(c.n||0)-_nl):0;
+  if(_nd)row('ti-alert-circle','var(--amber)','Tableau Gestion : '+_nd+' différence'+(_nd>1?'s':''),'rhOpenFromRecap()');
+  (c&&c.lost||[]).forEach(function(x){row('ti-clock-exclamation','var(--amber)',fmtMin(x.min)+' de '+M(x.ym)+' sans report officiel (expirées le '+new Date(x.v+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'})+')','rhOpenFromRecap()');});
   var exp=NOW.getDate()>=20?TODAY_YM:TODAY_YM-1;
   if(!o)row('ti-file-import','var(--blue)','Tableau Gestion : aucun importé','rhOpenFromRecap(true)');
   else{var T=null;try{T=_rhStored();}catch(e){}if(T){var ey=T.edition.getFullYear()*12+T.edition.getMonth();if(ey<exp)row('ti-file-import','var(--blue)','Tableau Gestion '+_deMois(exp)+' : pas importé','rhCompareOpen()');}}
-  if(E&&E.nBad)row('ti-alert-circle','var(--amber)','Paie : '+E.nBad+' bulletin'+(E.nBad>1?'s':'')+' avec écart','openBulletinsCal()');
+  if(E&&E.nBad)row('ti-alert-circle','var(--amber)','Paie : '+(E.nBad===1?'1 bulletin avec '+E.nPb+' écart'+(E.nPb>1?'s':''):E.nPb+' écart'+(E.nPb>1?'s':'')+' sur '+E.nBad+' bulletins'),'openBulletinsCal()');
   if(E&&E.nB&&!(S.bulletins||{})[TODAY_YM-1])row('ti-file-import','var(--blue)','Bulletin '+_deMois(TODAY_YM-1)+' : pas importé','window._bulFrom=\'recap\';importBulletins()');
   // règles de travail : du mois dernier aux 2 mois à venir
   try{var RS=_ruleScanNow(),fd=function(k){var d=new Date(k+'T12:00:00');return d.getDate()+' '+MCs[d.getMonth()];};
@@ -4299,8 +4305,8 @@ function _gmRh(){
   // option « heures valables un an » : l'app compte tous les reports, ceux du tableau ne sont pas à contester
   if(T&&T.lines&&!igRest&&!(S.profile&&S.profile.exp12)){var eY=T.edition.getFullYear()*12+T.edition.getMonth(),rr={};T.lines.forEach(function(l){if(l.ym<eY)rr[l.ym]=Math.max(rr[l.ym]||0,l.rep||0);});
     Object.keys(rr).map(Number).sort(function(a,b){return a-b;}).forEach(function(ym){var x=getEphExtAt(ym,eY);if(getExpYm(ym)>=TODAY_YM&&x!==rr[ym])L.push('- heures acquises en '+MF_(ym)+' : '+(x?'report de '+x*3+' mois':'aucun report')+' accordé, '+(rr[ym]?'report de '+rr[ym]*3+' mois':'aucun report')+' dans le tableau');});}
-  // heures laissées expirer alors que des heures valables plus longtemps ont été prises avant
-  (c.lost||[]).forEach(function(x){L.push('- '+fmtMin(x.min)+' acquises en '+MF_(x.ym)+' ont expiré le '+new Date(x.v+'T12:00:00').toLocaleDateString('fr-FR')+', alors que des heures valables plus longtemps ont été utilisées avant : merci de prendre d’abord les heures qui expirent le plus tôt et de rétablir ces heures');});
+  // heures expirées encore comptées au tableau, sans report : demande de confirmation ou de report
+  (c.lost||[]).forEach(function(x){L.push('- '+fmtMin(x.min)+' acquises en '+MF_(x.ym)+' ont dépassé leur validité le '+new Date(x.v+'T12:00:00').toLocaleDateString('fr-FR')+' et sont signalées en alerte, mais restent comptées dans le solde : peux-tu me confirmer qu’elles sont encore utilisables, ou les reporter ?');});
   // fav : seulement un solde en ma faveur (pas coché d'office)
   return L.length?{ed:new Date(c.ed+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}),L:L,fav:L.length===1&&e>=2}:null;}
 // Paie : écarts des bulletins non ignorés, ligne par ligne, dits concrètement (ce qui est noté sur le bulletin / ce que j'ai fait)
@@ -5494,6 +5500,10 @@ function _rhAutoUnaccept(rh,R){const pr=S.profile,ig=pr&&pr.ignRhC;if(!ig||!R)re
   return out;}
 function rhCompareShow(rh,silent){
   window._rhLast=rh;
+  // heures expirées encore comptées par ce tableau : gardées tant qu'il les compte (voir _rhGraceYm)
+  try{if(S.profile&&rh&&rh.lines&&rh.edition){var _ed=rh.edition,_eY=_ed.getFullYear()*12+_ed.getMonth(),_g={};
+    rh.lines.forEach(function(l){if(!l.nature||!(l.solde>0))return;var v=l.rep?(l.validRep||l.valid):l.valid;if(!v)return;var vd=new Date(v.getUTCFullYear(),v.getUTCMonth(),v.getUTCDate(),12);if(vd<_ed)_g[l.ym]=_eY;});
+    if(JSON.stringify(_g)!==JSON.stringify(S.profile.rhGrace||{})){if(Object.keys(_g).length)S.profile.rhGrace=_g;else delete S.profile.rhGrace;try{saveState();}catch(e){}}}}catch(e){}
   let R=_verifSim(rh);if(_rhAutoUnaccept(rh,R).length)R=_verifSim(rh);
   const fd=k=>new Date(k+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}).replace(/^1 /,'1er ');
   const head='<div class="sh"></div>'+(window._rvFrom?'<div class="nav-back" style="'+_navBackCss+'" onclick="_rvGoBack()">‹ '+(window._rvFrom==='rendus'?'Rendus':'Suivi')+'</div>':'')
@@ -5554,8 +5564,9 @@ function rhCompareShow(rh,silent){
   // heures que le tableau laisse expirer alors que l'app les a utilisées (le gestionnaire a pris avant des heures valables plus longtemps)
   const lostL=[];Object.keys(tLost).map(Number).sort((a,b)=>a-b).forEach(ym=>{const x=tLost[ym],d=x.min-(R.expA[ym]||0);if(!bad(d))return;lostL.push({ym,min:d,v:dk(x.v)});
     const later=Object.keys(tRep).map(Number).filter(m=>tRep[m]&&m!==ym&&!(tRem[m]>0)).map(MS);
-    card({t:fmtMin(d)+' de '+MS(ym)+' perdues au tableau',sub:'L’app les avait utilisées à temps · à faire rétablir',v:-d,
-      body:_suPts(['Le gestionnaire les a laissées expirer le '+fdS(x.v)+(later.length?', en utilisant avant des heures valables plus longtemps ('+later.join(', ')+')':''),'Demande prête dans le mail au gestionnaire'])});});
+    card({t:fmtMin(d)+' de '+MS(ym)+' sans report officiel',sub:'Expirées le '+fdS(x.v)+' · encore comptées au tableau',v:0,vt:fmtMin(d),info:true,
+      body:_suPts(['Le tableau les compte toujours dans le solde : l’app aussi, tant qu’il les compte','Aucun report n’a été accordé : elles peuvent être retirées à tout moment',
+        (later.length?'Des heures valables plus longtemps ont été prises avant ('+later.join(', ')+') : un report peut se demander':'À utiliser au plus vite, ou à faire reporter'),'Question prête dans le mail au gestionnaire'])});});
   // 5. Le reste : heures expirées à d'autres dates
   const restH=eH-acqE-consE;
   if(bad(restH)){const ig=_rhCIgn('rest',restH);if(ig)ignSum+=restH;
