@@ -27,7 +27,7 @@ html{--bt-img:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' vi
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v7.10">
+<meta name="app-version" content="v7.11">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -4809,6 +4809,50 @@ function _rhSheetHtml(cells){var cols={},rows={},ci=function(c){var n=0;for(var 
     for(var c=1;c<=nc;c++){var v=cells[cl(c)+r],num=typeof v==='number';t+='<td style="'+bd+';padding:2px 5px;white-space:nowrap;max-width:170px;overflow:hidden;text-overflow:ellipsis;text-align:'+(num?'right':'left')+'">'+(v==null||v===''?'':fv(v))+'</td>';}
     return t+'</tr>';}).join('')+'</table>';
   return '<div style="overflow:auto;-webkit-overflow-scrolling:touch;max-height:60vh;border-radius:12px;background:#fff">'+h+'</div>';}
+// Fichier original affiché tel quel dans l'onglet « Feuille Excel » : lu avec ExcelJS (chargé seulement ici) pour garder la mise
+// en page — largeurs de colonnes, cellules fusionnées, polices (gras, italique, couleur), bordures, alignements, formats de date,
+// mise en forme conditionnelle « contient le texte » (ex. « Alerte » en rouge) ; sinon la feuille recréée à partir des valeurs
+var _EXJS='https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+function _loadScript(u){return new Promise(function(ok,ko){if(window.ExcelJS)return ok();var t=document.createElement('script');t.src=u;t.onload=ok;t.onerror=function(){ko(new Error('Chargement impossible'));};document.head.appendChild(t);});}
+function _xlColor(c){if(!c)return null;if(c.argb)return '#'+String(c.argb).slice(-6);
+  var th=['FFFFFF','000000','E7E6E6','44546A','4472C4','ED7D31','A5A5A5','FFC000','5B9BD5','70AD47','0563C1','954F72'];
+  if(c.theme!=null&&th[c.theme]){var h=th[c.theme],t=c.tint||0,rgb=[0,2,4].map(function(i){var v=parseInt(h.substr(i,2),16);v=t<0?v*(1+t):v+(255-v)*t;return Math.max(0,Math.min(255,Math.round(v)));});return 'rgb('+rgb.join(',')+')';}
+  if(c.indexed!=null)return c.indexed===64||c.indexed===8?'#000':c.indexed===9?'#fff':null;return null;}
+function _xlBorder(b){if(!b||!b.style)return null;var w=b.style==='thick'?3:b.style==='medium'||b.style==='mediumDashed'?2:1,k=/dash|dot/i.test(b.style)?'dashed':b.style==='double'?'double':'solid';return w+'px '+k+' '+(_xlColor(b.color)||'#000');}
+function _xlText(cell){var v=cell.value;if(v==null)return '';if(typeof v==='object'&&!(v instanceof Date)){if(v.richText)return v.richText.map(function(x){return x.text;}).join('');if(v.text!=null)return String(v.text);if('result' in v)v=v.result;if(v&&v.error)return String(v.error);}
+  if(v==null)return '';var f=cell.numFmt||'';
+  var asDate=v instanceof Date||(typeof v==='number'&&/[dmy]/i.test(f.replace(/"[^"]*"/g,''))&&!/\[?h\]?:mm/i.test(f));
+  if(asDate){var d=v instanceof Date?v:_xlsxDate(v);return String(d.getUTCDate()).padStart(2,'0')+'/'+String(d.getUTCMonth()+1).padStart(2,'0')+'/'+d.getUTCFullYear();}
+  if(typeof v==='number'){var dec=/0\.(0+)/.exec(f);if(dec)return v.toFixed(dec[1].length).replace('.',',');return (Number.isInteger(v)?String(v):String(+v.toPrecision(10))).replace('.',',');}
+  if(typeof v==='boolean')return v?'VRAI':'FAUX';return String(v);}
+function _rhOrigHtml(wb){var ws=wb.worksheets[0];if(!ws)return '';
+  var nc=ws.columnCount||1,last=0;ws.eachRow({includeEmpty:false},function(row,r){row.eachCell({includeEmpty:false},function(c){var t=_xlText(c);if(t!==''&&t!=='0')last=Math.max(last,r);});});
+  var nr=Math.min(ws.rowCount,last+1),cw=[],span={},cov={};
+  for(var c=1;c<=nc;c++){var col=ws.getColumn(c);cw[c]=col.hidden?0:Math.round(((col.width||(ws.properties&&ws.properties.defaultColWidth)||10.71))*7+5);}
+  (ws.model&&ws.model.merges||[]).forEach(function(m){var a=m.split(':'),p=_xlsxSplit(a[0]),q=_xlsxSplit(a[1]||a[0]),cn=function(x){var n=0;for(var i=0;i<x.length;i++)n=n*26+x.charCodeAt(i)-64;return n;};
+    var r1=p.row,r2=q.row,c1=cn(p.col),c2=cn(q.col);span[r1+':'+c1]=[r2-r1+1,c2-c1+1];for(var r=r1;r<=r2;r++)for(var cc=c1;cc<=c2;cc++)if(r!==r1||cc!==c1)cov[r+':'+cc]=1;});
+  var cfs=[];(ws.conditionalFormattings||[]).forEach(function(cf){(cf.rules||[]).forEach(function(ru){var tx=ru.text||(/SEARCH\("([^"]*)"/.exec((ru.formulae||[])[0]||'')||[])[1];if(ru.type==='containsText'&&tx)cfs.push({ref:cf.ref,text:String(tx).toLowerCase(),st:ru.style||{}});});});
+  var inRef=function(ref,r,c){return String(ref).split(/\s+/).some(function(rg){var a=rg.split(':'),p=_xlsxSplit(a[0]),q=_xlsxSplit(a[1]||a[0]),cn=function(x){var n=0;for(var i=0;i<x.length;i++)n=n*26+x.charCodeAt(i)-64;return n;};return r>=p.row&&r<=q.row&&c>=cn(p.col)&&c<=cn(q.col);});};
+  var gl='1px solid #e1e1e1',h='<table style="zoom:.72;border-collapse:collapse;table-layout:fixed;background:#fff;color:#000;font:14.7px Calibri,Carlito,Arial,sans-serif"><colgroup>';
+  for(c=1;c<=nc;c++)h+='<col style="width:'+cw[c]+'px">';h+='</colgroup>';
+  for(var r=1;r<=nr;r++){var row=ws.getRow(r);if(row.hidden)continue;h+='<tr style="height:'+Math.round((row.height||15)*1.333)+'px">';
+    for(c=1;c<=nc;c++){if(cov[r+':'+c]||!cw[c])continue;var cell=row.getCell(c),st=cell.style||{},f=st.font||{},al=st.alignment||{},b=st.border||{},sp=span[r+':'+c],t=_xlText(cell);
+      var fill=st.fill&&st.fill.type==='pattern'&&st.fill.pattern==='solid'?_xlColor(st.fill.fgColor):null,col=_xlColor(f.color);
+      cfs.forEach(function(x){if(t&&inRef(x.ref,r,c)&&t.toLowerCase().indexOf(x.text)>=0){var xf=x.st.fill,xc=x.st.font&&x.st.font.color;if(xf)fill=_xlColor(xf.bgColor||xf.fgColor)||fill;if(xc)col=_xlColor(xc)||col;}});
+      var num=typeof cell.value==='number'||(cell.value&&typeof cell.value==='object'&&typeof cell.value.result==='number'),ha=al.horizontal||(num||cell.value instanceof Date?'right':'left');
+      var css='padding:0 3px;overflow:hidden;white-space:'+(al.wrapText?'normal':'nowrap')+';text-overflow:clip;vertical-align:'+(al.vertical==='middle'||al.vertical==='center'?'middle':al.vertical==='top'?'top':'bottom')+';text-align:'+(ha==='centerContinuous'?'center':ha)
+        +';border-left:'+(_xlBorder(b.left)||gl)+';border-right:'+(_xlBorder(b.right)||gl)+';border-top:'+(_xlBorder(b.top)||gl)+';border-bottom:'+(_xlBorder(b.bottom)||gl)
+        +(fill?';background:'+fill:'')+(col?';color:'+col:'')+(f.bold?';font-weight:700':'')+(f.italic?';font-style:italic':'')+(f.underline?';text-decoration:underline':'')+(f.size&&f.size!==11?';font-size:'+Math.round(f.size*1.333)+'px':'');
+      h+='<td'+(sp?' rowspan="'+sp[0]+'" colspan="'+sp[1]+'"':'')+' style="'+css+'">'+_h(t)+'</td>';}
+    h+='</tr>';}
+  return '<div style="overflow:auto;-webkit-overflow-scrolling:touch;max-height:62vh;border-radius:12px;background:#fff">'+h+'</table></div>';}
+async function _rhRenderOriginal(){var box=document.getElementById('rh-orig');if(!box)return;var at=(S.profile.rhFile||{}).at;
+  try{if(!window._rhOrig||window._rhOrig.at!==at){
+      var j=await (await fetch(CLOUD_API+'/file/rh/get',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({profileId:_aid})})).json(),fr=j&&j.file;if(!fr)throw new Error('absent');
+      var bin=atob(fr.b64),u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
+      await _loadScript(_EXJS);var wb=new ExcelJS.Workbook();await wb.xlsx.load(u.buffer);window._rhOrig={at:at,html:_rhOrigHtml(wb)};}
+    box=document.getElementById('rh-orig');if(box)box.innerHTML=window._rhOrig.html+'<div style="font-size:11px;color:var(--text3);margin:8px 2px 0">Le fichier tel qu’importé. Faire glisser pour le parcourir.</div>';}
+  catch(e){box=document.getElementById('rh-orig');if(box)box.innerHTML=_rhSheetHtml((S.profile.rhTable||{}).cells||{})+'<div style="font-size:11px;color:var(--text3);margin:8px 2px 0;line-height:1.4">Fichier original '+(e.message==='absent'?'pas encore gardé : réimporter le tableau pour le voir avec sa mise en page':'injoignable')+'. Ici, la feuille recréée à partir des valeurs.</div>';}}
 function _rhView(mode){var rh=_rhStored();if(!rh){_infoToast('Aucun tableau gardé');return;}
   if(mode==null)mode=window._rhViewMode||'sheet';window._rhViewMode=mode;
   var o=S.profile.rhTable||{},ed=rh.edition,fd=function(d){return d?new Date(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate(),12).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'2-digit'}):'';},
@@ -4827,11 +4871,12 @@ function _rhView(mode){var rh=_rhStored();if(!rh){_infoToast('Aucun tableau gard
     +(o.name?'<div style="text-align:center;font-size:11px;color:var(--text3);margin:-6px 0 12px">'+_h(o.name)+'</div>':'')
     +'<div style="display:flex;justify-content:center;margin:-2px 0 12px"><button class="adj-pill" style="width:auto;padding:0 14px;height:30px;font-size:12px" onclick="_rhOpenOriginal()"><i class="ti ti-file-spreadsheet" style="margin-right:5px"></i>Fichier original'+(S.profile.rhFile&&S.profile.rhFile.name===o.name?'':' (si gardé)')+'</button></div>'
     +'<div class="vseg" style="display:flex;background:var(--btn);border-radius:999px;padding:3px;gap:2px;margin:0 0 12px">'+[['sheet','Feuille Excel'],['read','Lu par l’app']].map(function(x){return '<button onclick="_rhView(\''+x[0]+'\')" style="flex:1;border:none;font:inherit;font-size:12.5px;padding:7px 4px;border-radius:999px;cursor:pointer;background:'+(mode===x[0]?'var(--btn-a,rgba(255,250,243,.16))':'none')+';color:'+(mode===x[0]?'var(--text)':'var(--text2)')+';font-weight:'+(mode===x[0]?'600':'400')+'">'+x[1]+'</button>';}).join('')+'</div>'
-    +(mode==='sheet'?_rhSheetHtml(o.cells||{})+'<div style="font-size:11px;color:var(--text3);margin:8px 2px 0;line-height:1.4">La feuille telle qu’importée (sans les lignes vides ni les couleurs). Faire glisser pour la parcourir.</div>':'')
+    +(mode==='sheet'?'<div id="rh-orig">'+(window._rhOrig&&S.profile.rhFile&&window._rhOrig.at===S.profile.rhFile.at?window._rhOrig.html:'<div style="padding:30px 0;text-align:center;font-size:12px;color:var(--text3)">Ouverture du fichier…</div>')+'</div>':'')
     +(mode==='sheet'?'':(tl.length?'<div class="hd-card" style="display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;padding:12px 14px;margin-bottom:10px">'+tl.map(function(x){return '<div style="font-size:11px;color:var(--text3)">'+x[0]+'<b style="display:block;font-size:14px;color:var(--text);font-weight:600">'+fmtMin(Math.round(x[1]))+'</b></div>';}).join('')+'</div>':'')
     +'<div class="hd-card" style="padding:4px 4px 6px;overflow-x:auto"><table style="width:100%;border-collapse:collapse"><tr><th style="'+th+';text-align:left">Mois</th><th style="'+th+';text-align:left">Nature</th><th style="'+th+'">Acquis</th><th style="'+th+'">Conso</th><th style="'+th+'">Solde</th><th style="'+th+'">Validité</th></tr>'+rows+'</table></div>'
     +'<div style="font-size:11px;color:var(--text3);margin:8px 2px 0;line-height:1.4">En orange : heures dont la validité est passée, encore comptées dans le solde (« Alerte » du gestionnaire).</div>')
     +'<button class="mcancel mclose" onclick="closeModal()">Fermer</button></div></div>';
+  if(mode==='sheet')_rhRenderOriginal();
 }
 function _rdOpenMonth(ym){_haptic();window._mmFrom='rendus';openMergedMoisModal(ym,0);}
 function _mmGoBack(){window._mmFrom=null;openMergedRenduCgModal(6,0);}
