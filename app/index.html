@@ -27,7 +27,7 @@ html{--bt-img:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' vi
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v7.06">
+<meta name="app-version" content="v7.07">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -4780,6 +4780,28 @@ function _rhStored(){
 // Ouverture depuis le Récap : le modal affiche « ‹ Récap » pour y revenir
 function rhOpenFrom(from,newFile){window._rvFrom=from;const rh=newFile?null:_rhStored();if(rh)rhCompareShow(rh);else rhCompareOpen();}
 function rhOpenFromRecap(newFile){rhOpenFrom('recap',newFile);}
+// Le tableau Gestion importé, tel que lu : totaux du haut, puis une ligne par acquisition (heures en h:mm), commentaires dessous ;
+// en orange, les heures encore comptées dont la validité est passée (« Alerte » du gestionnaire)
+function _rhView(){var rh=_rhStored();if(!rh){_infoToast('Aucun tableau gardé');return;}
+  var o=S.profile.rhTable||{},ed=rh.edition,fd=function(d){return d?new Date(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate(),12).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'2-digit'}):'';},
+    hm=function(v){return v?fmtMin(Math.round(v)):'—';},T=rh.tot||{},
+    tl=[['Stock au 31/12',T.stock2025],['Conso sur stock',T.consoStock],['Stock actualisé',T.stockAct],['Cumul acquisitions',T.cumAcq],['Cumul consommations',T.cumCons],['Cumul soldes',T.cumSol]].filter(function(x){return x[1]!=null;});
+  var th='padding:6px 6px;font-size:10.5px;font-weight:600;color:var(--text3);text-align:right;white-space:nowrap',td='padding:6px 6px;font-size:12px;text-align:right;white-space:nowrap;border-top:0.5px solid var(--border2)';
+  var rows=rh.lines.filter(function(l){return l.nature||l.acq||l.cons||l.solde||l.stock||l.com;}).map(function(l){
+    var v=l.rep?(l.validRep||l.valid):l.valid,vd=v?new Date(v.getUTCFullYear(),v.getUTCMonth(),v.getUTCDate(),12):null,al=l.solde>0&&vd&&vd<ed;
+    return '<tr'+(al?' style="background:rgba(200,128,72,.14)"':'')+'><td style="'+td+';text-align:left">'+_h(MCs[l.ym%12]+' '+String(Math.floor(l.ym/12)).slice(2))+'</td><td style="'+td+';text-align:left">'+_h(l.nature||(l.stock?'Stock':''))+'</td>'
+      +'<td style="'+td+'">'+hm(l.acq)+'</td><td style="'+td+'">'+hm(l.cons||l.stock)+'</td><td style="'+td+(l.solde>0?';font-weight:600':'')+'">'+hm(l.solde)+'</td>'
+      +'<td style="'+td+(al?';color:var(--orange)':'')+'">'+(v?fd(v):'')+(l.rep?' <span style="color:var(--text3)">(+'+l.rep*3+' m)</span>':'')+'</td></tr>'
+      +(l.com?'<tr'+(al?' style="background:rgba(200,128,72,.14)"':'')+'><td colspan="6" style="padding:0 6px 6px;font-size:11px;color:var(--text3);text-align:left;white-space:normal">'+_h(l.com)+'</td></tr>':'');}).join('');
+  document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet tabmod"><div class="sh"></div>'
+    +'<div class="nav-back" style="'+_navBackCss+'" onclick="rhOpenFromRecap()">‹ Tableau Gestion</div>'
+    +'<div class="st" style="text-align:center">Tableau du '+ed.toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'})+'</div>'
+    +(o.name?'<div style="text-align:center;font-size:11px;color:var(--text3);margin:-6px 0 12px">'+_h(o.name)+'</div>':'')
+    +(tl.length?'<div class="hd-card" style="display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;padding:12px 14px;margin-bottom:10px">'+tl.map(function(x){return '<div style="font-size:11px;color:var(--text3)">'+x[0]+'<b style="display:block;font-size:14px;color:var(--text);font-weight:600">'+fmtMin(Math.round(x[1]))+'</b></div>';}).join('')+'</div>':'')
+    +'<div class="hd-card" style="padding:4px 4px 6px;overflow-x:auto"><table style="width:100%;border-collapse:collapse"><tr><th style="'+th+';text-align:left">Mois</th><th style="'+th+';text-align:left">Nature</th><th style="'+th+'">Acquis</th><th style="'+th+'">Conso</th><th style="'+th+'">Solde</th><th style="'+th+'">Validité</th></tr>'+rows+'</table></div>'
+    +'<div style="font-size:11px;color:var(--text3);margin:8px 2px 0;line-height:1.4">En orange : heures dont la validité est passée, encore comptées dans le solde (« Alerte » du gestionnaire).</div>'
+    +'<button class="mcancel mclose" onclick="closeModal()">Fermer</button></div></div>';
+}
 function _rdOpenMonth(ym){_haptic();window._mmFrom='rendus';openMergedMoisModal(ym,0);}
 function _mmGoBack(){window._mmFrom=null;openMergedRenduCgModal(6,0);}
 function _rvGoBack(){const t=window._rvFrom==='rendus'?0:2;window._rvFrom=null;openMergedRenduCgModal(6,t);}
@@ -5593,7 +5615,7 @@ function rhCompareShow(rh,silent){
       const mon=_rhWeekMon(asOf.getFullYear(),w);return t3('S'+w,c,a,'',1,_rhCIgn('wkm'+(mon.getFullYear()*12+mon.getMonth())+'s'+w,a-c)?'repris':'');}).join('')+'</table>':'');
   const html='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet rv-sheet tabmod">'+head
     +'<div style="font-size:11px;color:var(--text3);text-align:center;margin:0 0 8px">tableau du '+fd(dk(asOf))+' · départ : '+_startTxt(R.st).split(' · ')[0]+'</div>'
-    +'<div style="display:flex;justify-content:center;margin:0 0 12px"><button class="adj-pill" style="width:auto;padding:0 14px;height:30px;font-size:12px" onclick="rhCompareOpen()"><i class="ti ti-file-import" style="margin-right:4px"></i>Importer un nouveau tableau</button></div>'
+    +'<div style="display:flex;justify-content:center;gap:8px;margin:0 0 12px"><button class="adj-pill" style="width:auto;padding:0 14px;height:30px;font-size:12px" onclick="_rhView()"><i class="ti ti-table" style="margin-right:4px"></i>Voir le tableau</button><button class="adj-pill" style="width:auto;padding:0 14px;height:30px;font-size:12px" onclick="rhCompareOpen()"><i class="ti ti-file-import" style="margin-right:4px"></i>Importer</button></div>'
     +'<div class="hd-card" style="padding:10px 14px 12px">'
     +'<table style="width:100%;border-collapse:collapse;table-layout:fixed"><colgroup><col><col style="width:62px"><col style="width:72px"><col style="width:62px"></colgroup>'
     +'<tr style="font-size:10.5px;color:var(--text3)"><td></td><td style="text-align:right">tableau</td><td style="text-align:right">app</td><td style="text-align:right">écart</td></tr>'
