@@ -27,7 +27,7 @@ html{--bt-img:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' vi
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v7.15">
+<meta name="app-version" content="v7.16">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -3512,7 +3512,8 @@ function _bilanCount(y,toMonth,toDay){
 var _foldOpen={},_foldAnim={'fold-annee':function(el){_cptAnim(el.querySelector('#cpt-card'));}};
 // Anneaux des compteurs : ils se remplissent et les chiffres défilent à chaque ouverture
 function _cptAnim(el){if(!el)return;
-  var cl=el.querySelector('.cv-l'),ca=el.querySelector('.cv-a'),cp=el.querySelector('.cv-p');
+  el.querySelectorAll('.cv-u').forEach(function(x){if(!x.getTotalLength)return;var L=x.getTotalLength();x.style.transition='none';x.style.strokeDasharray=L;x.style.strokeDashoffset=L;void x.getBoundingClientRect();requestAnimationFrame(function(){x.style.transition='stroke-dashoffset 1.1s cubic-bezier(.25,.8,.25,1) .15s';x.style.strokeDashoffset=0;});});
+  var cl=el.querySelector('.cv-l:not(.cv-u)'),ca=el.querySelector('.cv-a'),cp=el.querySelector('.cv-p');
   if(cl&&cl.getTotalLength){var L=cl.getTotalLength();cl.style.transition='none';cl.style.strokeDasharray=L;cl.style.strokeDashoffset=L;if(ca){ca.style.transition='none';ca.style.opacity=0;}if(cp){cp.style.transition='none';cp.style.opacity=0;}
     void cl.getBoundingClientRect();requestAnimationFrame(function(){cl.style.transition='stroke-dashoffset 1.1s cubic-bezier(.25,.8,.25,1)';cl.style.strokeDashoffset=0;
       if(ca){ca.style.transition='opacity .6s ease .5s';ca.style.opacity=1;}if(cp){cp.style.transition='opacity .2s ease 1s';cp.style.opacity=1;}});}
@@ -3657,13 +3658,16 @@ function _ringSvg(size,rings,wr){
   return h+'</svg>';
 }
 _ringSvg.n=0;
-// Courbe des heures de rendus acquises mois par mois (année en cours, l'an dernier en pâle, mois à venir en pointillé)
+// Courbe des heures de rendus mois par mois : acquises (vert) et consommées par les rendus posés (corail, à leur date) ;
+// mois à venir en pointillé (prévu, rendus déjà posés). Un appui sur un mois : ses chiffres (et l'an dernier).
+var _CV_C='#e07a6e';
 function _cvHtml(y){
   var gen=buildGen(),tot=function(ym){var g=gen[ym]||{};return (g.dim||0)+(g.rh||0)+(g.fer||0)+(g.hs||0)+(g.ram||0)+(g.extra||0);};
+  var used={};Object.keys(S.conges||{}).forEach(function(k){var t=S.conges[k];if(t!=='rend'&&t!=='rend-hist')return;var d=new Date(k+'T12:00:00'),ym=d.getFullYear()*12+d.getMonth();used[ym]=(used[ym]||0)+getDur(d);});
   // avant le départ du calcul : pas de chiffres, pas de trait
   var c0=(S.profile&&S.profile.ephSoldeCreatedYM!=null)?S.profile.ephSoldeCreatedYM:2026*12,f0=Math.max(0,c0-y*12);
-  var a=[],b=[],i;for(i=0;i<12;i++){a.push(tot(y*12+i));b.push(tot((y-1)*12+i));}
-  var hasB=c0<=(y-1)*12&&b.some(function(v){return v>0;}),mx=Math.max.apply(null,a.concat(hasB?b:[]).concat([60])),W=300,H=84,P=6;
+  var a=[],u=[],b=[],bu=[],i;for(i=0;i<12;i++){a.push(tot(y*12+i));u.push(used[y*12+i]||0);b.push(tot((y-1)*12+i));bu.push(used[(y-1)*12+i]||0);}
+  var hasB=c0<=(y-1)*12&&b.concat(bu).some(function(v){return v>0;}),mx=Math.max.apply(null,a.slice(f0).concat(u.slice(f0)).concat([60])),W=300,H=84,P=6;
   var X=function(i){return W*(i+.5)/12;},Y=function(v){return P+(H-2*P)*(1-v/mx);};
   // trait lissé passant par les points (Catmull-Rom)
   var path=function(v,from,to){var d='',pts=[];for(var k=from;k<=to;k++)pts.push([X(k),Y(v[k])]);
@@ -3671,31 +3675,33 @@ function _cvHtml(y){
       var c1=[p1[0]+(q[0]-p0[0])/6,p1[1]+(q[1]-p0[1])/6],c2=[q[0]-(p3[0]-p1[0])/6,q[1]-(p3[1]-p1[1])/6];
       c1[1]=Math.min(H-P,Math.max(P,c1[1]));c2[1]=Math.min(H-P,Math.max(P,c2[1]));
       d+='C'+c1[0].toFixed(1)+' '+c1[1].toFixed(1)+' '+c2[0].toFixed(1)+' '+c2[1].toFixed(1)+' '+q[0].toFixed(1)+' '+q[1].toFixed(1);});return d;};
-  var cur=y===NOW.getFullYear()?NOW.getMonth():y<NOW.getFullYear()?11:-1;if(f0>11)cur=-1;var sum=a.slice(f0,cur+1).reduce(function(s,v){return s+v;},0);
-  var h='<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" aria-hidden="true">'
-    +'<defs><linearGradient id="cvg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--rend-text)" stop-opacity=".28"/><stop offset="1" stop-color="var(--rend-text)" stop-opacity="0"/></linearGradient></defs>';
+  var cur=y===NOW.getFullYear()?NOW.getMonth():y<NOW.getFullYear()?11:-1;if(f0>11)cur=-1;
+  var sum=function(v){return v.slice(f0,cur+1).reduce(function(s,x){return s+x;},0);},sA=sum(a),sU=sum(u);
+  var h='<svg viewBox="0 0 '+W+' '+H+'" aria-hidden="true">'
+    +'<defs><linearGradient id="cvg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--rend-text)" stop-opacity=".24"/><stop offset="1" stop-color="var(--rend-text)" stop-opacity="0"/></linearGradient></defs>';
   [.25,.5,.75].forEach(function(f){h+='<line x1="0" x2="'+W+'" y1="'+(P+(H-2*P)*f)+'" y2="'+(P+(H-2*P)*f)+'" stroke="var(--border2)" stroke-width=".5"/>';});
-  if(hasB)h+='<path d="'+path(b,0,11)+'" fill="none" stroke="var(--text3)" stroke-opacity=".45" stroke-width="1.3"/>';
-  if(cur>=f0){var line=path(a,f0,cur);
-    if(cur>f0)h+='<path class="cv-a" d="'+line+'L'+X(cur).toFixed(1)+' '+H+'L'+X(f0).toFixed(1)+' '+H+'Z" fill="url(#cvg)"/>';
-    h+='<path class="cv-l" d="'+line+'" fill="none" stroke="var(--rend-text)" stroke-width="2.2" stroke-linecap="round"/>';}
-  if(cur<11&&f0<=11)h+='<path d="'+path(a,Math.max(f0,cur),11)+'" fill="none" stroke="var(--rend-text)" stroke-opacity=".55" stroke-width="1.6" stroke-dasharray="2 4" stroke-linecap="round"/>';
-  if(cur>=f0)h+='<circle class="cv-p" cx="'+X(cur).toFixed(1)+'" cy="'+Y(a[cur]).toFixed(1)+'" r="3.4" fill="var(--rend-text)" stroke="var(--bg2)" stroke-width="1.5"/>';
-  h+='<circle id="cv-sel" r="4" fill="none" stroke="var(--text)" stroke-width="1.2" style="display:none"/>';
+  h+='<line id="cv-sel" x1="0" x2="0" y1="0" y2="'+H+'" stroke="var(--text3)" stroke-width="1" stroke-dasharray="2 3" style="display:none"/>';
+  var serie=function(v,col,cls,area){if(cur>=f0){var line=path(v,f0,cur);
+      if(area&&cur>f0)h+='<path class="cv-a" d="'+line+'L'+X(cur).toFixed(1)+' '+H+'L'+X(f0).toFixed(1)+' '+H+'Z" fill="url(#cvg)"/>';
+      h+='<path class="'+cls+'" d="'+line+'" fill="none" stroke="'+col+'" stroke-width="2.2" stroke-linecap="round"/>';}
+    if(cur<11&&f0<=11)h+='<path d="'+path(v,Math.max(f0,cur),11)+'" fill="none" stroke="'+col+'" stroke-opacity=".55" stroke-width="1.6" stroke-dasharray="2 4" stroke-linecap="round"/>';
+    if(cur>=f0)h+='<circle class="cv-p" cx="'+X(cur).toFixed(1)+'" cy="'+Y(v[cur]).toFixed(1)+'" r="3.2" fill="'+col+'" stroke="var(--bg2)" stroke-width="1.5"/>';};
+  serie(u,_CV_C,'cv-l cv-u',false);serie(a,'var(--rend-text)','cv-l',true);
   for(i=f0;i<12;i++)h+='<rect x="'+(W*i/12)+'" y="0" width="'+(W/12)+'" height="'+H+'" fill="transparent" style="cursor:pointer" onclick="_cvTap('+i+')"/>';
   h+='</svg>';
   var since=f0?'depuis '+MC[f0]:'depuis janvier';
-  window._cvD={y:y,a:a,b:b,hasB:hasB,cur:cur,sum:sum,X:X,Y:Y,since:since};
+  window._cvD={y:y,a:a,u:u,b:b,bu:bu,hasB:hasB,cur:cur,sA:sA,sU:sU,X:X,since:since};
   var ML='JFMAMJJASOND';
-  return '<div class="cv" id="cv"><div class="cv-hd"><span id="cv-cap">Heures de rendus acquises · '+since+'</span><b id="cv-val">'+fmtMin(sum)+'</b></div>'+h
+  return '<div class="cv" id="cv"><div class="cv-hd"><span id="cv-cap">Rendus '+since+'</span><b id="cv-val">'+_cvVal(sA,sU)+'</b></div>'+h
     +'<div class="cv-x">'+ML.split('').map(function(c,k){return '<span'+(k===cur?' class="on"':'')+'>'+c+'</span>';}).join('')+'</div>'
-    +'<div class="cv-lg"><span><i style="background:var(--rend-text)"></i>'+y+'</span>'+(hasB?'<span><i style="background:var(--text3);opacity:.6"></i>'+(y-1)+'</span>':'')+(cur<11?'<span><i style="background:repeating-linear-gradient(90deg,var(--rend-text) 0 2px,transparent 2px 5px)"></i>prévu</span>':'')+'</div></div>';
+    +'<div class="cv-lg"><span><i style="background:var(--rend-text)"></i>acquises</span><span><i style="background:'+_CV_C+'"></i>posées</span>'+(cur<11?'<span><i style="background:repeating-linear-gradient(90deg,var(--text3) 0 2px,transparent 2px 5px)"></i>à venir</span>':'')+'</div></div>';
 }
-// Appui sur un mois de la courbe : ses heures (et celles du même mois l'an dernier) ; nouvel appui : retour au total
+function _cvVal(a,u){return '<span style="color:var(--rend-text)">+'+fmtMin(a)+'</span> <span style="color:'+_CV_C+'">−'+fmtMin(u)+'</span>';}
+// Appui sur un mois : ses heures acquises et posées (l'an dernier en plus) ; nouvel appui : retour au total
 function _cvTap(i){var D=window._cvD,c=document.getElementById('cv-sel'),cap=document.getElementById('cv-cap'),val=document.getElementById('cv-val');if(!D||!c)return;
-  if(D.sel===i){D.sel=null;c.style.display='none';cap.textContent='Heures de rendus acquises · '+D.since;val.textContent=fmtMin(D.sum);return;}
-  D.sel=i;_haptic();c.setAttribute('cx',D.X(i));c.setAttribute('cy',D.Y(D.a[i]));c.style.display='';
-  cap.textContent=MC[i].charAt(0).toUpperCase()+MC[i].slice(1)+' '+D.y+(i>D.cur?' (prévu)':'')+(D.hasB?' · '+(D.y-1)+' : '+fmtMin(D.b[i]):'');val.textContent=fmtMin(D.a[i]);}
+  if(D.sel===i){D.sel=null;c.style.display='none';cap.textContent='Rendus '+D.since;val.innerHTML=_cvVal(D.sA,D.sU);return;}
+  D.sel=i;_haptic();c.setAttribute('x1',D.X(i));c.setAttribute('x2',D.X(i));c.style.display='';
+  cap.textContent=MC[i].charAt(0).toUpperCase()+MC[i].slice(1)+' '+D.y+(i>D.cur?' (à venir)':'')+(D.hasB?' · '+(D.y-1)+' : +'+fmtMin(D.b[i])+' −'+fmtMin(D.bu[i]):'');val.innerHTML=_cvVal(D.a[i],D.u[i]);}
 function _cptHtml(){
   // Année en cours : à ce jour, sur toute l'année du planning
   var t=new Date(),y=t.getFullYear(),a=_bilanCount(y,t.getMonth(),t.getDate()),b=_bilanCount(y,11,31);
