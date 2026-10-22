@@ -27,7 +27,7 @@ html{--bt-img:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' vi
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v7.19">
+<meta name="app-version" content="v7.20">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -814,7 +814,6 @@ i.ti.ico-pop{display:inline-block;animation:icoPop .5s cubic-bezier(.3,1.4,.5,1)
 .cp-hd{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}.cp-hd>b{font-size:14px}.cp-t{font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.07em}.cp-s{font-size:11px;color:var(--text3);margin-top:2px}.cp-note{font-size:11px;color:var(--text3);line-height:1.4;margin-top:10px}
 .cv{margin-top:14px;padding-top:12px;border-top:0.5px solid var(--border2)}.cv-hd{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px}
 .cv-hd span{font-size:11px;color:var(--text3)}.cv-hd b{font-size:13px;font-weight:600;color:var(--rend-text);white-space:nowrap}.cv svg{display:block;width:100%;height:auto;overflow:visible}
-.cv-seg{display:flex;gap:4px;margin-bottom:10px}.cv-seg button{flex:1;min-height:30px;border-radius:999px;border:0.5px solid var(--border2);background:none;color:var(--text3);font:500 12px var(--font);cursor:pointer}.cv-seg button.on{background:rgba(255,250,243,.09);color:var(--text)}
 .cv-x{display:grid;grid-template-columns:repeat(12,1fr);font-size:9.5px;color:var(--text3);text-align:center;margin-top:3px}.cv-x .on{color:var(--text);font-weight:600}
 .cv-lg{display:flex;gap:12px;font-size:10px;color:var(--text3);margin-top:6px}.cv-lg i{display:inline-block;width:12px;height:2px;border-radius:1px;vertical-align:middle;margin-right:4px}
 .cp-big{display:flex;align-items:center;gap:16px}.cp-big .ring{opacity:.75}.cp-ls{flex:1;min-width:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px 4px}
@@ -3700,15 +3699,14 @@ function _rendRestYear(y){
   }
   while(out.length<12)out.unshift(0);return out;
 }
-function _cvHtml(y,mode){
-  mode=mode||window._cvMode||'flux';
+function _cvHtml(y){
   var gen=buildGen(),tot=function(ym){var g=gen[ym]||{};return (g.dim||0)+(g.rh||0)+(g.fer||0)+(g.hs||0)+(g.ram||0)+(g.extra||0);};
   var used={};Object.keys(S.conges||{}).forEach(function(k){var t=S.conges[k];if(t!=='rend'&&t!=='rend-hist')return;var d=new Date(k+'T12:00:00'),ym=d.getFullYear()*12+d.getMonth();used[ym]=(used[ym]||0)+getDur(d);});
   // avant le départ du calcul : pas de chiffres, pas de trait
   var c0=(S.profile&&S.profile.ephSoldeCreatedYM!=null)?S.profile.ephSoldeCreatedYM:2026*12,f0=Math.max(0,c0-y*12);
   var a=[],u=[],b=[],bu=[],i;for(i=0;i<12;i++){a.push(tot(y*12+i));u.push(used[y*12+i]||0);b.push(tot((y-1)*12+i));bu.push(used[(y-1)*12+i]||0);}
-  var R=mode==='rest'?_rendRestYear(y):null;
-  var hasB=!R&&c0<=(y-1)*12&&b.concat(bu).some(function(v){return v>0;}),mx=Math.max.apply(null,(R?R.slice(f0):a.slice(f0).concat(u.slice(f0))).concat([60])),W=300,H=84,P=6;
+  var R=_rendRestYear(y);
+  var hasB=c0<=(y-1)*12&&b.concat(bu).some(function(v){return v>0;}),mx=Math.max.apply(null,R.slice(f0).concat(a.slice(f0)).concat(u.slice(f0)).concat([60])),W=300,H=110,P=6;
   var X=function(i){return W*(i+.5)/12;},Y=function(v){return P+(H-2*P)*(1-v/mx);};
   // trait lissé passant par les points (Catmull-Rom)
   var path=function(v,from,to){var d='',pts=[];for(var k=from;k<=to;k++)pts.push([X(k),Y(v[k])]);
@@ -3719,7 +3717,7 @@ function _cvHtml(y,mode){
   var cur=y===NOW.getFullYear()?NOW.getMonth():y<NOW.getFullYear()?11:-1;if(f0>11)cur=-1;
   var sum=function(v){return v.slice(f0,cur+1).reduce(function(s,x){return s+x;},0);},sA=sum(a),sU=sum(u);
   var h='<svg viewBox="0 0 '+W+' '+H+'" aria-hidden="true">'
-    +'<defs><linearGradient id="cvg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="'+(R?'#8fbbe0':'var(--rend-text)')+'" stop-opacity=".24"/><stop offset="1" stop-color="'+(R?'#8fbbe0':'var(--rend-text)')+'" stop-opacity="0"/></linearGradient></defs>';
+    +'<defs><linearGradient id="cvg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8fbbe0" stop-opacity=".2"/><stop offset="1" stop-color="#8fbbe0" stop-opacity="0"/></linearGradient></defs>';
   [.25,.5,.75].forEach(function(f){h+='<line x1="0" x2="'+W+'" y1="'+(P+(H-2*P)*f)+'" y2="'+(P+(H-2*P)*f)+'" stroke="var(--border2)" stroke-width=".5"/>';});
   h+='<line id="cv-sel" x1="0" x2="0" y1="0" y2="'+H+'" stroke="var(--text3)" stroke-width="1" stroke-dasharray="2 3" style="display:none"/>';
   var serie=function(v,col,cls,area){if(cur>=f0){var line=path(v,f0,cur);
@@ -3727,30 +3725,22 @@ function _cvHtml(y,mode){
       h+='<path class="'+cls+'" d="'+line+'" fill="none" stroke="'+col+'" stroke-width="2.2" stroke-linecap="round"/>';}
     if(cur<11&&f0<=11)h+='<path d="'+path(v,Math.max(f0,cur),11)+'" fill="none" stroke="'+col+'" stroke-opacity=".55" stroke-width="1.6" stroke-dasharray="2 4" stroke-linecap="round"/>';
     if(cur>=f0)h+='<circle class="cv-p" cx="'+X(cur).toFixed(1)+'" cy="'+Y(v[cur]).toFixed(1)+'" r="3.2" fill="'+col+'" stroke="var(--bg2)" stroke-width="1.5"/>';};
-  if(R)serie(R,'#8fbbe0','cv-l',true);else{serie(u,_CV_C,'cv-l cv-u',false);serie(a,'var(--rend-text)','cv-l',true);}
+  serie(R,'#8fbbe0','cv-l cv-u',true);serie(u,_CV_C,'cv-l cv-u',false);serie(a,'var(--rend-text)','cv-l',false);
   for(i=f0;i<12;i++)h+='<rect x="'+(W*i/12)+'" y="0" width="'+(W/12)+'" height="'+H+'" fill="transparent" style="cursor:pointer" onclick="_cvTap('+i+')"/>';
   h+='</svg>';
   var since=f0?'depuis '+MC[f0]:'depuis janvier';
   window._cvD={y:y,a:a,u:u,b:b,bu:bu,hasB:hasB,cur:cur,sA:sA,sU:sU,X:X,since:since,R:R};
   var ML='JFMAMJJASOND';
-  var seg='<div class="cv-seg"><button class="'+(R?'':'on')+'" onclick="_cvSwitch(\'flux\')">Mois par mois</button><button class="'+(R?'on':'')+'" onclick="_cvSwitch(\'rest\')">Restantes</button></div>';
-  if(R)return '<div class="cv" id="cv">'+seg+'<div class="cv-hd"><span id="cv-cap">Heures restantes '+(cur>=0?'en '+MC[cur]:'')+'</span><b id="cv-val" style="color:#8fbbe0">'+(cur>=0?fmtMin(R[cur]):'—')+'</b></div>'+h
+  return '<div class="cv" id="cv"><div class="cv-hd"><span id="cv-cap">Rendus '+since+'</span><b id="cv-val">'+_cvVal(sA,sU,cur>=0?R[cur]:null)+'</b></div>'+h
     +'<div class="cv-x">'+ML.split('').map(function(c,k){return '<span'+(k===cur?' class="on"':'')+'>'+c+'</span>';}).join('')+'</div>'
-    +'<div class="cv-lg"><span><i style="background:#8fbbe0"></i>restantes (après rendus posés et heures expirées)</span></div></div>';
-  return '<div class="cv" id="cv">'+seg+'<div class="cv-hd"><span id="cv-cap">Rendus '+since+'</span><b id="cv-val">'+_cvVal(sA,sU)+'</b></div>'+h
-    +'<div class="cv-x">'+ML.split('').map(function(c,k){return '<span'+(k===cur?' class="on"':'')+'>'+c+'</span>';}).join('')+'</div>'
-    +'<div class="cv-lg"><span><i style="background:var(--rend-text)"></i>acquises</span><span><i style="background:'+_CV_C+'"></i>posées</span>'+(cur<11?'<span><i style="background:repeating-linear-gradient(90deg,var(--text3) 0 2px,transparent 2px 5px)"></i>à venir</span>':'')+'</div></div>';
+    +'<div class="cv-lg"><span><i style="background:var(--rend-text)"></i>acquises</span><span><i style="background:'+_CV_C+'"></i>posées</span><span><i style="background:#8fbbe0"></i>restantes</span>'+(cur<11?'<span><i style="background:repeating-linear-gradient(90deg,var(--text3) 0 2px,transparent 2px 5px)"></i>à venir</span>':'')+'</div></div>';
 }
-function _cvVal(a,u){return '<span style="color:var(--rend-text)">+'+fmtMin(a)+'</span> <span style="color:'+_CV_C+'">−'+fmtMin(u)+'</span>';}
+function _cvVal(a,u,r){return '<span style="color:var(--rend-text)">+'+fmtMin(a)+'</span> <span style="color:'+_CV_C+'">−'+fmtMin(u)+'</span>'+(r!=null?' <span style="color:#8fbbe0">· reste '+fmtMin(r)+'</span>':'');}
 // Appui sur un mois : ses heures acquises et posées (l'an dernier en plus) ; nouvel appui : retour au total
-function _cvSwitch(m){if(window._cvMode===m||(!window._cvMode&&m==='flux'))return;window._cvMode=m;_haptic();var o=document.getElementById('cv');if(!o)return;
-  var t=document.createElement('div');t.innerHTML=_cvHtml(window._cvD.y,m);var n=t.firstChild;o.replaceWith(n);_cvAnim(n);}
 function _cvTap(i){var D=window._cvD,c=document.getElementById('cv-sel'),cap=document.getElementById('cv-cap'),val=document.getElementById('cv-val');if(!D||!c)return;
-  if(D.R){if(D.sel===i){D.sel=null;c.style.display='none';cap.textContent='Heures restantes '+(D.cur>=0?'en '+MC[D.cur]:'');val.textContent=D.cur>=0?fmtMin(D.R[D.cur]):'—';return;}
-    D.sel=i;_haptic();c.setAttribute('x1',D.X(i));c.setAttribute('x2',D.X(i));c.style.display='';cap.textContent='Restantes en '+MC[i]+(i>D.cur?' (prévu)':'');val.textContent=fmtMin(D.R[i]);return;}
-  if(D.sel===i){D.sel=null;c.style.display='none';cap.textContent='Rendus '+D.since;val.innerHTML=_cvVal(D.sA,D.sU);return;}
+  if(D.sel===i){D.sel=null;c.style.display='none';cap.textContent='Rendus '+D.since;val.innerHTML=_cvVal(D.sA,D.sU,D.cur>=0?D.R[D.cur]:null);return;}
   D.sel=i;_haptic();c.setAttribute('x1',D.X(i));c.setAttribute('x2',D.X(i));c.style.display='';
-  cap.textContent=MC[i].charAt(0).toUpperCase()+MC[i].slice(1)+' '+D.y+(i>D.cur?' (à venir)':'')+(D.hasB?' · '+(D.y-1)+' : +'+fmtMin(D.b[i])+' −'+fmtMin(D.bu[i]):'');val.innerHTML=_cvVal(D.a[i],D.u[i]);}
+  cap.textContent=MC[i].charAt(0).toUpperCase()+MC[i].slice(1)+' '+D.y+(i>D.cur?' (à venir)':'')+(D.hasB?' · '+(D.y-1)+' : +'+fmtMin(D.b[i])+' −'+fmtMin(D.bu[i]):'');val.innerHTML=_cvVal(D.a[i],D.u[i],D.R[i]);}
 function _cptHtml(){
   // Année en cours : à ce jour, sur toute l'année du planning
   var t=new Date(),y=t.getFullYear(),a=_bilanCount(y,t.getMonth(),t.getDate()),b=_bilanCount(y,11,31);
