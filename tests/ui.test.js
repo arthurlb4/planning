@@ -204,6 +204,16 @@ function mockApi(route) {
       ok('Admin : bouton cycles coordination passés', await p.evaluate(() => { switchPool('coord'); const b = [...document.querySelectorAll('#cycles-list button')].some(x => /2025-2026 et Été 2026/.test(x.textContent)); switchPool('antenne'); return b; }));
       ok('Admin : cycles', await p.evaluate(() => document.querySelectorAll('#cycles-list .cycle-card').length > 0));
       await ctx.close(); }
+    // iPhone (iOS 26.5+) : interrupteur invisible glissé sous le doigt dans le bouton ; l'action du bouton part une fois
+    { const { ctx, p } = await page({ userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.5 Mobile/15E148 Safari/604.1' },
+        () => { localStorage.setItem('auth_token', 'test'); localStorage.setItem('auth_user', JSON.stringify({ userId: 'u1', name: 'Test' })); Object.defineProperty(Navigator.prototype, 'vibrate', { value: undefined, configurable: true }); });
+      await p.goto(base + '/app/'); await p.waitForTimeout(1500);
+      await p.evaluate(() => { const s = document.getElementById('setup'); if (s) s.remove(); document.body.classList.remove('su-on'); closeModal();
+        document.getElementById('modal-root').innerHTML = '<div class="overlay"><div class="sheet"><button class="mb" id="hb" onclick="window._hb=(window._hb||0)+1" style="width:200px;height:44px">Test</button></div></div>'; });
+      await p.tap('#hb'); await p.waitForTimeout(200);
+      const r = await p.evaluate(() => [window._hb, !!document.querySelector('#hb>.hap-sw[switch]'), performance.now() - (window._hapAt || -1e5) < 2000]);
+      ok('iPhone : appui sur un bouton → interrupteur sous le doigt (vibration), action faite une fois', r[0] === 1 && r[1] && r[2], JSON.stringify(r));
+      await ctx.close(); }
   } catch (e) { ok('Tests des écrans sans exception', false, e.stack); }
 
   ok('Aucune erreur JavaScript', !errors.length, errors.slice(0, 5).join('\n        '));
