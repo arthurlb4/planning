@@ -66,6 +66,7 @@ function mockApi(route) {
     await p.evaluate(() => { const s = document.getElementById('setup'); if (s) s.remove(); if (!_aid) { _aid = 'p1'; _profs = { p1: S }; } render(); });
     ok('Calendrier affiché', await p.evaluate(() => document.querySelectorAll('#cal .dci[data-key]').length >= 28));
     await p.evaluate(() => { try { Object.keys(localStorage).filter(k => k.startsWith('pl_lsig')).forEach(k => localStorage.removeItem(k)); } catch (e) {} return _lineSync(); });
+    ok('Tableau Gestion : fichier original envoyé à part', await p.evaluate(async () => { await _rhUpload(new File([new Uint8Array([80, 75, 3, 4, 1, 2])], 'tableau.xlsx')); return !!(S.profile.rhFile && S.profile.rhFile.name === 'tableau.xlsx'); }) && SENT['/file/rh/save'] && SENT['/file/rh/save'].b64 === 'UEsDBAEC', JSON.stringify(SENT['/file/rh/save']));
     const lr = SENT['/lines/register'];
     if (process.env.SHOW) console.log(JSON.stringify(lr));
     ok('Ligne de la semaine envoyée au serveur', lr && /^S\d+$/.test(lr.ligne) && lr.pool && lr.weekVacs.length === 7, JSON.stringify(lr));

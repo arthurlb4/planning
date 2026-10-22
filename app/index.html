@@ -27,7 +27,7 @@ html{--bt-img:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' vi
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v7.09">
+<meta name="app-version" content="v7.10">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -4770,6 +4770,19 @@ const _RH_NAT_LBL={fer:'Férié',dim:'Dimanche',rh:'RH',hs:'RCR (HS)',extra:'Ext
 function _rhStoreKey(){return 'pl_rh_cells_'+((window._authUser&&window._authUser.email)||'');}
 function _rhCompact(cells){const byRow={};Object.keys(cells).forEach(r=>{const x=_xlsxSplit(r);(byRow[x.row]=byRow[x.row]||[]).push(r);});
   const keep={};Object.values(byRow).forEach(rs=>{if(rs.some(r=>{const v=cells[r];return v!==''&&v!==0&&v!=='0'&&v!=null;}))rs.forEach(r=>{keep[r]=cells[r];});});return keep;}
+// Fichier Excel original du tableau (mise en page d'origine) : envoyé au serveur à part, ouvert ou partagé depuis l'app
+async function _rhUpload(f){if(!f||!window._authToken||!_aid||!S.profile)return;
+  try{var u=new Uint8Array(await f.arrayBuffer());if(u.length>2e6)return;var b='';for(var i=0;i<u.length;i+=32768)b+=String.fromCharCode.apply(null,u.subarray(i,i+32768));
+    var r=await fetch(CLOUD_API+'/file/rh/save',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({profileId:_aid,name:f.name,b64:btoa(b)})});
+    if(r.ok){S.profile.rhFile={name:f.name,at:Date.now()};saveState();}}catch(e){}}
+async function _rhOpenOriginal(){
+  var j=null;try{j=await (await fetch(CLOUD_API+'/file/rh/get',{method:'POST',headers:cloudHeaders(),body:JSON.stringify({profileId:_aid})})).json();}catch(e){}
+  var fr=j&&j.file;if(!fr){_infoToast('Fichier original indisponible : réimporter le tableau');return;}
+  var bin=atob(fr.b64),u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
+  var type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',file=new File([u],fr.name||'tableau.xlsx',{type:type});
+  // iPhone : feuille de partage (Ouvrir avec, Enregistrer dans Fichiers, Imprimer → PDF) ; sinon téléchargement
+  try{if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:file.name});return;}}catch(e){if(e&&e.name==='AbortError')return;}
+  var url=URL.createObjectURL(file),a=document.createElement('a');a.href=url;a.download=file.name;document.body.appendChild(a);a.click();a.remove();setTimeout(function(){URL.revokeObjectURL(url);},60000);}
 function _rhStore(cells,name){if(!S.profile)return;S.profile.rhTable={cells:_rhCompact(cells),name,at:Date.now()};saveState();try{localStorage.removeItem(_rhStoreKey());}catch(e){}}
 function _rhStored(){
   let o=S.profile&&S.profile.rhTable;
@@ -4812,6 +4825,7 @@ function _rhView(mode){var rh=_rhStored();if(!rh){_infoToast('Aucun tableau gard
     +'<div class="nav-back" style="'+_navBackCss+'" onclick="rhOpenFromRecap()">‹ Tableau Gestion</div>'
     +'<div class="st" style="text-align:center">Tableau du '+ed.toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'})+'</div>'
     +(o.name?'<div style="text-align:center;font-size:11px;color:var(--text3);margin:-6px 0 12px">'+_h(o.name)+'</div>':'')
+    +'<div style="display:flex;justify-content:center;margin:-2px 0 12px"><button class="adj-pill" style="width:auto;padding:0 14px;height:30px;font-size:12px" onclick="_rhOpenOriginal()"><i class="ti ti-file-spreadsheet" style="margin-right:5px"></i>Fichier original'+(S.profile.rhFile&&S.profile.rhFile.name===o.name?'':' (si gardé)')+'</button></div>'
     +'<div class="vseg" style="display:flex;background:var(--btn);border-radius:999px;padding:3px;gap:2px;margin:0 0 12px">'+[['sheet','Feuille Excel'],['read','Lu par l’app']].map(function(x){return '<button onclick="_rhView(\''+x[0]+'\')" style="flex:1;border:none;font:inherit;font-size:12.5px;padding:7px 4px;border-radius:999px;cursor:pointer;background:'+(mode===x[0]?'var(--btn-a,rgba(255,250,243,.16))':'none')+';color:'+(mode===x[0]?'var(--text)':'var(--text2)')+';font-weight:'+(mode===x[0]?'600':'400')+'">'+x[1]+'</button>';}).join('')+'</div>'
     +(mode==='sheet'?_rhSheetHtml(o.cells||{})+'<div style="font-size:11px;color:var(--text3);margin:8px 2px 0;line-height:1.4">La feuille telle qu’importée (sans les lignes vides ni les couleurs). Faire glisser pour la parcourir.</div>':'')
     +(mode==='sheet'?'':(tl.length?'<div class="hd-card" style="display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;padding:12px 14px;margin-bottom:10px">'+tl.map(function(x){return '<div style="font-size:11px;color:var(--text3)">'+x[0]+'<b style="display:block;font-size:14px;color:var(--text);font-weight:600">'+fmtMin(Math.round(x[1]))+'</b></div>';}).join('')+'</div>':'')
@@ -4836,11 +4850,11 @@ async function _rhFile(f,mode){
   try{const cells=await _xlsxRead(f);const rh=_rhParse(cells,f.name),pr=S.profile||{},st=pr.start,ek=dk(_rhEd(rh));
     // départ demandé, ou tableau pas plus récent que le départ : proposer d'en faire le départ du calcul
     if(mode==='start'||!st||ek<=st.d){if(mode==='start'||confirm('Tableau du '+_rhEd(rh).toLocaleDateString('fr-FR')+' : '+(st?(ek===st.d?'même date que votre départ':'plus ancien que votre départ')+' ('+_startTxt(st)+').\n\n':'')+'En faire le départ du calcul ?\n\nSes soldes (matelas, heures, reports) deviennent ceux du départ ; les rendus posés après sa dernière semaine notée sont décomptés par l’app.')){
-        pushUndo('Départ du calcul changé');_startApply(_startFromTable(rh));render();closeModal();_infoToast('✓ Départ : tableau du '+_rhEd(rh).toLocaleDateString('fr-FR',{day:'numeric',month:'short'}));
+        pushUndo('Départ du calcul changé');_startApply(_startFromTable(rh));_rhUpload(f);render();closeModal();_infoToast('✓ Départ : tableau du '+_rhEd(rh).toLocaleDateString('fr-FR',{day:'numeric',month:'short'}));
         const L=_rhStored();if(L&&dk(_rhEd(L))>ek){window._rvFrom=null;rhCompareShow(L);}}
       return;}
     // plus récent : il sert à vérifier, rien d'autre ne change
-    _rhStore(cells,f.name);rhCompareShow(rh);}
+    _rhStore(cells,f.name);_rhUpload(f);rhCompareShow(rh);}
   catch(e){console.warn(e);showBlockAlert('Lecture impossible',e.message||'Ce fichier n’a pas pu être lu.');}}
 // ── Import du tableau RH : un seul bouton. Premier tableau : on en repart ; ensuite : comparaison, avec « Repartir de ce tableau » en bas ──
 function rhImportOpen(){rhCompareOpen();}
@@ -5025,7 +5039,7 @@ function _suRhPick(which){
   var inp=_fileInput();inp.accept='.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   inp.onchange=async function(){var f=inp.files&&inp.files[0];if(!f)return;
     SU.rhBusy=which;if(which)SU.rh0Err=null;else{SU.rhErr=null;SU.rhMode='imp';}_suDraw();
-    try{var cells=await _xlsxRead(f),rh=_rhParse(cells,f.name),P=_rhImportPlan(rh),o={cells:cells,name:f.name,rh:rh,P:P};
+    try{var cells=await _xlsxRead(f),rh=_rhParse(cells,f.name),P=_rhImportPlan(rh),o={cells:cells,name:f.name,rh:rh,P:P,file:f};
       if(which){if(SU.rh&&P.ed>=SU.rh.P.ed)throw new Error('Ce tableau n’est pas plus ancien que le plus récent.');SU.rh0=o;}
       else{SU.rh=o;SU.anim='rh';SU.v.mat=P.matelas!=null?fmtMin(P.matelas):'';SU.v.eph=fmtMin(Math.round(P.total));if(SU.rh0&&SU.rh0.P.ed>=P.ed)SU.rh0=null;}}
     catch(e){var msg=(e&&e.message)||'Ce fichier n’a pas pu être lu.';if(which)SU.rh0Err=msg;else{SU.rh=null;SU.rhMode=null;SU.rhErr=msg;}}
@@ -5144,9 +5158,9 @@ function _suDone(){
   var mat=v.mat?parseHM(v.mat):0,eph=v.eph?parseHM(v.eph):0;
   if(SU.rh&&SU.rhMode==='imp'){var P=SU.rh.P;
     if(D==null){ // à partir de maintenant : on repart du tableau, valeurs retouchées à la main
-      _rhStore(SU.rh.cells,SU.rh.name);window._rhLast=SU.rh.rh;_startApply(_startFromTable(SU.rh.rh));}
+      _rhStore(SU.rh.cells,SU.rh.name);_rhUpload(SU.rh.file);window._rhLast=SU.rh.rh;_startApply(_startFromTable(SU.rh.rh));}
     else{ // départ = le mois choisi, soldes reconstitués d'après le tableau ; il sert ensuite à vérifier
-      var g=_suGestYM();_rhStore(SU.rh.cells,SU.rh.name);window._rhLast=SU.rh.rh;_startApply(_startFromMonth(SU.rh.rh,dk(new Date(Math.floor(g/12),g%12,1,12))));}}
+      var g=_suGestYM();_rhStore(SU.rh.cells,SU.rh.name);_rhUpload(SU.rh.file);window._rhLast=SU.rh.rh;_startApply(_startFromMonth(SU.rh.rh,dk(new Date(Math.floor(g/12),g%12,1,12))));}}
   else _startApply(_startManual(dk(new Date(Math.floor(TODAY_YM/12),TODAY_YM%12,1,12)),mat,eph)); // soldes saisis = ceux du 1er de ce mois
   // paie
   var yms=Object.keys(SU.bul).map(Number).sort(function(a,b){return a-b;}),ref=yms.length?yms[yms.length-1]:TODAY_YM;
@@ -5194,7 +5208,7 @@ function _rhImportPromptIfNeeded(){
   const pre=_regFiles('pl_rh_file');
   // tableau choisi à l'inscription : lu et appliqué directement (annulable depuis Réglages)
   if(pre){try{localStorage.removeItem('pl_rh_import_prompt');}catch(e){}
-    (async function(){try{const cells=await _xlsxRead(pre[0]);const rh=_rhParse(cells,pre[0].name);_rhStore(cells,pre[0].name);window._rhLast=rh;_startApply(_startFromTable(rh));render();}
+    (async function(){try{const cells=await _xlsxRead(pre[0]);const rh=_rhParse(cells,pre[0].name);_rhStore(cells,pre[0].name);_rhUpload(pre[0]);window._rhLast=rh;_startApply(_startFromTable(rh));render();}
       catch(e){_infoToast('Tableau Gestion illisible : à réimporter depuis Réglages');}})();
     return true;}
   if(!f||document.getElementById('modal-root').innerHTML)return false;

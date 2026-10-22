@@ -499,6 +499,7 @@ async function handle(request, env, ctx) {
       if (user.profiles) {
         for (var pid of Object.keys(user.profiles)) {
           await env.PLANNING_DB.delete('data:' + userId + ':' + pid);
+          await env.PLANNING_DB.delete('rhfile:' + userId + ':' + pid);
         }
       }
       // Remove from lines map
@@ -1031,6 +1032,7 @@ async function handle(request, env, ctx) {
           for (var pid of Object.keys(user.profiles)) {
             await env.PLANNING_DB.delete('data:' + userId + ':' + pid);
             await env.PLANNING_DB.delete('weekvacs2:' + userId + ':' + pid);
+            await env.PLANNING_DB.delete('rhfile:' + userId + ':' + pid);
           }
         }
         // Delete email lookup + user record
@@ -1053,6 +1055,20 @@ async function handle(request, env, ctx) {
     // DATA
     // ============================================================
 
+    // Fichier Excel original du tableau Gestion (pour l'ouvrir avec sa mise en page) : gardé à part des données, un par profil
+    if (path === '/file/rh/save') {
+      var session = await verifySession(request, env);
+      if (!session) return resp({ error: 'Non authentifie' }, 401);
+      if (!body.profileId || typeof body.b64 !== 'string' || !body.b64 || body.b64.length > 3000000) return resp({ error: 'Fichier invalide' }, 400);
+      await env.PLANNING_DB.put('rhfile:' + session.userId + ':' + body.profileId, JSON.stringify({ name: String(body.name || 'tableau.xlsx').slice(0, 120), b64: body.b64, at: Date.now() }));
+      return resp({ ok: true });
+    }
+    if (path === '/file/rh/get') {
+      var session = await verifySession(request, env);
+      if (!session) return resp({ error: 'Non authentifie' }, 401);
+      var fr = await env.PLANNING_DB.get('rhfile:' + session.userId + ':' + (body.profileId || ''), { type: 'json' });
+      return resp({ file: fr || null });
+    }
     if (path === '/data/save') {
       var session = await verifySession(request, env);
       if (!session) return resp({ error: 'Non authentifie' }, 401);
@@ -1145,6 +1161,7 @@ async function handle(request, env, ctx) {
       var user = await env.PLANNING_DB.get('user:' + session.userId, { type: 'json' });
       if (user && user.profiles) { delete user.profiles[profileId]; await env.PLANNING_DB.put('user:' + session.userId, JSON.stringify(user)); }
       await env.PLANNING_DB.delete('data:' + session.userId + ':' + profileId);
+      await env.PLANNING_DB.delete('rhfile:' + session.userId + ':' + profileId);
       return resp({ ok: true });
     }
 
