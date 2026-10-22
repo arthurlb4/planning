@@ -1,4 +1,4 @@
-const SW_VERSION = '10.3';
+const SW_VERSION = '10.4';
 const PAGES = 'pl-pages-v1';   // dernière version de l'app, pour l'ouvrir hors connexion
 const ASSETS = 'pl-assets-v1'; // icônes (CDN)
 
@@ -66,7 +66,7 @@ self.addEventListener('notificationclick', function(event) {
   event.notification.close();
   var url = new URL((event.notification.data && event.notification.data.url) || './', self.registration.scope).href;
   event.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(list) {
-    for (var i = 0; i < list.length; i++) { if (list[i].url.indexOf(self.registration.scope) === 0 && 'focus' in list[i]) return list[i].focus(); }
+    for (var i = 0; i < list.length; i++) { if (list[i].url.indexOf(self.registration.scope) === 0 && 'focus' in list[i]) { if (/[?&]swap=1/.test(url)) list[i].postMessage({ open: 'swap' }); return list[i].focus(); } }
     return clients.openWindow(url);
   }));
 });

@@ -27,6 +27,9 @@ function mockApi(route) {
   else if (p === '/admin/users') body = { users: [{ userId: 'a', name: 'Alice' }, { userId: 'b', name: 'Bob' }, { userId: 'c', name: 'Chloé' }] };
   else if (p === '/admin/lines') body = { lines: { S2: [{ userId: 'a', userName: 'Alice', profileName: 'Alice', weekVacs: [] }], S10: [{ userId: 'b', userName: 'Bob', profileName: 'Bob', pool: 'cadre', weekVacs: [] }] } };
   else if (p === '/pending-line-choice') body = { pending: [] };
+  else if (p.startsWith('/swap/')) { const d = new Date(Date.now() + 6 * 864e5).toISOString().slice(0, 10);
+    body = { me: 'u1', offers: [{ id: 'o1', uid: 'b', name: 'Bob', date: d, vac: 'M1', hours: '6h00–13h00', kind: 'cede', note: 'Rendez-vous médical', at: Date.now(), answers: [], done: null },
+      { id: 'o2', uid: 'u1', name: 'Test', date: d, vac: 'D2', hours: '13h00–20h00', kind: 'echange', note: '', at: Date.now(), answers: [{ uid: 'c', name: 'Chloé', msg: 'contre mon mardi', at: Date.now() }], done: null }] }; }
   else if (p === '/announce') body = { announce: { id: 't1', text: 'Message de test', pool: 'all', at: 0 } };
   else if (p === '/admin/line-choices') body = { choices: [{ cycle: { id: 'c', name: 'Cycle test', pool: 'antenne', startDate: '2026-08-31' }, pending: ['Alice'], done: ['Bob'] }] };
   route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
@@ -82,6 +85,18 @@ function mockApi(route) {
         alert('Libellé requis.'); return [txt, await a, await b, document.getElementById('undo-toast').textContent]; });
       ok('Question dans l’app (titre, détail, réponse)', r[0] === 'Question ?|Détail|Oui' && r[1] === true && r[2] === '4,5' && r[3] === 'Libellé requis.', JSON.stringify(r));
       ok('Aucune fenêtre du navigateur', nat === 0); await p.waitForTimeout(300); }
+    // Bourse aux échanges : liste de l'équipe, mes propositions, point rouge, proposition depuis le menu du jour
+    { const r = await p.evaluate(async () => { localStorage.removeItem('swap_seen'); await _swapApi('/swap/list'); const dot = document.getElementById('swap-btn').classList.contains('sw-new');
+        openSwaps(0); await new Promise(r => setTimeout(r, 300)); const team = [...document.querySelectorAll('#sw-list .swc')].map(e => e.textContent).join('|');
+        _SW.tab = 1; _swapList(); const mine = document.querySelector('#sw-list .swc-a') && document.querySelector('#sw-list .swc-a').textContent;
+        const dot2 = document.getElementById('swap-btn').classList.contains('sw-new'); closeModal();
+        const k = Object.keys(document.querySelectorAll('#cal .dci[data-key]')).length && [...document.querySelectorAll('#cal .dci[data-key]')].map(e => e.dataset.key).find(k => k > dk(NOW) && getVac(new Date(k + 'T12:00:00')).vac && getVac(new Date(k + 'T12:00:00')).vac !== 'RH' && !(S.conges || {})[k]);
+        _swapPostModal(k); const post = !!document.getElementById('sw-note'); document.getElementById('sw-k1').click(); await _swapPost(k, 'X', '');
+        const sent = window._lastSwapBody; closeModal(); return [dot, team, mine, dot2, post, k]; });
+      ok('Échanges : point rouge sur le bouton, effacé une fois la liste vue', r[0] && !r[3], JSON.stringify([r[0], r[3]]));
+      ok('Échanges : jour proposé par l’équipe (cédé, nom, ma vacation ce jour-là)', /Cédé/.test(r[1]) && /Bob/.test(r[1]) && /Ce jour-là, vous/.test(r[1]) && /Je le prends/.test(r[1]), r[1]);
+      ok('Échanges : réponses à mes propositions, avec Choisir', /Chloé/.test(r[2] || '') && /Choisir/.test(r[2] || ''), r[2]);
+      ok('Échanges : proposer un jour (cédé) envoie la date', r[4] && SENT['/swap/post'] && SENT['/swap/post'].date === r[5] && SENT['/swap/post'].kind === 'cede' && SENT['/swap/post'].pool === 'antenne', JSON.stringify(SENT['/swap/post'])); }
     const lr = SENT['/lines/register'];
     if (process.env.SHOW) console.log(JSON.stringify(lr));
     ok('Ligne de la semaine envoyée au serveur', lr && /^S\d+$/.test(lr.ligne) && lr.pool && lr.weekVacs.length === 7, JSON.stringify(lr));

@@ -1717,6 +1717,64 @@ async function handle(request, env, ctx) {
     // ============================================================
     // NOTIFICATIONS PUSH
     // ============================================================
+    // ============================================================
+    // BOURSE AUX ÉCHANGES : propositions de jours entre collègues d'une même équipe
+    // Clé swaps:<équipe> → liste ; une proposition disparaît après sa date
+    // ============================================================
+    if (path === '/swap/list' || path === '/swap/post' || path === '/swap/answer' || path === '/swap/close') {
+      var session = await verifySession(request, env);
+      if (!session) return resp({ error: 'Non authentifie' }, 401);
+      var pool = ['antenne', 'cadre', 'coord'].indexOf(body.pool) >= 0 ? body.pool : 'antenne';
+      var skey = 'swaps:' + pool, sBefore = await env.PLANNING_DB.get(skey);
+      var offers = sBefore ? JSON.parse(sBefore) : [], today = parisToday();
+      offers = offers.filter(function(o) { return o.date >= today; });
+      var me = session.userId, who = cleanName(body.userName) || me, notify = [];
+      var dLbl = function(d) { return new Date(d + 'T12:00:00Z').toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }); };
+      if (path === '/swap/post') {
+        var date = String(body.date || '');
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < today) return resp({ error: 'Date invalide' }, 400);
+        if (offers.filter(function(o) { return o.uid === me; }).length >= 8) return resp({ error: 'Huit propositions au plus' }, 400);
+        if (offers.some(function(o) { return o.uid === me && o.date === date; })) return resp({ error: 'Ce jour est déjà proposé' }, 400);
+        var off = { id: crypto.randomUUID().slice(0, 8), uid: me, name: who, date: date, vac: cleanName(body.vac).slice(0, 12), hours: cleanName(body.hours).slice(0, 24),
+          kind: body.kind === 'cede' ? 'cede' : 'echange', note: cleanName(body.note ? String(body.note).slice(0, 120) : ''), at: Date.now(), answers: [], done: null };
+        offers.push(off);
+        // toute l'équipe (inscrite sur une ligne), sauf l'auteur
+        var lm = await env.PLANNING_DB.get('global:lines_used', { type: 'json' }) || {}, seen = {};
+        for (var ln in lm) for (var en of lm[ln]) if ((en.pool || 'antenne') === pool && en.userId !== me) seen[en.userId] = 1;
+        notify = Object.keys(seen).map(function(u) { return { uid: u, msg: { title: (off.kind === 'cede' ? 'Jour cédé' : 'Échange proposé') + ' · ' + off.vac, body: who + ' : ' + dLbl(date) + (off.hours ? ', ' + off.hours : '') + (off.note ? ' — ' + off.note : ''), tag: 'swap-' + off.id, url: './?swap=1' } }; });
+      }
+      if (path === '/swap/answer' || path === '/swap/close') {
+        var off2 = offers.find(function(o) { return o.id === body.id; });
+        if (!off2) return resp({ error: 'Proposition retirée ou passée' }, 404);
+        if (path === '/swap/answer') {
+          if (off2.uid === me || off2.done) return resp({ error: 'Réponse impossible' }, 400);
+          var had = off2.answers.some(function(a) { return a.uid === me; });
+          off2.answers = off2.answers.filter(function(a) { return a.uid !== me; });
+          if (!body.remove) {
+            off2.answers.push({ uid: me, name: who, msg: cleanName(body.msg ? String(body.msg).slice(0, 120) : ''), at: Date.now() });
+            if (!had) notify = [{ uid: off2.uid, msg: { title: 'Réponse à votre proposition', body: who + ' pour le ' + dLbl(off2.date) + (body.msg ? ' — ' + cleanName(String(body.msg).slice(0, 120)) : ''), tag: 'swap-a-' + off2.id, url: './?swap=1' } }];
+          }
+        } else {
+          if (off2.uid !== me) return resp({ error: 'Pas votre proposition' }, 403);
+          var pick = body.with ? off2.answers.find(function(a) { return a.uid === body.with; }) : null;
+          if (pick) { off2.done = { uid: pick.uid, name: pick.name, at: Date.now() };
+            notify = [{ uid: pick.uid, msg: { title: 'Échange conclu', body: off2.name + ' a choisi votre réponse pour le ' + dLbl(off2.date) + '. À enregistrer dans les deux plannings.', tag: 'swap-d-' + off2.id, url: './?swap=1' } }]; }
+          else offers = offers.filter(function(o) { return o !== off2; });
+        }
+      }
+      offers.sort(function(a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : a.at - b.at; });
+      var sJson = JSON.stringify(offers);
+      if (sJson !== (sBefore || '[]')) await env.PLANNING_DB.put(skey, sJson);
+      // notifications envoyées après la réponse
+      if (notify.length) ctx.waitUntil((async function() {
+        for (var n of notify) {
+          var pr = await env.PLANNING_DB.get('push:u:' + n.uid, { type: 'json' });
+          for (var sb of ((pr && pr.subs) || [])) { try { await sendPush(env, sb, n.msg); } catch (e) {} }
+        }
+      })());
+      return resp({ offers: offers, me: me });
+    }
+
     if (path === '/push/key') {
       var v = await getVapid(env);
       return resp({ key: v.pub });
