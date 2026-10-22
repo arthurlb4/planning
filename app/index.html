@@ -27,7 +27,7 @@ html{--bt-img:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' vi
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v7.14">
+<meta name="app-version" content="v7.15">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -322,7 +322,8 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 #lp-menu .lp-i{font-size:12px;line-height:1.5;color:var(--text2);padding:0 12px 7px;margin-bottom:3px;border-bottom:.5px solid rgba(255,250,243,.08)}#lp-menu .lp-i b{color:var(--text);font-weight:600}
 #lp-menu button{display:flex;align-items:center;gap:10px;width:100%;padding:11px 12px;border:none;border-radius:11px;background:none;color:var(--text);font:500 15px var(--font);text-align:left;cursor:pointer}
 #lp-menu button:active{background:rgba(255,250,243,.09)}
-.hap-sw{position:absolute;inset:0;width:100%;height:100%;margin:0;padding:0;opacity:.001;z-index:1;cursor:pointer;border-radius:inherit}
+.hap-sw{position:absolute;top:0;left:0;width:100%;height:100%;margin:0;padding:0;opacity:0;z-index:1;cursor:pointer;clip-path:inset(0 round 12px)}
+button:disabled>.hap-sw{pointer-events:none}
 /* Bourse aux échanges */
 .sw-dot{position:absolute;top:3px;right:3px;width:8px;height:8px;border-radius:50%;background:#e5534b;box-shadow:0 0 0 2px var(--bg);display:none}#swap-btn.sw-new .sw-dot{display:block}
 .swc{padding:12px 14px;border-radius:16px;background:rgba(255,250,243,.05);border:0.5px solid var(--border2);margin-bottom:8px}
@@ -3905,6 +3906,7 @@ document.addEventListener('DOMContentLoaded',function(){try{new ResizeObserver(_
 // Retour haptique léger : vibration sur Android ; sur iPhone (iOS 18+), cliquer le libellé d'un interrupteur « switch »
 // fait jouer le retour haptique du système. Méthode de la bibliothèque ios-haptics : élément neuf à chaque fois, masqué, retiré aussitôt
 function _haptic(){
+  if(_hapOff())return;
   try{if(navigator.vibrate&&navigator.vibrate(8))return;}catch(e){}
   if(Date.now()-(window._hapAt||0)<500)return; // déjà joué par l'interrupteur sous le doigt (voir plus bas)
   try{var l=document.createElement('label');l.setAttribute('aria-hidden','true');l.style.display='none';
@@ -3912,21 +3914,24 @@ function _haptic(){
     document.head.appendChild(l);l.click();document.head.removeChild(l);}catch(e){}
 }
 // iOS 26.5 et plus : l'interrupteur « cliqué » par le code ne vibre plus, seul un vrai appui du doigt sur un interrupteur
-// le fait. Au moment où le doigt se pose sur un bouton d'action, un interrupteur invisible est glissé dedans, sur toute
-// sa surface : l'appui le bascule (vibration du système) puis remonte jusqu'au bouton, dont l'action part comme avant.
+// le fait. Chaque bouton d'action reçoit, dès qu'il apparaît, un interrupteur natif invisible sur toute sa surface :
+// l'appui le bascule (vibration du système) puis remonte jusqu'au bouton, dont l'action part comme avant.
+// (Glissé au moment où le doigt se pose, il arrivait trop tard : iOS a déjà choisi l'élément touché.)
 var _HAP_SEL='#lp-menu button,#ask .ok,.sheet .mb,.swc-b button,.swc-a button,.sw-seg button,[data-hap]';
-(function(){
-  var ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
-  if(!ios||navigator.vibrate)return;
-  document.addEventListener('touchstart',function(e){
-    var b=e.target&&e.target.closest&&e.target.closest(_HAP_SEL);
-    if(!b||b.disabled||b.querySelector('input:not(.hap-sw),select,textarea')||b.closest('label'))return;
-    if(b.querySelector(':scope>.hap-sw'))return;
+function _hapOff(){try{return localStorage.getItem('hap_off')==='1';}catch(e){return false;}}
+function _hapArm(){
+  document.querySelectorAll(_HAP_SEL).forEach(function(b){
+    if(b.querySelector(':scope>.hap-sw')||b.querySelector('input,select,textarea')||b.closest('label'))return;
     if(getComputedStyle(b).position==='static')b.style.position='relative';
     var i=document.createElement('input');i.type='checkbox';i.setAttribute('switch','');i.className='hap-sw';i.tabIndex=-1;i.setAttribute('aria-hidden','true');
     i.addEventListener('click',function(){window._hapAt=Date.now();});
-    b.appendChild(i);
-  },{capture:true,passive:true});
+    b.appendChild(i);});
+}
+(function(){
+  var ios=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+  if(!ios||navigator.vibrate||_hapOff())return;
+  var q=false;function go(){q=false;_hapArm();}
+  new MutationObserver(function(){if(!q){q=true;requestAnimationFrame(go);}}).observe(document.documentElement,{childList:true,subtree:true});
 })();
 function _swipeGo(nd,go){
   _haptic();
@@ -8197,6 +8202,8 @@ function openSettingsModal(tab){
     +'<div style="display:flex;align-items:center;flex-shrink:0">'+(_pOn?'<button class="adj-pill" style="width:auto;height:26px;padding:0 12px;font-size:11px;margin-right:8px;flex-shrink:0" onclick="pushTest(this)">Tester</button>':'')
     +'<label class="tgl"><input type="checkbox" id="push-toggle"'+(_pOn?' checked':'')+' onchange="pushToggle(this)"><span class="tgl-s"></span></label></div></div>'
     // ─ Compte ─
+    +'<div class="srow" '+_sr+'><div class="slbl">Vibrations <span style="display:block;color:var(--text3);font-size:10.5px;margin-top:2px;line-height:1.35">petit retour aux appuis (iPhone : Retour haptique du système activé)</span></div>'
+    +'<input type="checkbox" switch id="hap-tgl"'+(_hapOff()?'':' checked')+' onchange="try{localStorage.setItem(\'hap_off\',this.checked?\'0\':\'1\');}catch(e){}" style="flex-shrink:0;width:auto;height:auto;margin:0"></div>'
     +_sh+'Compte</div>'+_co
     +'<div class="srow" '+_sr+'><div class="slbl">Changer d’utilisateur</div><button '+_bS+' onclick="signOut()">Changer</button></div>'
     +'<div class="srow" '+_sr+'><div class="slbl" style="color:var(--red)">Supprimer le profil</div><button class="mb del" style="width:120px;height:32px;min-height:32px;padding:0;font-size:12px;border:none" onclick="deleteCurrentProfile()">Supprimer</button></div>'

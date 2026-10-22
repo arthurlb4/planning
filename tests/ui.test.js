@@ -210,9 +210,10 @@ function mockApi(route) {
       await p.goto(base + '/app/'); await p.waitForTimeout(1500);
       await p.evaluate(() => { const s = document.getElementById('setup'); if (s) s.remove(); document.body.classList.remove('su-on'); closeModal();
         document.getElementById('modal-root').innerHTML = '<div class="overlay"><div class="sheet"><button class="mb" id="hb" onclick="window._hb=(window._hb||0)+1" style="width:200px;height:44px">Test</button></div></div>'; });
+      await p.waitForTimeout(150); const pre = await p.evaluate(() => !!document.querySelector('#hb>.hap-sw[switch]'));
       await p.tap('#hb'); await p.waitForTimeout(200);
       const r = await p.evaluate(() => [window._hb, !!document.querySelector('#hb>.hap-sw[switch]'), Date.now() - (window._hapAt || 0) < 2000]);
-      ok('iPhone : appui sur un bouton → interrupteur sous le doigt (vibration), action faite une fois', r[0] === 1 && r[1] && r[2], JSON.stringify(r));
+      ok('iPhone : interrupteur posé dans le bouton avant l’appui, basculé par le doigt (vibration), action faite une fois', pre && r[0] === 1 && r[1] && r[2], JSON.stringify([pre].concat(r)));
       await ctx.close(); }
   } catch (e) { ok('Tests des écrans sans exception', false, e.stack); }
 
