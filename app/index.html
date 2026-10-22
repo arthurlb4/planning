@@ -27,7 +27,7 @@ html{--bt-img:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' vi
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v7.16">
+<meta name="app-version" content="v7.18">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -216,7 +216,11 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 .s-ec2 .dn,.s-ec2 .dv{color:var(--red);}
 /* Today outline — pseudo-element renders above .dci backgrounds */
 .dc.rule-bad::before{content:'';position:absolute;inset:0;border:1.5px solid var(--red);border-radius:var(--r);pointer-events:none;z-index:1;}
-.dc.today::after{content:'';position:absolute;inset:0;border:1.5px solid var(--blue);border-radius:var(--r);pointer-events:none;z-index:1;}
+.dc.today::after{content:'';position:absolute;inset:0;border:1.5px solid var(--blue);border-radius:var(--r);pointer-events:none;z-index:1;
+  box-shadow:0 0 0 0 rgba(98,150,190,0);animation:tdyBr 3.6s ease-in-out infinite}
+/* Aujourd'hui « respire » : halo bleu léger qui s'allume et s'éteint lentement */
+@keyframes tdyBr{0%,100%{box-shadow:0 0 0 0 rgba(98,150,190,0),inset 0 0 0 0 rgba(98,150,190,0)}50%{box-shadow:0 0 12px 1px rgba(98,150,190,.45),inset 0 0 10px rgba(98,150,190,.18)}}
+@media (prefers-reduced-motion:reduce){.dc.today::after{animation:none}}
 /* Colored week numbers */
 
 .wkn.wcur{font-weight:600;}.wkn.wram{}.wkn.wcg{}
@@ -642,6 +646,8 @@ button:disabled>.hap-sw{pointer-events:none}
 /* Corbeille des heures acquises : sa largeur s'anime, les cases à sa gauche s'allongent ou se rétrécissent avec elle */
 .cv-rm{flex:none;width:0;margin-left:-8px;overflow:hidden;border:none;border-radius:var(--r);background:rgba(192,57,43,.14);color:var(--red);font-size:17px;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;opacity:0;pointer-events:none;transition:width .25s ease,margin-left .25s ease,opacity .2s ease}.cv-rm i{transform:scale(.4) rotate(-30deg);transition:transform .25s ease}
 .cv-rm.on{width:40px;margin-left:0;opacity:1;pointer-events:auto}.cv-rm.on i{transform:none}
+i.ti.ico-pop{display:inline-block;animation:icoPop .5s cubic-bezier(.3,1.4,.5,1) both}
+@keyframes icoPop{0%{transform:scale(.3) rotate(-25deg);opacity:0}60%{transform:scale(1.15) rotate(5deg);opacity:1}100%{transform:none;opacity:1}}
 @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 @keyframes cellPop{0%{transform:scale(1)}40%{transform:scale(1.12)}75%{transform:scale(.96)}100%{transform:scale(1)}}
 .dci.pop{animation:cellPop .38s cubic-bezier(.34,1.56,.64,1);}
@@ -2609,8 +2615,8 @@ function _renderSideV2(d){
     +'<div class="sv2-t"><span>Paie</span></div>'
     +'<div class="sv2-pay" style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:10px"><span class="sv2-lbl" style="font-size:11px">'+(_bu?'Brut du bulletin':'Brut estimé')+'</span>'
     +'<span class="sv2-val" style="font-size:22px;color:'+(brutOk||_bu?'var(--gold-pay)':'var(--text3)')+'">'+(_bu?fmtEuro(_bu.brut):brutOk?fmtEuro(pt.total):'—')+'</span></div>'
-    +(function(){var n=_bu&&_bu.net!=null?_bu.net:null,e=n==null&&(_bu||brutOk)?_netEst(d.mym,_bu?_bu.brut:pt.total):null;if(n==null&&!e)return '';
-      return '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:-6px 0 10px"><span class="sv2-lbl" style="font-size:11px">'+(n!=null?'Net du bulletin':'Net estimé')+'</span>'
+    +(function(){var n=_bu&&_bu.netAv!=null?_bu.netAv:null,e=n==null&&(_bu||brutOk)?_netEst(d.mym,_bu?_bu.brut:pt.total,_bu?_bulHS(_bu):((pt.vars||{}).supHSlow||0)+((pt.vars||{}).supHShigh||0)):null;if(n==null&&!e)return '';
+      return '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:-6px 0 10px"><span class="sv2-lbl" style="font-size:11px">'+(n!=null?'Net avant impôt du bulletin':'Net avant impôt estimé')+'</span>'
         +'<span style="font-size:15px;font-weight:600;color:var(--text)">'+(n!=null?fmtEuro(n):'≈ '+fmtEuro(Math.round(e.net)).replace(/,00(?=\D*$)/,''))+'</span></div>';})()
     +'<div class="sv2-sub sv2-pl"><span>Inclut les variables '+deMois(prevMn)+'</span>'
     +(_bst&&_bc.status==='ecart'&&_bulIgn(d.mym,_bc)?'<span style="color:var(--text3)">écart ignoré'+(_bulIgnTxt(_bc)?' '+_bulIgnTxt(_bc):'')+'</span>':_bst?'<span style="color:'+_bst[1]+'">'+_bst[0]+' '+(_bc.status==='ecart'?(_bc.adj>0?'+':'')+fmtEuro(_bc.adj):'conforme')+'</span>':'<span style="color:var(--text3)">pas de bulletin</span>')+'</div>'
@@ -2828,15 +2834,18 @@ function calcNetPaye(brut,paniers,ym){
   const pas=r2(ni*pas_t);
   return{net:r2(nav-pas),brut,cot,pas,pasTaux:getPasTauxForYM(ym!=null?ym:TODAY_YM)};
 }
-// Net estimé d'un mois : rapport net / brut du dernier bulletin qui donne ses nets (cotisations de la personne),
-// impôt au taux de ce bulletin, ou à celui des réglages s'il a été saisi. Sans bulletin lu : calcul avec les taux de cotisation.
-function _netEst(ym,brut){
-  var r2=function(v){return Math.round(v*100)/100;},bs=S.bulletins||{},pr=S.profile||{};
-  var ks=Object.keys(bs).map(Number).filter(function(k){var b=bs[k];return b&&b.brut>0&&(b.netAv!=null||b.net!=null)&&k<=Math.max(ym,TODAY_YM);}).sort(function(a,b){return b-a;});
-  if(!ks.length)return{net:calcNetPaye(brut,0,ym).net,from:null};
-  var b=bs[ks[0]];if(b.netAv==null)return{net:r2(brut*b.net/b.brut),from:ks[0]};
-  var imp=b.netImp!=null?b.netImp:b.netAv*1.03,t=(pr.pasTaux!=null||(pr.pasTauxHistory||[]).length)?getPasTauxForYM(ym)/100:b.net!=null&&imp>0?(b.netAv-b.net)/imp:getPasTauxForYM(ym)/100;
-  return{net:r2(brut*b.netAv/b.brut-brut*imp/b.brut*t),from:ks[0]};
+// Net avant impôt estimé d'un mois (l'impôt dépend d'un taux qui change, il n'est pas compté) :
+// taux de cotisations de la personne, tiré de son dernier bulletin qui donne le net avant impôt ;
+// les heures sup ont 11,31 % de cotisations salariales en moins (réduction sur les HS), retirée du bulletin puis
+// rajoutée selon les HS du mois estimé. Sans bulletin lu : calcul avec les taux de cotisation moyens.
+var _HS_EXO=0.1131;
+function _bulHS(b){return (b&&b.rap||[]).reduce(function(s,r){return s+(r.k==='hsLow'||r.k==='hsHigh'?r.mt||0:0);},0);}
+function _netEst(ym,brut,hs){
+  var r2=function(v){return Math.round(v*100)/100;},bs=S.bulletins||{};hs=hs||0;
+  var ks=Object.keys(bs).map(Number).filter(function(k){var b=bs[k];return b&&b.brut>0&&b.netAv!=null&&k<=Math.max(ym,TODAY_YM);}).sort(function(a,b){return b-a;});
+  if(!ks.length){var c=calcNetPaye(brut,0,ym);return{net:r2(c.net+c.pas),from:null};}
+  var b=bs[ks[0]],t=(b.brut-b.netAv+_HS_EXO*_bulHS(b))/b.brut;
+  return{net:r2(brut*(1-t)+_HS_EXO*hs),from:ks[0],t:t};
 }
 // ================================================================
 // BULLETIN DE PAIE : import du PDF (lu sur l'appareil) et comparaison avec le calcul de l'app
@@ -7380,6 +7389,12 @@ function _ptog(id){
   var ch=document.getElementById(id+'c');
   if(ch)ch.style.transform=open?'':'rotate(90deg)';
 }
+// Première fois qu'un onglet s'affiche dans la session : ses icônes apparaissent en petit rebond, l'une après l'autre
+var _icoSeen={};
+function _icoPop(el){if(!el||!el.id||_icoSeen[el.id])return;_icoSeen[el.id]=1;
+  if(window.matchMedia&&matchMedia('(prefers-reduced-motion:reduce)').matches)return;
+  var n=0;el.querySelectorAll('i.ti:not([class*="chevron"])').forEach(function(i){if(n>=14||!i.offsetParent)return;
+    i.style.animationDelay=(60+n++*35)+'ms';i.classList.add('ico-pop');i.addEventListener('animationend',function(){i.classList.remove('ico-pop');i.style.animationDelay='';},{once:true});});}
 function moisTab(idx){
   if(idx>3)idx=0;var _mt=document.getElementById('mtc-'+idx);if(_mt&&_mt.style.visibility==='hidden')_haptic();
   if(idx>3)idx=0; // ancien onglet Paie : remplacé par la page Paie du Suivi
@@ -7390,6 +7405,7 @@ function moisTab(idx){
     if(tab){tab.style.visibility=i===idx?'':'hidden';tab.style.pointerEvents=i===idx?'':'none';}
   }
   var _p=document.getElementById('mtp-pill');if(_p)_p.style.transform=_tx[idx]||_tx[0];
+  _icoPop(document.getElementById('mtc-'+idx));
 }
 // Ordre affiché des onglets (Suivi à gauche, comme sur l'accueil) ; les numéros restent Rendus 0, Congés 1, Suivi 2
 var _RCG_ORDER=[2,0,1];
@@ -7409,6 +7425,7 @@ function rcgTab(idx){
     if(btn){btn.style.fontWeight=i===idx?'600':'400';btn.style.color=i===idx?'var(--text)':'var(--text3)';}
     if(tab){tab.style.visibility=i===idx?'visible':'hidden';tab.style.pointerEvents=i===idx?'':'none';}
   }
+  _icoPop(document.getElementById('rcc-'+idx));
   var _p=document.getElementById('rcp-pill');if(_p){if(_same){_p.style.transition='none';_p.style.transform=_tx[_RCG_ORDER.indexOf(idx)]||_tx[0];void _p.offsetWidth;_p.style.transition='';}else _p.style.transform=_tx[_RCG_ORDER.indexOf(idx)]||_tx[0];}
 }
 // Clavier iPhone : la fenêtre se cale au-dessus du clavier (zone visible = visualViewport) et la case saisie défile
@@ -8387,6 +8404,7 @@ function settingsTab(n){
   });
   var _p=document.getElementById('stp-pill');if(_p)_p.style.transform=_tx[n]||_tx[0];
   var _bd=document.querySelector('#modal-root .stabs-body');if(_bd)_bd.scrollTop=0;
+  _icoPop(document.getElementById('stc-'+n));
 }
 
 function togglePsPanel(){} // ps-panel always visible
@@ -9746,11 +9764,13 @@ function init(){
   function _pgTitle(k){if(PG.mode==='y')return String(PG.base+k);const ym=PG.base+k;return ML[ym%12]+' '+Math.floor(ym/12);}
   function _pgSetMain(x){
     if(PG.mode==='y'){_annSetX(_annGrid(),x,'none');return;}
-    const w=_swWrap();if(w){w.style.transition='none';w.style.transform=x?'translateX('+x.toFixed(1)+'px)':'';}
+    const w=_swWrap();if(w){w.style.transition='none';w.style.transform=x?'translateX('+x.toFixed(1)+'px) scale('+_pgDepth(x)+')':'';}
   }
+  // Profondeur : le mois qui s'éloigne du centre rétrécit un peu (−6 % à une page de distance)
+  function _pgDepth(x){var W=_pgW()||1;return (1-0.06*Math.min(1,Math.abs(x)/W)).toFixed(4);}
   function _pgSetPage(el,x){
     if(PG.mode==='y'){_annSetX(el,x,'none');return;}
-    const w=el.firstChild;w.style.transition='none';w.style.transform='translateX('+x.toFixed(1)+'px)';
+    const w=el.firstChild;w.style.transition='none';w.style.transform='translateX('+x.toFixed(1)+'px) scale('+_pgDepth(x)+')';
   }
   function _pgBuild(k){
     if(PG.mode==='y')return _annBuild(PG.base+k);
