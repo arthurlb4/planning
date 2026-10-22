@@ -27,7 +27,7 @@ html{--bt-img:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' vi
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v7.08">
+<meta name="app-version" content="v7.09">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -4782,7 +4782,22 @@ function rhOpenFrom(from,newFile){window._rvFrom=from;const rh=newFile?null:_rhS
 function rhOpenFromRecap(newFile){rhOpenFrom('recap',newFile);}
 // Le tableau Gestion importé, tel que lu : totaux du haut, puis une ligne par acquisition (heures en h:mm), commentaires dessous ;
 // en orange, les heures encore comptées dont la validité est passée (« Alerte » du gestionnaire)
-function _rhView(){var rh=_rhStored();if(!rh){_infoToast('Aucun tableau gardé');return;}
+// Feuille Excel du tableau, telle qu'importée : grille, lettres de colonnes, numéros de lignes (lignes vides non gardées) ;
+// numéros de série Excel affichés en dates, nombres à 2 décimales comme dans Excel
+function _rhSheetHtml(cells){var cols={},rows={},ci=function(c){var n=0;for(var i=0;i<c.length;i++)n=n*26+c.charCodeAt(i)-64;return n;},cl=function(n){var t='';while(n>0){var m=(n-1)%26;t=String.fromCharCode(65+m)+t;n=Math.floor((n-1)/26);}return t;};
+  Object.keys(cells).forEach(function(r){var x=_xlsxSplit(r),v=cells[r];if(v===''||v==null)return;cols[ci(x.col)]=1;rows[x.row]=1;});
+  var nc=Math.max.apply(null,Object.keys(cols).map(Number).concat([1])),rs=Object.keys(rows).map(Number).sort(function(a,b){return a-b;});
+  var fv=function(v){if(typeof v==='number'){if(Number.isInteger(v)&&v>=36000&&v<=60000){var d=_xlsxDate(v);return String(d.getUTCDate()).padStart(2,'0')+'/'+String(d.getUTCMonth()+1).padStart(2,'0')+'/'+d.getUTCFullYear();}
+      return Number.isInteger(v)?String(v):(Math.round(v*100)/100).toFixed(2).replace(/\.?0+$/,'').replace('.',',');}return _h(String(v));};
+  var bd='border:1px solid #d4d4d4',hd='background:#f3f3f3;color:#666;font-weight:600;text-align:center;font-size:10px;'+bd,
+    h='<table style="border-collapse:collapse;background:#fff;color:#111;font:11px Arial,Helvetica,sans-serif"><tr><th style="'+hd+';position:sticky;left:0;z-index:2;min-width:26px"></th>';
+  for(var c=1;c<=nc;c++)h+='<th style="'+hd+';min-width:46px;padding:2px 4px">'+cl(c)+'</th>';
+  h+='</tr>'+rs.map(function(r){var t='<tr><td style="'+hd+';position:sticky;left:0;z-index:1;padding:2px 4px">'+r+'</td>';
+    for(var c=1;c<=nc;c++){var v=cells[cl(c)+r],num=typeof v==='number';t+='<td style="'+bd+';padding:2px 5px;white-space:nowrap;max-width:170px;overflow:hidden;text-overflow:ellipsis;text-align:'+(num?'right':'left')+'">'+(v==null||v===''?'':fv(v))+'</td>';}
+    return t+'</tr>';}).join('')+'</table>';
+  return '<div style="overflow:auto;-webkit-overflow-scrolling:touch;max-height:60vh;border-radius:12px;background:#fff">'+h+'</div>';}
+function _rhView(mode){var rh=_rhStored();if(!rh){_infoToast('Aucun tableau gardé');return;}
+  if(mode==null)mode=window._rhViewMode||'sheet';window._rhViewMode=mode;
   var o=S.profile.rhTable||{},ed=rh.edition,fd=function(d){return d?new Date(d.getUTCFullYear(),d.getUTCMonth(),d.getUTCDate(),12).toLocaleDateString('fr-FR',{day:'numeric',month:'short',year:'2-digit'}):'';},
     hm=function(v){return v?fmtMin(Math.round(v)):'—';},T=rh.tot||{},
     tl=[['Stock au 31/12',T.stock2025],['Conso sur stock',T.consoStock],['Stock actualisé',T.stockAct],['Cumul acquisitions',T.cumAcq],['Cumul consommations',T.cumCons],['Cumul soldes',T.cumSol]].filter(function(x){return x[1]!=null;});
@@ -4797,9 +4812,11 @@ function _rhView(){var rh=_rhStored();if(!rh){_infoToast('Aucun tableau gardé')
     +'<div class="nav-back" style="'+_navBackCss+'" onclick="rhOpenFromRecap()">‹ Tableau Gestion</div>'
     +'<div class="st" style="text-align:center">Tableau du '+ed.toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'})+'</div>'
     +(o.name?'<div style="text-align:center;font-size:11px;color:var(--text3);margin:-6px 0 12px">'+_h(o.name)+'</div>':'')
-    +(tl.length?'<div class="hd-card" style="display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;padding:12px 14px;margin-bottom:10px">'+tl.map(function(x){return '<div style="font-size:11px;color:var(--text3)">'+x[0]+'<b style="display:block;font-size:14px;color:var(--text);font-weight:600">'+fmtMin(Math.round(x[1]))+'</b></div>';}).join('')+'</div>':'')
+    +'<div class="vseg" style="display:flex;background:var(--btn);border-radius:999px;padding:3px;gap:2px;margin:0 0 12px">'+[['sheet','Feuille Excel'],['read','Lu par l’app']].map(function(x){return '<button onclick="_rhView(\''+x[0]+'\')" style="flex:1;border:none;font:inherit;font-size:12.5px;padding:7px 4px;border-radius:999px;cursor:pointer;background:'+(mode===x[0]?'var(--btn-a,rgba(255,250,243,.16))':'none')+';color:'+(mode===x[0]?'var(--text)':'var(--text2)')+';font-weight:'+(mode===x[0]?'600':'400')+'">'+x[1]+'</button>';}).join('')+'</div>'
+    +(mode==='sheet'?_rhSheetHtml(o.cells||{})+'<div style="font-size:11px;color:var(--text3);margin:8px 2px 0;line-height:1.4">La feuille telle qu’importée (sans les lignes vides ni les couleurs). Faire glisser pour la parcourir.</div>':'')
+    +(mode==='sheet'?'':(tl.length?'<div class="hd-card" style="display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;padding:12px 14px;margin-bottom:10px">'+tl.map(function(x){return '<div style="font-size:11px;color:var(--text3)">'+x[0]+'<b style="display:block;font-size:14px;color:var(--text);font-weight:600">'+fmtMin(Math.round(x[1]))+'</b></div>';}).join('')+'</div>':'')
     +'<div class="hd-card" style="padding:4px 4px 6px;overflow-x:auto"><table style="width:100%;border-collapse:collapse"><tr><th style="'+th+';text-align:left">Mois</th><th style="'+th+';text-align:left">Nature</th><th style="'+th+'">Acquis</th><th style="'+th+'">Conso</th><th style="'+th+'">Solde</th><th style="'+th+'">Validité</th></tr>'+rows+'</table></div>'
-    +'<div style="font-size:11px;color:var(--text3);margin:8px 2px 0;line-height:1.4">En orange : heures dont la validité est passée, encore comptées dans le solde (« Alerte » du gestionnaire).</div>'
+    +'<div style="font-size:11px;color:var(--text3);margin:8px 2px 0;line-height:1.4">En orange : heures dont la validité est passée, encore comptées dans le solde (« Alerte » du gestionnaire).</div>')
     +'<button class="mcancel mclose" onclick="closeModal()">Fermer</button></div></div>';
 }
 function _rdOpenMonth(ym){_haptic();window._mmFrom='rendus';openMergedMoisModal(ym,0);}
