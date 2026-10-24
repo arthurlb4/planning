@@ -27,7 +27,7 @@ html{--bt-img:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' vi
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v7.40">
+<meta name="app-version" content="v7.41">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -369,7 +369,8 @@ button:disabled>.hap-sw{pointer-events:none}
    Accueil ramène à aujourd'hui), le bouton menu à droite ; le reste de l'en-tête passe dans le menu */
 #menu-btn{display:none}
 @media(max-width:720px){
-  .mbar{position:fixed;top:0;left:0;right:0;height:var(--hdrh,52px);padding:0;z-index:201;pointer-events:none;width:auto!important}
+  .mbar{position:fixed;top:0;left:0;right:0;height:var(--hdrh,52px);padding:0;z-index:200;pointer-events:none;width:auto!important}
+  /* même niveau que l'en-tête (passe devant lui, venant après) et que le voile des fenêtres (qui passe devant elle) */
   .mbar>*{pointer-events:auto}.mbar .mnav{display:none!important}
   .mtit{font-size:17px;font-weight:600;transition:opacity .15s ease}
   /* page d'onglet ouverte : son nom à la place du mois */
@@ -4483,6 +4484,14 @@ function _shMini(){document.querySelectorAll('#modal-root .sheet').forEach(funct
   var m=document.createElement('div');m.className='sh-mini';var sp=document.createElement('span');sp.textContent=(st.firstChild&&st.firstChild.nodeType===3?st.firstChild.textContent:st.textContent).trim();m.appendChild(sp);sh.insertBefore(m,sh.firstChild);});}
 document.addEventListener('scroll',function(e){var sh=e.target;if(!sh||!sh.classList||!sh.classList.contains('sheet')||!sh._shm)return;
   var st=sh.querySelector(':scope>.st');if(st)sh.classList.toggle('scd',sh.scrollTop>st.offsetTop+st.offsetHeight-20);},true);
+// Historique des modifications (menu) : les 40 dernières, et « annuler des actions » de la session
+function openHistModal(){
+  try{if(_histClean())saveState();}catch(e){}
+  var H=(S.history||[]).slice(0,40).map(function(e){return '<div class="hrow"><div class="hdot" style="background:'+e.c+'"></div><span class="htime">'+e.t+'</span><span class="hdesc">'+_histTxt(e.d)+'</span></div>';}).join('')||'<div style="font-size:13px;color:var(--text3);padding:6px 0">Aucune modification.</div>';
+  _lockBodyScroll();
+  document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet"><div class="sh"></div><div class="st">Historique</div>'
+    +(_us.length?'<button class="rv-b2" style="margin:0 0 12px" onclick="openUndoList()">Annuler des actions de cette session ('+_us.length+')</button>':'')
+    +'<div class="ucard" style="margin:0">'+H+'</div><button class="mcancel" onclick="closeModal()">Fermer</button></div></div>';}
 // Menu de l'en-tête (téléphone) : ce qui était dans l'en-tête
 function openHdrMenu(){
   _haptic();if(document.getElementById('lp-menu'))return _closeDayMenu();
@@ -4493,6 +4502,7 @@ function openHdrMenu(){
   var swNew=document.getElementById('menu-btn')&&document.getElementById('menu-btn').classList.contains('sw-new');
   m.innerHTML='<div class="hm-row">'+it('ti-arrow-back-up','var(--text2)','Annuler','undoAction()',ub&&ub.disabled)+it('ti-arrow-forward-up','var(--text2)','Rétablir','redoAction()',rb&&rb.disabled)+'</div>'
     +it('ti-arrows-exchange','var(--amber)','Échanges'+(swNew?'<span class="hm-dot"></span>':''),'openSwaps()')
+    +it('ti-history','var(--text2)','Historique','openHistModal()')
     +it('ti-calendar-month','var(--blue)',annualOpen?'Vue du mois':'Vue de l’année','toggleAnnual()')
     +it('ti-brand-google','var(--text2)',gcalTokens?'Synchroniser Google Agenda':'Connecter Google Agenda','gcalHandleClick()')
     +it('ti-calendar-time','var(--amber)','Sirhius',ext('Sirhius'))+it('ti-send','var(--green)','Demande de congés',ext('Demande'));
@@ -6865,7 +6875,6 @@ function openMergedRenduCgModal(limit,tab){
   const _viewedYM=(typeof curY!=='undefined'&&typeof curM!=='undefined')?curY*12+curM:TODAY_YM;
   const {total:dispoMois,stockActif,reserved,reservedMonths,afterStep1,reservedDetail,genSnapshot}=calcTrueDispo(_viewedYM);
   try{if(_histClean())saveState();}catch(e){}
-  const rcgHistHtml=(S.history||[]).slice(0,8).map(function(e){return '<div class="hrow"><div class="hdot" style="background:'+e.c+'"></div><span class="htime">'+e.t+'</span><span class="hdesc">'+_histTxt(e.d)+'</span></div>';}).join('')||'<span style="font-size:11px;color:var(--text3)">Aucune modification.</span>';
   // Suivi : toujours aujourd'hui (année en cours), quel que soit le mois affiché
   const recapRows=_suiviSimple(NOW.getFullYear())
     +'<div style="height:8px"></div>'
@@ -6873,8 +6882,6 @@ function openMergedRenduCgModal(limit,tab){
     +'<div class="sv-tiles" style="margin-bottom:8px">'
     +[['openVerif()','ti-checks','Vérifier, importer','bulletins, tableau'],['openGestMail()','ti-mail','Mail','au gestionnaire']].map(function(x){return '<div class="ucard rep-mail" style="cursor:pointer;margin:0;padding:12px" onclick="'+x[0]+'"><i class="ti '+x[1]+'"></i><div style="flex:1;min-width:0"><div style="font-size:13px;color:var(--text)">'+x[2]+'</div><div style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+x[3]+'</div></div></div>';}).join('')
     +'</div>'
-    +_fold('fold-annee','','var(--text2)','Année '+NOW.getFullYear(),'jours, nuits, dimanches, matins, fériés','',_cptHtml())
-    +_fold('fold-hist','history','var(--text2)','Dernières modifications',(S.history||[]).length?'dernière le '+S.history[0].t:'aucune',(S.history||[]).length||'','<div style="height:6px"></div>'+(_us.length?'<button class="rv-b2" style="margin:0 0 8px" onclick="openUndoList()">Annuler des actions de cette session ('+_us.length+')</button>':'')+rcgHistHtml)
     +'<div style="height:12px"></div>';
   const dispoColor=dispoMois<=0?'var(--red)':dispoMois<120?'var(--amber)':'var(--rend-text)';
   const _as1Map={};afterStep1.forEach(function(e){_as1Map[e.ym]=e.amount;});
@@ -7092,6 +7099,7 @@ function openMergedRenduCgModal(limit,tab){
     +'<div id="rcc-0" style="grid-area:1/1">'
     +dispoBoxHtml
     +(rendRows?'<div class="ucard"><div class="ucard-t">Heures par mois d’acquisition</div><div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-bottom:4px"><span style="padding-left:54px">acquises → restantes</span><span style="padding-right:21px">expirent</span></div>'+rendRows+moreBtn+'</div>':'<div class="ucard" style="font-size:12px;color:var(--text3)">Aucun rendu disponible.</div>')
+    +'<div style="height:8px"></div>'+_fold('fold-annee','','var(--text2)','Année '+NOW.getFullYear(),'heures de rendus mois par mois, jours, nuits, dimanches','',_cptHtml())
     +'</div>'
     +'<div id="rcc-1" style="grid-area:1/1;visibility:hidden;pointer-events:none">'
     +cgSoldeHeader
@@ -7546,9 +7554,9 @@ function rcgTab(idx){
   var _same=window._rcgShown===idx&&document.body.classList.contains('modal-open')&&window._rcgRedraw;window._rcgShown=idx;window._rcgRedraw=false;
   if(idx===1&&!_same)_cgAnim(null);
   if(idx===0&&!_same){var _w=document.getElementById('rcc-0');if(_w){_w.classList.remove('rc-anim');void _w.offsetWidth;_w.classList.add('rc-anim');[].forEach.call(_w.querySelectorAll('.eph-urow'),function(r,i){[].forEach.call(r.querySelectorAll('.eph-b,.eph-b2'),function(b){b.style.animationDelay=(i*.05)+'s';});});}}
-  if(idx===2&&document.getElementById('rcc-2')&&document.getElementById('rcc-2').style.visibility==='hidden')requestAnimationFrame(function(){_cptAnim(document.getElementById('cpt-card'));});
+  if(idx===0&&document.getElementById('rcc-0')&&document.getElementById('rcc-0').style.visibility==='hidden'&&document.querySelector('#fold-annee[open]'))requestAnimationFrame(function(){_cptAnim(document.getElementById('cpt-card'));});
   // En quittant le récap, ses blocs se replient
-  if(idx!==2){_foldOpen={};document.querySelectorAll('#rcc-2 details.fold[open]').forEach(function(d){d.open=false;});}
+  if(idx!==0){delete _foldOpen['fold-annee'];var _fa=document.querySelector('#fold-annee[open]');if(_fa)_fa.open=false;}
   var _tx=['translateX(0)','translateX(calc(100% + 2px))','translateX(calc(200% + 4px))'];
   for(let i=0;i<3;i++){
     const btn=document.getElementById('rcp-'+i),tab=document.getElementById('rcc-'+i);
