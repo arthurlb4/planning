@@ -24,14 +24,15 @@ html{--bt-img:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' vi
 <script>if(location.protocol==='http:'&&/(^|\.)franceinfoplanning\.com$/.test(location.hostname))location.replace('https://'+location.host+location.pathname+location.search+location.hash);</script>
 <meta name="color-scheme" content="dark">
 <style>html,body{background:#161615}</style>
+<script>try{if(sessionStorage.getItem('ptr-ok')&&innerWidth<=720)document.documentElement.style.setProperty('background-color','#222221','important');}catch(e){}</script>
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v7.42">
+<meta name="app-version" content="v7.43">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
-<meta name="theme-color" id="theme-color-meta" content="#161615">
+<meta name="theme-color" id="theme-color-meta" content="#222221">
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon-180.png">
 <!-- Écran de démarrage de l'iPhone (app sur l'écran d'accueil) : à la place de l'écran noir, le temps que la page s'ouvre -->
 <link rel="apple-touch-startup-image" media="(device-width: 420px) and (device-height: 912px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" href="splash/s-1260x2736.png">
@@ -2186,12 +2187,14 @@ function applyTheme(t){
     document.documentElement.style.backgroundColor='#e8e8e4';
     document.body.style.backgroundColor='#e8e8e4';
   } else {
-    document.documentElement.style.backgroundColor='#161615';
+    // iPhone : fond du document à la couleur de l'en-tête (iOS en teinte le haut de l'écran, sous l'heure et le réseau,
+    // aussi pendant un rechargement) ; la page garde son fond sombre. Pas pendant l'écran d'ouverture (logo sur fond sombre)
+    document.documentElement.style.backgroundColor=innerWidth<=720&&!document.getElementById('boot-bg')?'#222221':'#161615';
     document.body.style.backgroundColor='#161615';
   }
 
   setTimeout(syncWknHeight,50);
-  const _meta=document.getElementById('theme-color-meta');if(_meta)_meta.content=t==='dark'?'#161615':'#fff';
+  const _meta=document.getElementById('theme-color-meta');if(_meta)_meta.content=t==='dark'?'#222221':'#fff';
   const icon=document.getElementById('theme-icon');
   if(icon)icon.className=t==='dark'?'ti ti-moon':'ti ti-sun';
 }
@@ -3079,7 +3082,8 @@ function _bulPayApply(){
   saveState();render();
 }
 // Vérification depuis Suivi : on y revient en la fermant
-function openVerif(){_bulPayPropose(function(){openMergedRenduCgModal(6,2);},1);}
+// Suivi → Importer : choix des fichiers tout de suite ; après des bulletins, réglages de paie proposés seulement s'ils diffèrent
+function importFromSuivi(){window._bulPayThen=function(){openMergedRenduCgModal(6,2);};_verifImport(1);}
 // Choix de fichiers : le champ est rattaché à la page le temps du choix (sur iPhone, un champ détaché ne reçoit pas toujours le fichier choisi)
 function _fileInput(){var i=document.createElement('input');i.type='file';i.style.cssText='position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0';return i;}
 // Le fichier choisi est traité une seule fois, qu'il arrive par « change », « input » ou au retour sur la page (certains iPhone ne signalent rien)
@@ -3090,13 +3094,13 @@ function _fileOpen(i){document.body.appendChild(i);var f=i.onchange,done=false;i
   setTimeout(function(){window.addEventListener('focus',back);document.addEventListener('visibilitychange',back);},300);
   i.click();}
 // Vérification : un seul bouton Importer ; les PDF vont aux bulletins (retour à la vérification), le fichier Excel au tableau Gestion
-function _verifImport(){var th=window._bulPayThen;
+function _verifImport(quick){var th=window._bulPayThen;
   var inp=_fileInput();inp.multiple=true;inp.accept='application/pdf,.pdf,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   inp.onchange=function(){var fs=[].slice.call(inp.files||[]),pdf=fs.filter(function(f){return /\.pdf$/i.test(f.name)||f.type==='application/pdf';}),xl=fs.filter(function(f){return /\.xlsx$/i.test(f.name);});
     if(!pdf.length&&!xl.length){showBlockAlert('Fichier non reconnu','Choisir des bulletins (PDF) ou le tableau Gestion (Excel).');return;}
     window._bulPayThen=null;
     var rh=function(){window._rvFrom='recap';_rhFile(xl[xl.length-1]);};
-    if(pdf.length)_importBulletinFiles(pdf,xl.length?rh:function(){_bulPayPropose(th,1);});else rh();};
+    if(pdf.length)_importBulletinFiles(pdf,xl.length?rh:function(){_bulPayPropose(th,quick?0:1);});else rh();};
   _fileOpen(inp);}
 // Fenêtre de proposition (après un import, ou depuis Réglages → Paie)
 function _bulPayPropose(then,all){
@@ -6880,7 +6884,7 @@ function openMergedRenduCgModal(limit,tab){
     +'<div style="height:8px"></div>'
     // Vérifier (bulletins, tableau Gestion) et mail au gestionnaire, côte à côte au-dessus de l'année
     +'<div class="sv-tiles" style="margin-bottom:8px">'
-    +[['openVerif()','ti-checks','Vérifier, importer','bulletins, tableau'],['openGestMail()','ti-mail','Mail','au gestionnaire']].map(function(x){return '<div class="ucard rep-mail" style="cursor:pointer;margin:0;padding:12px" onclick="'+x[0]+'"><i class="ti '+x[1]+'"></i><div style="flex:1;min-width:0"><div style="font-size:13px;color:var(--text)">'+x[2]+'</div><div style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+x[3]+'</div></div></div>';}).join('')
+    +[['importFromSuivi()','ti-file-import','Importer','bulletins, tableau'],['openGestMail()','ti-mail','Mail','au gestionnaire']].map(function(x){return '<div class="ucard rep-mail" style="cursor:pointer;margin:0;padding:12px" onclick="'+x[0]+'"><i class="ti '+x[1]+'"></i><div style="flex:1;min-width:0"><div style="font-size:13px;color:var(--text)">'+x[2]+'</div><div style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+x[3]+'</div></div></div>';}).join('')
     +'</div>'
     +'<div style="height:12px"></div>';
   const dispoColor=dispoMois<=0?'var(--red)':dispoMois<120?'var(--amber)':'var(--rend-text)';
@@ -7922,7 +7926,8 @@ function _wvCell(code,VAC,isOv){
     startY=e.touches[0].clientY;
     startX=e.touches[0].clientX;
     prevClientY=e.touches[0].clientY;
-    if(e.target.closest('select,input,textarea'))return;
+    // tirer pour fermer marche aussi depuis un champ (Modifier en est presque couvert) ; pas depuis une zone de texte, qui défile
+    if(e.target.closest('textarea'))return;
     sheet=el;overlay=el.closest('.overlay');sc=_scOf(el);
     startScroll=sc.scrollTop;
     // Le geste ne peut fermer le modal que s'il commence avec le contenu déjà tout en haut
@@ -10698,7 +10703,7 @@ function _revealBody(){
   setTimeout(function(){
     b.classList.add('out');b.style.opacity='0';b.style.pointerEvents='none'; // ouverture : le motif grossit en s'effaçant
     // retour d'actualisation : la suite (roue → « Actualisé ✓ » → mois) une fois l'écran de chargement parti
-    setTimeout(function(){b.remove();var bg=document.getElementById('boot-bg');if(bg)bg.remove();if(window._ptrDone)window._ptrDone();},b.classList.contains('logo')?760:440);
+    setTimeout(function(){b.remove();var bg=document.getElementById('boot-bg');if(bg)bg.remove();if(innerWidth<=720)document.documentElement.style.backgroundColor='#222221';if(window._ptrDone)window._ptrDone();},b.classList.contains('logo')?760:440);
   },wait);
 }
 function syncWknHeight(){setTimeout(_syncWknNow,0);}
