@@ -27,7 +27,7 @@ html{--bt-img:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' vi
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v7.22">
+<meta name="app-version" content="v7.23">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -10090,6 +10090,7 @@ function _cloudSaveFailed(pid,msg){
 // une fois sur la nouvelle, que le service worker vient de mettre de côté (une seule fois par version : jamais de boucle)
 // Appelée au lancement (avant tout modal) et au retour au premier plan ; renvoie true si l'app se recharge
 function _verCheck(){
+  window._verAt=Date.now();
   return fetch(location.href,{cache:'no-store',headers:{'Cache-Control':'no-cache, no-store','Pragma':'no-cache'}})
     .then(function(r){return r.text();})
     .then(function(html){
@@ -10105,13 +10106,33 @@ function _verCheck(){
       window._verPending=m[1];return false;
     }).catch(function(){return false;});
 }
-document.addEventListener('visibilitychange',function(){
-  if(!document.hidden||!window._verPending||document.querySelector('#modal-root .overlay'))return;
+// Rechargement sur la nouvelle version, après l'envoi d'un enregistrement en ligne en attente (5 s après une modification)
+function _verApply(){
+  if(!window._verPending)return;
   try{sessionStorage.setItem('pl_ver_rl',window._verPending);}catch(e){}window._verPending=null;
-  // enregistrement en ligne en attente (5 s après une modification) : envoyé avant de recharger
   var go=function(){location.reload();},p=null;
   try{if(window._cloudSyncTimer&&_aid){clearTimeout(window._cloudSyncTimer);window._cloudSyncTimer=null;p=cloudSave(_aid);}}catch(e){}
   if(p&&p.then){var t=setTimeout(go,2500);p.then(function(){clearTimeout(t);go();},function(){clearTimeout(t);go();});}else go();
+}
+// Au retour dans l'app (reprise, pas relance) : nouvelle version trouvée tout de suite, avant le moindre appui →
+// l'écran d'ouverture (le motif) revient et l'app se recharge dessous, comme une ouverture normale
+window._visAt=0;window._tapAt=0;
+document.addEventListener('pointerdown',function(){window._tapAt=Date.now();},true);
+function _verOnResume(){window._visAt=Date.now();
+  _verCheck().then(function(){
+    if(!window._verPending||document.hidden||window._tapAt>window._visAt||Date.now()-window._visAt>4000||document.querySelector('#modal-root .overlay')||document.getElementById('setup'))return;
+    var c=window._bootCopy&&window._bootCopy.cloneNode(true);
+    if(c&&innerWidth<=720){c.classList.add('logo');c.style.opacity='0';c.style.transition='opacity .22s ease';document.body.appendChild(c);void c.offsetWidth;c.style.opacity='1';setTimeout(_verApply,260);}
+    else _verApply();
+  });}
+// En quittant l'app : rechargée sur la nouvelle version, sans que ça se voie ; si aucune n'a encore été cherchée
+// depuis un moment, on regarde d'abord (le rechargement se fait si l'app est toujours en arrière-plan)
+window._verAt=0;
+document.addEventListener('visibilitychange',function(){
+  if(!document.hidden||document.querySelector('#modal-root .overlay'))return;
+  if(window._verPending){_verApply();return;}
+  if(Date.now()-window._verAt<60000)return;
+  _verCheck().then(function(){if(document.hidden&&window._verPending)_verApply();});
 });
 // ── Deux appareils : chaque envoi dit sur quelle version du serveur il repose (_cbase). Si un autre appareil a
 // enregistré entre-temps, le serveur refuse (409) et renvoie sa version : on fusionne les trois (base, ici, serveur)
@@ -10283,7 +10304,7 @@ async function cloudLoadAll(){
     if(document.visibilityState==='visible'){
       gcalStartPoll();
       cloudRefresh();
-      _verCheck();
+      _verOnResume();
     }else{
       clearInterval(_pollTimer);
     }

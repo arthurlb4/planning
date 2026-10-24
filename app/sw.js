@@ -1,4 +1,4 @@
-const SW_VERSION = '10.4';
+const SW_VERSION = '10.5';
 const PAGES = 'pl-pages-v1';   // dernière version de l'app, pour l'ouvrir hors connexion
 const ASSETS = 'pl-assets-v1'; // icônes (CDN)
 
@@ -15,8 +15,8 @@ self.addEventListener('activate', function(e) {
 self.addEventListener('fetch', function(event) {
   const req = event.request;
   if (req.method !== 'GET') return;
-  // Pages : la copie gardée s'affiche tout de suite (au lancement, l'écran resterait blanc le temps du réseau),
-  // la dernière version est mise de côté en même temps ; l'app se recharge dessus si elle a changé.
+  // Pages : la dernière version si le réseau répond en moins de 1,2 s, sinon la copie gardée (pas d'écran blanc sans réseau) ;
+  // la dernière version est mise de côté en même temps.
   // Rechargement demandé (actualiser) ou pas encore de copie : réseau d'abord.
   if (req.mode === 'navigate') {
     const key = req.url.split('?')[0];
@@ -32,7 +32,11 @@ self.addEventListener('fetch', function(event) {
     event.waitUntil(net.catch(function() {}));
     const fromNet = function() { return net.catch(function() { return caches.match(key, { cacheName: PAGES }).then(function(r) { return r || caches.match(req); }); }); };
     if (req.cache === 'reload' || req.cache === 'no-cache' || req.cache === 'no-store') { event.respondWith(fromNet()); return; }
-    event.respondWith(caches.match(key, { cacheName: PAGES }).then(function(hit) { return hit || fromNet(); }));
+    // Ouverture : la dernière version si le réseau répond vite (l'image de démarrage couvre l'attente), sinon la copie gardée
+    event.respondWith(caches.match(key, { cacheName: PAGES }).then(function(hit) {
+      if (!hit) return fromNet();
+      return Promise.race([net.then(function(r) { return r && r.ok ? r : hit; }, function() { return hit; }), new Promise(function(res) { setTimeout(function() { res(hit); }, 1200); })]);
+    }));
     return;
   }
   // Icônes (feuille de style + polices du CDN) : cache d'abord, mise à jour en arrière-plan
