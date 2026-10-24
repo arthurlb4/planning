@@ -27,7 +27,7 @@ html{--bt-img:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' vi
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v7.25">
+<meta name="app-version" content="v7.26">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -328,6 +328,31 @@ input[type=number]{-moz-appearance:textfield;appearance:textfield;}
 #lp-menu button:active{background:rgba(255,250,243,.09)}
 .hap-sw{position:absolute;top:0;left:0;width:100%;height:100%;margin:0;padding:0;opacity:0;z-index:1;cursor:pointer;clip-path:inset(0 round 12px)}
 button:disabled>.hap-sw{pointer-events:none}
+/* Barre d'onglets en bas (téléphone) : Planning, Suivi, Échanges, Réglages ; reste visible sous les fenêtres ouvertes,
+   qui se posent juste au-dessus. Échanges et Réglages quittent alors l'en-tête */
+#tabbar{display:none}
+@media(max-width:720px){
+  #tabbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:250;padding:6px 8px calc(4px + env(safe-area-inset-bottom));
+    background:rgba(28,28,27,.88);-webkit-backdrop-filter:blur(24px) saturate(170%);backdrop-filter:blur(24px) saturate(170%);border-top:0.5px solid rgba(255,250,243,.08)}
+  #tabbar button{flex:1;position:relative;display:flex;flex-direction:column;align-items:center;gap:2px;min-height:46px;padding:2px 0;border:none;background:none;color:var(--text3);font:500 10px var(--font);cursor:pointer;border-radius:12px!important;-webkit-tap-highlight-color:transparent}
+  #tabbar button i{font-size:23px;line-height:26px;transition:transform .2s cubic-bezier(.3,1.4,.5,1)}
+  #tabbar button.on{color:var(--blue)}#tabbar button:active i{transform:scale(.86)}
+  #tabbar .sw-dot{top:2px;right:calc(50% - 18px)}#tabbar button.sw-new .sw-dot{display:block}
+  .app-outer{padding-bottom:calc(62px + env(safe-area-inset-bottom))!important}
+  .overlay{padding-bottom:calc(56px + env(safe-area-inset-bottom))}
+  #swap-btn,.hdr-btns .ibtn[title="Réglages"]{display:none!important}
+  html.kb #tabbar{display:none}html.kb .overlay{padding-bottom:0}
+  html:not(.kb) .sheet{max-height:calc(94dvh - 56px - env(safe-area-inset-bottom))!important;padding-bottom:20px}
+  html:not(.kb) .pp-sheet{height:calc(92dvh - 56px - env(safe-area-inset-bottom))!important}
+}
+/* Grand titre (façon iOS) : en gros en haut de la fenêtre ; en faisant défiler, il passe dans une barre fine qui reste en haut */
+.sheet>.st{font-size:24px;font-weight:700;letter-spacing:-.015em;line-height:1.2;margin:2px 0 12px}
+.sh-mini{position:sticky;top:-16px;height:0;z-index:6;margin:0 -16px}
+.sh-mini>span{position:absolute;left:0;right:0;top:0;height:46px;display:flex;align-items:center;justify-content:center;padding:0 48px;font:600 15px var(--font);color:var(--text);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:rgba(36,36,35,.9);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);border-bottom:0.5px solid rgba(255,250,243,.08);
+  opacity:0;transform:translateY(-6px);transition:opacity .18s ease,transform .18s ease;pointer-events:none}
+.sheet.scd .sh-mini>span{opacity:1;transform:none}
+@media(min-width:721px){.sh-mini{top:-24px;margin:0 -24px}}
 /* Bourse aux échanges */
 .sw-dot{position:absolute;top:3px;right:3px;width:8px;height:8px;border-radius:50%;background:#e5534b;box-shadow:0 0 0 2px var(--bg);display:none}#swap-btn.sw-new .sw-dot{display:block}
 .swc{padding:12px 14px;border-radius:16px;background:rgba(255,250,243,.05);border:0.5px solid var(--border2);margin-bottom:8px}
@@ -1058,6 +1083,13 @@ for(var i=0;i<bl.length;i++){bl[i].style.height=g.b[i][1]+'px';bl[i].style.margi
   </div>
 </div>
 
+<!-- BARRE D'ONGLETS (iPhone) -->
+<nav id="tabbar" aria-label="Navigation">
+  <button data-t="cal" class="on" onclick="_tbGo('cal')"><i class="ti ti-calendar"></i><span>Planning</span></button>
+  <button data-t="suivi" onclick="_tbGo('suivi')"><i class="ti ti-chart-line"></i><span>Suivi</span></button>
+  <button data-t="swap" onclick="_tbGo('swap')"><i class="ti ti-arrows-exchange"></i><span>Échanges</span><span class="sw-dot"></span></button>
+  <button data-t="set" onclick="_tbGo('set')"><i class="ti ti-settings"></i><span>Réglages</span></button>
+</nav>
 <!-- LAYOUT -->
 <div class="layout">
 <div class="cal-col">
@@ -4387,6 +4419,23 @@ function _closeDayMenu(){
   if(m){m.classList.remove('on');setTimeout(function(){m.remove();},150);}
   if(v){v.classList.remove('on');setTimeout(function(){v.remove();},150);}
 }
+// Grand titre : barre fine avec le titre, qui apparaît quand le grand titre sort par le haut en faisant défiler
+function _shMini(){document.querySelectorAll('#modal-root .sheet').forEach(function(sh){
+  if(sh._shm)return;var st=sh.querySelector(':scope>.st');if(!st||st.offsetTop>90)return;sh._shm=1;
+  var m=document.createElement('div');m.className='sh-mini';var sp=document.createElement('span');sp.textContent=(st.firstChild&&st.firstChild.nodeType===3?st.firstChild.textContent:st.textContent).trim();m.appendChild(sp);sh.insertBefore(m,sh.firstChild);});}
+document.addEventListener('scroll',function(e){var sh=e.target;if(!sh||!sh.classList||!sh.classList.contains('sheet')||!sh._shm)return;
+  var st=sh.querySelector(':scope>.st');if(st)sh.classList.toggle('scd',sh.scrollTop>st.offsetTop+st.offsetHeight-20);},true);
+// Barre d'onglets (téléphone) : l'onglet allumé suit la fenêtre ouverte
+function _tbGo(t){_haptic();
+  if(t==='cal'){if(document.querySelector('#modal-root .overlay')){window._modalBack=null;closeModal();}else goToday();}
+  else if(t==='suivi')openMergedRenduCgModal(6,2);
+  else if(t==='swap')openSwaps();
+  else if(t==='set')openSettingsModal();
+  _tbSync();}
+function _tbSync(){var b=document.getElementById('tabbar');if(!b)return;var r=document.getElementById('modal-root'),t='cal';
+  if(r&&r.querySelector('.overlay')){t=document.getElementById('sw-list')?'swap':document.getElementById('stc-0')?'set':(document.getElementById('rcc-2')&&document.getElementById('rcc-2').style.visibility!=='hidden')?'suivi':'';}
+  b.querySelectorAll('button').forEach(function(x){x.classList.toggle('on',x.dataset.t===t);});}
+document.addEventListener('DOMContentLoaded',function(){var r=document.getElementById('modal-root');if(r)try{new MutationObserver(function(){_tbSync();_shMini();}).observe(r,{childList:true,subtree:true,attributes:true,attributeFilter:['style']});}catch(e){}});
 // ================================================================
 // BOURSE AUX ÉCHANGES : jours proposés à l'équipe (échange ou jour cédé), réponses, choix
 // L'échange conclu s'enregistre ensuite dans chaque planning (Modifier → Échange), comme avant
@@ -4401,7 +4450,7 @@ async function _swapApi(path,body){
 function _swSeen(){try{return +localStorage.getItem('swap_seen')||0;}catch(e){return 0;}}
 // Point rouge sur le bouton : nouvelle proposition de l'équipe, nouvelle réponse à une des miennes, échange conclu avec moi
 function _swapBadge(){var t=_swSeen(),me=_SW.me,n=_SW.offers.some(function(o){return o.uid!==me?(!o.done&&o.at>t)||(o.done&&o.done.uid===me&&o.done.at>t):o.answers.some(function(a){return a.at>t;});});
-  var b=document.getElementById('swap-btn');if(b)b.classList.toggle('sw-new',n);}
+  ['swap-btn','tabbar'].forEach(function(id){var b=document.getElementById(id);if(id==='tabbar')b=b&&b.querySelector('[data-t=swap]');if(b)b.classList.toggle('sw-new',n);});}
 function _swapRefresh(force){if(!window._authToken||(!force&&Date.now()-_SW.at<60000))return;_swapApi('/swap/list').then(function(){if(document.getElementById('sw-list'))_swapList();}).catch(function(){});}
 function _swDay(d){return capitalize(fmtDate(new Date(d+'T12:00:00')).replace(/ \d{4}$/,''));}
 function _swMine(d){var dt=new Date(d+'T12:00:00'),g=getVac(dt),cg=(S.conges||{})[d];
