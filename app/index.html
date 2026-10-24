@@ -27,7 +27,7 @@ html{--bt-img:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' vi
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v7.37">
+<meta name="app-version" content="v7.38">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -370,7 +370,10 @@ button:disabled>.hap-sw{pointer-events:none}
 @media(max-width:720px){
   .mbar{position:fixed;top:0;left:0;right:0;height:var(--hdrh,52px);padding:0;z-index:201;pointer-events:none;width:auto!important}
   .mbar>*{pointer-events:auto}.mbar .mnav{display:none!important}
-  .mtit{font-size:17px;font-weight:600}
+  .mtit{font-size:17px;font-weight:600;transition:opacity .15s ease}
+  /* page d'onglet ouverte : son nom à la place du mois */
+  #tb-title{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font:600 17px var(--font);color:var(--text);white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .15s ease}
+  body.tb-pg #tb-title{opacity:1}body.tb-pg .mtit{opacity:0!important;pointer-events:none}
   .hdr .hdr-ver{visibility:hidden}
   .hdr-btns>*:not(#menu-btn){display:none!important}
   #menu-btn{display:flex;align-items:center;justify-content:center;width:38px;height:38px;border:none!important;background:rgba(255,250,243,.08)!important;box-shadow:inset .5px .5px 0 rgba(255,250,243,.14);padding:0!important;border-radius:50%!important}
@@ -1134,6 +1137,7 @@ for(var i=0;i<bl.length;i++){bl[i].style.height=g.b[i][1]+'px';bl[i].style.margi
   <div class="mbar">
     <div style="display:flex;gap:4px"><button class="mnav" onclick="navDir(-1)"><i class="ti ti-chevron-left"></i></button><button class="mnav today" onclick="goToday()">auj.</button></div>
     <span class="mtit" id="mtit" onclick="toggleAnnual()"></span>
+    <span id="tb-title" aria-live="polite"></span>
     <div id="ptr-indicator"><div id="ptr-spin"><svg viewBox="0 0 30 30"><line x1="15" y1="3.6" x2="15" y2="9.4" transform="rotate(0 15 15)" data-o="1.00" style="animation-delay:calc(var(--ph,0s) - 0.000s)"/><line x1="15" y1="3.6" x2="15" y2="9.4" transform="rotate(45 15 15)" data-o="0.89" style="animation-delay:calc(var(--ph,0s) - 0.700s)"/><line x1="15" y1="3.6" x2="15" y2="9.4" transform="rotate(90 15 15)" data-o="0.78" style="animation-delay:calc(var(--ph,0s) - 0.600s)"/><line x1="15" y1="3.6" x2="15" y2="9.4" transform="rotate(135 15 15)" data-o="0.67" style="animation-delay:calc(var(--ph,0s) - 0.500s)"/><line x1="15" y1="3.6" x2="15" y2="9.4" transform="rotate(180 15 15)" data-o="0.56" style="animation-delay:calc(var(--ph,0s) - 0.400s)"/><line x1="15" y1="3.6" x2="15" y2="9.4" transform="rotate(225 15 15)" data-o="0.45" style="animation-delay:calc(var(--ph,0s) - 0.300s)"/><line x1="15" y1="3.6" x2="15" y2="9.4" transform="rotate(270 15 15)" data-o="0.34" style="animation-delay:calc(var(--ph,0s) - 0.200s)"/><line x1="15" y1="3.6" x2="15" y2="9.4" transform="rotate(315 15 15)" data-o="0.23" style="animation-delay:calc(var(--ph,0s) - 0.100s)"/></svg></div><div id="ptr-msg"></div></div>
     <button class="mnav" onclick="navDir(1)"><i class="ti ti-chevron-right"></i></button>
   </div>
@@ -3974,7 +3978,10 @@ function _fitScroll(){
 window.addEventListener('resize',_fitScroll);
 // Téléphone : tout l'accueil tient au-dessus de la barre d'onglets ; les cases du calendrier s'aplatissent juste ce qu'il faut
 // (jusqu'à 62 % de leur largeur), au-delà la page défile
-function _fitPhone(){
+// Téléphone : bouton menu aligné sur le bord droit des cases du calendrier
+function _hdrAlign(){if(innerWidth>720)return;var h=document.querySelector('.hdr'),cw=document.querySelector('#month-view .cal-wrap')||document.querySelector('.cal-wrap');
+  var r=cw&&cw.getBoundingClientRect();if(h&&r&&r.width>100)h.style.setProperty('padding-right',Math.max(8,Math.round(innerWidth-r.right))+'px','important');}
+function _fitPhone(){_hdrAlign();
   if(innerWidth>480)return;var v2=document.getElementById('side-v2'),bar=document.getElementById('tabbar'),c=document.querySelector('#cal .dc');
   if(!v2||!v2.offsetHeight||!bar||!c||!c.offsetWidth)return;
   var R=document.documentElement,p=parseFloat(R.style.getPropertyValue('--dcp'))||1.05,top=bar.getBoundingClientRect().top-8;
@@ -4501,7 +4508,10 @@ var _TB_PAGE={suivi:1,swap:1,set:1};
 function _tbSync(){var b=document.getElementById('tabbar');if(!b)return;var r=document.getElementById('modal-root'),ov=r&&r.querySelector('.overlay'),t='cal';
   if(ov)t=document.getElementById('sw-list')?'swap':document.getElementById('stc-0')?'set':document.getElementById('rcc-wrap')?'suivi':'';
   var phone=innerWidth<=720,page=phone&&ov&&_TB_PAGE[t];
-  if(phone){var h=document.querySelector('.hdr');if(h)document.documentElement.style.setProperty('--hdrh',h.offsetHeight+'px');}
+  if(phone){var h=document.querySelector('.hdr');if(h)document.documentElement.style.setProperty('--hdrh',h.offsetHeight+'px');_hdrAlign();}
+  // en-tête : nom de la page d'onglet à la place du mois
+  var tt=document.getElementById('tb-title');if(tt&&page)tt.textContent={suivi:'Suivi',swap:'Échanges',set:'Réglages'}[t];
+  document.body.classList.toggle('tb-pg',!!page);
   if(ov&&page&&!ov.classList.contains('tbpage')){ov.classList.add('tbpage');if(window._tbLast!==t)ov.classList.add(_TB_PAGE[window._tbLast]?'tbswap':'tbanim');}
   document.body.classList.toggle('tb-sheet',!!(phone&&ov&&!page));
   if(ov&&!page)return; // fenêtre par-dessus : la barre s'efface, l'onglet ne change pas
