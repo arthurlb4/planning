@@ -27,7 +27,7 @@ html{--bt-img:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' vi
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v7.21">
+<meta name="app-version" content="v7.22">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -2615,9 +2615,6 @@ function _renderSideV2(d){
     +'<div class="sv2-t"><span>Paie</span></div>'
     +'<div class="sv2-pay" style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:10px"><span class="sv2-lbl" style="font-size:11px">'+(_bu?'Brut du bulletin':'Brut estimé')+'</span>'
     +'<span class="sv2-val" style="font-size:22px;color:'+(brutOk||_bu?'var(--gold-pay)':'var(--text3)')+'">'+(_bu?fmtEuro(_bu.brut):brutOk?fmtEuro(pt.total):'—')+'</span></div>'
-    +(function(){var n=_bu&&_bu.netAv!=null?_bu.netAv:null,e=n==null&&(_bu||brutOk)?_netEst(d.mym,_bu?_bu.brut:pt.total,_bu?_bulPan(_bu):(pt.vars||{}).supPaniers||0):null;if(n==null&&!e)return '';
-      return '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin:-6px 0 10px"><span class="sv2-lbl" style="font-size:11px">'+(n!=null?'Net avant impôt du bulletin':'Net avant impôt estimé')+'</span>'
-        +'<span style="font-size:15px;font-weight:600;color:var(--text)">'+(n!=null?fmtEuro(n):'≈ '+fmtEuro(Math.round(e.net)).replace(/,00(?=\D*$)/,''))+'</span></div>';})()
     +'<div class="sv2-sub sv2-pl"><span>Inclut les variables '+deMois(prevMn)+'</span>'
     +(_bst&&_bc.status==='ecart'&&_bulIgn(d.mym,_bc)?'<span style="color:var(--text3)">écart ignoré'+(_bulIgnTxt(_bc)?' '+_bulIgnTxt(_bc):'')+'</span>':_bst?'<span style="color:'+_bst[1]+'">'+_bst[0]+' '+(_bc.status==='ecart'?(_bc.adj>0?'+':'')+fmtEuro(_bc.adj):'conforme')+'</span>':'<span style="color:var(--text3)">pas de bulletin</span>')+'</div>'
     +'</div>';
@@ -2710,7 +2707,6 @@ function _getAncYrsForYM(ym){const pr=S.profile||{};if(pr.ancYears!=null&&pr.anc
 function _getHistVal(hist,fb,ym){if(hist&&hist.length){let v=null;for(const e of hist)if(e.ym<=ym)v=e.v;if(v!==null)return v;}return fb;}
 function getPalierForYM(ym){return _getHistVal((S.profile||{}).palierHistory,(S.profile||{}).palierNum||0,ym);}
 function getGroupeForYM(ym){const pr=S.profile||{};return _getHistVal(pr.groupeHistory||[],pr.groupeClassif||0,ym);}
-function getPasTauxForYM(ym){const pr=S.profile||{};return _getHistVal(pr.pasTauxHistory||[],pr.pasTaux!=null?pr.pasTaux:5.9,ym);}
 function getSupFamilialForYM(ym){const pr=S.profile||{};return _getHistVal(pr.supFamilialHistory||[],pr.supFamilial||0,ym);}
 function getAncForYM(ym){const pr=S.profile||{};if(pr.ancYears!=null&&pr.ancRefYM!=null){const anni=typeof pr.ancMoisAnni==='number'&&pr.ancMoisAnni>=0?pr.ancMoisAnni:-1;let yrs=pr.ancYears;if(anni>=0){const minYM=Math.min(pr.ancRefYM,ym),maxYM=Math.max(pr.ancRefYM,ym);let cnt=0;for(let y=Math.floor(minYM/12);y<=Math.floor(maxYM/12)+1;y++){const aym=y*12+anni;if(aym>minYM&&aym<=maxYM)cnt++;}yrs=ym>=pr.ancRefYM?yrs+cnt:yrs-cnt;}return calcAncPrime(Math.max(0,yrs),ym);}if(pr.ancEntreeYM!=null)return calcAncPrime(calcAncYearsFromYM(pr.ancEntreeYM,ym),ym);if(pr.ancYearsHistory&&pr.ancYearsHistory.length){const y=_getHistVal(pr.ancYearsHistory,pr.ancYears||0,ym);return calcAncPrime(y,ym);}if(pr.ancYears!=null)return calcAncPrime(pr.ancYears,ym);return _getHistVal(pr.ancHistory,pr.primeAnciennete||0,ym);}
 function getHeuresForYM(ym){return _getHistVal((S.profile||{}).heuresHistory,(S.profile||{}).heuresMensuelles||151.67,ym);}
@@ -2820,42 +2816,6 @@ function calcPayeMois(y,m){
   let compCP=0;if(m===0){if(_cpMan!=null)compCP=_cpMan;else{let yv=0;for(let pm=0;pm<12;pm++)yv+=calcVariablesMois(y-1,pm).total;compCP=yv/10;}}
   return{base,salQ,salAnc,tauxH,heures,prevM,prevY,vars,primesConv:_primesConv,gpe,groupeClassif:getGroupeForYM(mym_cp),pfa,pfaM,pfaMensuelle:pr.pfaMensuelle,supFamilial,totalFixes,primesCustom,totalPrimesCustom,greveRet,greveDays,compCP,compCPManual:_cpMan!=null,total:base+vars.total+totalFixes+totalPrimesCustom+compCP-greveRet,configured:(salQ>0||salAnc>0||heures>0)&&_hasCycleMonth(y,m),noCycle:!_hasCycleMonth(y,m)};
 }
-function calcNetPaye(brut,paniers,ym){
-  const r2=v=>Math.round(v*100)/100,PMSS=(ym!=null?ym:TODAY_YM)>=2026*12?4005:3925,ta=Math.min(brut,PMSS);
-  const c_incap=r2(ta*0.00616),c_sf=31.72,c_sta=r2(ta*0.00304);
-  const c_rp=r2(ta*0.069),c_rd=r2(brut*0.004),c_ag=r2(ta*0.0401);
-  const pat=r2(ta*(0.00924+0.00456))+47.57;
-  const cb=r2((brut+pat)*0.9825);
-  const c_cd=r2(cb*0.068),c_cnd=r2(cb*0.029);
-  const cot=r2(c_incap+c_sf+c_sta+c_rp+c_rd+c_ag+c_cd+c_cnd);
-  const ns=r2(brut-cot),pan_e=r2(paniers*getPanierRate(ym)),nav=r2(ns+pan_e);
-  const pat_s=r2(47.57+ta*0.00456),ni=r2(brut-r2(cot-c_cnd)+pat_s);
-  const pas_t=getPasTauxForYM(ym!=null?ym:TODAY_YM)/100;
-  const pas=r2(ni*pas_t);
-  return{net:r2(nav-pas),brut,cot,pas,pasTaux:getPasTauxForYM(ym!=null?ym:TODAY_YM)};
-}
-// Net avant impôt estimé d'un mois (l'impôt dépend d'un taux qui change, il n'est pas compté).
-// Sur le bulletin : net avant impôt = brut − cotisations + paniers (la prime de panier n'est pas dans le brut et ne paie
-// pas de cotisations). Cotisations = une part fixe (mutuelle sur le plafond de la Sécurité sociale…) + un pourcentage du brut.
-// Avec au moins deux bulletins de bruts différents, les deux parts sont tirées des bulletins de la personne (droite qui passe
-// au plus près) ; avec un seul, tout est compté en pourcentage. Sans bulletin lu : taux de cotisation moyens.
-function _bulPan(b){return b&&b.paniers?b.paniers.mt||0:0;}
-function _bulHS(b){return (b&&b.rap||[]).reduce(function(s,r){return s+(r.k==='hsLow'||r.k==='hsHigh'?r.mt||0:0);},0);}
-function _netModel(ym){
-  var bs=S.bulletins||{},ks=Object.keys(bs).map(Number).filter(function(k){var b=bs[k];return b&&b.brut>0&&b.netAv!=null&&k<=Math.max(ym,TODAY_YM);}).sort(function(a,b){return b-a;}).slice(0,6);
-  if(!ks.length)return null;
-  var P=ks.map(function(k){var b=bs[k];return [b.brut,b.netAv-_bulPan(b)];}),n=P.length;
-  if(n>=2){var mx=P.reduce(function(s,p){return s+p[0];},0)/n,my=P.reduce(function(s,p){return s+p[1];},0)/n,sxx=0,sxy=0;
-    P.forEach(function(p){sxx+=(p[0]-mx)*(p[0]-mx);sxy+=(p[0]-mx)*(p[1]-my);});
-    var lo=Math.min.apply(null,P.map(function(p){return p[0];})),hi=Math.max.apply(null,P.map(function(p){return p[0];}));
-    if(hi-lo>=200&&sxx>0){var A=sxy/sxx,B=my-A*mx;if(A>0.6&&A<0.92&&B>-400&&B<50)return{A:A,B:B,from:ks[0],n:n};}}
-  return{A:P[0][1]/P[0][0],B:0,from:ks[0],n:1};
-}
-function _netEst(ym,brut,pan){
-  var r2=function(v){return Math.round(v*100)/100;},m=_netModel(ym);pan=pan||0;
-  if(!m){var c=calcNetPaye(brut,0,ym);return{net:r2(c.net+c.pas+pan),from:null};}
-  return{net:r2(brut*m.A+m.B+pan),from:m.from,n:m.n,fixe:r2(-m.B)};
-}
 // ================================================================
 // BULLETIN DE PAIE : import du PDF (lu sur l'appareil) et comparaison avec le calcul de l'app
 // ================================================================
@@ -2898,10 +2858,6 @@ function _bulParse(lines){
     if(/^RAP /.test(t))return;
     // « ABSENCE NON REMUNEREE 160 1,00 15,548 -15,55 » : grève ou absence non payée (retenue, mois du bulletin)
     if((m=/^ABSENCE NON REMUNEREE(?: (\d+))? (\d+,\d+) (\d+,\d+) (-?\d+,\d+)$/.exec(t))){if(!b.absNR)b.absNR={q:0,mt:0,div:m[1]?+m[1]:null};b.absNR.q+=_bulNum(m[2]);b.absNR.mt=Math.round((b.absNR.mt+_bulNum(m[4]))*100)/100;return;}
-    // Nets en bas du bulletin : avant impôt, imposable, à payer (pour estimer le net des mois sans bulletin)
-    if(b.netAv==null&&(m=/^NET [AÀ] PAYER AVANT IMP[OÔ]T.*?(-?\d+,\d+)$/.exec(t))){b.netAv=_bulNum(m[1]);return;}
-    if(b.netImp==null&&(m=/(?:^| )NET IMPOSABLE (-?\d+,\d+)/.exec(t))){b.netImp=_bulNum(m[1]);return;}
-    if(b.net==null&&!/AVANT/.test(t)&&(m=/^NET (?:[AÀ] PAYER|PAY[EÉ])\b.*?(-?\d+,\d+)$/.exec(t))){b.net=_bulNum(m[1]);return;}
     if((m=/(?:^| )MESURE NAO (.+?) (-?\d+,\d+)$/.exec(t))){b.nao[m[1]]=_bulNum(m[2]);return;}
     // « SALAIRE DE QUALIFICATION base taux montant » : base temps plein (→ palier) et taux de travail (→ contrat)
     if(b.salQBase==null&&(m=/^SALAIRE DE QUALIFICATION (\d+,\d+) (\d+,\d+) (-?\d+,\d+)$/.exec(t))){b.salQBase=_bulNum(m[1]);b.taux=_bulNum(m[2]);b.salQ=_bulNum(m[3]);return;}
@@ -8277,7 +8233,6 @@ function openSettingsModal(tab){
   var _heurLbl=_curHeur?(Math.round(_curHeur*100)/100).toFixed(2).replace('.',',')+' h':'';
   var _curGrp=getGroupeForYM(TODAY_YM);
   var _grpLbl=_curGrp?('Gr. '+_curGrp+' | '+calcGPE(_curGrp,TODAY_YM)+' €'):'—';
-  var _curPasTaux=getPasTauxForYM(TODAY_YM);
   var _curSft=getSupFamilialForYM(TODAY_YM);
   var _oncPal='onchange="window._sMP=true;openPalierModal()"';
   var _oncAnc='onchange="window._sMP=true;openAncModal()"';
@@ -8568,34 +8523,6 @@ function _setGroupeResult(g,date){
 }
 function _confirmGroupeToujours(){_setGroupeResult(parseInt((document.getElementById('_grp-n')||{}).value)||0,'');}
 function _confirmGroupeDate(){var s=_depGetDate();if(s)_setGroupeResult(parseInt((document.getElementById('_grp-n')||{}).value)||0,s);}
-function openPasTauxModal(){
-  var curT=getPasTauxForYM(TODAY_YM);
-  var now=new Date();
-  _lockBodyScroll();
-  document.getElementById('modal-root').innerHTML=
-    '<div class="overlay" onclick="if(event.target===this)openSettingsModal(1)">'
-    +'<div class="sheet"><div class="sh"></div><div class="st">Taux PAS</div>'
-    +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
-    +'<input id="_pas-t" type="number" min="0" max="50" step="0.1" value="'+curT+'" placeholder="5.9" style="flex:1;height:48px;box-sizing:border-box;padding:0 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:20px;background:var(--bg2);color:var(--text)">'
-    +'<span style="font-size:16px;color:var(--text3)">%</span>'
-    +'</div>'
-    +'<div style="height:14px"></div>'
-    +'<button class="mb" style="width:100%;height:44px;font-size:14px;background:var(--btn);color:var(--text);border:0.5px solid var(--border);border-radius:var(--r);margin-bottom:10px" onclick="_confirmPasTauxToujours()">Depuis toujours</button>'
-    +'<button id="_dep-date-btn" class="mb" style="width:100%;height:44px;font-size:14px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);margin-bottom:4px" onclick="var d=document.getElementById(\'_dep-date-pick\'),b=this;if(d)d.style.display=\'block\';b.style.display=\'none\'">Depuis une date</button>'
-    +_mkDepPick(now.getMonth()+1,now.getFullYear(),'_confirmPasTauxDate')
-    +'<button class="mcancel" onclick="openSettingsModal(1)">Annuler</button>'
-    +'</div></div>';
-  window._sMP=true;
-}
-function _setPasTauxResult(t,date){
-  window._sMP=false;
-  var _pr=_profs[_aid];if(!_pr||isNaN(t)||t<0||t>50)return openSettingsModal(1);
-  _pr.profile.pasTaux=t;
-  if(date){var _p=date.split('/'),_m=parseInt(_p[0]),_y=parseInt(_p[1]);if(!isNaN(_m)&&!isNaN(_y)){var _ym=_y*12+(_m-1);if(!_pr.profile.pasTauxHistory)_pr.profile.pasTauxHistory=[];var _ix=_pr.profile.pasTauxHistory.findIndex(function(e){return e.ym===_ym;});if(_ix>=0)_pr.profile.pasTauxHistory[_ix].v=t;else _pr.profile.pasTauxHistory.push({ym:_ym,v:t});_pr.profile.pasTauxHistory.sort(function(a,b){return a.ym-b.ym;});}}else{_pr.profile.pasTauxHistory=[];}
-  S=_profs[_aid]=_pr;saveState();render();openSettingsModal(1);
-}
-function _confirmPasTauxToujours(){_setPasTauxResult(parseFloat((document.getElementById('_pas-t')||{}).value),'');}
-function _confirmPasTauxDate(){var s=_depGetDate();if(s)_setPasTauxResult(parseFloat((document.getElementById('_pas-t')||{}).value),s);}
 function openSupFamilialModal(){
   var curSft=getSupFamilialForYM(TODAY_YM);
   var now=new Date();
