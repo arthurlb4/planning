@@ -27,7 +27,7 @@ html{--bt-img:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' vi
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v7.30">
+<meta name="app-version" content="v7.31">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -353,6 +353,18 @@ button:disabled>.hap-sw{pointer-events:none}
   #swap-btn,.hdr-btns .ibtn[title="Réglages"]{display:none!important}
 }
 @keyframes tbIn{from{opacity:0;transform:scale(.985) translateY(6px)}to{opacity:1;transform:none}}
+/* En-tête du téléphone : le mois au milieu (la barre du mois y monte, sans flèches ni « auj. » : on glisse entre les mois,
+   Accueil ramène à aujourd'hui), le bouton menu à droite ; le reste de l'en-tête passe dans le menu */
+#menu-btn{display:none}
+@media(max-width:720px){
+  .mbar{position:fixed;top:0;left:0;right:0;height:var(--hdrh,52px);padding:0;z-index:201;pointer-events:none;width:auto!important}
+  .mbar>*{pointer-events:auto}.mbar .mnav{display:none!important}
+  .mtit{font-size:17px;font-weight:600}
+  .hdr .hdr-ver{visibility:hidden}
+  .hdr-btns>*:not(#menu-btn){display:none!important}
+  #menu-btn{display:flex;border:none!important;background:none!important;padding:6px!important}#menu-btn i{font-size:22px!important;color:var(--text)}
+  #lp-menu.hd-menu{right:12px;left:auto!important;top:calc(var(--hdrh,52px) + 4px)!important;transform-origin:top right}
+}
 /* Grand titre (façon iOS) : en gros en haut de la fenêtre ; en faisant défiler, il passe dans une barre fine qui reste en haut */
 .sheet>.st{font-size:24px;font-weight:700;letter-spacing:-.015em;line-height:1.2;margin:2px 0 12px}
 .sh-mini{position:sticky;top:-16px;height:0;z-index:6;margin:0 -16px}
@@ -1083,6 +1095,7 @@ for(var i=0;i<bl.length;i++){bl[i].style.height=g.b[i][1]+'px';bl[i].style.margi
     <button class="ibtn" title="Sirhius" data-tip="Sirhius : le planning officiel" data-ext="1" onclick="openExternalUrl('https://sirhius-radiofrance.soprahronline.com/',true)"><i class="ti ti-calendar-time"></i><span class="ibtn-lbl">Sirhius</span></button>
     <button class="ibtn" title="Demande" data-tip="Demande : ouvre Power Apps" data-ext="1" onclick="openExternalUrl('https://apps.powerapps.com/play/e/4d596619-663c-ed3d-98c0-e114b119ea41/a/040bffc0-58b2-4c9d-965f-9479efa0b375?tenantId=1d643b07-8cf5-4e2d-ad1e-86d6b948fc3b&sourcetime=2023-08-16%2008%3A23%3A27Z')"><i class="ti ti-send"></i><span class="ibtn-lbl">Demande</span></button>
     <!-- <button class="ibtn" onclick="var _wvo=document.getElementById('week-view-overlay');if(_wvo&&_wvo.style.display!=='none')closeWeekView();else openWeekView()"><i class="ti ti-users"></i><span class="ibtn-lbl">Quintic</span></button> -->
+    <button class="ibtn" id="menu-btn" title="Menu" aria-label="Menu" onclick="openHdrMenu()"><i class="ti ti-menu-2"></i></button>
     <div style="position:relative">
       <button class="ibtn" title="Réglages" data-tip="Réglages" onclick="openSettingsModal()">
         <i class="ti ti-settings"></i>
@@ -2651,12 +2664,12 @@ function _renderSideV2(d){
   var prevMn=(curM+11)%12;
   // Bulletin importé pour ce mois : son brut et l'état de la comparaison
   var _bu=(S.bulletins||{})[d.mym],_bc=null,_bst=null;if(_bu){try{_bc=_bulCompare(_bu);_bst=_BUL_ST[_bc.status];}catch(e){}}
+  // Bulletin comparé : ✓ conforme, ⚠ écart (rien si pas de bulletin ou écart ignoré), à gauche du montant
+  var _ico=_bst?(_bc.status==='ecart'?(_bulIgn(d.mym,_bc)?'':'<span title="Écart avec le calcul" style="color:'+_bst[1]+';font-size:15px">⚠</span>'):'<span title="Bulletin conforme" style="color:var(--green);font-size:16px;font-weight:700">✓</span>'):'';
   var paie='<div class="bloc clk" onclick="openBulletinModal('+d.mym+')">'
-    +'<div class="sv2-t"><span>Paie</span></div>'
-    +'<div class="sv2-pay" style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:10px"><span class="sv2-lbl" style="font-size:11px">'+(_bu?'Brut du bulletin':'Brut estimé')+'</span>'
-    +'<span class="sv2-val" style="font-size:22px;color:'+(brutOk||_bu?'var(--gold-pay)':'var(--text3)')+'">'+(_bu?fmtEuro(_bu.brut):brutOk?fmtEuro(pt.total):'—')+'</span></div>'
-    +'<div class="sv2-sub sv2-pl"><span>Inclut les variables '+deMois(prevMn)+'</span>'
-    +(_bst&&_bc.status==='ecart'&&_bulIgn(d.mym,_bc)?'<span style="color:var(--text3)">écart ignoré'+(_bulIgnTxt(_bc)?' '+_bulIgnTxt(_bc):'')+'</span>':_bst?'<span style="color:'+_bst[1]+'">'+_bst[0]+' '+(_bc.status==='ecart'?(_bc.adj>0?'+':'')+fmtEuro(_bc.adj):'conforme')+'</span>':'<span style="color:var(--text3)">pas de bulletin</span>')+'</div>'
+    +'<div class="sv2-t"><span>Paie <span style="text-transform:none;letter-spacing:0;font-size:.85em">• variables '+deMois(prevMn)+'</span></span></div>'
+    +'<div class="sv2-pay" style="display:flex;align-items:baseline;justify-content:space-between;gap:8px"><span class="sv2-lbl" style="font-size:11px">'+(_bu?'Brut du bulletin':'Brut estimé')+'</span>'
+    +'<span style="display:flex;align-items:baseline;gap:7px">'+_ico+'<span class="sv2-val" style="font-size:22px;color:'+(brutOk||_bu?'var(--gold-pay)':'var(--text3)')+'">'+(_bu?fmtEuro(_bu.brut):brutOk?fmtEuro(pt.total):'—')+'</span></span></div>'
     +'</div>';
   v2.innerHTML=soldes+heures+paie;
   // Primes sur une seule ligne : si elles débordent, on réduit leur taille juste ce qu'il faut
@@ -4445,6 +4458,19 @@ function _shMini(){document.querySelectorAll('#modal-root .sheet').forEach(funct
   var m=document.createElement('div');m.className='sh-mini';var sp=document.createElement('span');sp.textContent=(st.firstChild&&st.firstChild.nodeType===3?st.firstChild.textContent:st.textContent).trim();m.appendChild(sp);sh.insertBefore(m,sh.firstChild);});}
 document.addEventListener('scroll',function(e){var sh=e.target;if(!sh||!sh.classList||!sh.classList.contains('sheet')||!sh._shm)return;
   var st=sh.querySelector(':scope>.st');if(st)sh.classList.toggle('scd',sh.scrollTop>st.offsetTop+st.offsetHeight-20);},true);
+// Menu de l'en-tête (téléphone) : ce qui était dans l'en-tête
+function openHdrMenu(){
+  _haptic();if(document.getElementById('lp-menu'))return _closeDayMenu();
+  var ub=document.getElementById('undo-btn'),rb=document.getElementById('redo-btn'),ext=function(t){var b=document.querySelector('.hdr-btns .ibtn[title="'+t+'"]');return b?b.getAttribute('onclick'):'';};
+  var it=function(ic,col,lbl,js,off){return '<button'+(off?' disabled':'')+' onclick="_closeDayMenu();'+js.replace(/"/g,'&quot;')+'"><i class="ti '+ic+'" style="color:'+col+'"></i>'+lbl+'</button>';};
+  var veil=document.createElement('div');veil.id='lp-veil';veil.addEventListener('click',function(e){e.stopPropagation();_closeDayMenu();});
+  var m=document.createElement('div');m.id='lp-menu';m.className='hd-menu';
+  m.innerHTML=it('ti-arrow-back-up','var(--text2)','Annuler','undoAction()',ub&&ub.disabled)+it('ti-arrow-forward-up','var(--text2)','Rétablir','redoAction()',rb&&rb.disabled)
+    +it('ti-calendar-month','var(--blue)',annualOpen?'Vue du mois':'Vue de l’année','toggleAnnual()')
+    +it('ti-brand-google','var(--text2)',gcalTokens?'Synchroniser Google Agenda':'Connecter Google Agenda','gcalHandleClick()')
+    +it('ti-calendar-time','var(--amber)','Sirhius',ext('Sirhius'))+it('ti-send','var(--green)','Demande de congés',ext('Demande'));
+  document.body.appendChild(veil);document.body.appendChild(m);
+  requestAnimationFrame(function(){veil.classList.add('on');m.classList.add('on');});}
 // Barre d'onglets (téléphone) : l'onglet allumé suit la fenêtre ouverte
 function _tbGo(t){_haptic();
   if(t==='cal'){if(document.querySelector('#modal-root .overlay')){window._modalBack=null;closeModal();if(document.querySelector('#modal-root .overlay')){document.getElementById('modal-root').innerHTML='';_unlockBodyScroll();}}else goToday();}
@@ -4472,6 +4498,7 @@ function _tbSync(){var b=document.getElementById('tabbar');if(!b)return;var r=do
   ind._x=x1;ind.style.width=w1+'px';ind.style.transform='translateX('+x1+'px)';}
 window.addEventListener('resize',function(){_tbSync();});
 document.addEventListener('DOMContentLoaded',function(){setTimeout(_tbSync,50);});
+_tbSync();
 document.addEventListener('DOMContentLoaded',function(){var r=document.getElementById('modal-root');if(r)try{new MutationObserver(function(){_tbSync();_shMini();}).observe(r,{childList:true,subtree:true,attributes:true,attributeFilter:['style']});}catch(e){}});
 // ================================================================
 // BOURSE AUX ÉCHANGES : jours proposés à l'équipe (échange ou jour cédé), réponses, choix
