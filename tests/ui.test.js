@@ -105,8 +105,9 @@ function mockApi(route) {
     { const r = await p.evaluate(async () => { const w = ms => new Promise(r => setTimeout(r, ms)), B = document.body.classList, ov = () => document.querySelector('#modal-root .overlay');
         const st = () => [B.contains('tb-pg') ? 'pg' : '', B.contains('tb-sub') ? 'sub' : '', B.contains('tb-sheet') ? 'sheet' : '', [...document.querySelectorAll('#tabbar button.on')].map(b => b.dataset.t).join(), ov() ? ['tbpush', 'tbpop'].filter(c => ov().classList.contains(c)).join() : '-', document.getElementById('tb-title').textContent, document.getElementById('tb-back').lastChild.textContent].join('/');
         const out = {}; _tbGo('suivi'); await w(80); out.suivi = st();
+        out.cards = document.querySelectorAll('#sv-root .svr-c').length; document.querySelectorAll('#sv-root .svr-c')[0].click(); await w(80); out.ctrl = st();
         openBulletinsCal(NOW.getFullYear()); await w(80); out.bul = st();
-        _tbBack(); await w(80); out.back = st();
+        _tbBack(); await w(80); out.back1 = st(); _tbBack(); await w(80); out.back = st();
         _tbGo('set'); await w(80); out.set = st();
         openHdrMenu(); const menu = [...document.querySelectorAll('#lp-menu button')].map(b => b.textContent.trim()).join(','); _closeDayMenu(); await w(200); out.menu = menu;
         _ask('Question ?', { ok: 'Oui' }); await w(80); out.ask = st(); document.querySelector('#ask .ok').click(); await w(80);
@@ -117,7 +118,9 @@ function mockApi(route) {
         openDay([...document.querySelectorAll('#cal .dci[data-key]')][10].dataset.key); await w(80); out.day = st(); closeModal(); await w(80);
         return out; });
       ok('Navigation : page Suivi (onglet allumé, titre)', /^pg\/\/\/suivi\/.*\/Suivi\//.test(r.suivi), r.suivi);
-      ok('Navigation : sous-page Paie depuis Suivi (arrive par la droite, retour « Suivi »)', /^pg\/sub\/\/suivi\/tbpush\/Paie/.test(r.bul) && /\/Suivi$/.test(r.bul), r.bul);
+      ok('Navigation : page Suivi = trois cases, Contrôle en sous-page (retour « Suivi »)', r.cards === 3 && /^pg\/sub\/\/suivi\/tbpush\/Contrôle\/Suivi$/.test(r.ctrl), r.cards + ' ' + r.ctrl);
+      ok('Navigation : sous-page Paie depuis Contrôle (arrive par la droite, retour « Contrôle »)', /^pg\/sub\/\/suivi\/tbpush\/Paie/.test(r.bul) && /\/Contrôle$/.test(r.bul), r.bul);
+      ok('Navigation : retour de Paie à Contrôle (revient de la gauche)', /^pg\/sub\/\/suivi\/tbpop\/Contrôle\//.test(r.back1), r.back1);
       ok('Navigation : retour à la page Suivi (revient de la gauche)', /^pg\/\/\/suivi\/tbpop\/Suivi\//.test(r.back), r.back);
       ok('Navigation : page Réglages', /^pg\/\/\/set\//.test(r.set), r.set);
       ok('Navigation : menu réduit hors de l’accueil (annuler, rétablir, historique)', r.menu === 'Annuler,Rétablir,Historique' && r.menuHome > 3, r.menu + ' | ' + r.menuHome);
