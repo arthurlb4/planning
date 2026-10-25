@@ -28,7 +28,7 @@ html{--bt-img:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' vi
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v7.44">
+<meta name="app-version" content="v7.45">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -3991,7 +3991,7 @@ function _hdrAlign(){if(innerWidth>720)return;var h=document.querySelector('.hdr
 function _fitPhone(){_hdrAlign();
   if(innerWidth>480)return;var v2=document.getElementById('side-v2'),bar=document.getElementById('tabbar'),c=document.querySelector('#cal .dc');
   if(!v2||!v2.offsetHeight||!bar||!c||!c.offsetWidth)return;
-  var R=document.documentElement,p=parseFloat(R.style.getPropertyValue('--dcp'))||1.05,top=bar.getBoundingClientRect().top-8;
+  var R=document.documentElement,p=parseFloat(R.style.getPropertyValue('--dcp'))||1.05,top=innerHeight-(parseFloat(getComputedStyle(bar).bottom)||0)-bar.offsetHeight-8; // pas sa position à l'écran : effacée sous une fenêtre, elle est plus bas
   var D=v2.getBoundingClientRect().bottom+(document.body.scrollTop||0)-top,np=Math.max(0.62,Math.min(1.3,p-D/(6*c.offsetWidth)));
   if(Math.abs(np-p)>0.004){R.style.setProperty('--dcp',np.toFixed(3));requestAnimationFrame(_fitScroll);}
 }
@@ -4148,12 +4148,13 @@ function openDay(key){
       } else {
         var vi=VAC[vn];
         if(vi&&vi.mixte)return;
-        var isCur=!ov&&vn===cycleVac;
+        var isCur=!absent&&!echange&&vn===(vac||cycleVac); // vacation en place ce jour-là
         var isSV=vn==='SV';
         var bg=isSV?'var(--bg0)':(vi&&vi.dur>0?'var(--blue-l)':'var(--bg2)'),cl=isSV?'var(--text2)':'var(--text)';
         var bd=isCur?'0.5px solid var(--blue);box-shadow:inset 0 0 0 1.5px var(--blue)':(isSV?'0.5px solid var(--border2)':'0.5px solid var(--border)');
         var durLbl=vi&&vi.dur>0?'<div style="font-size:9px;opacity:.7;font-weight:400">'+fmtMin(vi.dur)+'</div>':'';
-        vgHtml+=`<button class="mb vt" style="border:${bd};background:${bg};color:${cl};" onclick="avw('${vn}')"><div style="font-weight:700">${vLbl(vn,VAC)}</div>${durLbl}</button>`;
+        vgHtml+=isCur?`<button class="mb vt" disabled aria-current="true" title="Vacation prévue ce jour" style="border:${bd};background:${bg};color:${cl};opacity:1;cursor:default"><div style="font-weight:700">${vLbl(vn,VAC)}</div>${durLbl}</button>`
+          :`<button class="mb vt" style="border:${bd};background:${bg};color:${cl};" onclick="avw('${vn}')"><div style="font-weight:700">${vLbl(vn,VAC)}</div>${durLbl}</button>`;
       }
   });
   vgHtml+='</div></div>';
@@ -4513,6 +4514,7 @@ function openHdrMenu(){
     +it('ti-calendar-time','var(--amber)','Sirhius',ext('Sirhius'))+it('ti-send','var(--green)','Demande de congés',ext('Demande'));
   document.body.appendChild(veil);document.body.appendChild(m);
   requestAnimationFrame(function(){veil.classList.add('on');m.classList.add('on');});}
+document.addEventListener('click',function(e){if(Date.now()-(window._eatClickAt||0)<500){window._eatClickAt=0;e.stopPropagation();e.preventDefault();}},true);
 // Barre d'onglets (téléphone) : l'onglet allumé suit la fenêtre ouverte
 function _tbGo(t){_haptic();
   if(t==='cal'){if(document.querySelector('#modal-root .overlay')){window._modalBack=null;closeModal();if(document.querySelector('#modal-root .overlay')){document.getElementById('modal-root').innerHTML='';_unlockBodyScroll();}}else goToday();}
@@ -7990,6 +7992,8 @@ function _wvCell(code,VAC,isOv){
     if(!dragging||!sheet)return;
     dragging=false;
     var dy=e.changedTouches[0].clientY-startY;
+    // le doigt a glissé (fenêtre tirée ou défilée) : l'appui sur le bouton où il s'était posé ne compte pas
+    if(pulled||Math.abs(dy)>10)window._eatClickAt=Date.now();
     sheet.style.transition='transform .2s ease';
     // Fermeture seulement si le modal a vraiment été tiré vers le bas (pas après un simple défilement)
     if(pulled&&canClose&&dy>80){
