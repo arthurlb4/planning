@@ -28,7 +28,7 @@ html{--bt-img:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' vi
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v7.47">
+<meta name="app-version" content="v7.48">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -4523,7 +4523,7 @@ function openHdrMenu(){
 document.addEventListener('click',function(e){if(Date.now()-(window._eatClickAt||0)<500){window._eatClickAt=0;e.stopPropagation();e.preventDefault();}},true);
 // Barre d'onglets (téléphone) : l'onglet allumé suit la fenêtre ouverte
 function _tbGo(t){_haptic();
-  if(t==='cal'){if(document.querySelector('#modal-root .overlay')){window._modalBack=null;closeModal();if(document.querySelector('#modal-root .overlay')){document.getElementById('modal-root').innerHTML='';_unlockBodyScroll();}}else goToday();}
+  if(t==='cal'){if(document.querySelector('#modal-root .overlay')){window._modalBack=null;window._tbRoot=null;closeModal();if(document.querySelector('#modal-root .overlay')){document.getElementById('modal-root').innerHTML='';_unlockBodyScroll();}}else goToday();}
   else if(t==='suivi')openMergedRenduCgModal(6,2);
   else if(t==='swap')openSwaps();
   else if(t==='set')openSettingsModal();
@@ -4531,7 +4531,12 @@ function _tbGo(t){_haptic();
 var _TB_PAGE={suivi:1,swap:1,set:1};
 function _tbSync(){var b=document.getElementById('tabbar');if(!b)return;var r=document.getElementById('modal-root'),ov=r&&r.querySelector('.overlay'),t='cal';
   if(ov)t=document.getElementById('sw-list')?'swap':document.getElementById('stc-0')?'set':document.getElementById('rcc-wrap')?'suivi':'';
-  var phone=innerWidth<=720,page=phone&&ov&&_TB_PAGE[t];
+  var phone=innerWidth<=720;
+  // onglet ouvert : ses grandes fenêtres (bulletins, tableau, vérification…) sont des sous-pages, l'onglet reste allumé ;
+  // les petites (question, saisie) passent par-dessus
+  if(phone&&_TB_PAGE[t])window._tbRoot=t;else if(!ov)window._tbRoot=null;
+  if(phone&&ov&&!_TB_PAGE[t]&&window._tbRoot&&ov.querySelector('.sheet.tabmod,.sheet.smod,.sheet.pp-sheet,.sheet.rv-sheet'))t=window._tbRoot;
+  var page=phone&&ov&&_TB_PAGE[t];
   if(phone){var h=document.querySelector('.hdr');if(h)document.documentElement.style.setProperty('--hdrh',h.offsetHeight+'px');_hdrAlign();}
   // en-tête : nom de la page d'onglet à la place du mois
   var tt=document.getElementById('tb-title');if(tt&&page)tt.textContent={suivi:'Suivi',swap:'Échanges',set:'Réglages'}[t];
@@ -7623,6 +7628,13 @@ function closeModal(){
   window._poolTmp=null; // équipe essayée dans « Changer de ligne » sans valider
   // fenêtre ouverte par-dessus une autre (message au gestionnaire…) : la fermer ramène à la page d'avant
   if(window._modalBack){var _b=window._modalBack;window._modalBack=null;_b();return;}
+  // sous-page ou petite fenêtre ouverte depuis un onglet (téléphone) : on revient à la page de l'onglet, pas à l'accueil
+  var _rt=window._tbRoot,_mr=document.getElementById('modal-root');
+  if(_rt&&innerWidth<=720&&_mr&&_mr.querySelector('.overlay')&&!document.getElementById({suivi:'rcc-wrap',set:'stc-0',swap:'sw-list'}[_rt])){
+    window._svYear=null;window._rvFrom=null;window._mmFrom=null;pendingKey=null;
+    if(_rt==='suivi')openMergedRenduCgModal(6,window._rcgShown!=null?window._rcgShown:2);else if(_rt==='set')openSettingsModal(window._stLast||0);else openSwaps();
+    return;}
+  window._tbRoot=null;
   window._svYear=null; // le salaire du Suivi revient à l'année en cours
   // Tableau Gestion ouvert depuis le modal rendus : on y revient à la fermeture
   window._rvFrom=null;window._mmFrom=null;
@@ -8549,7 +8561,7 @@ function openSettingsModal(tab){
 // Une seule vérification, la même dans les onglets Paie et Heures : réglages de paie et rendus d'après les bulletins, écart avec le tableau Gestion
 function _verifRow(tab,extra){return '<div style="display:flex;align-items:center;gap:8px;margin:0 12.5px 10px 4px"><span style="flex:1;min-width:0;font-size:11px;color:var(--text3);line-height:1.35">Bulletins et tableau Gestion</span><div style="display:flex;gap:6px;flex-shrink:0">'+(extra||'')
   +'<button class="adj-pill" style="width:120px;height:32px;font-size:12px;white-space:nowrap" onclick="_bulPayPropose(function(){openSettingsModal('+tab+');},1)"><i class="ti ti-checks" style="margin-right:4px"></i>Vérifier</button></div></div>';}
-function settingsTab(n){
+function settingsTab(n){window._stLast=n;
   var _tx=['translateX(0)','translateX(calc(100% + 2px))','translateX(calc(200% + 4px))'];
   [0,1,2].forEach(function(i){
     var c=document.getElementById('stc-'+i);
