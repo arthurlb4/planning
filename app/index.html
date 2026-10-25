@@ -28,7 +28,7 @@ html{--bt-img:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' vi
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v7.67">
+<meta name="app-version" content="v7.68">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -4605,8 +4605,16 @@ function _tbGo(t){_haptic();
   _tbSync();}
 var _TB_PAGE={suivi:1,swap:1,set:1};
 // Sous-pages (téléphone) : glisser depuis le bord gauche pour revenir, comme sur iPhone ; la page suit le doigt
+// et laisse voir dessous la page du dessus (gardée à l'ouverture de la sous-page, ou l'accueil), qui revient de la gauche
+document.addEventListener('scroll',function(e){var el=e.target,ov=el&&el.closest&&el.closest('.overlay.tbpage');if(ov){(ov._sc||(ov._sc=new Map())).set(el,el.scrollTop);}},true);
 (function(){
-  var sx=0,sy=0,t0=0,lock=0,sh=null,W=0;
+  var sx=0,sy=0,t0=0,lock=0,sh=null,W=0,un=null,ovC=null;
+  function under(ov){var st=window._tbStack||[],pv=st[st.length-1];ovC=ov;ov.style.setProperty('background','transparent','important');
+    if(!pv)return; // sous-page de l'Accueil : l'accueil est déjà dessous
+    un=document.createElement('div');un.id='tb-under';pv.classList.remove('tbpush','tbpop','tbanim','tbswap');pv.style.zIndex='199';pv.style.pointerEvents='none';
+    un.appendChild(pv);document.body.appendChild(un);if(pv._sc)pv._sc.forEach(function(y,el){el.scrollTop=y;});}
+  function move(dx){var k=Math.min(1,Math.max(0,dx/W));if(un){un.firstChild.style.transform='translateX('+(-28*(1-k))+'%)';un.firstChild.style.filter='brightness('+(.7+.3*k)+')';}}
+  function drop(){if(un){un.remove();un=null;}if(ovC){ovC.style.removeProperty('background');ovC=null;}}
   document.addEventListener('touchstart',function(e){window._edgeOn=false;sh=null;
     if(innerWidth>720||e.touches.length>1)return;var x=e.touches[0].clientX;if(x>24)return;
     var ov=document.querySelector('#modal-root .overlay.tbsub');if(!ov||!ov.contains(e.target))return;
@@ -4615,12 +4623,18 @@ var _TB_PAGE={suivi:1,swap:1,set:1};
     var dx=e.touches[0].clientX-sx,dy=e.touches[0].clientY-sy;
     if(!lock){if(Math.abs(dx)<6&&Math.abs(dy)<6)return;lock=dx>0&&Math.abs(dx)>Math.abs(dy)?1:-1;if(lock<0){window._edgeOn=false;return;}}
     if(e.cancelable)e.preventDefault();e.stopPropagation();
-    sh.style.transition='none';sh.style.transform='translateX('+Math.max(0,dx)+'px)';sh.style.boxShadow='-14px 0 30px rgba(0,0,0,.45)';},{capture:true,passive:false});
+    if(!ovC)under(sh.closest('.overlay'));
+    sh.style.transition='none';sh.style.transform='translateX('+Math.max(0,dx)+'px)';sh.style.boxShadow='-14px 0 30px rgba(0,0,0,.45)';move(Math.max(0,dx));},{capture:true,passive:false});
   document.addEventListener('touchend',function(e){if(!window._edgeOn||!sh)return;var s=sh;
     var dx=e.changedTouches[0].clientX-sx,v=dx/Math.max(1,Date.now()-t0);
     if(lock>0)window._eatClickAt=Date.now();
-    if(lock>0&&(dx>W/3||(v>0.5&&dx>40))){s.style.transition='transform .2s cubic-bezier(.3,.7,.4,1)';s.style.transform='translateX('+W+'px)';setTimeout(function(){window._edgeOn=false;window._tbNoPop=1;_tbBack();},190);}
-    else{s.style.transition='transform .25s cubic-bezier(.2,.9,.3,1)';s.style.transform='';setTimeout(function(){s.style.boxShadow='';s.style.transition='';window._edgeOn=false;},260);}
+    var u=un&&un.firstChild;if(u)u.style.transition='transform .2s cubic-bezier(.3,.7,.4,1),filter .2s ease';
+    if(lock>0&&(dx>W/3||(v>0.5&&dx>40))){s.style.transition='transform .2s cubic-bezier(.3,.7,.4,1)';s.style.transform='translateX('+W+'px)';move(W);
+      setTimeout(function(){window._edgeOn=false;window._tbNoPop=1;
+        // la page du dessus est redessinée (chiffres à jour) au même endroit du défilement que celle montrée pendant le geste
+        var ys=[];if(u&&u._sc)u._sc.forEach(function(y,el){if(el.className)ys.push([String(el.className).split(' ')[0],y]);});
+        drop();_tbBack();ys.forEach(function(c){var e=document.querySelector('#modal-root .overlay .'+c[0]);if(e)e.scrollTop=c[1];});},190);}
+    else{s.style.transition='transform .25s cubic-bezier(.2,.9,.3,1)';s.style.transform='';move(0);setTimeout(function(){s.style.boxShadow='';s.style.transition='';window._edgeOn=false;if(u){u.style.transform=u.style.filter=u.style.transition=u.style.zIndex=u.style.pointerEvents='';}drop();},260);}
     sh=null;},{capture:true,passive:true});
 })();
 // page d'onglet ouverte après une annulation : redessinée avec les chiffres à jour (sous-pages : à leur prochaine ouverture)
@@ -4629,7 +4643,7 @@ function _tbRefresh(){if(!document.body.classList.contains('tb-pg')||document.bo
   sh=document.querySelector('#modal-root .overlay .sheet');if(sh)sh.scrollTop=y;}
 function _tbBack(){_haptic();window._eatClickAt=0;window._tbPop=1;/* sous l'Accueil : retour à l'accueil */var nb=window._tbRoot&&document.querySelector('#modal-root .overlay.tbsub .nav-back');if(nb)nb.click();else closeModal();}
 function _tbSync(){var b=document.getElementById('tabbar');if(!b)return;var r=document.getElementById('modal-root'),ov=r&&r.querySelector('.overlay'),t='cal';
-  if(ov)t=document.getElementById('sw-list')?'swap':document.getElementById('stc-0')?'set':document.getElementById('rcc-wrap')?'suivi':'';
+  if(ov)t=ov.querySelector('#sw-list')?'swap':ov.querySelector('#stc-0')?'set':ov.querySelector('#rcc-wrap')?'suivi':'';
   var phone=innerWidth<=720;
   // onglet ouvert : ses grandes fenêtres (bulletins, tableau, vérification…) sont des sous-pages, l'onglet reste allumé ;
   // les petites (question, saisie) passent par-dessus
@@ -4650,11 +4664,14 @@ function _tbSync(){var b=document.getElementById('tabbar');if(!b)return;var r=do
   var _sk=sub&&_sh?_sh.className+'|'+_stx.split(' ')[0]:'';
   if(ov&&page&&!ov.classList.contains('tbpage')){ov.classList.add('tbpage');
     var pop=window._tbPop;window._tbPop=0;
+    // pages du dessus gardées telles quelles (affichées sous la sous-page pendant le glissé retour)
+    var _st=window._tbStack||(window._tbStack=[]),_g=window._tbGone;window._tbGone=null;
+    if(pop)_st.pop();else if(sub){if(_sk!==window._tbSubK&&_g)_st.push(_g);}else _st.length=0;
     if(pop&&!window._tbNoPop)ov.classList.add('tbpop');
     else if(sub){if(_sk!==window._tbSubK&&!pop)ov.classList.add('tbpush');}
     else if(window._tbLast!==t)ov.classList.add(_TB_PAGE[window._tbLast]?'tbswap':'tbanim');
     window._tbNoPop=0;}
-  if(ov&&page)window._tbSubK=_sk;else if(!ov){window._tbSubK='';window._tbPop=window._tbNoPop=0;}
+  if(ov&&page)window._tbSubK=_sk;else if(!ov){window._tbSubK='';window._tbPop=window._tbNoPop=0;window._tbStack=[];window._tbGone=null;}
   document.body.classList.toggle('tb-sheet',!!(phone&&ov&&!page));_sbTint();
   if(ov&&!page)return; // fenêtre par-dessus : la barre s'efface, l'onglet ne change pas
   var on=null;b.querySelectorAll('button').forEach(function(x){x.classList.toggle('on',x.dataset.t===t);if(x.dataset.t===t)on=x;});
@@ -4671,7 +4688,7 @@ function _tbSync(){var b=document.getElementById('tabbar');if(!b)return;var r=do
 window.addEventListener('resize',function(){_tbSync();});
 document.addEventListener('DOMContentLoaded',function(){setTimeout(_tbSync,50);});
 _tbSync();
-document.addEventListener('DOMContentLoaded',function(){var r=document.getElementById('modal-root');if(r)try{new MutationObserver(function(){_tbSync();_shMini();}).observe(r,{childList:true,subtree:true,attributes:true,attributeFilter:['style']});}catch(e){}});
+document.addEventListener('DOMContentLoaded',function(){var r=document.getElementById('modal-root');if(r)try{new MutationObserver(function(rs){rs.forEach(function(m){[].forEach.call(m.removedNodes,function(n){if(n.classList&&n.classList.contains('tbpage'))window._tbGone=n;});});_tbSync();_shMini();}).observe(r,{childList:true,subtree:true,attributes:true,attributeFilter:['style']});}catch(e){}});
 // ================================================================
 // BOURSE AUX ÉCHANGES : jours proposés à l'équipe (échange ou jour cédé), réponses, choix
 // L'échange conclu s'enregistre ensuite dans chaque planning (Modifier → Échange), comme avant
