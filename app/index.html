@@ -28,7 +28,7 @@ html{--bt-img:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' vi
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v7.46">
+<meta name="app-version" content="v7.47">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -4277,10 +4277,17 @@ function _dayAutre(on){var vg=document.getElementById('day-vg');if(!vg)return;_h
   if(on){if(!window._dayVgHtml){window._dayVgHtml=vg.innerHTML;vg.style.height=vg.offsetHeight+'px';vg.style.overflowY='auto';} // même hauteur que la grille : les boutons du dessous ne bougent pas
     vg.innerHTML='<div class="vg-in">'+_dayAutreHtml()+'</div>';}
   else if(window._dayVgHtml){vg.innerHTML='<div class="vg-in">'+window._dayVgHtml+'</div>';window._dayVgHtml=null;vg.scrollTop=0;}}
+// Jours « modifiés » qui ne font que remettre la vacation du cycle (aucun autre réglage) : ce ne sont pas des modifications
+function _ovCleanSame(){var o=S.overrides||{},n=0,ok={vac:1,fromSV:1,echange:1,hs:1,formation:1};
+  Object.keys(o).forEach(function(k){var v=o[k];if(!v||!v.vac||v.echange||v.hs||v.formation||v.absent||Object.keys(v).some(function(f){return !ok[f];}))return;
+    var cv=getCycleVac(new Date(k+'T12:00:00')).cycleVac;if(cv&&cv!=='RH'&&v.vac===cv){delete o[k];removeHistoryForKey(k);n++;}});
+  if(n)saveState();return n;}
 function avw(sel){
   if(!sel)return;
   var key=pendingKey||_lpk;if(!key)return;
   var date=new Date(key+'T12:00:00'),cv=getCycleVac(date).cycleVac,VAC=getVAC(date);
+  // retour à la vacation prévue au cycle : plus de modification (ni marque, ni historique) ; primes et rendus ajoutés gardés
+  if(sel===cv&&cv&&cv!=='RH'){var _o=(S.overrides||{})[key];if(_o){pushUndo('Vacation remise');delete S.overrides[key];removeHistoryForKey(key);saveState();render();popCell(key);gcalTrigger();}closeModal();return;}
   pushUndo('Vacation modifiée');
   if(!S.overrides)S.overrides={};
   // Les options (heures sup, primes prévues) se règlent ensuite dans la fiche du jour, seulement si elles servent
@@ -10455,7 +10462,7 @@ async function cloudLoadAll(){
     window._cloudReady=true;window._cloudOk=true;
     saveState();
   }catch(e){console.warn('cloud load all error',e);}
-  window._cloudReady=true;try{render();}catch(e){}
+  window._cloudReady=true;try{_ovCleanSame();}catch(e){}try{render();}catch(e){}
   gcalLoad();
   setTimeout(function(){_swapRefresh(true);if(/[?&]swap=1/.test(location.search)){try{history.replaceState(null,'',location.pathname);}catch(e){}openSwaps(0);}},1500);
   // au lancement, l'app s'ouvre sur la copie gardée : si une version plus récente existe, elle se recharge dessus

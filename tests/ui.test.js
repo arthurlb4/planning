@@ -101,6 +101,11 @@ function mockApi(route) {
     { const r = await p.evaluate(async () => { const on = () => [...document.querySelectorAll('#tabbar button.on')].map(b => b.dataset.t).join(); const w = ms => new Promise(r => setTimeout(r, ms));
         _tbGo('suivi'); await w(150); const a = on(); _tbGo('set'); await w(150); const b = on(); _tbGo('cal'); await w(150); return [getComputedStyle(document.getElementById('tabbar')).display, a, b, on(), !!document.querySelector('#modal-root .overlay')]; });
       ok('Barre d’onglets : Suivi, Réglages puis retour au planning', r[0] === 'flex' && r[1] === 'suivi' && r[2] === 'set' && r[3] === 'cal' && !r[4], JSON.stringify(r)); }
+    // Vacation changée puis remise à celle du cycle : plus de modification
+    ok('Vacation remise à celle du cycle : plus de modification', await p.evaluate(() => { const k = [...document.querySelectorAll('#cal .dci[data-key]')].map(e => e.dataset.key).find(k => k > dk(NOW) && !(S.overrides || {})[k] && getVac(new Date(k + 'T12:00:00')).vac && getVac(new Date(k + 'T12:00:00')).vac !== 'RH');
+      const cv = getCycleVac(new Date(k + 'T12:00:00')).cycleVac, other = Object.keys(getVAC(new Date(k + 'T12:00:00'))).find(v => v !== cv && v !== 'RH' && v !== 'SV');
+      pendingKey = k; avw(other); const a = !!S.overrides[k]; pendingKey = k; avw(cv); const b = !(S.overrides || {})[k];
+      S.overrides[k] = { vac: cv, fromSV: false, echange: false, hs: false, formation: false }; const c = _ovCleanSame() === 1 && !S.overrides[k]; return a && b && c; }));
     const lr = SENT['/lines/register'];
     if (process.env.SHOW) console.log(JSON.stringify(lr));
     ok('Ligne de la semaine envoyée au serveur', lr && /^S\d+$/.test(lr.ligne) && lr.pool && lr.weekVacs.length === 7, JSON.stringify(lr));
