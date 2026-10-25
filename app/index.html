@@ -28,7 +28,7 @@ html{--bt-img:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' vi
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v7.74">
+<meta name="app-version" content="v7.75">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -7319,6 +7319,8 @@ function openMergedRenduCgModal(limit,tab){
 var _SV_T={2:'Contrôle',0:'Rendus',1:'Congés'};
 function openSuiviRoot(){
   if(innerWidth>720)return openMergedRenduCgModal(6,window._rcgShown??2);
+  // retour depuis une sous-page (ou page redessinée) : la courbe ne se redessine pas
+  var _noAnim=!!(window._tbPop||document.body.classList.contains('tb-sub')||document.getElementById('sv-root'));
   if(!document.body.classList.contains('modal-open'))_lockBodyScroll();
   try{_rhCmpRefresh();}catch(e){}
   var y=NOW.getFullYear(),MF=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
@@ -7344,8 +7346,6 @@ function openSuiviRoot(){
   // prochaine échéance (après le mois affiché) et rendus déjà posés à venir
   var rl=[],vY=d.mym!=null?d.mym:TODAY_YM,cvH='';
   try{cvH='<span class="svr-cv" onclick="event.stopPropagation()">'+_cvHtml(y,64)+'</span>';}catch(e){}
-  try{var cs=calcSoldes(),byE={};Object.keys(cs.realAvail||{}).forEach(function(k){var av=cs.realAvail[k],e=getExpYm(+k);if(av>0&&e>vY)byE[e]=(byE[e]||0)+av;});
-    var e1=Object.keys(byE).map(Number).sort(function(a,b){return a-b;})[0];if(e1!=null)rl.push('Prochaine échéance : '+fmtMin(byE[e1])+' fin '+MF[e1%12]+(Math.floor(e1/12)!==y?' '+Math.floor(e1/12):''));}catch(e){}
   var fr=Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='rend'&&k>dk(NOW);}),frm=0;fr.forEach(function(k){try{frm+=getDur(new Date(k+'T12:00:00'));}catch(e){}});
   if(fr.length)rl.push(fr.length+' rendu'+(fr.length>1?'s':'')+' posé'+(fr.length>1?'s':'')+' à venir'+(frm?' · '+fmtMin(frm):''));
   var rend=block(0,'ti-clock-hour-4','var(--rend-text)','Rendus',[
@@ -7354,17 +7354,13 @@ function openSuiviRoot(){
     cell('Matelas',mat>0?fmtMin(mat):'—',mat>0?'var(--blue)':mu)],rl,cvH);
   // Congés : restants, posés, CET ; les prochains posés
   var cu=0,ce=0;try{cu=calcCongesUsedForYear(y);ce=getCETForYear(y);}catch(e){}
-  var cr=d.cRest!=null?d.cRest:0,nx='';
-  var fut=Object.keys(S.conges||{}).filter(function(k){return S.conges[k]==='cg'&&k>dk(NOW);}).sort();
-  if(fut.length){var a=fut[0],b=a,n=1;for(var q=1;q<fut.length;q++){var gap=(new Date(fut[q]+'T12:00:00')-new Date(b+'T12:00:00'))/864e5;if(gap>4)break;b=fut[q];n++;}
-    var fd=function(k,m){return new Date(k+'T12:00:00').toLocaleDateString('fr-FR',m?{day:'numeric',month:'long'}:{weekday:'short',day:'numeric'});};
-    nx='Prochains : '+(a===b?fd(a,1):fd(a)+' → '+fd(b,1))+' · '+n+' j';}
+  var cr=d.cRest!=null?d.cRest:0;
   var cg=block(1,'ti-beach',ok,'Congés',[
     cell('Restants',cr+' j',cr>0?ok:mu),
     cell('Posés',cu+' j',cu>0?'var(--text)':mu),
-    cell('CET',ce?ce+' j':'—',ce?am:mu)],[nx]);
+    cell('CET',ce?ce+' j':'—',ce?am:mu)]);
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet" data-title="Suivi"><div id="sv-root">'+ctrl+rend+cg+'</div></div></div>';
-  var cv=document.querySelector('#sv-root .svr-cv');if(cv)requestAnimationFrame(function(){try{_cvAnim(cv);}catch(e){}});}
+  var cv=!_noAnim&&document.querySelector('#sv-root .svr-cv');if(cv)requestAnimationFrame(function(){try{_cvAnim(cv);}catch(e){}});}
 function _rgStep(d){_haptic();var c=window._rgYM!=null?window._rgYM:(typeof curY!=='undefined'?curY*12+curM:TODAY_YM);window._rgYM=d?c+d:TODAY_YM;
   var sh=document.querySelector('#modal-root .sheet'),y=sh?sh.scrollTop:0;openMergedRenduCgModal(6,0);sh=document.querySelector('#modal-root .sheet');if(sh)sh.scrollTop=y;}
 function openPrevisMois(){
