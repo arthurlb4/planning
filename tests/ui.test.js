@@ -105,7 +105,7 @@ function mockApi(route) {
     { const r = await p.evaluate(async () => { const w = ms => new Promise(r => setTimeout(r, ms)), B = document.body.classList, ov = () => document.querySelector('#modal-root .overlay');
         const st = () => [B.contains('tb-pg') ? 'pg' : '', B.contains('tb-sub') ? 'sub' : '', B.contains('tb-sheet') ? 'sheet' : '', [...document.querySelectorAll('#tabbar button.on')].map(b => b.dataset.t).join(), ov() ? ['tbpush', 'tbpop'].filter(c => ov().classList.contains(c)).join() : '-', document.getElementById('tb-title').textContent, document.getElementById('tb-back').lastChild.textContent].join('/');
         const out = {}; _tbGo('suivi'); await w(80); out.suivi = st();
-        out.cards = document.querySelectorAll('#sv-root .svr-c').length; document.querySelectorAll('#sv-root .svr-c')[0].click(); await w(80); out.ctrl = st();
+        out.cards = document.querySelectorAll('#sv-root .svr-b').length; document.querySelectorAll('#sv-root .svr-b')[0].click(); await w(80); out.ctrl = st();
         openBulletinsCal(NOW.getFullYear()); await w(80); out.bul = st();
         _tbBack(); await w(80); out.back1 = st(); _tbBack(); await w(80); out.back = st();
         _tbGo('set'); await w(80); out.set = st();
