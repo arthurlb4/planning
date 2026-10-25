@@ -28,7 +28,7 @@ html{--bt-img:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' vi
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v7.68">
+<meta name="app-version" content="v7.69">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -406,7 +406,11 @@ button:disabled>.hap-sw{pointer-events:none}
   /* titre de la sous-page : déjà dans l'en-tête, retiré du corps (avec ses flèches ‹ ›) */
   .overlay.tbsub .st-hdr{display:none!important}
   .hdr .hdr-ver{visibility:hidden}
-  .hdr-btns>*:not(#menu-btn){display:none!important}
+  .hdr-btns>*:not(#menu-btn):not(#sync-status){display:none!important}
+  /* synchronisation : nuage à gauche du menu seulement quand il y a un souci (échec, hors ligne, envoi qui traîne) */
+  body:not(.sy-show) #sync-status{display:none!important}
+  #sync-status{width:30px!important;height:30px!important;margin-right:8px!important;font-size:21px}
+  #lp-menu .hm-sync{display:flex;align-items:center;gap:6px;padding:8px 12px 4px;font-size:12px;color:var(--text3)}#lp-menu .hm-sync i{font-size:14px}
   #menu-btn{display:flex;align-items:center;justify-content:center;width:38px;height:38px;border:none!important;background:rgba(255,250,243,.08)!important;box-shadow:inset .5px .5px 0 rgba(255,250,243,.14);padding:0!important;border-radius:50%!important}
   #menu-btn .hm-ico{transition:transform .2s cubic-bezier(.3,1.4,.5,1)}#menu-btn:active .hm-ico{transform:scale(.86)}
   #menu-btn .sw-dot{top:1px;right:1px}
@@ -4592,7 +4596,7 @@ function openHdrMenu(){
     +it('ti-calendar-time','var(--amber)','Sirhius',ext('Sirhius'))+it('ti-send','var(--green)','Demande de congés',ext('Demande'))
     +'<div class="hm-sep"></div>'
     +it('ti-calendar-month','var(--blue)',annualOpen?'Vue du mois':'Vue de l’année','toggleAnnual()')
-    +it('ti-brand-google','var(--text2)',gcalTokens?'Synchroniser Google Agenda':'Connecter Google Agenda','gcalHandleClick()'));
+    +it('ti-brand-google','var(--text2)',gcalTokens?'Synchroniser Google Agenda':'Connecter Google Agenda','gcalHandleClick()'))+(function(l){return l?'<div class="hm-sep"></div>'+l:'';})(_syncLine());
   document.body.appendChild(veil);document.body.appendChild(m);
   requestAnimationFrame(function(){veil.classList.add('on');m.classList.add('on');});}
 document.addEventListener('click',function(e){if(Date.now()-(window._eatClickAt||0)<500){window._eatClickAt=0;e.stopPropagation();e.preventDefault();}},true);
@@ -10365,7 +10369,16 @@ function setSyncStatus(st){
   var cfg={pending:['ti-cloud-upload','var(--text3)','Synchronisation en attente…'],ok:['ti-cloud-check','var(--text3)','Synchronisé'],error:['ti-cloud-off','var(--amber)','Échec de synchronisation'+(window._syncErr?' ('+window._syncErr+')':'')+' — les modifications sont gardées sur cet appareil. Nouvel essai automatique toutes les 10 min. Toucher pour réessayer maintenant.']}[st];
   if(!cfg){el.style.display='none';return;}
   el.innerHTML='<i class="ti '+cfg[0]+'"></i>';el.style.color=cfg[1];el.title=cfg[2];el.style.display='inline-flex';
+  // iPhone : visible tout de suite en cas d'échec, après 4 s si l'envoi traîne ; rien quand tout va bien
+  clearTimeout(window._syShowT);document.body.classList.toggle('sy-show',st==='error');
+  if(st==='pending')window._syShowT=setTimeout(function(){document.body.classList.toggle('sy-show',window._syncStatus==='pending'||window._syncStatus==='error');},4000);
 }
+// État de la synchronisation, en une ligne (bas du menu)
+function _syncLine(){var st=window._syncStatus;if(!window._authToken||!st)return '';
+  var t=window._lastSyncOk?new Date(window._lastSyncOk).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):'';
+  var x=st==='error'?['ti-cloud-off','var(--amber)',(window._sessionIsExpired?'Session expirée':navigator.onLine===false?'Hors ligne':'Envoi impossible')+' : modifications gardées sur l’iPhone']
+    :st==='pending'?['ti-cloud-upload','var(--text3)','Envoi en cours…']:['ti-cloud-check','var(--text3)','Enregistré en ligne'+(t?' à '+t:'')];
+  return '<div class="hm-sync" onclick="_closeDayMenu();syncStatusClick()"><i class="ti '+x[0]+'" style="color:'+x[1]+'"></i><span style="color:'+(st==='error'?x[1]:'')+'">'+x[2]+'</span></div>';}
 // Session expirée côté serveur : rien ne peut plus se synchroniser tant qu'on ne se reconnecte pas
 async function _silentRelogin(){
   // Identifiants mémorisés (« Se souvenir de moi ») : nouvelle session sans rien demander
@@ -10405,12 +10418,13 @@ async function syncStatusClick(){
     if(r.status===401){await _sessionExpired();return;}
   }catch(e){}
   var t=window._lastSyncOk?new Date(window._lastSyncOk).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):'';
-  alert(window._syncStatus==='pending'?'Synchronisation en cours…':'Planning synchronisé ✓'+(t?' (dernier envoi à '+t+')':''));
+  _infoToast(window._syncStatus==='pending'?'Envoi en cours…':'Planning enregistré en ligne ✓'+(t?' (dernier envoi à '+t+')':''));
 }
 // Contenu comparable d'un profil (sans l'horodatage, qui change à chaque saveState)
 function _syncKey(pid){return'pl_synced_'+((window._authUser&&window._authUser.userId)||'')+'_'+pid;}
 function _syncSig(d){return JSON.stringify(d,function(k,v){return k==='_lastSaved'?undefined:v;});}
 // Retour du réseau : on renvoie tout de suite ce qui n'a pas pu être synchronisé
+window.addEventListener('offline',function(){if(window._syncStatus==='pending')setSyncStatus('pending');});
 window.addEventListener('online',function(){if(window._syncErr&&window._authToken){clearTimeout(window._syncRetryTimer);cloudSave(_aid);}});
 function _cloudSaveFailed(pid,msg){
   window._syncErr=msg;setSyncStatus('error');
