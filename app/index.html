@@ -28,7 +28,7 @@ html{--bt-img:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' vi
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v7.70">
+<meta name="app-version" content="v7.71">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -410,6 +410,7 @@ button:disabled>.hap-sw{pointer-events:none}
   /* synchronisation : nuage à gauche du menu seulement quand il y a un souci (échec, hors ligne, envoi qui traîne) */
   body:not(.sy-show) #sync-status{display:none!important}
   #sync-status{width:30px!important;height:30px!important;margin-right:8px!important;font-size:21px}
+  #lp-menu .hm-2l{display:flex;flex-direction:column;gap:1px;line-height:1.2}#lp-menu .hm-2l small{font-size:11.5px;font-weight:400;color:var(--text3)}
   #lp-menu .hm-sync{display:flex;align-items:center;gap:6px;padding:8px 12px 4px;font-size:12px;color:var(--text3)}#lp-menu .hm-sync i{font-size:14px}
   #menu-btn{display:flex;align-items:center;justify-content:center;width:38px;height:38px;border:none!important;background:rgba(255,250,243,.08)!important;box-shadow:inset .5px .5px 0 rgba(255,250,243,.14);padding:0!important;border-radius:50%!important}
   #menu-btn .hm-ico{transition:transform .2s cubic-bezier(.3,1.4,.5,1)}#menu-btn:active .hm-ico{transform:scale(.86)}
@@ -4601,7 +4602,7 @@ function openHdrMenu(){
     +it('ti-calendar-time','var(--amber)','Sirhius',ext('Sirhius'))+it('ti-send','var(--green)','Demande de congés',ext('Demande'))
     +'<div class="hm-sep"></div>'
     +it('ti-calendar-month','var(--blue)',annualOpen?'Vue du mois':'Vue de l’année','toggleAnnual()')
-    +it('ti-brand-google','var(--text2)',gcalTokens?'Synchroniser Google Agenda':'Connecter Google Agenda','gcalHandleClick()'))+(function(l){return l?'<div class="hm-sep"></div>'+l:'';})(_syncLine());
+    +(function(){var g=_gcalLine();return it('ti-brand-google',g[0],g[1],'gcalHandleClick()');})())+(function(l){return l?'<div class="hm-sep"></div>'+l:'';})(_syncLine());
   document.body.appendChild(veil);document.body.appendChild(m);
   requestAnimationFrame(function(){veil.classList.add('on');m.classList.add('on');});}
 document.addEventListener('click',function(e){if(Date.now()-(window._eatClickAt||0)<500){window._eatClickAt=0;e.stopPropagation();e.preventDefault();}},true);
@@ -10394,6 +10395,12 @@ function setSyncStatus(st){
   clearTimeout(window._syShowT);document.body.classList.toggle('sy-show',st==='error');
   if(st==='pending')window._syShowT=setTimeout(function(){document.body.classList.toggle('sy-show',window._syncStatus==='pending'||window._syncStatus==='error');},4000);
 }
+// Google Agenda dans le menu : son état sous le libellé (connecté, synchro en cours, échec, synchro automatique coupée)
+function _gcalLine(){if(!gcalTokens)return['var(--text2)','Connecter Google Agenda'];
+  var w=document.getElementById('gcal-status-wrap'),c=function(k){return w&&w.classList.contains(k);},t=window._gcalLastOk?new Date(window._gcalLastOk).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):'';
+  var x=window._gcalErr?['var(--amber)','Échec de la synchro, toucher pour réessayer']:c('gcal-syncing')?['var(--blue)','Synchro en cours…']:c('gcal-pending')?['var(--text2)','Synchro dans un instant…']
+    :S.profile&&S.profile.gcalAutoSync===false?['var(--text2)','Synchro automatique coupée']:['var(--green)',t?'Synchronisé à '+t:'Synchronisé'];
+  return [x[0],'<span class="hm-2l">Google Agenda<small style="color:'+(window._gcalErr?'var(--amber)':'')+'">'+x[1]+'</small></span>'];}
 // État de la synchronisation, en une ligne (bas du menu)
 function _syncLine(){var st=window._syncStatus;if(!window._authToken||!st)return '';
   var t=window._lastSyncOk?new Date(window._lastSyncOk).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):'';
@@ -11137,7 +11144,7 @@ async function gcalSync(){
   function _syncDone(ok,errMsg,reconnect){
     if(circle){circle.style.stroke='';circle.style.strokeDashoffset='';}
     if(wrap)wrap.classList.remove('gcal-syncing');
-    window._gcalErr=ok?'':(errMsg||'échec de la synchronisation');
+    window._gcalErr=ok?'':(errMsg||'échec de la synchronisation');if(ok)window._gcalLastOk=Date.now();
     window._gcalReconnect=!ok&&!!reconnect;
     if(!ok)console.warn('[gcalSync]',window._gcalErr);
     if(ok){
