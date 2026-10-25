@@ -28,7 +28,7 @@ html{--bt-img:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' vi
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v7.80">
+<meta name="app-version" content="v7.81">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -412,7 +412,10 @@ button:disabled>.hap-sw{pointer-events:none}
   /* synchronisation : nuage à gauche du menu seulement quand il y a un souci (échec, hors ligne, envoi qui traîne) */
   body:not(.sy-show) #sync-status{display:none!important}
   #sync-status{width:30px!important;height:30px!important;margin-right:8px!important;font-size:21px}
-  #lp-menu .hm-2l{display:flex;flex-direction:column;gap:1px;line-height:1.2}#lp-menu .hm-2l small{font-size:11px;font-weight:400;color:var(--text3)}
+  #lp-menu .hm-2l{display:flex;flex-direction:column;gap:1px;line-height:1.2;min-width:0;flex:1}#lp-menu .hm-2l small,#lp-menu .hm-sync span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}#lp-menu .hm-sync span{min-width:0}
+  #lp-menu svg.hm-g{width:18px;height:18px;flex:none;margin:0 1px}
+  .hm-pulse{animation:hmPulse 1.1s ease-in-out infinite}@keyframes hmPulse{50%{opacity:.35;transform:scale(.88)}}
+  .hm-bob{animation:hmBob .9s ease-in-out infinite}@keyframes hmBob{50%{transform:translateY(-2px)}}#lp-menu .hm-2l small{font-size:11px;font-weight:400;color:var(--text3)}
   #lp-menu .hm-sync{display:flex;align-items:center;gap:6px;padding:8px 12px 4px;font-size:13px;color:var(--text3)}#lp-menu .hm-sync i{font-size:15px}
   #menu-btn{display:flex;align-items:center;justify-content:center;width:38px;height:38px;border:none!important;background:rgba(255,250,243,.08)!important;box-shadow:inset .5px .5px 0 rgba(255,250,243,.14);padding:0!important;border-radius:50%!important}
   #menu-btn .hm-ico{transition:transform .2s cubic-bezier(.3,1.4,.5,1)}#menu-btn:active .hm-ico{transform:scale(.86)}
@@ -4617,7 +4620,7 @@ function openHdrMenu(){
   _haptic();if(document.getElementById('lp-menu'))return _closeDayMenu();
   var ub=document.getElementById('undo-btn'),rb=document.getElementById('redo-btn'),ext=function(t){var b=document.querySelector('.hdr-btns .ibtn[title="'+t+'"]');return b?b.getAttribute('onclick'):'';};
   // hors de l'accueil (pages et sous-pages) : seulement annuler, rétablir et l'historique
-  var it=function(ic,col,lbl,js,off){return '<button'+(off?' disabled':'')+' onclick="_closeDayMenu();'+js.replace(/"/g,'&quot;')+'"><i class="ti '+ic+'" style="color:'+col+'"></i>'+lbl+'</button>';};
+  var it=function(ic,col,lbl,js,off){return '<button'+(off?' disabled':'')+' onclick="_closeDayMenu();'+js.replace(/"/g,'&quot;')+'">'+(ic.charAt(0)==='<'?ic:'<i class="ti '+ic+'" style="color:'+col+'"></i>')+lbl+'</button>';};
   var veil=document.createElement('div');veil.id='lp-veil';veil.addEventListener('click',function(e){e.stopPropagation();_closeDayMenu();});
   var m=document.createElement('div');m.id='lp-menu';m.className='hd-menu';
   var swNew=document.getElementById('menu-btn')&&document.getElementById('menu-btn').classList.contains('sw-new');
@@ -4629,13 +4632,14 @@ function openHdrMenu(){
     +it('ti-calendar-time','var(--amber)','Sirhius',ext('Sirhius'))+it('ti-send','var(--green)','Demande de congés',ext('Demande'))
     +'<div class="hm-sep"></div>'
     +it('ti-calendar-month','var(--blue)',annualOpen?'Vue du mois':'Vue de l’année','toggleAnnual()')
-    +(function(){var g=_gcalLine();return it('ti-brand-google',g[0],g[1],'gcalHandleClick()');})())+(function(l){return l?'<div class="hm-sep"></div>'+l:'';})(_syncLine());
+    +(function(){var g=_gcalLine();return it(_gIco(g[0],g[2]),'',g[1],'gcalHandleClick()');})())+(function(l){return l?'<div class="hm-sep"></div>'+l:'';})(_syncLine());
   document.body.appendChild(veil);document.body.appendChild(m);
+  m.style.boxSizing='border-box';m.style.width=m.offsetWidth+'px'; // largeur figée : un état plus long se coupe, le menu ne bouge pas
   // menu ouvert : l'état de l'enregistrement en ligne et de Google Agenda se met à jour tout seul
   m._iv=setInterval(function(){if(!document.body.contains(m)||!m.classList.contains('on')&&m._seen){clearInterval(m._iv);return;}m._seen=1;
     var sy=m.querySelector('.hm-sync'),nl=_syncLine();if(sy&&nl&&sy.outerHTML!==nl)sy.outerHTML=nl;
-    var gb=m.querySelector('button[onclick*="gcalHandleClick"]');if(gb){var g=_gcalLine(),ic=gb.querySelector('i.ti'),lb=gb.querySelector('.hm-2l');
-      if(ic&&ic.style.color!==g[0])ic.style.color=g[0];
+    var gb=m.querySelector('button[onclick*="gcalHandleClick"]');if(gb){var g=_gcalLine(),ic=gb.querySelector('svg.hm-g'),lb=gb.querySelector('.hm-2l'),ni=_gIco(g[0],g[2]);
+      if(ic&&ic.outerHTML!==ni)ic.outerHTML=ni;
       if(lb){var t=document.createElement('div');t.innerHTML=g[1];var nb=t.firstChild;if(nb&&lb.outerHTML!==nb.outerHTML)lb.replaceWith(nb);}}},500);
   requestAnimationFrame(function(){veil.classList.add('on');m.classList.add('on');});}
 document.addEventListener('click',function(e){if(Date.now()-(window._eatClickAt||0)<500){window._eatClickAt=0;e.stopPropagation();e.preventDefault();}},true);
@@ -10459,17 +10463,19 @@ function setSyncStatus(st){
   if(st==='pending')window._syShowT=setTimeout(function(){document.body.classList.toggle('sy-show',window._syncStatus==='pending'||window._syncStatus==='error');},4000);
 }
 // Google Agenda dans le menu : son état sous le libellé (connecté, synchro en cours, échec, synchro automatique coupée)
-function _gcalLine(){if(!gcalTokens)return['var(--text2)','Connecter Google Agenda'];
+// logo Google plein, dans la couleur de l'état ; il pulse pendant une synchro
+function _gIco(col,anim){return '<svg class="hm-g'+(anim?' hm-pulse':'')+'" viewBox="0 0 24 24" aria-hidden="true" style="color:'+col+'"><path fill="currentColor" d="M12 2a9.96 9.96 0 0 1 6.29 2.226a1 1 0 0 1 .04 1.52l-1.51 1.362a1 1 0 0 1-1.265.06a6 6 0 1 0 2.103 6.836l.001-.004h-3.66a1 1 0 0 1-.992-.883l-.007-.117v-2a1 1 0 0 1 1-1h6.945a1 1 0 0 1 .994.89c.04.367.061.737.061 1.11c0 5.523-4.477 10-10 10s-10-4.477-10-10s4.477-10 10-10z"/></svg>';}
+function _gcalLine(){if(!gcalTokens)return['var(--text2)','Connecter Google Agenda',0];
   var w=document.getElementById('gcal-status-wrap'),c=function(k){return w&&w.classList.contains(k);},t=window._gcalLastOk?new Date(window._gcalLastOk).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):'';
   var x=window._gcalErr?['var(--amber)','Échec de la synchro, toucher pour réessayer']:c('gcal-syncing')?['var(--blue)','Synchro en cours…']:c('gcal-pending')?['var(--text2)','Synchro dans un instant…']
     :S.profile&&S.profile.gcalAutoSync===false?['var(--text2)','Synchro automatique coupée']:['var(--green)',t?'Synchronisé à '+t:'Synchronisé'];
-  return [x[0],'<span class="hm-2l">Google Agenda<small style="color:'+(window._gcalErr?'var(--amber)':'')+'">'+x[1]+'</small></span>'];}
+  return [x[0],'<span class="hm-2l">Google Agenda<small style="color:'+(window._gcalErr?'var(--amber)':'')+'">'+x[1]+'</small></span>',!window._gcalErr&&(c('gcal-syncing')||c('gcal-pending'))];}
 // État de la synchronisation, en une ligne (bas du menu)
 function _syncLine(){var st=window._syncStatus;if(!window._authToken||!st)return '';
   var t=window._lastSyncOk?new Date(window._lastSyncOk).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):'';
   var x=st==='error'?['ti-cloud-off','var(--amber)',(window._sessionIsExpired?'Session expirée':navigator.onLine===false?'Hors ligne':'Envoi impossible')+' : modifications gardées sur l’iPhone']
     :st==='pending'?['ti-cloud-upload','var(--text3)','Envoi en cours…']:['ti-cloud-check','var(--text3)','Enregistré en ligne'+(t?' à '+t:'')];
-  return '<div class="hm-sync" onclick="_closeDayMenu();syncStatusClick()"><i class="ti '+x[0]+'" style="color:'+x[1]+'"></i><span style="color:'+(st==='error'?x[1]:'')+'">'+x[2]+'</span></div>';}
+  return '<div class="hm-sync" onclick="_closeDayMenu();syncStatusClick()"><i class="ti '+x[0]+(st==='pending'?' hm-bob':'')+'" style="color:'+x[1]+'"></i><span style="color:'+(st==='error'?x[1]:'')+'">'+x[2]+'</span></div>';}
 // Session expirée côté serveur : rien ne peut plus se synchroniser tant qu'on ne se reconnecte pas
 async function _silentRelogin(){
   // Identifiants mémorisés (« Se souvenir de moi ») : nouvelle session sans rien demander
