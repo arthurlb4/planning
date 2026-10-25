@@ -101,11 +101,42 @@ function mockApi(route) {
     { const r = await p.evaluate(async () => { const on = () => [...document.querySelectorAll('#tabbar button.on')].map(b => b.dataset.t).join(); const w = ms => new Promise(r => setTimeout(r, ms));
         _tbGo('suivi'); await w(150); const a = on(); _tbGo('set'); await w(150); const b = on(); _tbGo('cal'); await w(150); return [getComputedStyle(document.getElementById('tabbar')).display, a, b, on(), !!document.querySelector('#modal-root .overlay')]; });
       ok('Barre d’onglets : Suivi, Réglages puis retour au planning', r[0] === 'flex' && r[1] === 'suivi' && r[2] === 'set' && r[3] === 'cal' && !r[4], JSON.stringify(r)); }
+    // Navigation (téléphone) : pages d'onglet, sous-pages (titre et retour dans l'en-tête, arrivée par la droite), petites fenêtres par-dessus
+    { const r = await p.evaluate(async () => { const w = ms => new Promise(r => setTimeout(r, ms)), B = document.body.classList, ov = () => document.querySelector('#modal-root .overlay');
+        const st = () => [B.contains('tb-pg') ? 'pg' : '', B.contains('tb-sub') ? 'sub' : '', B.contains('tb-sheet') ? 'sheet' : '', [...document.querySelectorAll('#tabbar button.on')].map(b => b.dataset.t).join(), ov() ? ['tbpush', 'tbpop'].filter(c => ov().classList.contains(c)).join() : '-', document.getElementById('tb-title').textContent, document.getElementById('tb-back').lastChild.textContent].join('/');
+        const out = {}; _tbGo('suivi'); await w(80); out.suivi = st();
+        openBulletinsCal(NOW.getFullYear()); await w(80); out.bul = st();
+        _tbBack(); await w(80); out.back = st();
+        _tbGo('set'); await w(80); out.set = st();
+        openHdrMenu(); const menu = [...document.querySelectorAll('#lp-menu button')].map(b => b.textContent.trim()).join(','); _closeDayMenu(); await w(200); out.menu = menu;
+        _ask('Question ?', { ok: 'Oui' }); await w(80); out.ask = st(); document.querySelector('#ask .ok').click(); await w(80);
+        _tbGo('cal'); await w(80); out.home = st();
+        openHdrMenu(); out.menuHome = document.querySelectorAll('#lp-menu button').length; _closeDayMenu(); await w(200);
+        openMergedMoisModal(TODAY_YM); await w(80); out.vars = st();
+        _tbBack(); await w(80); out.varsBack = [st(), !!ov()].join('|');
+        openDay([...document.querySelectorAll('#cal .dci[data-key]')][10].dataset.key); await w(80); out.day = st(); closeModal(); await w(80);
+        return out; });
+      ok('Navigation : page Suivi (onglet allumé, titre)', /^pg\/\/\/suivi\/.*\/Suivi\//.test(r.suivi), r.suivi);
+      ok('Navigation : sous-page Paie depuis Suivi (arrive par la droite, retour « Suivi »)', /^pg\/sub\/\/suivi\/tbpush\/Paie/.test(r.bul) && /\/Suivi$/.test(r.bul), r.bul);
+      ok('Navigation : retour à la page Suivi (revient de la gauche)', /^pg\/\/\/suivi\/tbpop\/Suivi\//.test(r.back), r.back);
+      ok('Navigation : page Réglages', /^pg\/\/\/set\//.test(r.set), r.set);
+      ok('Navigation : menu réduit hors de l’accueil (annuler, rétablir, historique)', r.menu === 'Annuler,Rétablir,Historique' && r.menuHome > 3, r.menu + ' | ' + r.menuHome);
+      ok('Navigation : question par-dessus une page (la page reste, barre masquée)', /^pg\/\/\/set\//.test(r.ask), r.ask);
+      ok('Navigation : accueil (rien d’ouvert)', /^\/\/\/cal\/-/.test(r.home), r.home);
+      ok('Navigation : Variables, sous-page de l’Accueil, retour à l’accueil', /^pg\/sub\/\/cal\/tbpush\/Variables/.test(r.vars) && /\/Accueil$/.test(r.vars) && /^\/\/\/cal\/-\/.*\|false$/.test(r.varsBack), r.vars + ' → ' + r.varsBack);
+      ok('Navigation : fiche du jour = petite fenêtre (barre masquée)', /^\/\/sheet\//.test(r.day), r.day); }
+    // Recherche dans l'historique
+    ok('Historique : recherche (sans accents)', await p.evaluate(() => { const h = S.history; S.history = [{ t: '01/10', d: 'Mercredi 1 octobre -> Été', c: '#fff' }, { t: '02/10', d: 'Jeudi 2 octobre -> A1', c: '#fff' }, { t: '03/10', d: 'x', c: '#fff' }, { t: '04/10', d: 'y', c: '#fff' }, { t: '05/10', d: 'z', c: '#fff' }, { t: '06/10', d: 'w', c: '#fff' }];
+      openHistModal(); const q = document.getElementById('hist-q'); q.value = 'ete'; _histList(); const n = document.querySelectorAll('#hist-l .hrow').length; q.value = 'jeudi a1'; _histList(); const n2 = document.querySelectorAll('#hist-l .hrow').length; S.history = h; closeModal(); return n === 1 && n2 === 1; }));
     // Vacation changée puis remise à celle du cycle : plus de modification
     ok('Vacation remise à celle du cycle : plus de modification', await p.evaluate(() => { const k = [...document.querySelectorAll('#cal .dci[data-key]')].map(e => e.dataset.key).find(k => k > dk(NOW) && !(S.overrides || {})[k] && getVac(new Date(k + 'T12:00:00')).vac && getVac(new Date(k + 'T12:00:00')).vac !== 'RH');
       const cv = getCycleVac(new Date(k + 'T12:00:00')).cycleVac, other = Object.keys(getVAC(new Date(k + 'T12:00:00'))).find(v => v !== cv && v !== 'RH' && v !== 'SV');
       pendingKey = k; avw(other); const a = !!S.overrides[k]; pendingKey = k; avw(cv); const b = !(S.overrides || {})[k];
       S.overrides[k] = { vac: cv, fromSV: false, echange: false, hs: false, formation: false }; const c = _ovCleanSame() === 1 && !S.overrides[k]; return a && b && c; }));
+    ok('Horaires saisis identiques à la vacation du cycle : plus de modification', await p.evaluate(() => { const k = [...document.querySelectorAll('#cal .dci[data-key]')].map(e => e.dataset.key).find(k => k > dk(NOW) && !(S.overrides || {})[k] && getVac(new Date(k + 'T12:00:00')).vac && getVac(new Date(k + 'T12:00:00')).vac !== 'RH');
+      const d = new Date(k + 'T12:00:00'), cv = getCycleVac(d).cycleVac, ci = getVAC(d)[cv], other = Object.keys(getVAC(d)).find(v => v !== cv && v !== 'RH' && v !== 'SV');
+      pendingKey = k; avw(other); const a = !!S.overrides[k]; pendingKey = k; openCustomVacModal();
+      document.getElementById('custom-deb').value = ci.deb; document.getElementById('custom-fin').value = ci.fin; confirmCustomVac(); const b = !(S.overrides || {})[k]; closeModal(); return a && b; }));
     const lr = SENT['/lines/register'];
     if (process.env.SHOW) console.log(JSON.stringify(lr));
     ok('Ligne de la semaine envoyée au serveur', lr && /^S\d+$/.test(lr.ligne) && lr.pool && lr.weekVacs.length === 7, JSON.stringify(lr));
