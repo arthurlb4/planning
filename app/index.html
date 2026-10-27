@@ -28,7 +28,7 @@ html{--bt-img:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' vi
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v7.82">
+<meta name="app-version" content="v7.83">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -384,12 +384,22 @@ button:disabled>.hap-sw{pointer-events:none}
 }
 @keyframes tbOv{from{opacity:0}to{opacity:1}}
 @keyframes tbIn{from{opacity:0}to{opacity:1}}
+@keyframes pcIn{from{opacity:0;transform:translateX(18px)}to{opacity:1;transform:none}}
 @keyframes tbPush{from{transform:translateX(100%)}to{transform:none}}
 @keyframes tbPop{from{transform:translateX(-28%);opacity:.5}to{transform:none;opacity:1}}
 @media(prefers-reduced-motion:reduce){@keyframes tbPush{from{opacity:0}to{opacity:1}}@keyframes tbPop{from{opacity:0}to{opacity:1}}}
 /* En-tête du téléphone : le mois au milieu (la barre du mois y monte, sans flèches ni « auj. » : on glisse entre les mois,
    Accueil ramène à aujourd'hui), le bouton menu à droite ; le reste de l'en-tête passe dans le menu */
 #menu-btn{display:none}
+/* PC : fenêtres en panneau à la place de la colonne de droite */
+@media(min-width:721px){
+  body.pc-pane #side-v2{visibility:hidden}
+  .overlay.pcpane{inset:auto!important;left:var(--pcx)!important;top:var(--pcy)!important;width:var(--pcw)!important;height:var(--pch)!important;
+    background:none!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important;display:flex!important;align-items:stretch!important;justify-content:stretch!important;animation:none!important;z-index:150}
+  .overlay.pcpane::before,.overlay.pcpane::after{display:none!important}
+  .overlay.pcpane>.sheet{width:100%!important;max-width:none!important;height:100%!important;max-height:none!important;margin:0!important;box-sizing:border-box;overflow-y:auto;border-radius:22px!important;animation:none!important;transform:none}
+  .overlay.pcpane.pcanim>.sheet{animation:pcIn .22s ease both!important}
+}
 @media(max-width:720px){
   .mbar{position:fixed;top:0;left:0;right:0;height:52px;padding:0;z-index:200;pointer-events:none;width:auto!important}
   /* même niveau que l'en-tête (passe devant lui, venant après) et que le voile des fenêtres (qui passe devant elle) */
@@ -4690,6 +4700,13 @@ document.addEventListener('scroll',function(e){var el=e.target,ov=el&&el.closest
 function _tbRefresh(){if(!document.body.classList.contains('tb-pg')||document.body.classList.contains('tb-sub'))return;var t=window._tbRoot,sh=document.querySelector('#modal-root .overlay .sheet'),y=sh?sh.scrollTop:0;
   if(t==='suivi')openSuiviRoot();else if(t==='set')openSettingsModal(window._stLast||0);else return;
   sh=document.querySelector('#modal-root .overlay .sheet');if(sh)sh.scrollTop=y;}
+// PC : une fenêtre ouverte prend la place de la colonne de droite (soldes, variables, paie) ; le calendrier reste visible et utilisable
+function _pcPane(){var ov=document.querySelector('#modal-root .overlay'),sv=document.getElementById('side-v2'),cw=document.querySelector('.cal-wrap'),B=document.body;
+  var on=innerWidth>720&&!!ov&&!!sv&&!!cw,was=B.classList.contains('pc-pane');B.classList.toggle('pc-pane',on);if(!on)return;
+  var a=sv.getBoundingClientRect(),c=cw.getBoundingClientRect(),R=document.documentElement.style,top=Math.max(70,c.top);
+  R.setProperty('--pcx',a.left+'px');R.setProperty('--pcw',a.width+'px');R.setProperty('--pcy',top+'px');R.setProperty('--pch',(innerHeight-top-16)+'px');
+  if(!ov.classList.contains('pcpane')){ov.classList.add('pcpane');if(!was)ov.classList.add('pcanim');}}
+window.addEventListener('resize',function(){_pcPane();});
 function _tbBack(){_haptic();window._eatClickAt=0;window._tbPop=1;/* sous l'Accueil : retour à l'accueil */var nb=window._tbRoot&&document.querySelector('#modal-root .overlay.tbsub .nav-back');if(nb)nb.click();else closeModal();}
 function _tbSync(){var b=document.getElementById('tabbar');if(!b)return;var r=document.getElementById('modal-root'),ov=r&&r.querySelector('.overlay'),t='cal';
   if(ov)t=ov.querySelector('#sw-list')?'swap':ov.querySelector('#stc-0')?'set':ov.querySelector('#sv-root')?'suivi':'';
@@ -4737,7 +4754,7 @@ function _tbSync(){var b=document.getElementById('tabbar');if(!b)return;var r=do
 window.addEventListener('resize',function(){_tbSync();});
 document.addEventListener('DOMContentLoaded',function(){setTimeout(_tbSync,50);});
 _tbSync();
-document.addEventListener('DOMContentLoaded',function(){var r=document.getElementById('modal-root');if(r)try{new MutationObserver(function(rs){rs.forEach(function(m){[].forEach.call(m.removedNodes,function(n){if(n.classList&&n.classList.contains('tbpage'))window._tbGone=n;});});_tbSync();_shMini();}).observe(r,{childList:true,subtree:true,attributes:true,attributeFilter:['style']});}catch(e){}});
+document.addEventListener('DOMContentLoaded',function(){var r=document.getElementById('modal-root');if(r)try{new MutationObserver(function(rs){rs.forEach(function(m){[].forEach.call(m.removedNodes,function(n){if(n.classList&&n.classList.contains('tbpage'))window._tbGone=n;});});_tbSync();_pcPane();_shMini();}).observe(r,{childList:true,subtree:true,attributes:true,attributeFilter:['style']});}catch(e){}});
 // ================================================================
 // BOURSE AUX ÉCHANGES : jours proposés à l'équipe (échange ou jour cédé), réponses, choix
 // L'échange conclu s'enregistre ensuite dans chaque planning (Modifier → Échange), comme avant
