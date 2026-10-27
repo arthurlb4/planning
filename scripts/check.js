@@ -7,7 +7,7 @@ const { execFileSync } = require('child_process');
 
 const root = path.join(__dirname, '..');
 const htmlFiles = ['index.html', '404.html', 'app/index.html', 'admin/index.html', 'paie/index.html'];
-const jsFiles = ['app/sw.js'];
+const jsFiles = ['app/sw.js', 'app/core.js'];
 const moduleFiles = ['worker/index.js'];
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'check-'));
 let failed = false;
@@ -22,6 +22,9 @@ function check(file, label) {
   }
 }
 
+// La page et le cœur partagé doivent arriver ensemble : core.js?v= doit suivre la version de l'app
+{ const h = fs.readFileSync(path.join(root, 'app/index.html'), 'utf8'), v = (h.match(/name="app-version" content="v([\d.]+)"/) || [])[1], r = (h.match(/core\.js\?v=([\d.]+)/) || [])[1];
+  if (!v || v !== r) { failed = true; console.error('FAIL app/index.html : core.js?v=' + r + ' ne suit pas la version v' + v); } else console.log('OK   core.js?v=' + r + ' = version de l’app'); }
 for (const f of htmlFiles) {
   const p = path.join(root, f);
   if (!fs.existsSync(p)) continue;
