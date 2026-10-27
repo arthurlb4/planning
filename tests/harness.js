@@ -29,7 +29,7 @@ function fakeEl() {
 function load(today) {
   const html = fs.readFileSync(path.join(__dirname, '..', 'app', 'index.html'), 'utf8');
   // Le script principal de l'app : le plus long des scripts en ligne (les petits scripts de démarrage sont ignorés)
-  const main = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].map(m => m[1]).sort((a, b) => b.length - a.length)[0];
+  const main = fs.readFileSync(path.join(__dirname, '..', 'app', 'ui.js'), 'utf8');
   // cœur partagé (calculs, données) chargé avant, comme dans la page
   const code = fs.readFileSync(path.join(__dirname, '..', 'app', 'core.js'), 'utf8') + '\n' + main;
   const FIXED = new Date(today + 'T12:00:00').getTime();

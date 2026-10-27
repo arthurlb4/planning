@@ -7,7 +7,7 @@ const { execFileSync } = require('child_process');
 
 const root = path.join(__dirname, '..');
 const htmlFiles = ['index.html', '404.html', 'app/index.html', 'admin/index.html', 'paie/index.html'];
-const jsFiles = ['app/sw.js', 'app/core.js'];
+const jsFiles = ['app/sw.js', 'app/core.js', 'app/ui.js', 'app/pc/pc.js'].filter(f => fs.existsSync(path.join(root, f)));
 const moduleFiles = ['worker/index.js'];
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'check-'));
 let failed = false;
@@ -22,9 +22,13 @@ function check(file, label) {
   }
 }
 
-// La page et le cœur partagé doivent arriver ensemble : core.js?v= doit suivre la version de l'app
-{ const h = fs.readFileSync(path.join(root, 'app/index.html'), 'utf8'), v = (h.match(/name="app-version" content="v([\d.]+)"/) || [])[1], r = (h.match(/core\.js\?v=([\d.]+)/) || [])[1];
-  if (!v || v !== r) { failed = true; console.error('FAIL app/index.html : core.js?v=' + r + ' ne suit pas la version v' + v); } else console.log('OK   core.js?v=' + r + ' = version de l’app'); }
+// Les pages et leurs fichiers partagés (core.js, ui.js, style.css…) doivent arriver ensemble : chaque ?v= suit la version de l'app
+for (const pg of ['app/index.html', 'app/pc/index.html']) { const fp = path.join(root, pg); if (!fs.existsSync(fp)) continue;
+  const h = fs.readFileSync(fp, 'utf8'), v = (fs.readFileSync(path.join(root, 'app/index.html'), 'utf8').match(/name="app-version" content="v([\d.]+)"/) || [])[1];
+  const refs = [...h.matchAll(/(?:src|href)="([^"]+\?v=([\d.]+))"/g)];
+  const bad = refs.filter(m => m[2] !== v);
+  if (!v || bad.length) { failed = true; console.error('FAIL ' + pg + ' : ' + bad.map(m => m[1]).join(', ') + ' ne suit pas la version v' + v); }
+  else console.log('OK   ' + pg + ' : ' + refs.length + ' fichiers partagés en v' + v); }
 for (const f of htmlFiles) {
   const p = path.join(root, f);
   if (!fs.existsSync(p)) continue;

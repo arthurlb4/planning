@@ -1,4 +1,4 @@
-const SW_VERSION = '10.6';
+const SW_VERSION = '10.7';
 const PAGES = 'pl-pages-v1';   // dernière version de l'app, pour l'ouvrir hors connexion
 const ASSETS = 'pl-assets-v1'; // icônes (CDN)
 
@@ -39,13 +39,16 @@ self.addEventListener('fetch', function(event) {
     }));
     return;
   }
-  // Scripts de l'app (cœur partagé des calculs) : réseau d'abord, copie gardée pour l'ouverture hors connexion
+  // Fichiers partagés de l'app (core.js, ui.js, style.css…) : adresse versionnée (?v=), donc gardés tels quels ;
+  // une nouvelle version a une nouvelle adresse, chargée par le réseau puis gardée à son tour (ouverture hors connexion)
   const u = new URL(req.url);
-  if (u.origin === self.location.origin && /\/app\/[\w-]+\.js$/.test(u.pathname) && !/sw\.js$/.test(u.pathname)) {
-    event.respondWith(fetch(req).then(function(res) {
-      if (res && res.ok) { const copy = res.clone(); caches.open(PAGES).then(function(c) { c.put(req, copy); }); }
-      return res;
-    }).catch(function() { return caches.match(req, { cacheName: PAGES }).then(function(r) { return r || caches.match(u.pathname, { cacheName: PAGES }); }); }));
+  if (u.origin === self.location.origin && /\/app\/(pc\/)?[\w-]+\.(js|css)$/.test(u.pathname) && !/sw\.js$/.test(u.pathname)) {
+    event.respondWith(caches.open(PAGES).then(function(c) {
+      return c.match(req).then(function(hit) {
+        if (hit && u.search) return hit;
+        return fetch(req).then(function(res) { if (res && res.ok) c.put(req, res.clone()); return res; }).catch(function() { return hit || c.match(req, { ignoreSearch: true }); });
+      });
+    }));
     return;
   }
   // Icônes (feuille de style + polices du CDN) : cache d'abord, mise à jour en arrière-plan
