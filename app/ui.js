@@ -6234,7 +6234,7 @@ function init(){
       var t0=Date.now();startSpin(t0);
       try{sessionStorage.setItem('ptr-ok',(navigator.onLine?'1':'off')+':'+t0);}catch(e){}
       // fondu vers l'écran de chargement (calé sur la page, roue au même endroit et même cycle), puis rechargement
-      var bc=window._bootCopy&&window._bootCopy.cloneNode(true);
+      var bc=window._bootCopy&&window._bootCopy.cloneNode(true);if(bc&&_isLand()){_saveBootGeoLand();if(window._bootLand)window._bootLand(bc);} // à l'horizontale : silhouette posée sur l'app telle qu'elle est
       if(!bc){setTimeout(function(){location.reload();},350);return;}
       bc.classList.add('ptr');bc.style.opacity='0';bc.style.transition='opacity .3s ease';
       var bar=bc.querySelector('.bt-bar'),w=document.createElement('div');w.className='bt-ptr';
@@ -7204,7 +7204,12 @@ window.addEventListener('resize',function(){_applyBigScreenZoom();_fitCalendar()
 
 // Affichage de l'app une fois les données chargées : l'écran de chargement s'efface
 // Mémorise la position des cases du côté (téléphone) pour que l'écran de chargement suivant les reproduise
-function _saveBootGeo(){try{if(!_isPhone()||document.body.scrollTop>0||scrollY>0)return;var bl=document.querySelectorAll('#side-v2 > .bloc');if(!bl.length)return;
+// iPhone à l'horizontale : places du calendrier, des cases, des onglets, du menu et du titre (pour la silhouette de chargement)
+function _saveBootGeoLand(){try{var sc=document.querySelector('.side-col');if(sc&&sc.scrollTop>2)return;
+  var Q=function(e){if(!e)return null;var r=e.getBoundingClientRect();return r.width>4&&r.height>4?[Math.round(r.left),Math.round(r.top),Math.round(r.width),Math.round(r.height)]:null;};
+  var bl=[].map.call(document.querySelectorAll('#side-v2 > .bloc'),Q).filter(Boolean);if(!bl.length)return;
+  localStorage.setItem('pl_boot_geo_l',JSON.stringify({w:innerWidth,vh:innerHeight,cal:Q(document.querySelector('#month-view .cal-wrap')),b:bl,tab:Q(document.getElementById('tabbar')),menu:Q(document.getElementById('menu-btn')),mt:Q(document.getElementById('mtit'))}));}catch(e){}}
+function _saveBootGeo(){try{if(_isLand()){if(!document.querySelector('#modal-root .overlay'))_saveBootGeoLand();return;}if(!_isPhone()||document.body.scrollTop>0||scrollY>0)return;var bl=document.querySelectorAll('#side-v2 > .bloc');if(!bl.length)return;
   var ly=document.querySelector('.layout');if(ly&&ly.style.transform)return;var hd=document.querySelector('.hdr');
   var R=function(e){if(!e)return null;var r=e.getBoundingClientRect();return [Math.round(r.top),Math.round(r.height),Math.round(r.left),Math.round(r.width)];};
   var lyL=ly?ly.getBoundingClientRect().left:0;
