@@ -388,15 +388,10 @@ function openExternalUrl(url,browser){
     window.open(url,'_blank','noopener');
   }
 }
-// PC (souris) : grand écran sans écran tactile de téléphone
-function _isDesk(){return innerWidth>720&&!/iPhone|iPad|Android/.test(navigator.userAgent);}
 function navDir(d){
   window._flushAnim&&window._flushAnim();
   _calNavDir=d;
   // Flèches : la bande continue avance d'une page à chaque appui, même en plein mouvement
-  // PC : changement sur place (pas de bande de mois qui défile : elle laissait voir deux calendriers à la fois)
-  if(_isDesk()){if(annualOpen){curY+=d;renderAnnual();_setTitle(document.getElementById('mtit'),String(curY));var g=document.getElementById('ann-grid');if(g&&g.animate)g.animate([{opacity:.25,transform:'translateX('+(d*22)+'px)'},{opacity:1,transform:'none'}],{duration:200,easing:'cubic-bezier(.25,.8,.25,1)'});}
-    else{var nm=curM+d,ny=curY;if(nm<0){nm=11;ny--;}if(nm>11){nm=0;ny++;}window._calSlideTo(ny,nm,d);}return;}
   if(window._pgStep){window._pgStep(annualOpen?'y':'m',d);return;}
   if(annualOpen){curY+=d;renderAnnual();_setTitle(document.getElementById('mtit'),String(curY));return;}
   let newY=curY,newM=curM+d;if(newM<0){newM=11;newY--;}if(newM>11){newM=0;newY++;}
@@ -580,11 +575,6 @@ function _renderCycBadges(calEl){
 function _calVeil(cb){
   const col=document.querySelector('.cal-col');
   if(!col){cb();return;}
-  // PC : pas de voile (il faisait un flash sombre) ; la vue change sur place et apparaît en fondu
-  if(innerWidth>720&&!document.documentElement.classList.contains('touch')){cb();
-    const nv=annualOpen?document.getElementById('ann-wrap'):document.getElementById('month-view');
-    try{_pcPane();}catch(e){}
-    if(nv&&nv.animate)nv.animate([{opacity:0,transform:'scale(.985)'},{opacity:1,transform:'none'}],{duration:200,easing:'ease-out'});return;}
   if(window._veilBusy)return;window._veilBusy=true;
   const v=document.createElement('div');
   // le voile commence sous la barre du mois : les flèches et « auj. » restent visibles pendant le changement de vue
@@ -1963,20 +1953,6 @@ function _tbRefresh(){if(!document.body.classList.contains('tb-pg')||document.bo
   if(t==='suivi')openSuiviRoot();else if(t==='set')openSettingsModal(window._stLast||0);else return;
   sh=document.querySelector('#modal-root .overlay .sheet');if(sh)sh.scrollTop=y;}
 // PC : une fenêtre ouverte prend la place de la colonne de droite (soldes, variables, paie) ; le calendrier reste visible et utilisable
-// place du panneau (colonne de droite, hauteur du calendrier ou de la grille de l'année), tenue à jour en permanence :
-// une fenêtre qui s'ouvre est déjà au bon endroit, sans attendre de mesure
-function _pcMeasure(){if(innerWidth<=720)return;var sc=document.querySelector('.side-col'),cw=annualOpen?document.getElementById('ann-grid'):document.querySelector('#month-view .cal-wrap');if(!sc||!cw)return;
-  var a=sc.getBoundingClientRect(),pl=parseFloat(getComputedStyle(sc).paddingLeft)||0,c=cw.getBoundingClientRect(),R=document.documentElement.style;
-  if(a.width>200&&c.height>200){R.setProperty('--pcx',(a.left+pl)+'px');R.setProperty('--pcw',(a.width-pl)+'px');R.setProperty('--pcy',c.top+'px');R.setProperty('--pch',c.height+'px');}}
-function _pcPane(){var ov=document.querySelector('#modal-root .overlay'),B=document.body,was=B.classList.contains('pc-pane'),on=innerWidth>720&&!!ov;
-  _pcMeasure();B.classList.toggle('pc-pane',on);if(on&&!was)ov.classList.add('pcanim');}
-// PC : cliquer à côté du panneau (hors calendrier, en-tête, menus) le ferme et rend la colonne de droite
-document.addEventListener('click',function(e){var B=document.body;if(!B.classList.contains('pc-pane')||innerWidth<=720)return;var t=e.target;
-  if(!t||!t.closest||t.closest('#modal-root,.side-col,.dci,.hdr,.mbar,#lp-menu,#lp-veil,#ask,#undo-toast,button,a,input,select,label,textarea,[onclick]'))return;
-  if(!t.isConnected)return;closeModal();});
-window.addEventListener('resize',function(){_pcPane();});
-// le calendrier change de hauteur avec le mois (5 ou 6 semaines) : le panneau suit
-document.addEventListener('DOMContentLoaded',function(){var r0=window.render;if(typeof r0==='function')window.render=function(){var x=r0.apply(this,arguments);try{_pcMeasure();}catch(e){}return x;};setTimeout(_pcMeasure,300);});
 function _tbBack(){_haptic();window._eatClickAt=0;window._tbPop=1;/* sous l'Accueil : retour à l'accueil */var nb=window._tbRoot&&document.querySelector('#modal-root .overlay.tbsub .nav-back');if(nb)nb.click();else closeModal();}
 function _tbSync(){var b=document.getElementById('tabbar');if(!b)return;var r=document.getElementById('modal-root'),ov=r&&r.querySelector('.overlay'),t='cal';
   if(ov)t=ov.querySelector('#sw-list')?'swap':ov.querySelector('#stc-0')?'set':ov.querySelector('#sv-root')?'suivi':'';
@@ -2024,7 +2000,7 @@ function _tbSync(){var b=document.getElementById('tabbar');if(!b)return;var r=do
 window.addEventListener('resize',function(){_tbSync();});
 document.addEventListener('DOMContentLoaded',function(){setTimeout(_tbSync,50);});
 _tbSync();
-document.addEventListener('DOMContentLoaded',function(){var r=document.getElementById('modal-root');if(r)try{new MutationObserver(function(rs){rs.forEach(function(m){[].forEach.call(m.removedNodes,function(n){if(n.classList&&n.classList.contains('tbpage'))window._tbGone=n;});});_tbSync();_pcPane();_shMini();}).observe(r,{childList:true,subtree:true,attributes:true,attributeFilter:['style']});}catch(e){}});
+document.addEventListener('DOMContentLoaded',function(){var r=document.getElementById('modal-root');if(r)try{new MutationObserver(function(rs){rs.forEach(function(m){[].forEach.call(m.removedNodes,function(n){if(n.classList&&n.classList.contains('tbpage'))window._tbGone=n;});});_tbSync();_shMini();}).observe(r,{childList:true,subtree:true,attributes:true,attributeFilter:['style']});}catch(e){}});
 
 
 async function _swapApi(path,body){
@@ -6194,7 +6170,7 @@ function init(){
   // Tirer pour actualiser, façon iOS : rien ne bouge ; la roue remplace le nom du mois, ses rayons apparaissent avec la traction,
   // vibration au seuil, puis elle tourne et l'app se recharge (sans écran de chargement). Le cycle de la roue continue au même point
   // après le rechargement. Puis la roue s'efface, « Actualisé ✓ » (ou « Hors ligne ») s'affiche, et le nom du mois revient.
-  (function(){
+  (function(){if(!document.getElementById('ptr-spin'))return; // pas de tirer pour actualiser (version PC)
     var y0=0,active=false,trig=false,TH=64,H=420,P=800;
     var ind=document.getElementById('ptr-indicator'),spin=document.getElementById('ptr-spin'),msg=document.getElementById('ptr-msg'),tit=document.getElementById('mtit'),lines=[].slice.call(spin.querySelectorAll('line'));
     var rubber=function(x){return (1-1/(x*.55/H+1))*H;};
@@ -6399,10 +6375,6 @@ function init(){
     _pgFlush();_flushAnim();try{_pgUnlinger();}catch(e){}
     const mv=_swMv(),wrap=_swWrap();
     if(!mv||!wrap){curY=y;curM=m;render();return;}
-    // PC : pas de second calendrier glissé à côté (Chrome en montrait les deux un instant) ; le mois change sur place, en fondu glissé
-    if(_pgDesk()){_swClearPeek();_titleTo(ML[m]+' '+y,d);_calNavDir=d;window._titleDir=d;curY=y;curM=m;render();_syncWknNow();
-      const w4=_swWrap();if(w4&&w4.animate)w4.animate([{opacity:.25,transform:'translateX('+(d*22)+'px)'},{opacity:1,transform:'none'}],{duration:200,easing:'cubic-bezier(.25,.8,.25,1)'});
-      return;}
     _slideBusy=true;_swClearPeek();_titleTo(ML[m]+' '+y,d);
     const W=_swW(mv),pk=_swBuildPeek(y,m),w2=pk.firstChild;_swPeek.go=pk;
     w2.style.transition='none';w2.style.transform='translateX('+(d*W)+'px)';

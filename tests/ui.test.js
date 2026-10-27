@@ -227,6 +227,27 @@ function mockApi(route) {
     ok('Repos trop court : alerte dans la fiche', rule[0]); ok('Repos trop court : liseré sur le calendrier', rule[1]);
     await ctx.close();
 
+    // ── Version PC : grand écran → page PC (calendrier à gauche, panneau à droite), pages dans le panneau ──
+    { const { ctx, p } = await page({ viewport: { width: 1440, height: 900 }, isMobile: false, hasTouch: false }, login);
+      await p.goto(base + '/app/'); await p.waitForURL(/\/app\/pc\//, { timeout: 5000 }).catch(() => {}); await p.waitForTimeout(1500);
+      ok('PC : grand écran → version PC', /\/app\/pc\//.test(p.url()), p.url());
+      const r = await p.evaluate(async () => { const w = ms => new Promise(r => setTimeout(r, ms)), out = {};
+        const cal = document.querySelector('.cal-wrap').getBoundingClientRect(), pan = document.getElementById('pc-panel').getBoundingClientRect();
+        out.side = pan.left > cal.right && Math.abs(pan.top - cal.top) < 80; out.fits = cal.bottom <= innerHeight;
+        const on = () => [...document.querySelectorAll('#pc-tabs .on')].map(b => b.dataset.p).join();
+        out.tabs = [];for (const t of ['suivi', 'rendus', 'conges', 'set', 'home']) { pcTab(t); await w(120); out.tabs.push(on() + (document.querySelector('#modal-root .overlay') ? '+' : '-')); }
+        const k = [...document.querySelectorAll('#cal .dci[data-key]')][12].dataset.key; document.querySelector('#cal .dci[data-key="' + k + '"]').click(); await w(150);
+        const ov = document.querySelector('#modal-root .overlay'), r2 = ov && ov.getBoundingClientRect();
+        out.day = !!(ov && ov.querySelector('.sheet.daymod') && r2.left >= pan.left - 2 && getComputedStyle(ov).position === 'static');
+        out.cal = document.querySelectorAll('#cal .dci[data-key]').length;
+        const t0 = document.getElementById('mtit').textContent; navDir(1); await w(50); out.month = [t0 !== document.getElementById('mtit').textContent, document.querySelectorAll('#month-view .cal-wrap').length];
+        return out; });
+      ok('PC : panneau à droite du calendrier, calendrier entier à l’écran', r.side && r.fits, JSON.stringify(r));
+      ok('PC : onglets du panneau (Contrôle, Rendus, Congés, Réglages, Soldes)', r.tabs.join() === 'suivi+,rendus+,conges+,set+,home-', r.tabs.join());
+      ok('PC : fiche du jour dans le panneau', r.day, JSON.stringify(r));
+      ok('PC : mois suivant sur place (un seul calendrier)', r.month[0] && r.month[1] === 1, JSON.stringify(r.month));
+      await ctx.close(); }
+
     // ── Admin ──
     { const { ctx, p } = await page({ viewport: { width: 1200, height: 900 }, isMobile: false, hasTouch: false }, () => { sessionStorage.setItem('admin_token', 'test'); });
       await p.goto(base + '/admin/'); await p.waitForTimeout(1200);

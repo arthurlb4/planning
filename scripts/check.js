@@ -6,7 +6,7 @@ const os = require('os');
 const { execFileSync } = require('child_process');
 
 const root = path.join(__dirname, '..');
-const htmlFiles = ['index.html', '404.html', 'app/index.html', 'admin/index.html', 'paie/index.html'];
+const htmlFiles = ['index.html', '404.html', 'app/index.html', 'app/pc/index.html', 'admin/index.html', 'paie/index.html'];
 const jsFiles = ['app/sw.js', 'app/core.js', 'app/ui.js', 'app/pc/pc.js'].filter(f => fs.existsSync(path.join(root, f)));
 const moduleFiles = ['worker/index.js'];
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'check-'));
