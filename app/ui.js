@@ -1446,6 +1446,7 @@ function _hdrAlign(){if(!_isPhone()||_isLand()){var h0=document.querySelector('.
 function _fitLand(){var col=document.querySelector('.cal-col'),cw=document.querySelector('#month-view .cal-wrap'),R=document.documentElement;if(!col||!cw)return;
   var top=col.getBoundingClientRect().top,avail=innerHeight-top-10,w=parseFloat(R.style.getPropertyValue('--lcw'))||innerWidth*.5;
   for(var k=0;k<2;k++){R.style.setProperty('--lcw',w+'px');var h=cw.getBoundingClientRect().bottom-top;if(!h)break;w=Math.max(innerWidth*.38,Math.min(innerWidth*.6,Math.floor(w*avail/h)));}
+  w=Math.max(innerWidth*.36,Math.min(innerWidth*.48,w*.88)); // un peu plus petit que la hauteur ne le permet : de la place pour les soldes
   R.style.setProperty('--lcw',w+'px');}
 function _fitPhone(){_hdrAlign();if(_isLand()){_fitLand();return;}
   if(innerWidth>480)return;var v2=document.getElementById('side-v2'),bar=document.getElementById('tabbar'),c=document.querySelector('#cal .dc');
