@@ -1,4 +1,7 @@
 // Interface (contenu des pages, fiche du jour, Modifier…) et mécanique iPhone. Chargé après core.js.
+// Téléphone : écran étroit, ou écran tactile peu haut (iPhone tourné à l'horizontale) — même règle que @media de style.css
+function _isPhone(){return innerWidth<=720||(innerHeight<=500&&!!(window.matchMedia&&matchMedia('(pointer:coarse)').matches));}
+function _isLand(){return _isPhone()&&innerWidth>innerHeight;}
 
 var _appVer=(document.querySelector('meta[name="app-version"]')||{}).content||''; // une seule source : la balise app-version
 
@@ -344,7 +347,7 @@ function applyTheme(t){
   } else {
     // iPhone : fond du document à la couleur de l'en-tête (iOS en teinte le haut de l'écran, sous l'heure et le réseau,
     // aussi pendant un rechargement) ; la page garde son fond sombre. L'écran d'ouverture (logo) a le même fond
-    document.documentElement.style.backgroundColor=innerWidth<=720?'#222221':'#161615';
+    document.documentElement.style.backgroundColor=_isPhone()?'#222221':'#161615';
     document.body.style.backgroundColor='#161615';
   }
 
@@ -713,7 +716,7 @@ function updateCounters(){
 function _fitSideMonth(){
   var el=document.getElementById('side-month'),sc=document.querySelector('.side-col');
   if(!el||!sc)return;
-  if(window.innerWidth>720||!el.offsetHeight){sc.style.removeProperty('padding-left');return;}
+  if(!_isPhone()||!el.offsetHeight){sc.style.removeProperty('padding-left');return;}
   var txt=el.querySelector('.sm-txt');if(!txt)return;
   // Longueur de référence de « SEPTEMBRE 26 » à 100 px, mesurée une fois
   if(!_fitSideMonth._ref){
@@ -773,7 +776,7 @@ function _renderSideV2(d){window._svD=d; // repris par la page Suivi (téléphon
   // Mobile : la page ne défile pas, la liste est retirée (comme dans l'ancienne colonne)
   // Barre bleue = heures acquises, barre verte = heures restantes (même échelle pour tous les mois)
   var _rMax=Math.max(1,...d.rows.map(function(r){return Math.max(r.orig,r.avail);}));
-  var rows=(window.innerWidth<=720?[]:d.rows).map(function(r){
+  var rows=(_isPhone()?[]:d.rows).map(function(r){
     var exp=r.isExp?(r.lostMin>0?'<span style="color:var(--red)">−'+fmtMin(r.lostMin)+'</span>':'expirées')
       :'→ '+(r.ext>0?'<span style="color:var(--green)">'+MCs[r.expM]+' '+String(r.expY).slice(2)+'</span>':MCs[r.expM]+' '+String(r.expY).slice(2));
     var oP=Math.round(r.orig/_rMax*100),aP=Math.round(r.avail/_rMax*100);
@@ -1292,7 +1295,7 @@ function openBulletinsCal(y){
   var arr='font-size:18px;padding:0 10px;color:var(--text2);cursor:pointer;user-select:none';
   if(!document.body.classList.contains('modal-open'))_lockBodyScroll();
   document.getElementById('modal-root').innerHTML='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet tabmod"><div class="sh"></div>'
-    +'<div class="nav-back" style="'+_navBackCss+'" onclick="openMergedRenduCgModal(6,2)">‹ '+(innerWidth<=720?'Contrôle':'Suivi')+'</div>'
+    +'<div class="nav-back" style="'+_navBackCss+'" onclick="openMergedRenduCgModal(6,2)">‹ '+(_isPhone()?'Contrôle':'Suivi')+'</div>'
     +'<div class="st" style="display:flex;align-items:center;justify-content:space-between"><span style="'+arr+'" onclick="_svYearGo('+(y-1)+')">‹</span><span>Paie '+y+'</span><span style="'+arr+'" onclick="_svYearGo('+(y+1)+')">›</span></div><div id="sv-sal" style="padding:0 12px">'+_svSalHtml(y)+'</div>'
     +'<div style="display:flex;gap:8px;margin:14px 0 14px"><button onclick="window._bulFrom=\'recap\';importBulletins()" style="white-space:nowrap;font-size:11px;padding:6px 12px;border:1px solid var(--border);border-radius:8px;background:var(--btn);cursor:pointer;font-family:var(--font);color:var(--text2)"><i class="ti ti-file-import" style="margin-right:4px"></i>Importer des bulletins</button>'
       +'</div>'
@@ -1428,7 +1431,7 @@ function _swipeKids(sh,tr,tf){
 // Défilement de l'accueil sur téléphone : seulement quand le contenu dépasse l'écran
 function _fitScroll(){
   var b=document.body;if(!b)return;
-  if(innerWidth>720||b.classList.contains('modal-open')){if(innerWidth>720)b.classList.remove('can-scroll');return;}
+  if(!_isPhone()||b.classList.contains('modal-open')){if(!_isPhone())b.classList.remove('can-scroll');return;}
   var a=document.getElementById('app');if(!a)return;
   var need=a.getBoundingClientRect().height+(parseFloat(getComputedStyle(b).paddingTop)||0)>innerHeight+1;
   b.classList.toggle('can-scroll',need);if(!need)b.scrollTop=0;
@@ -1437,9 +1440,14 @@ window.addEventListener('resize',_fitScroll);
 // Téléphone : tout l'accueil tient au-dessus de la barre d'onglets ; les cases du calendrier s'aplatissent juste ce qu'il faut
 // (jusqu'à 62 % de leur largeur), au-delà la page défile ; s'il reste de la place, elles grandissent (jusqu'à 130 %)
 // Téléphone : bouton menu aligné sur le bord droit des cases du calendrier
-function _hdrAlign(){if(innerWidth>720)return;var h=document.querySelector('.hdr'),cw=document.querySelector('#month-view .cal-wrap')||document.querySelector('.cal-wrap');
+function _hdrAlign(){if(!_isPhone()||_isLand()){var h0=document.querySelector('.hdr');if(h0)h0.style.removeProperty('padding-right');return;}var h=document.querySelector('.hdr'),cw=document.querySelector('#month-view .cal-wrap')||document.querySelector('.cal-wrap');
   var r=cw&&cw.getBoundingClientRect();if(h&&r&&r.width>100)h.style.setProperty('padding-right',Math.max(8,Math.round(innerWidth-r.right))+'px','important');}
-function _fitPhone(){_hdrAlign();
+// iPhone à l'horizontale : calendrier à gauche, à la plus grande taille qui tient en hauteur ; les soldes à droite
+function _fitLand(){var col=document.querySelector('.cal-col'),cw=document.querySelector('#month-view .cal-wrap'),R=document.documentElement;if(!col||!cw)return;
+  var top=col.getBoundingClientRect().top,avail=innerHeight-top-10,w=parseFloat(R.style.getPropertyValue('--lcw'))||innerWidth*.5;
+  for(var k=0;k<2;k++){R.style.setProperty('--lcw',w+'px');var h=cw.getBoundingClientRect().bottom-top;if(!h)break;w=Math.max(innerWidth*.38,Math.min(innerWidth*.6,Math.floor(w*avail/h)));}
+  R.style.setProperty('--lcw',w+'px');}
+function _fitPhone(){_hdrAlign();if(_isLand()){_fitLand();return;}
   if(innerWidth>480)return;var v2=document.getElementById('side-v2'),bar=document.getElementById('tabbar'),c=document.querySelector('#cal .dc');
   if(!v2||!v2.offsetHeight||!bar||!c||!c.offsetWidth)return;
   var R=document.documentElement,p=parseFloat(R.style.getPropertyValue('--dcp'))||1.05,top=innerHeight-(parseFloat(getComputedStyle(bar).bottom)||0)-bar.offsetHeight-18; // pas sa position à l'écran : effacée sous une fenêtre, elle est plus bas
@@ -1843,7 +1851,7 @@ function showPoseSelect(){
 
 // iPhone : le haut de l'écran (sous l'heure) prend la couleur de l'en-tête telle qu'on la voit, assombrie sous le voile
 // d'une fenêtre ou d'un menu (#222221 sous un voile noir à 34 % ou 18 %)
-function _sbTint(){if(innerWidth>720||document.documentElement.getAttribute('data-theme')==='light'||document.getElementById('boot-bg'))return;
+function _sbTint(){if(!_isPhone()||document.documentElement.getAttribute('data-theme')==='light'||document.getElementById('boot-bg'))return;
   var v=document.getElementById('lp-veil'),k=document.body.classList.contains('tb-sheet')?.66:1;if(v&&!v._off)k*=.82;
   var c='rgb('+[34,34,33].map(function(x){return Math.round(x*k);}).join(',')+')';
   if(window._sbC===c)return;window._sbC=c;document.documentElement.style.backgroundColor=c;
@@ -1927,7 +1935,7 @@ document.addEventListener('scroll',function(e){var el=e.target,ov=el&&el.closest
   function move(dx){var k=Math.min(1,Math.max(0,dx/W));if(un){un.firstChild.style.transform='translateX('+(-28*(1-k))+'%)';un.firstChild.style.filter='brightness('+(.7+.3*k)+')';}}
   function drop(){if(un){un.remove();un=null;}if(ovC){ovC.style.removeProperty('background');ovC=null;}}
   document.addEventListener('touchstart',function(e){window._edgeOn=false;sh=null;
-    if(innerWidth>720||e.touches.length>1)return;var x=e.touches[0].clientX;if(x>24)return;
+    if(!_isPhone()||e.touches.length>1)return;var x=e.touches[0].clientX;if(x>24)return;
     var ov=document.querySelector('#modal-root .overlay.tbsub');if(!ov||!ov.contains(e.target))return;
     sh=ov.querySelector('.sheet');sx=x;sy=e.touches[0].clientY;t0=Date.now();lock=0;W=innerWidth;window._edgeOn=true;},{capture:true,passive:true});
   document.addEventListener('touchmove',function(e){if(!window._edgeOn||!sh)return;
@@ -1956,7 +1964,7 @@ function _tbRefresh(){if(!document.body.classList.contains('tb-pg')||document.bo
 function _tbBack(){_haptic();window._eatClickAt=0;window._tbPop=1;/* sous l'Accueil : retour à l'accueil */var nb=window._tbRoot&&document.querySelector('#modal-root .overlay.tbsub .nav-back');if(nb)nb.click();else closeModal();}
 function _tbSync(){var b=document.getElementById('tabbar');if(!b)return;var r=document.getElementById('modal-root'),ov=r&&r.querySelector('.overlay'),t='cal';
   if(ov)t=ov.querySelector('#sw-list')?'swap':ov.querySelector('#stc-0')?'set':ov.querySelector('#sv-root')?'suivi':'';
-  var phone=innerWidth<=720;
+  var phone=_isPhone();
   // onglet ouvert : ses grandes fenêtres (bulletins, tableau, vérification…) sont des sous-pages, l'onglet reste allumé ;
   // les petites (question, saisie) passent par-dessus
   if(phone&&_TB_PAGE[t])window._tbRoot=t;else if(!ov)window._tbRoot=null;
@@ -2915,7 +2923,7 @@ function rhCompareShow(rh,silent){
     if(JSON.stringify(_g)!==JSON.stringify(S.profile.rhGrace||{})){if(Object.keys(_g).length)S.profile.rhGrace=_g;else delete S.profile.rhGrace;try{saveState();}catch(e){}}}}catch(e){}
   let R=_verifSim(rh);if(_rhAutoUnaccept(rh,R).length)R=_verifSim(rh);
   const fd=k=>new Date(k+'T12:00:00').toLocaleDateString('fr-FR',{day:'numeric',month:'long',year:'numeric'}).replace(/^1 /,'1er ');
-  const head='<div class="sh"></div>'+(window._rvFrom?'<div class="nav-back" style="'+_navBackCss+'" onclick="_rvGoBack()">‹ '+(window._rvFrom==='rendus'?'Rendus':innerWidth<=720?'Contrôle':'Suivi')+'</div>':'')
+  const head='<div class="sh"></div>'+(window._rvFrom?'<div class="nav-back" style="'+_navBackCss+'" onclick="_rvGoBack()">‹ '+(window._rvFrom==='rendus'?'Rendus':_isPhone()?'Contrôle':'Suivi')+'</div>':'')
     +'<div class="st" style="display:flex;justify-content:center;text-align:center;margin-bottom:2px">Tableau Gestion</div>';
   const btn='<button class="rv-b2" onclick="rhCompareOpen()">Importer un tableau plus récent</button>';
   if(!R){if(S.profile)delete S.profile.rhCmp;if(silent)return;
@@ -3971,7 +3979,7 @@ function openMergedRenduCgModal(limit,tab){
     +'</div>';
   const tabBtnS='flex:1;padding:8px 4px;font-size:13px;border:none;cursor:pointer;border-radius:8px;text-align:center;';
   document.getElementById('modal-root').innerHTML=
-    '<div class="overlay"'+(_modalWasOpen?' style="animation:none"':'')+' onclick="if(event.target===this)closeModal()"><div class="sheet smod'+(innerWidth<=720?' tabmod sv-one" data-title="'+_SV_T[tab||0]+'"':'"')+(_modalWasOpen?' style="animation:none"':'')+'>'
+    '<div class="overlay"'+(_modalWasOpen?' style="animation:none"':'')+' onclick="if(event.target===this)closeModal()"><div class="sheet smod'+(_isPhone()?' tabmod sv-one" data-title="'+_SV_T[tab||0]+'"':'"')+(_modalWasOpen?' style="animation:none"':'')+'>'
     +'<div class="sh"></div>'
     +'<div class="stabs-row">'
     +'<div class="stabs-sp"></div>'
@@ -4021,7 +4029,7 @@ function openMergedRenduCgModal(limit,tab){
 
 
 function openSuiviRoot(){
-  if(innerWidth>720)return openMergedRenduCgModal(6,window._rcgShown??2);
+  if(!_isPhone())return openMergedRenduCgModal(6,window._rcgShown??2);
   // retour depuis une sous-page (ou page redessinée) : la courbe ne se redessine pas
   var _noAnim=!!(window._tbPop||document.body.classList.contains('tb-sub')||document.getElementById('sv-root'));
   if(!document.body.classList.contains('modal-open'))_lockBodyScroll();
@@ -4509,7 +4517,7 @@ function closeModal(){
   if(window._modalBack){var _b=window._modalBack;window._modalBack=null;_b();return;}
   // sous-page ou petite fenêtre ouverte depuis un onglet (téléphone) : on revient à la page de l'onglet, pas à l'accueil
   var _rt=window._tbRoot,_mr=document.getElementById('modal-root');
-  if(_rt&&innerWidth<=720&&_mr&&_mr.querySelector('.overlay')&&!document.getElementById({suivi:innerWidth<=720?'sv-root':'rcc-wrap',set:'stc-0',swap:'sw-list'}[_rt])){
+  if(_rt&&_isPhone()&&_mr&&_mr.querySelector('.overlay')&&!document.getElementById({suivi:_isPhone()?'sv-root':'rcc-wrap',set:'stc-0',swap:'sw-list'}[_rt])){
     window._svYear=null;window._rvFrom=null;window._mmFrom=null;pendingKey=null;if(document.body.classList.contains('tb-sub'))window._tbPop=1;
     if(_rt==='suivi')openSuiviRoot();else if(_rt==='set')openSettingsModal(window._stLast||0);else openSwaps();
     return;}
@@ -6822,7 +6830,7 @@ function _verOnResume(){window._visAt=Date.now();
   _verCheck().then(function(){
     if(!window._verPending||document.hidden||window._tapAt>window._visAt||Date.now()-window._visAt>4000||document.querySelector('#modal-root .overlay')||document.getElementById('setup'))return;
     var c=window._bootCopy&&window._bootCopy.cloneNode(true);
-    if(c&&innerWidth<=720){c.classList.add('logo');c.style.opacity='0';c.style.transition='opacity .22s ease';document.body.appendChild(c);void c.offsetWidth;c.style.opacity='1';setTimeout(_verApply,260);}
+    if(c&&_isPhone()){c.classList.add('logo');c.style.opacity='0';c.style.transition='opacity .22s ease';document.body.appendChild(c);void c.offsetWidth;c.style.opacity='1';setTimeout(_verApply,260);}
     else _verApply();
   });}
 // En quittant l'app : rechargée sur la nouvelle version, sans que ça se voie ; si aucune n'a encore été cherchée
@@ -7096,7 +7104,7 @@ function _applyBigScreenZoom(){
 function _fitCalendar(){
   const mv=document.getElementById('month-view');
   if(!mv)return;
-  if(window.innerWidth<720){mv.style.width='';document.getElementById('ann-wrap').style.width='';document.querySelector('.mbar').style.width='';return;}
+  if(_isPhone()){mv.style.width='';document.getElementById('ann-wrap').style.width='';document.querySelector('.mbar').style.width='';return;}
   const col=document.querySelector('.cal-col');
   if(!col)return;
   const mbar=document.querySelector('.mbar');
@@ -7116,7 +7124,7 @@ function _fitAnnual(){
   const mbarH=mbar?mbar.offsetHeight:48;
   const ncols=window.innerWidth<600?3:4;
   const rowGap=6,colGap=6,mPad=6,mBorder=2,cellGap=2;
-  if(window.innerWidth<720){
+  if(_isPhone()){
     // Téléphone : 4 colonnes × 3 rangées, à la hauteur exacte du calendrier du mois (même place, rien ne bouge en dessous)
     const cw=document.querySelector('#month-view > .cal-wrap'),mv=document.getElementById('month-view');
     if(cw&&cw.offsetHeight>100)window._calH=cw.offsetHeight;if(cw)window._calGap=parseFloat(getComputedStyle(cw).marginBottom)||0;
@@ -7149,13 +7157,13 @@ function _fitAnnual(){
 function _syncSideTop(){
   const sc=document.querySelector('.side-col');
   if(!sc)return;
-  if(window.innerWidth<720){sc.style.paddingTop='';return;}
+  if(_isPhone()){sc.style.paddingTop='';return;}
   const mbar=document.querySelector('.mbar');
   sc.style.paddingTop=(mbar?mbar.offsetHeight:0)+'px';
 }
 
 function _checkSideBelow(){
-  if(_sbGuard||window.innerWidth<721)return;
+  if(_sbGuard||_isPhone())return;
   const mv=document.getElementById('month-view');
   const sc=document.querySelector('.side-col');
   const layout=document.querySelector('.layout');
@@ -7195,7 +7203,7 @@ window.addEventListener('resize',function(){_applyBigScreenZoom();_fitCalendar()
 
 // Affichage de l'app une fois les données chargées : l'écran de chargement s'efface
 // Mémorise la position des cases du côté (téléphone) pour que l'écran de chargement suivant les reproduise
-function _saveBootGeo(){try{if(innerWidth>720||document.body.scrollTop>0||scrollY>0)return;var bl=document.querySelectorAll('#side-v2 > .bloc');if(!bl.length)return;
+function _saveBootGeo(){try{if(!_isPhone()||document.body.scrollTop>0||scrollY>0)return;var bl=document.querySelectorAll('#side-v2 > .bloc');if(!bl.length)return;
   var ly=document.querySelector('.layout');if(ly&&ly.style.transform)return;var hd=document.querySelector('.hdr');
   var R=function(e){if(!e)return null;var r=e.getBoundingClientRect();return [Math.round(r.top),Math.round(r.height),Math.round(r.left),Math.round(r.width)];};
   var lyL=ly?ly.getBoundingClientRect().left:0;
@@ -7218,7 +7226,7 @@ function _revealBody(){
   setTimeout(function(){
     b.classList.add('out');b.style.opacity='0';b.style.pointerEvents='none'; // ouverture : le motif grossit en s'effaçant
     // retour d'actualisation : la suite (roue → « Actualisé ✓ » → mois) une fois l'écran de chargement parti
-    setTimeout(function(){b.remove();var bg=document.getElementById('boot-bg');if(bg)bg.remove();if(innerWidth<=720)document.documentElement.style.backgroundColor='#222221';if(window._ptrDone)window._ptrDone();},b.classList.contains('logo')?760:440);
+    setTimeout(function(){b.remove();var bg=document.getElementById('boot-bg');if(bg)bg.remove();if(_isPhone())document.documentElement.style.backgroundColor='#222221';if(window._ptrDone)window._ptrDone();},b.classList.contains('logo')?760:440);
   },wait);
 }
 function syncWknHeight(){setTimeout(_syncWknNow,0);}

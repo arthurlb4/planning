@@ -227,6 +227,16 @@ function mockApi(route) {
     ok('Repos trop court : alerte dans la fiche', rule[0]); ok('Repos trop court : liseré sur le calendrier', rule[1]);
     await ctx.close();
 
+    // ── iPhone à l'horizontale : reste la version iPhone (barre d'onglets, pages), calendrier à gauche et soldes à droite ──
+    { const { ctx, p } = await page({ viewport: { width: 844, height: 390 }, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1' }, login);
+      await p.goto(base + '/app/'); await p.waitForTimeout(1500);
+      const r = await p.evaluate(async () => { const w = ms => new Promise(r => setTimeout(r, ms));
+        const cal = document.querySelector('#month-view .cal-wrap').getBoundingClientRect(), side = document.getElementById('side-v2').getBoundingClientRect(), bar = document.getElementById('tabbar');
+        const o = { phone: _isPhone(), side: side.left >= cal.right - 2, fits: cal.bottom <= innerHeight, bar: getComputedStyle(bar).display === 'flex', barOk: bar.getBoundingClientRect().left >= cal.right - 2 };
+        _tbGo('suivi'); await w(150); o.page = document.body.classList.contains('tb-pg'); _tbGo('cal'); await w(100); return o; });
+      ok('iPhone à l’horizontale : version iPhone, calendrier à gauche, soldes à droite, barre à côté', /\/app\/$/.test(p.url()) && r.phone && r.side && r.fits && r.bar && r.barOk && r.page, p.url() + ' ' + JSON.stringify(r));
+      await ctx.close(); }
+
     // ── Version PC : grand écran → page PC (calendrier à gauche, panneau à droite), pages dans le panneau ──
     { const { ctx, p } = await page({ viewport: { width: 1440, height: 900 }, isMobile: false, hasTouch: false }, login);
       await p.goto(base + '/app/'); await p.waitForURL(/\/app\/pc\//, { timeout: 5000 }).catch(() => {}); await p.waitForTimeout(1500);
