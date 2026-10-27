@@ -28,7 +28,7 @@ html{--bt-img:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' vi
 <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <title>franceinfo planning</title>
-<meta name="app-version" content="v7.83">
+<meta name="app-version" content="v7.85">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Planning">
@@ -391,6 +391,7 @@ button:disabled>.hap-sw{pointer-events:none}
 /* En-tête du téléphone : le mois au milieu (la barre du mois y monte, sans flèches ni « auj. » : on glisse entre les mois,
    Accueil ramène à aujourd'hui), le bouton menu à droite ; le reste de l'en-tête passe dans le menu */
 #menu-btn{display:none}
+@media(min-width:721px){#tb-back,#tb-title{display:none!important}} /* retour et titre de page : iPhone seulement */
 /* PC : fenêtres en panneau à la place de la colonne de droite */
 @media(min-width:721px){
   body.pc-pane #side-v2{visibility:hidden}
@@ -2518,6 +2519,10 @@ function getISOWeek(date){
 function _calVeil(cb){
   const col=document.querySelector('.cal-col');
   if(!col){cb();return;}
+  // PC : pas de voile (il faisait un flash sombre) ; la vue change sur place et apparaît en fondu
+  if(innerWidth>720&&!document.documentElement.classList.contains('touch')){cb();
+    const nv=annualOpen?document.getElementById('ann-wrap'):document.getElementById('month-view');
+    if(nv&&nv.animate)nv.animate([{opacity:0,transform:'scale(.985)'},{opacity:1,transform:'none'}],{duration:200,easing:'ease-out'});return;}
   if(window._veilBusy)return;window._veilBusy=true;
   const v=document.createElement('div');
   // le voile commence sous la barre du mois : les flèches et « auj. » restent visibles pendant le changement de vue
@@ -4701,12 +4706,21 @@ function _tbRefresh(){if(!document.body.classList.contains('tb-pg')||document.bo
   if(t==='suivi')openSuiviRoot();else if(t==='set')openSettingsModal(window._stLast||0);else return;
   sh=document.querySelector('#modal-root .overlay .sheet');if(sh)sh.scrollTop=y;}
 // PC : une fenêtre ouverte prend la place de la colonne de droite (soldes, variables, paie) ; le calendrier reste visible et utilisable
-function _pcPane(){var ov=document.querySelector('#modal-root .overlay'),sv=document.getElementById('side-v2'),cw=document.querySelector('.cal-wrap'),B=document.body;
-  var on=innerWidth>720&&!!ov&&!!sv&&!!cw,was=B.classList.contains('pc-pane');B.classList.toggle('pc-pane',on);if(!on)return;
-  var a=sv.getBoundingClientRect(),c=cw.getBoundingClientRect(),R=document.documentElement.style,top=Math.max(70,c.top);
-  R.setProperty('--pcx',a.left+'px');R.setProperty('--pcw',a.width+'px');R.setProperty('--pcy',top+'px');R.setProperty('--pch',(innerHeight-top-16)+'px');
+function _pcPane(){var ov=document.querySelector('#modal-root .overlay'),sc=document.querySelector('.side-col'),cw=document.querySelector('.cal-wrap'),B=document.body,ly=document.querySelector('.layout');
+  var on=innerWidth>720&&!!ov&&!!sc&&!!cw&&!(ly&&ly.classList.contains('side-below')),was=B.classList.contains('pc-pane');
+  if(on){// colonne de droite (sa marge gauche comprise) et hauteur du calendrier ; mesure ignorée si la page est en train de se redessiner
+    var a=sc.getBoundingClientRect(),pl=parseFloat(getComputedStyle(sc).paddingLeft)||0,c=cw.getBoundingClientRect(),R=document.documentElement.style;
+    if(a.width>200&&c.height>200){R.setProperty('--pcx',(a.left+pl)+'px');R.setProperty('--pcw',(a.width-pl)+'px');R.setProperty('--pcy',c.top+'px');R.setProperty('--pch',c.height+'px');window._pcOk=1;}
+    on=!!window._pcOk;}
+  B.classList.toggle('pc-pane',on);if(!on)return;
   if(!ov.classList.contains('pcpane')){ov.classList.add('pcpane');if(!was)ov.classList.add('pcanim');}}
+// PC : cliquer à côté du panneau (hors calendrier, en-tête, menus) le ferme et rend la colonne de droite
+document.addEventListener('click',function(e){var B=document.body;if(!B.classList.contains('pc-pane')||innerWidth<=720)return;var t=e.target;
+  if(!t||!t.closest||t.closest('#modal-root,.side-col,.dci,.hdr,.mbar,#lp-menu,#lp-veil,#ask,#undo-toast,button,a,input,select,label,textarea,[onclick]'))return;
+  if(!t.isConnected)return;closeModal();});
 window.addEventListener('resize',function(){_pcPane();});
+// le calendrier change de hauteur avec le mois (5 ou 6 semaines) : le panneau suit
+document.addEventListener('DOMContentLoaded',function(){var r0=window.render;if(typeof r0==='function')window.render=function(){var x=r0.apply(this,arguments);try{if(document.body.classList.contains('pc-pane'))_pcPane();}catch(e){}return x;};});
 function _tbBack(){_haptic();window._eatClickAt=0;window._tbPop=1;/* sous l'Accueil : retour à l'accueil */var nb=window._tbRoot&&document.querySelector('#modal-root .overlay.tbsub .nav-back');if(nb)nb.click();else closeModal();}
 function _tbSync(){var b=document.getElementById('tabbar');if(!b)return;var r=document.getElementById('modal-root'),ov=r&&r.querySelector('.overlay'),t='cal';
   if(ov)t=ov.querySelector('#sw-list')?'swap':ov.querySelector('#stc-0')?'set':ov.querySelector('#sv-root')?'suivi':'';
@@ -10073,6 +10087,10 @@ function init(){
     _pgFlush();_flushAnim();try{_pgUnlinger();}catch(e){}
     const mv=_swMv(),wrap=_swWrap();
     if(!mv||!wrap){curY=y;curM=m;render();return;}
+    // PC : pas de second calendrier glissé à côté (Chrome en montrait les deux un instant) ; le mois change sur place, en fondu glissé
+    if(_pgDesk()){_swClearPeek();_titleTo(ML[m]+' '+y,d);_calNavDir=d;window._titleDir=d;curY=y;curM=m;render();_syncWknNow();
+      const w4=_swWrap();if(w4&&w4.animate)w4.animate([{opacity:.25,transform:'translateX('+(d*22)+'px)'},{opacity:1,transform:'none'}],{duration:200,easing:'cubic-bezier(.25,.8,.25,1)'});
+      return;}
     _slideBusy=true;_swClearPeek();_titleTo(ML[m]+' '+y,d);
     const W=_swW(mv),pk=_swBuildPeek(y,m),w2=pk.firstChild;_swPeek.go=pk;
     w2.style.transition='none';w2.style.transform='translateX('+(d*W)+'px)';
