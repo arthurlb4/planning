@@ -1,4 +1,4 @@
-const SW_VERSION = '10.7';
+const SW_VERSION = '10.8';
 const PAGES = 'pl-pages-v1';   // dernière version de l'app, pour l'ouvrir hors connexion
 const ASSETS = 'pl-assets-v1'; // icônes (CDN)
 
@@ -31,7 +31,8 @@ self.addEventListener('fetch', function(event) {
     });
     event.waitUntil(net.catch(function() {}));
     const fromNet = function() { return net.catch(function() { return caches.match(key, { cacheName: PAGES }).then(function(r) { return r || caches.match(req); }); }); };
-    if (req.cache === 'reload' || req.cache === 'no-cache' || req.cache === 'no-store') { event.respondWith(fromNet()); return; }
+    // rechargement demandé, ou passage à une nouvelle version (?upd=) : réseau d'abord, jamais la copie gardée
+    if (req.cache === 'reload' || req.cache === 'no-cache' || req.cache === 'no-store' || /[?&]upd=/.test(req.url)) { event.respondWith(fromNet()); return; }
     // Ouverture : la dernière version si le réseau répond vite (l'image de démarrage couvre l'attente), sinon la copie gardée
     event.respondWith(caches.match(key, { cacheName: PAGES }).then(function(hit) {
       if (!hit) return fromNet();

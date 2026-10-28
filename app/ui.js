@@ -1903,7 +1903,7 @@ function openHdrMenu(){
     +it('ti-calendar-time','var(--amber)','Sirhius',ext('Sirhius'))+it('ti-send','var(--green)','Demande de congés',ext('Demande'))
     +'<div class="hm-sep"></div>'
     +it('ti-calendar-month','var(--blue)',annualOpen?'Vue du mois':'Vue de l’année','toggleAnnual()')
-    +(function(){var g=_gcalLine();return it(_gIco(g[0],g[2]),'',g[1],'gcalHandleClick()');})())+(function(l){return l?'<div class="hm-sep"></div>'+l:'';})(_syncLine());
+    +(function(){var g=_gcalLine();return it(_gIco(g[0],g[2]),'',g[1],'gcalHandleClick()');})())+(function(l){return l?'<div class="hm-sep"></div>'+l:'';})(_verLine()+_syncLine());
   document.body.appendChild(veil);document.body.appendChild(m);
   m.style.boxSizing='border-box';m.style.width=m.offsetWidth+'px'; // largeur figée : un état plus long se coupe, le menu ne bouge pas
   // menu ouvert : l'état de l'enregistrement en ligne et de Google Agenda se met à jour tout seul
@@ -6818,19 +6818,26 @@ function _verCheck(){
       // inscription : rechargée tant qu'il n'y a rien à perdre (début), sinon un lien le propose
       if(document.getElementById('setup')&&SU)_suSave(); // inscription : saisie gardée, reprise à la même étape après rechargement
       if(!document.getElementById('setup')&&document.getElementById('modal-root').innerHTML)return false; // pas pendant une saisie
-      var k='pl_ver_rl';try{if(sessionStorage.getItem(k)===m[1])return false;}catch(e){}
+      // déjà tenté pour cette version il y a moins d'une minute : on attend (avant, une tentative ratée bloquait cette version pour de bon)
+      var k='pl_ver_rl';try{var _t=(sessionStorage.getItem(k)||'').split('|');if(_t[0]===m[1]&&Date.now()-(+_t[1]||0)<60000)return false;}catch(e){}
       // Inscription en cours : rechargée tout de suite (rien à perdre, saisie gardée)
-      if(document.getElementById('setup')){try{sessionStorage.setItem(k,m[1]);}catch(e){}location.reload();return true;}
+      if(document.getElementById('setup')){try{sessionStorage.setItem(k,m[1]+'|'+Date.now());}catch(e){}_verGo(m[1]);return true;}
       // Sinon : rechargée quand l'app passe en arrière-plan, sans que ça se voie (un rechargement à l'écran fait un écran noir
       // sur iPhone) ; la nouvelle version est de toute façon celle qui s'ouvrira la prochaine fois
       window._verPending=m[1];return false;
     }).catch(function(){return false;});
 }
 // Rechargement sur la nouvelle version, après l'envoi d'un enregistrement en ligne en attente (5 s après une modification)
+// Rechargement sur la nouvelle version : adresse marquée (?upd=), que le service worker va chercher sur le réseau
+// (un simple rechargement pouvait reprendre la copie gardée, donc l'ancienne version)
+function _verGo(v){location.replace(location.pathname+'?upd='+encodeURIComponent(v||'1')+location.hash);}
+try{if(/[?&]upd=/.test(location.search))history.replaceState(null,'',location.pathname+location.hash);}catch(e){}
+// Nouvelle version trouvée : une ligne dans le menu pour l'installer tout de suite
+function _verLine(){return window._verPending?'<div class="hm-sync" style="color:var(--blue)" onclick="_closeDayMenu();_verApply()"><i class="ti ti-download" style="color:var(--blue)"></i><span>Nouvelle version '+_h(window._verPending)+' · installer</span></div>':'';}
 function _verApply(){
   if(!window._verPending)return;
-  try{sessionStorage.setItem('pl_ver_rl',window._verPending);}catch(e){}window._verPending=null;
-  var go=function(){location.reload();},p=null;
+  var v=window._verPending;try{sessionStorage.setItem('pl_ver_rl',v+'|'+Date.now());}catch(e){}window._verPending=null;
+  var go=function(){_verGo(v);},p=null;
   try{if(window._cloudSyncTimer&&_aid){clearTimeout(window._cloudSyncTimer);window._cloudSyncTimer=null;p=cloudSave(_aid);}}catch(e){}
   if(p&&p.then){var t=setTimeout(go,2500);p.then(function(){clearTimeout(t);go();},function(){clearTimeout(t);go();});}else go();
 }
