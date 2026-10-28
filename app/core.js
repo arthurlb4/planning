@@ -380,7 +380,11 @@ function hsRenduFromSurplus(surplus){
   const hs1=Math.min(surplus,8*60),hs2=Math.max(0,surplus-8*60);
   return hs1*1.25+hs2*1.5;
 }
-function calcHSWeek(monday){
+// Heures sup d'une vacation changée : « duree » (la plus longue des deux, prévue ou faite) ou « horaires »
+// (comme les vacations mixtes : les minutes faites avant le début ou après la fin de la vacation prévue)
+function _hsMode(){return S&&S.profile&&S.profile.hsMode==='horaires'?'horaires':'duree';}
+function calcHSWeek(monday,mode){
+  mode=mode||_hsMode();
   const li=lineIdx(monday),VAC=getVAC();
   const _grid=getActiveCycleGrid(monday)||_stdGrid(_poolAt(monday));
   const gridRow=_grid[li]||[];
@@ -415,7 +419,9 @@ function calcHSWeek(monday){
         _dayWorked=(VAC[cycleVac].dur||0)+_calcMixteHsMin(cycleVac,_ov.vac,VAC);
       } else if(_ov&&_ov.vac&&!_ov.echange&&cycleVac&&cycleVac!=='RH'&&VAC[cycleVac]){
         // Jour travaillé changé (grille ou « Modifier ») : la plus grande des deux, prévue ou faite ; le surplus part en heures sup
-        _dayWorked=Math.max(VAC[cycleVac].dur||0,VAC[vac]?VAC[vac].dur:0);
+        // (méthode « horaires » : seulement ce qui sort des horaires prévus, comme une vacation mixte)
+        if(mode==='horaires'&&VAC[vac]&&_toMinApp(VAC[cycleVac].deb)!==null&&_toMinApp(VAC[vac].deb)!==null)_dayWorked=(VAC[cycleVac].dur||0)+_calcMixteHsMin(cycleVac,vac,VAC);
+        else _dayWorked=Math.max(VAC[cycleVac].dur||0,VAC[vac]?VAC[vac].dur:0);
       } else if(_ov&&_ov.vac&&!_ov.echange&&!_ov.hs){
         _dayWorked=(!cycleVac||cycleVac==='RH'||!VAC[cycleVac])?(VAC[vac]?VAC[vac].dur:0):VAC[cycleVac].dur;
       } else {

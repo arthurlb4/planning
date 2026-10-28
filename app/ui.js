@@ -4301,7 +4301,10 @@ function openMergedMoisModal(mym,tab){
   // === Heures sup. ===
   const sett2=settingsForYM(mym),useRendu2=sett2.hsRendu;
   const seenW=new Set();let hsRows='';let tot=0,totLow=0,totHigh=0,totRawLow=0,totRawHigh=0;
+  // comparaison : le même total avec l'autre méthode (durée / horaires) pour une vacation changée
+  const _hsAlt=_hsMode()==='horaires'?'duree':'horaires';let totAlt=0;
   function makeHSRow(mon,prevMois){
+    const hsA=calcHSWeek(mon,_hsAlt);totAlt+=useRendu2?hsA.rendusMin:(hsA.rawLow+hsA.rawHigh);
     const hsW=calcHSWeek(mon);if(hsW.surplus<=0)return;
     const sett=settingsForYM(mym),useRendu=sett.hsRendu;
     const rowTotal=useRendu?hsW.rendusMin:(hsW.rawLow+hsW.rawHigh);
@@ -4333,7 +4336,9 @@ function openMergedMoisModal(mym,tab){
     :'<div style="display:flex;justify-content:space-between;padding:2px 0 4px"><span></span><span style="font-size:11px;color:var(--text3)">payées</span></div>';
   const _hasMo=false;
   const _moCfgBtn='';
-  const hsSection='<div class="ucard" style="margin:0;padding:8px 12px">'+hsColHdr+hsSummary+'</div>'+(hsRows?_mmBox(hsRows):'');
+  const hsAltLine=Math.round(totAlt)!==Math.round(tot)?'<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0 2px;margin-top:6px;border-top:0.5px solid var(--border2)"><span style="font-size:11px;color:var(--text3)">Méthode « '+(_hsAlt==='horaires'?'horaires':'durée')+' » (Réglages › Calcul)</span><b style="font-size:13px;color:var(--text2)">'+fmtMin(totAlt)+'</b></div>'
+    :'<div style="font-size:11px;color:var(--text3);padding:8px 0 2px;margin-top:6px;border-top:0.5px solid var(--border2)">Même total avec la méthode « '+(_hsAlt==='horaires'?'horaires':'durée')+' »</div>';
+  const hsSection='<div class="ucard" style="margin:0;padding:8px 12px">'+hsColHdr+hsSummary+hsAltLine+'</div>'+(hsRows?_mmBox(hsRows):'');
 
   // === Créés ce mois ===
   const{gen:gen2}=calcSoldes();const gm=gen2[mym]||{};
@@ -5203,6 +5208,8 @@ function openSettingsModal(tab){
     +_sh+'Génération des rendus</div>'+_co
     +'<div class="srow" '+_sr+'><div style="display:flex;gap:20px;align-items:center;flex:1;padding-left:4px">'+_rendDots+'</div><button '+_bS+' onclick="openAnnualSettingsModal('+new Date().getFullYear()+')">Changer</button></div>'
     +'<div class="srow" '+_sr+'><div class="slbl">Heures valables un an <span style="display:block;color:var(--text3);font-size:11px;margin-top:2px;line-height:1.35">reports toujours accordés</span></div><label class="tgl"><input type="checkbox"'+(pr.profile.exp12?' checked':'')+' onchange="exp12Set(this.checked)"><span class="tgl-s"></span></label></div>'
+    +'<div class="srow" '+_sr+'><div class="slbl">Heures sup d’une vacation changée <span style="display:block;color:var(--text3);font-size:11px;margin-top:2px;line-height:1.35">'+(_hsMode()==='horaires'?'ce qui sort des horaires prévus (comme une mixte)':'la plus longue des deux, prévue ou faite')+'</span></div>'
+      +'<div class="cv-seg" style="width:170px;flex:none"><button type="button" class="'+(_hsMode()==='duree'?'on':'')+'" onclick="hsModeSet(\'duree\',this)">Durée</button><button type="button" class="'+(_hsMode()==='horaires'?'on':'')+'" onclick="hsModeSet(\'horaires\',this)">Horaires</button></div></div>'
     +_sh+'Mes données</div>'+_co
     // Historique côté serveur : une version par jour, 60 jours
     +'<div class="srow" '+_sr+'><div class="slbl">Sauvegardes</div><button '+_bS+' onclick="_histOpen()">Voir</button></div>'
@@ -5908,6 +5915,10 @@ async function _cvSaveMove(){var W=window._cvW||{when:'day'},key=pendingKey,m=wi
   var ML={autre:'horaires',forme:'formation',formateur:'formateur',detache:'détachement',syndic:'détachement syndical'};
   logH(ex?'Échange: '+fmtDate(oD)+' <-> '+fmtDate(fD)+' ('+vLbl(V,VF)+')':fmtDate(oD)+' -> '+fmtDate(fD)+' ('+ML[m]+')',ex?'#c88048':'#62aadc',fKey);
   saveState();render();gcalTrigger();popCell(fKey);openDay(key);_ruleToast([oKey,fKey]);}
+// Heures sup d'une vacation changée : méthode « durée » (par défaut) ou « horaires » (comme les vacations mixtes)
+function hsModeSet(m,el){if(_hsMode()===m)return;pushUndo(m==='horaires'?'Heures sup : méthode horaires':'Heures sup : méthode durée');if(!S.profile)S.profile={};if(m==='horaires')S.profile.hsMode='horaires';else delete S.profile.hsMode;
+  saveState();render();if(el)[].forEach.call(el.parentNode.children,function(b){b.classList.toggle('on',b===el);});try{_segSync();}catch(e){}
+  _infoToast(m==='horaires'?'✓ Heures sup : ce qui sort des horaires prévus':'✓ Heures sup : la plus longue des deux vacations');}
 // Option « Heures valables un an » : chaque mois de rendus expire à la fin du 12e mois (plus de menu de report)
 function exp12Set(on){pushUndo(on?'Heures valables un an':'Expiration par reports');if(!S.profile)S.profile={};if(on)S.profile.exp12=true;else delete S.profile.exp12;saveState();render();_infoToast(on?'✓ Heures valables un an':'Expiration à 3 mois, avec reports');}
 // Échange : la page Modifier, sur « un autre jour » et le motif Échange
