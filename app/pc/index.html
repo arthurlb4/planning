@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<script>/* écran étroit (téléphone, fenêtre réduite) : la version iPhone */ if(innerWidth<=720)location.replace('../'+location.search+location.hash);</script>
+<meta name="color-scheme" content="dark">
+<style>html,body{background:#161615}</style>
+<title>franceinfo planning</title>
+<meta name="app-version" content="v8.04">
+<meta name="app-build" content="efc8f8a17e"><!-- empreinte du code, posée à la publication -->
+<meta name="theme-color" content="#222221">
+<link rel="icon" type="image/png" href="../favicon11.png">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="../style.css?v=efc8f8a17e">
+<link rel="stylesheet" href="pc.css?v=efc8f8a17e">
+</head>
+<body class="pc">
+<div id="app"><div class="app-outer">
+<!-- HEADER -->
+<div class="hdr">
+  <span class="hdr-ver" style="display:flex;align-items:baseline;gap:4px;padding-left:4px;white-space:nowrap"><span id="hdr-profile-name" style="font-size:16px;font-weight:600;color:var(--text)">Profil</span><span style="font-size:15px;color:var(--text3);font-weight:400">| franceinfo:</span></span>
+  <div class="hdr-btns" style="position:relative">
+    <span id="sync-status" title="Synchronisation" data-tip="Synchronisation : état de l’enregistrement en ligne" onclick="syncStatusClick()" style="display:none;align-items:center;justify-content:center;width:22px;height:22px;margin-right:6px;cursor:pointer;font-size:16px;color:var(--text3)"></span>
+    <span id="gcal-status-wrap" title="Google Agenda" data-tip="Google Agenda : état de la synchronisation" style="display:inline-flex;align-items:center;cursor:pointer;position:relative;width:22px;height:22px;margin-right:8px;" onclick="gcalHandleClick()">
+      <svg style="position:absolute;top:-4px;left:-4px;transform:rotate(-90deg);pointer-events:none" width="30" height="30" viewBox="0 0 30 30">
+        <circle id="gcal-progress-circle" cx="15" cy="15" r="13" fill="none" stroke="transparent" stroke-width="3" stroke-dasharray="81.68" stroke-dashoffset="81.68" stroke-linecap="round"/>
+      </svg>
+      <span id="gcal-status" style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;"></span>
+    </span>
+    <div class="hdr-sep"></div>
+    <button class="ibtn" id="undo-btn" title="Annuler" data-tip="Annuler la dernière action" onclick="undoAction()" disabled><i class="ti ti-arrow-back-up"></i></button>
+    <button class="ibtn" id="redo-btn" title="Rétablir" data-tip="Rétablir l’action annulée" onclick="redoAction()" disabled><i class="ti ti-arrow-forward-up"></i></button>
+    <div class="hdr-sep"></div>
+    <button class="ibtn" id="swap-btn" title="Échanges" data-tip="Échanges : jours proposés par l’équipe" onclick="openSwaps()" style="position:relative"><i class="ti ti-arrows-exchange"></i><span class="ibtn-lbl">Échanges</span><span class="sw-dot"></span></button>
+    <button class="ibtn" title="Sirhius" data-tip="Sirhius : le planning officiel" data-ext="1" onclick="openExternalUrl('https://sirhius-radiofrance.soprahronline.com/',true)"><i class="ti ti-calendar-time"></i><span class="ibtn-lbl">Sirhius</span></button>
+    <button class="ibtn" title="Demande" data-tip="Demande : ouvre Power Apps" data-ext="1" onclick="openExternalUrl('https://apps.powerapps.com/play/e/4d596619-663c-ed3d-98c0-e114b119ea41/a/040bffc0-58b2-4c9d-965f-9479efa0b375?tenantId=1d643b07-8cf5-4e2d-ad1e-86d6b948fc3b&sourcetime=2023-08-16%2008%3A23%3A27Z')"><i class="ti ti-send"></i><span class="ibtn-lbl">Demande</span></button>
+    <!-- <button class="ibtn" onclick="var _wvo=document.getElementById('week-view-overlay');if(_wvo&&_wvo.style.display!=='none')closeWeekView();else openWeekView()"><i class="ti ti-users"></i><span class="ibtn-lbl">Quintic</span></button> -->
+    <button class="ibtn" id="menu-btn" title="Menu" aria-label="Menu" onclick="openHdrMenu()" style="position:relative"><svg class="hm-ico" viewBox="0 0 20 14" width="19" height="13" aria-hidden="true" fill="none" stroke="#d6d5cf" stroke-width="1.7" stroke-linecap="round"><line x1="1" y1="1.5" x2="19" y2="1.5"/><line x1="1" y1="7" x2="16" y2="7"/><line x1="1" y1="12.5" x2="9" y2="12.5"/></svg><span class="sw-dot"></span></button>
+    <div style="position:relative">
+      <button class="ibtn" title="Réglages" data-tip="Réglages" onclick="openSettingsModal()">
+        <i class="ti ti-settings"></i>
+      </button>
+    </div>
+  </div>
+</div>
+
+
+<!-- PC : calendrier à gauche, panneau à droite (soldes, ou la page ouverte) -->
+<div class="layout">
+<div class="cal-col">
+  <div class="mbar">
+    <div style="display:flex;gap:4px"><button class="mnav" onclick="navDir(-1)"><i class="ti ti-chevron-left"></i></button><button class="mnav today" onclick="goToday()">auj.</button></div>
+    <span class="mtit" id="mtit" onclick="toggleAnnual()"></span>
+    <button class="mnav" onclick="navDir(1)"><i class="ti ti-chevron-right"></i></button>
+  </div>
+  <div class="ann-wrap" id="ann-wrap"><div class="annual-grid" id="ann-grid"></div></div>
+  <div id="month-view" style="width:100%;position:relative;">
+    <div class="cal-wrap">
+      <table class="cal"><tr id="heads"></tr></table>
+      <table class="cal" id="cal"></table>
+    </div>
+  </div>
+</div>
+<div class="side-col" id="pc-panel">
+  <nav id="pc-tabs" aria-label="Pages">
+    <button data-p="home" class="on" onclick="pcTab('home')"><i class="ti ti-layout-dashboard"></i>Soldes</button>
+    <button data-p="suivi" onclick="pcTab('suivi')"><i class="ti ti-checklist"></i>Contrôle</button>
+    <button data-p="rendus" onclick="pcTab('rendus')"><i class="ti ti-clock-hour-4"></i>Rendus</button>
+    <button data-p="conges" onclick="pcTab('conges')"><i class="ti ti-beach"></i>Congés</button>
+    <button data-p="set" onclick="pcTab('set')"><i class="ti ti-settings"></i>Réglages</button>
+  </nav>
+  <div id="pc-body">
+    <div id="side-month" aria-hidden="true"></div>
+    <div id="side-v2" style="display:none;flex-direction:column;gap:16px"></div>
+    <div id="modal-root"></div>
+  </div>
+</div>
+</div>
+</div></div>
+
+<script src="../core.js?v=efc8f8a17e"></script>
+<script src="../ui.js?v=efc8f8a17e"></script>
+<script src="pc.js?v=efc8f8a17e"></script>
+<script>if('serviceWorker'in navigator){navigator.serviceWorker.register('../sw.js').catch(function(){});}</script>
+</body>
+</html>
