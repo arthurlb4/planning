@@ -1097,6 +1097,8 @@ function bulIgnL(ym,id,on){var pr=S.profile,c=_bulCompare(S.bulletins[ym]),it=c.
   var sh=document.querySelector('#modal-root .sheet'),st=sh?sh.scrollTop:0;saveState();render();openBulletinModal(ym);var s2=document.querySelector('#modal-root .sheet');if(s2){s2.style.animation='none';s2.scrollTop=st;}}
 
 function rhIgnC(k,v,on){pushUndo(/^(acq|wkm)/.test(k)?(on?'Différence reprise du tableau':'Reprise du tableau annulée'):(on?'Différence ignorée':'Différence de nouveau comptée'));var pr=S.profile;if(!pr.ignRhC)pr.ignRhC={};if(on)pr.ignRhC[k]=v;else delete pr.ignRhC[k];delete pr.ignRh;try{recalcAllMatelas();}catch(e){}saveState();rhOpenFrom(window._rvFrom||'recap');render();}
+// Plusieurs différences d'un coup (un mois, les semaines) : reprises du tableau ou annulées, une seule étape à annuler
+function rhIgnMany(L,on){pushUndo(on?'Différences reprises du tableau':'Reprises du tableau annulées');var pr=S.profile;if(!pr.ignRhC)pr.ignRhC={};L.forEach(function(x){if(on)pr.ignRhC[x[0]]=x[1];else delete pr.ignRhC[x[0]];});delete pr.ignRh;try{recalcAllMatelas();}catch(e){}saveState();rhOpenFrom(window._rvFrom||'recap');render();}
 
 
 function openBulletinModal(ym,from){
@@ -2941,25 +2943,32 @@ function rhCompareShow(rh,silent){
   const act=(k,v,on)=>'<button class="rv-b2" onclick="event.stopPropagation();rhIgnC(\''+k+'\','+Math.round(v)+','+(on?0:1)+')">'+(on?'Annuler la reprise ('+fmtE(v)+')':'Faire comme le tableau ('+fmtE(v)+')')+'</button>';
   // Différences : une carte dépliable chacune — à voir (point orange) ou reprise du tableau (coche verte)
   const todo=[],done=[];let ignSum=0;
-  const card=(o)=>(o.done?done:todo).push('<div class="rv-it" onclick="if(!event.target.closest(\'button,a\'))this.classList.toggle(\'on\')"><div class="rv-ih">'
+  const card=(o)=>(o.done?done:todo).push({sec:o.sec||'autre',h:'<div class="rv-it" onclick="if(!event.target.closest(\'button,a\'))this.classList.toggle(\'on\')"><div class="rv-ih">'
     +(o.done?'<span style="color:var(--green);font-size:13px;font-weight:700;width:7px;flex:none;display:flex;justify-content:center">✓</span>':'<span class="rv-dot"'+(o.info?' style="background:var(--text3)"':'')+'></span>')
-    +'<div class="rv-tt">'+o.t+'<small>'+o.sub+'</small></div><b class="rv-v'+(o.done||o.info?' n':o.v>0?' pos':o.v<0?' neg':' n')+'">'+(o.vt!=null?o.vt:fmtE(o.v))+'</b><i class="ti ti-chevron-down rv-ch"></i></div><div class="rv-ib">'+o.body+'</div></div>');
-  // 1. Heures acquises, par mois et par nature (+ : le tableau en compte plus)
+    +'<div class="rv-tt">'+o.t+'<small>'+o.sub+'</small></div><b class="rv-v'+(o.done||o.info?' n':o.v>0?' pos':o.v<0?' neg':' n')+'">'+(o.vt!=null?o.vt:fmtE(o.v))+'</b><i class="ti ti-chevron-down rv-ch"></i></div><div class="rv-ib">'+o.body+'</div></div>'});
+  // 1. Heures acquises : une carte par mois, ses catégories en tableau (+ : le tableau vous laisse plus d'heures)
   const tNat={};rh.lines.forEach(l=>{if(!l.nature)return;const k=_rhNatKey(l.nature);(tNat[l.ym]=tNat[l.ym]||{})[k]=((tNat[l.ym]||{})[k]||0)+l.acq;});
-  const acqRows=[];
+  const acqRows=[],yr=ym=>Math.floor(ym/12)!==asOf.getFullYear()?' '+Math.floor(ym/12):'',ksJs=L=>'['+L.map(x=>'[\''+x[0]+'\','+Math.round(x[1])+']').join(',')+']';
+  const cmpT=(head,its)=>'<table class="rc-t" style="margin-bottom:6px"><tr><th></th><th>Tableau</th><th>App</th><th>Écart</th></tr>'+its.map(i=>'<tr><td>'+i.l+(i.ig?' <span class="rc-ok">repris</span>':'')+'</td><td>'+fmtMin(i.s)+'</td><td>'+fmtMin(i.a)+'</td><td class="'+(i.e>0?'rc-pos':'rc-neg')+'">'+fmtE(i.e)+'</td></tr>').join('')+'</table>';
+  const btns=(its,what)=>{const op=its.filter(i=>!i.ig),dn=its.filter(i=>i.ig),eo=op.reduce((t,i)=>t+i.e,0),ed=dn.reduce((t,i)=>t+i.e,0);
+    return (op.length?'<button class="rv-b2" onclick="event.stopPropagation();rhIgnMany('+ksJs(op.map(i=>[i.ik,i.e]))+',1)">Faire comme le tableau'+what+' ('+fmtE(eo)+')</button>':'')
+      +(dn.length?'<button class="rv-b2" onclick="event.stopPropagation();rhIgnMany('+ksJs(dn.map(i=>[i.ik,i.e]))+',0)">Annuler la reprise ('+fmtE(ed)+')</button>':'');};
   for(let ym=R.st.genFrom;ym<asOfYM;ym++){const T=tNat[ym]||{},A=R.nat[ym]||{},s=Object.values(T).reduce((a,b)=>a+b,0),a=R.acq[ym]||0,adj=R.adjM[ym]||0;if(!s&&!a)continue;acqRows.push({ym,s,a,adj});
-    const ks=[...new Set(Object.keys(A).filter(k=>A[k]>0).concat(Object.keys(T)))],diffs=ks.map(k=>({k,s:T[k]||0,a:k.startsWith('autre:')?0:(A[k]||0)})).filter(x=>bad(x.a-x.s)),used=new Set();
+    const ks=[...new Set(Object.keys(A).filter(k=>A[k]>0).concat(Object.keys(T)))],diffs=ks.map(k=>({k,s:T[k]||0,a:k.startsWith('autre:')?0:(A[k]||0)})).filter(x=>bad(x.a-x.s)),used=new Set(),sw=[];
     const daysOf=k=>(k==='hs'?(R.det[ym+':hs']||[]).concat(R.det[ym+':ram']||[]):(R.det[ym+':'+k]||[])).map(x=>(/^\d{4}-/.test(x.lbl)?dayL(x.lbl):x.lbl)+' '+fmtMin(x.v));
     diffs.filter(x=>x.a>x.s).forEach(x=>{const y=diffs.find(z=>z.a<z.s&&!used.has(z)&&Math.abs((z.a-z.s)+(x.a-x.s))<2);if(!y||used.has(x))return;used.add(x);used.add(y);
-      card({t:'Catégorie différente en '+MF[ym%12],sub:fmtMin(x.a-x.s)+' en '+natL(x.k)+' dans l’app, en '+natL(y.k)+' au tableau',info:1,vt:'=',body:_suPts(['Même durée des deux côtés → sans effet sur le solde'])});});
-    diffs.filter(x=>!used.has(x)).forEach(x=>{const e=x.s-x.a,ik='acq'+ym+x.k.replace(/[^a-z0-9]/gi,''),ig=_rhCIgn(ik,e),dl=daysOf(x.k);
-      card({t:natL(x.k)+' '+moisDe(ym),sub:ig?'Repris du tableau':(e>0?'Le tableau en compte ':'L’app en compte ')+fmtMin(Math.abs(e))+' de plus',v:e,done:ig,
-        body:tv(x.s,x.a)+_suPts([dl.length?'Comptés par l’app → '+dl.join(' · '):'Rien compté par l’app ce mois-ci',ig?'L’app ajoute '+fmtE(e)+' à '+MF[ym%12]+' pour faire comme le tableau':'Faire comme le tableau → l’app ajoute '+fmtE(e)+' à '+MF[ym%12]])+act(ik,e,ig)});});}
-  // 2. Rendus des semaines citées par le gestionnaire
-  Object.keys(rh.weeks||{}).map(Number).forEach(w=>{const mon=_rhWeekMon(asOf.getFullYear(),w);if(dk(new Date(mon.getTime()+6*864e5))<=R.st.from||(rh.lastWeek&&w>rh.lastWeek))return;
-    const c=rh.weeks[w],a=R.wkA[w]||0,d=a-c;if(!bad(d))return;const ym=mon.getFullYear()*12+mon.getMonth(),ik='wkm'+ym+'s'+w,ig=_rhCIgn(ik,d);
-    card({t:'Rendus de la S'+w,sub:ig?'Repris du tableau':(d>0?'L’app en déduit ':'Le tableau en déduit ')+fmtMin(Math.abs(d))+' de plus',v:d,done:ig,
-      body:tv(c,a)+_suPts([ig?'L’app compte '+fmtE(d)+' d’heures pour faire comme le tableau':'Faire comme le tableau → l’app compte '+fmtE(d)+' d’heures'])+act(ik,d,ig)});});
+      sw.push(fmtMin(x.a-x.s)+' en '+natL(x.k).toLowerCase()+' dans l’app, en '+natL(y.k).toLowerCase()+' au tableau : même durée, sans effet sur le solde');});
+    const its=diffs.filter(x=>!used.has(x)).map(x=>{const e=x.s-x.a,ik='acq'+ym+x.k.replace(/[^a-z0-9]/gi,'');return {l:natL(x.k),s:x.s,a:x.a,e,ik,ig:_rhCIgn(ik,e),dl:daysOf(x.k)};});
+    if(!its.length&&!sw.length)continue;
+    const op=its.filter(i=>!i.ig),allIg=its.length&&!op.length;
+    card({sec:'acq',t:MFc(ym)+yr(ym),sub:allIg?'Repris du tableau':op.length?op.map(i=>i.l).join(' · '):'Catégorie différente',v:op.reduce((t,i)=>t+i.e,0),vt:its.length?(allIg?fmtE(its.reduce((t,i)=>t+i.e,0)):null):'=',info:!its.length,done:allIg,
+      body:(its.length?cmpT('',its):'')+_suPts(its.filter(i=>i.dl.length).map(i=>i.l+' dans l’app → '+i.dl.join(' · ')).concat(its.filter(i=>!i.dl.length).map(i=>i.l+' : rien dans l’app')).concat(sw))+btns(its,' en '+MF[ym%12])});}
+  // 2. Rendus des semaines citées par le gestionnaire : une seule carte
+  const wIts=[];Object.keys(rh.weeks||{}).map(Number).sort((a,b)=>a-b).forEach(w=>{const mon=_rhWeekMon(asOf.getFullYear(),w);if(dk(new Date(mon.getTime()+6*864e5))<=R.st.from||(rh.lastWeek&&w>rh.lastWeek))return;
+    const c=rh.weeks[w],a=R.wkA[w]||0,d=a-c;if(!bad(d))return;const ik='wkm'+(mon.getFullYear()*12+mon.getMonth())+'s'+w;wIts.push({l:'S'+w+' <small style="color:var(--text3)">'+mon.toLocaleDateString('fr-FR',{day:'numeric',month:'short'})+'</small>',w,s:c,a,e:d,ik,ig:_rhCIgn(ik,d)});});
+  if(wIts.length){const op=wIts.filter(i=>!i.ig),allIg=!op.length;
+    card({sec:'rend',t:'Rendus par semaine',sub:allIg?'Repris du tableau':(op.length>1?op.length+' semaines : ':'')+op.map(i=>'S'+i.w).join(' · '),v:op.reduce((t,i)=>t+i.e,0),vt:allIg?fmtE(wIts.reduce((t,i)=>t+i.e,0)):null,done:allIg,
+      body:cmpT('',wIts)+_suPts(['Heures de rendus déduites chaque semaine, d’après les commentaires du tableau'])+btns(wIts,'')});}
   // 3. Matelas ou heures : le gestionnaire prend parfois sur des heures acquises après coup (même total)
   const eH=R.tabH-R.appH,eM=R.hasMat?R.tabM-R.appM:0,acqE=acqRows.reduce((t,r)=>t+r.s-r.a,0),consE=R.consA-R.consT,matE=R.matA-R.matT;
   const xk=Object.keys(pr.ignRhC||{}).filter(k=>/^xfer\d+$/.test(k))[0],xv=xk?pr.ignRhC[xk]:0;
@@ -2999,15 +3008,10 @@ function rhCompareShow(rh,silent){
   const ok=!bad(eH)&&!bad(eM),st=ok?'✓ Identique au tableau':!bad(dTot)?'Même total, répartition différente':(dTot>0?'En votre faveur : ':'À faire corriger : ')+fmtE(dTot);
   const stC=ok||dTot>=0||!bad(dTot)?'var(--green)':'var(--red)';
   const fold=(t,sub,body,open)=>'<div class="rv-sec" style="cursor:pointer" onclick="this.nextElementSibling.classList.toggle(\'on\');this.querySelector(\'.rv-ch\').classList.toggle(\'r\')">'+t+' <span>'+(sub||'')+' <i class="ti ti-chevron-down rv-ch"></i></span></div><div class="rv-det'+(open?' on':'')+'">'+body+'</div>';
-  const t3=(l,t,a,c,inv,note)=>'<tr'+(c?' class="'+c+'"':'')+'><td>'+l+'</td><td>'+(t?fmtMin(t):'—')+'</td><td>'+(a?fmtMin(a):'—')+'</td>'+(bad(t-a)?'<td class="'+((t-a>0)!==!!inv?'rc-pos':'rc-neg')+'">'+fmtE(t-a)+(note?'<br><small style="color:var(--text3);font-weight:400">'+note+'</small>':'')+'</td>':'<td><span class="rc-ok">✓</span></td>')+'</tr>';
-  // heures acquises : l'écart d'origine reste affiché (planning seul), avec « repris » quand l'app a fait comme le tableau
-  const acqTbl='<table class="rc-t"><tr><th></th><th>Tableau</th><th>App</th><th>Écart</th></tr>'+acqRows.map(r=>t3(MFc(r.ym),r.s,r.a-r.adj,'',0,bad(r.adj)&&!bad(r.s-r.a)?'repris':'')).join('')+'</table>';
-  const wks=[...new Set(Object.keys(rh.weeks||{}).map(Number).filter(w=>dk(new Date(_rhWeekMon(asOf.getFullYear(),w).getTime()+6*864e5))>R.st.from).concat(Object.keys(R.wkA).map(Number)))].filter(w=>!rh.lastWeek||w<=rh.lastWeek).sort((a,b)=>a-b);
+  const t3=(l,t,a,c,inv,note)=>'<tr'+(c?' class="'+c+'"':'')+'><td>'+l+'</td><td>'+(t?fmtMin(t):'—')+'</td><td>'+(a?fmtMin(a):'—')+'</td>'+(bad(t-a)?'<td class="'+((inv?a-t:t-a)>0?'rc-pos':'rc-neg')+'">'+fmtE(inv?a-t:t-a)+(note?'<br><small style="color:var(--text3);font-weight:400">'+note+'</small>':'')+'</td>':'<td><span class="rc-ok">✓</span></td>')+'</tr>';
   // écart d'origine (calcul de l'app seul), « repris » quand l'app fait comme le tableau
   const cA0=R.consA+R.adjr,mA0=R.matA+R.xadj,rp=v=>bad(v)?'dont '+fmtMin(Math.abs(v))+' repris':'';
-  const consTbl='<table class="rc-t"><tr><th></th><th>Tableau</th><th>App</th><th>Écart</th></tr>'+t3('Sur les heures',R.consT,cA0,'',1,rp(R.adjr))+(R.hasMat?t3('Sur le matelas',R.matT,mA0,'',1,rp(R.xadj)):'')+t3('Total',R.consT+R.matT,cA0+mA0,'rc-tot',1,rp(R.adjr+R.xadj))+'</table>'
-    +(wks.length?'<div style="font-size:11px;color:var(--text3);margin:10px 0 2px">Par semaine (commentaires du tableau)</div><table class="rc-t">'+wks.map(w=>{const c=(rh.weeks||{})[w],a=R.wkA[w]||0;if(c==null)return '<tr style="opacity:.55"><td>S'+w+'</td><td>pas cité</td><td>'+fmtMin(a)+'</td><td></td></tr>';
-      const mon=_rhWeekMon(asOf.getFullYear(),w);return t3('S'+w,c,a,'',1,_rhCIgn('wkm'+(mon.getFullYear()*12+mon.getMonth())+'s'+w,a-c)?'repris':'');}).join('')+'</table>':'');
+  const consTbl='<table class="rc-t"><tr><th></th><th>Tableau</th><th>App</th><th>Écart</th></tr>'+t3('Sur les heures',R.consT,cA0,'',1,rp(R.adjr))+(R.hasMat?t3('Sur le matelas',R.matT,mA0,'',1,rp(R.xadj)):'')+t3('Total',R.consT+R.matT,cA0+mA0,'rc-tot',1,rp(R.adjr+R.xadj))+'</table>';
   const html='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet rv-sheet tabmod">'+head
     +'<div style="font-size:11px;color:var(--text3);text-align:center;margin:0 0 8px">tableau du '+fd(dk(asOf))+' · départ : '+_startTxt(R.st).split(' · ')[0]+'</div>'
     +'<div style="display:flex;justify-content:center;gap:8px;margin:0 0 12px"><button class="adj-pill" style="width:auto;padding:0 14px;height:30px;font-size:13px" onclick="_rhView()"><i class="ti ti-table" style="margin-right:4px"></i>Voir le tableau</button><button class="adj-pill" style="width:auto;padding:0 14px;height:30px;font-size:13px" onclick="rhCompareOpen()"><i class="ti ti-file-import" style="margin-right:4px"></i>Importer</button></div>'
@@ -3021,10 +3025,10 @@ function rhCompareShow(rh,silent){
     +(done.length?'<div style="font-size:11px;color:var(--text3);margin-top:2px">'+done.length+' différence'+(done.length>1?'s reprises':' reprise')+' du tableau</div><button class="rv-b2" onclick="rhRevertAll()">Annuler les '+done.length+' reprise'+(done.length>1?'s':'')+' du tableau</button>':'')
     +(R.lag.length?'<div style="font-size:11px;color:var(--text3);margin-top:4px">'+fmtMin(R.lag.reduce((t,k)=>t+getDur(new Date(k+'T12:00:00')),0))+' de rendus après la S'+R.lw+' : pas encore au tableau, mis de côté</div>':'')
     +'</div>'
-    +(todo.length+done.length?'<div class="rv-sec">Différences <span>'+(todo.length?todo.length+' à voir':'rien à voir')+'</span></div>'+todo.join('')
-      +(done.length?'<div class="rv-more" onclick="var d=this.nextElementSibling;d.style.display=d.style.display===\'none\'?\'\':\'none\';this.textContent=d.style.display===\'none\'?\'Afficher les '+done.length+' différence'+(done.length>1?'s reprises ou ignorées':' reprise ou ignorée')+'\':\'Masquer\'">Afficher les '+done.length+' différence'+(done.length>1?'s reprises ou ignorées':' reprise ou ignorée')+'</div><div style="display:none">'+done.join('')+'</div>':''):'')
-    +(acqRows.length?fold('Heures acquises','par mois',acqTbl):'')
-    +fold('Rendus déduits','depuis le départ',consTbl)
+    +(todo.length?'<div style="font-size:11px;color:var(--text3);margin:12px 2px -6px;line-height:1.4">Écart <b class="rc-pos">+</b> : le tableau vous laisse plus d’heures que l’app · <b class="rc-neg">−</b> : moins</div>':'')
+    +[['acq','Heures acquises','par mois'],['rend','Rendus déduits',''],['autre','Autres','']].map(x=>{const L=todo.filter(o=>o.sec===x[0]);return L.length?'<div class="rv-sec">'+x[1]+' <span>'+x[2]+'</span></div>'+L.map(o=>o.h).join(''):'';}).join('')
+    +(done.length?'<div class="rv-more" onclick="var d=this.nextElementSibling;d.style.display=d.style.display===\'none\'?\'\':\'none\';this.textContent=d.style.display===\'none\'?\'Afficher les '+done.length+' reprise'+(done.length>1?'s':'')+' du tableau\':\'Masquer\'">Afficher les '+done.length+' reprise'+(done.length>1?'s':'')+' du tableau</div><div style="display:none">'+done.map(o=>o.h).join('')+'</div>':'')
+    +fold('Total des rendus déduits','depuis le départ',consTbl)
     +fold('Départ du calcul',_startTxt(R.st).split(' · ')[0],'<div style="font-size:13px;color:var(--text2);line-height:1.45">Vos heures sont calculées à partir du <b style="color:var(--text)">'+_startTxt(R.st).split(' · ')[0]+'</b>.</div>'
       +'<button class="rv-b2" onclick="openStartModal()">Changer le départ</button>')
 
