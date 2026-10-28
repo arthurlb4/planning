@@ -57,6 +57,7 @@ function saveState(){
   // seulement le profil actif (les autres n'ont pas changé : les dater les ferait passer pour plus récents que le cloud)
   if(_profs[_aid]&&_profs[_aid].profile)_profs[_aid].profile._lastSaved=_ts;
   try{localStorage.setItem('pl_v8',JSON.stringify({p:_profs,a:_aid,u:_plU()}));}catch(e){}
+  _rhCmpSoon(); // différences avec le tableau Gestion recomptées
   _lineSoon(); // ligne de la semaine (admin Lignes, collègues par ligne)
   // Cloud sync debounced (5s)
   clearTimeout(window._cloudSyncTimer);
@@ -2473,6 +2474,12 @@ function rhCompareOpen(mode){
 }
 // Écart avec le dernier tableau Gestion importé, recalculé d'après l'état actuel (tuiles Écart Rendus à jour)
 function _rhCmpRefresh(){try{var rh=_rhStored();if(rh)rhCompareShow(rh,true);}catch(e){}}
+// Après chaque changement (planning, rendus, reprises) : différences recomptées, et l'accueil et Suivi redessinés si le compte a changé
+var _rhLiveT=null,_rhLiveOn=false;
+function _rhCmpSoon(){if(_rhLiveOn||!S.profile||!S.profile.rhTable)return;clearTimeout(_rhLiveT);_rhLiveT=setTimeout(_rhCmpLive,700);}
+function _rhCmpLive(){var pr=S.profile;if(!pr||!pr.rhTable)return;var b=JSON.stringify(pr.rhCmp||null);_rhLiveOn=true;try{_rhCmpRefresh();}finally{_rhLiveOn=false;}
+  if(JSON.stringify(pr.rhCmp||null)===b)return;try{render();}catch(e){}
+  try{if(document.getElementById('sv-root')&&!document.body.classList.contains('tb-sub'))openSuiviRoot();}catch(e){}}
 // Tableau Gestion lu : premier import (ou demandé) → on en repart ; sinon comparaison
 async function _rhFile(f,mode){
   try{const cells=await _xlsxRead(f);const rh=_rhParse(cells,f.name),pr=S.profile||{},st=pr.start,ek=dk(_rhEd(rh));
@@ -2999,7 +3006,7 @@ function rhCompareShow(rh,silent){
     card({t:'Heures expirées',sub:ig?'Ignoré':(restH>0?'L’app en perd ':'Le tableau en perd ')+fmtMin(Math.abs(restH))+' de plus',v:restH,done:ig,
       body:_suPts(['Heures arrivées à échéance à d’autres dates',repL.length?'Reports différents → voir « Reports »':'Souvent un report différent']).replace('</ul>','</ul>')+'<div style="margin-top:6px">'+_rhIgnLink('rest',restH)+'</div>'});}
   const dTot=eH+eM,de=dTot-ignSum; // + : le tableau vous laisse plus
-  if(S.profile){const _c={ed:dk(asOf),d:Math.round(-dTot),de:Math.round(-de),lost:lostL,n:todo.length};const _o=S.profile.rhCmp;if(!_o||_o.ed!==_c.ed||_o.d!==_c.d||_o.de!==_c.de||JSON.stringify(_o.lost||[])!==JSON.stringify(lostL)){S.profile.rhCmp=_c;saveState();if(!silent)try{render();}catch(e){}}}
+  if(S.profile){const _c={ed:dk(asOf),d:Math.round(-dTot),de:Math.round(-de),lost:lostL,n:todo.length};const _o=S.profile.rhCmp;if(!_o||_o.ed!==_c.ed||_o.d!==_c.d||_o.de!==_c.de||_o.n!==_c.n||JSON.stringify(_o.lost||[])!==JSON.stringify(lostL)){S.profile.rhCmp=_c;saveState();if(!silent)try{render();}catch(e){}}}
   if(silent)return;
   // Résumé : deux lignes, puis une phrase
   const row=(l,t,a,e)=>'<tr><td style="font-size:13px;color:var(--text2);padding:4px 0;text-align:left">'+l+'</td>'
