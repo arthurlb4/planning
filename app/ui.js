@@ -2956,7 +2956,11 @@ function rhCompareShow(rh,silent){
   // 1. Heures acquises : une carte par mois, ses catégories en tableau (+ : le tableau vous laisse plus d'heures)
   const tNat={};rh.lines.forEach(l=>{if(!l.nature)return;const k=_rhNatKey(l.nature);(tNat[l.ym]=tNat[l.ym]||{})[k]=((tNat[l.ym]||{})[k]||0)+l.acq;});
   const acqRows=[],yr=ym=>Math.floor(ym/12)!==asOf.getFullYear()?' '+Math.floor(ym/12):'',ksJs=L=>'['+L.map(x=>'[\''+x[0]+'\','+Math.round(x[1])+']').join(',')+']';
-  const cmpT=(head,its)=>'<table class="rc-t" style="margin-bottom:6px"><tr><th></th><th>Tableau</th><th>App</th><th>Écart</th></tr>'+its.map(i=>'<tr><td>'+i.l+(i.ig?' <span class="rc-ok">repris</span>':'')+'</td><td>'+fmtMin(i.s)+'</td><td>'+fmtMin(i.a)+'</td><td class="'+(i.e>0?'rc-pos':'rc-neg')+'">'+fmtE(i.e)+'</td></tr>').join('')+'</table>';
+  // une ligne par catégorie (ou semaine) ; dès qu'il y en a plusieurs, chacune se reprend ou s'annule seule
+  const cmpT=(head,its)=>{const per=its.length>1,ln='color:var(--blue);cursor:pointer;font-size:11px;white-space:nowrap';
+    return '<table class="rc-t" style="margin-bottom:6px">'+(per?'<colgroup><col><col style="width:17%"><col style="width:17%"><col style="width:19%"><col style="width:66px"></colgroup>':'')+'<tr><th></th><th>Tableau</th><th>App</th><th>Écart</th>'+(per?'<th></th>':'')+'</tr>'
+    +its.map(i=>'<tr><td>'+i.l+(i.ig&&!per?' <span class="rc-ok">repris</span>':'')+'</td><td>'+fmtMin(i.s)+'</td><td>'+fmtMin(i.a)+'</td><td class="'+(i.e>0?'rc-pos':'rc-neg')+'">'+fmtE(i.e)+'</td>'
+      +(per?'<td><a style="'+ln+(i.ig?';color:var(--green)':'')+'" onclick="event.stopPropagation();rhIgnC(\''+i.ik+'\','+Math.round(i.e)+','+(i.ig?0:1)+')">'+(i.ig?'✓ repris':'reprendre')+'</a></td>':'')+'</tr>').join('')+'</table>';};
   const btns=(its,what)=>{const op=its.filter(i=>!i.ig),dn=its.filter(i=>i.ig),eo=op.reduce((t,i)=>t+i.e,0),ed=dn.reduce((t,i)=>t+i.e,0);
     return (op.length?'<button class="rv-b2" onclick="event.stopPropagation();rhIgnMany('+ksJs(op.map(i=>[i.ik,i.e]))+',1)">Faire comme le tableau'+what+' ('+fmtE(eo)+')</button>':'')
       +(dn.length?'<button class="rv-b2" onclick="event.stopPropagation();rhIgnMany('+ksJs(dn.map(i=>[i.ik,i.e]))+',0)">Annuler la reprise ('+fmtE(ed)+')</button>':'');};
@@ -3041,7 +3045,10 @@ function rhCompareShow(rh,silent){
 
     +'<div style="height:6px"></div><button class="mcancel mclose" onclick="closeModal()">Fermer</button>'
     +'</div></div>';
+  // page redessinée après une reprise : les cartes ouvertes le restent, à la même hauteur
+  const _old=document.querySelector('#modal-root .rv-sheet'),_op=_old?[...(_old.querySelectorAll('.rv-it.on .rv-tt'))].map(e=>e.firstChild.textContent):[],_sy=_old?_old.scrollTop:0;
   document.getElementById('modal-root').innerHTML=html;
+  if(_old){const ns=document.querySelector('#modal-root .rv-sheet');if(ns){ns.querySelectorAll('.rv-it').forEach(e=>{const t=e.querySelector('.rv-tt');if(t&&_op.indexOf(t.firstChild.textContent)>=0)e.classList.add('on');});ns.scrollTop=_sy;}}
   if(window._rvFrom)_swipeNav(null,function(){_rvGoBack();});
 }
 
