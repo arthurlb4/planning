@@ -6814,7 +6814,10 @@ function _verCheck(){
   return fetch(location.href,{cache:'no-store',headers:{'Cache-Control':'no-cache, no-store','Pragma':'no-cache'}})
     .then(function(r){return r.text();})
     .then(function(html){
-      var m=html.match(/name="app-version" content="([^"]+)"/);if(!m||m[1]===_appVer||_syncAbort)return false;
+      // nouvelle version : numéro différent, ou même numéro mais code différent (empreinte posée à la publication)
+      var m=html.match(/name="app-version" content="([^"]+)"/),mb=html.match(/name="app-build" content="([^"]+)"/),_b0=(document.querySelector('meta[name="app-build"]')||{}).content||'';
+      if(m&&mb&&mb[1]!=='dev'&&_b0&&_b0!=='dev'&&mb[1]!==_b0&&m[1]===_appVer)m=[m[0],m[1]+' ('+mb[1].slice(0,6)+')'];
+      if(!m||m[1]===_appVer||_syncAbort)return false;
       // inscription : rechargée tant qu'il n'y a rien à perdre (début), sinon un lien le propose
       if(document.getElementById('setup')&&SU)_suSave(); // inscription : saisie gardée, reprise à la même étape après rechargement
       if(!document.getElementById('setup')&&document.getElementById('modal-root').innerHTML)return false; // pas pendant une saisie

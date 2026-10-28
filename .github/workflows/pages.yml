@@ -46,6 +46,13 @@ jobs:
           cp _headers /tmp/deploy/_headers 2>/dev/null || true
           touch /tmp/deploy/.nojekyll
           echo franceinfoplanning.com > /tmp/deploy/CNAME # domaine de l'app (sinon effacé à chaque publication)
+          # Empreinte du code : adresses des fichiers partagés (?v=) et balise app-build ; un changement de code est ainsi
+          # toujours vu par les iPhone (fichiers neufs, mise à jour proposée), même si le numéro de version n'a pas bougé
+          H=$(cat app/index.html app/core.js app/ui.js app/style.css app/pc/index.html app/pc/pc.js app/pc/pc.css app/sw.js | sha1sum | cut -c1-10)
+          for f in /tmp/deploy/app/index.html /tmp/deploy/app/pc/index.html; do
+            sed -i -E "s/\?v=[0-9.]+\"/?v=$H\"/g; s/name=\"app-build\" content=\"[^\"]*\"/name=\"app-build\" content=\"$H\"/" "$f"
+          done
+          grep -c "app-build\" content=\"$H" /tmp/deploy/app/index.html
 
       - name: Push to gh-pages branch
         env:
