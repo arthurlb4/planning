@@ -1965,7 +1965,7 @@ function _tbRefresh(){if(!document.body.classList.contains('tb-pg')||document.bo
   if(t==='suivi')openSuiviRoot();else if(t==='set')openSettingsModal(window._stLast||0);else return;
   sh=document.querySelector('#modal-root .overlay .sheet');if(sh)sh.scrollTop=y;}
 // PC : une fenêtre ouverte prend la place de la colonne de droite (soldes, variables, paie) ; le calendrier reste visible et utilisable
-function _tbBack(){_haptic();window._eatClickAt=0;window._tbPop=1;/* sous l'Accueil : retour à l'accueil */var nb=window._tbRoot&&document.querySelector('#modal-root .overlay.tbsub .nav-back');if(nb)nb.click();else closeModal();}
+function _tbBack(){_haptic();window._eatClickAt=0;window._tbPop=1;/* sous l'Accueil : retour à l'accueil, sauf sous-page d'une sous-page (Contrôle › Tableau Gestion) */var nb=(window._tbRoot||(window._tbStack||[]).length)&&document.querySelector('#modal-root .overlay.tbsub .nav-back');if(nb)nb.click();else closeModal();}
 function _tbSync(){var b=document.getElementById('tabbar');if(!b)return;var r=document.getElementById('modal-root'),ov=r&&r.querySelector('.overlay'),t='cal';
   if(ov)t=ov.querySelector('#sw-list')?'swap':ov.querySelector('#stc-0')?'set':ov.querySelector('#sv-root')?'suivi':'';
   var phone=_isPhone();
@@ -1981,7 +1981,7 @@ function _tbSync(){var b=document.getElementById('tabbar');if(!b)return;var r=do
   var _sh=sub&&ov.querySelector('.sheet'),_st=sub&&ov.querySelector('.sheet .st'),_stx=_sh&&_sh.dataset.title?_sh.dataset.title:_st?(_st.textContent||'').replace(/[‹›]/g,'').replace(/\s+/g,' ').trim():'';
   if(tt&&page)tt.textContent=sub&&_stx?_stx:_nm;if(_st&&_stx)_st.classList.add('st-hdr');
   // page qui a son propre lien retour (‹ Paie 2026…) : la flèche de l'en-tête y mène, avec son nom
-  var _nb=sub&&t!=='cal'&&ov.querySelector('.nav-back'),bk=document.getElementById('tb-back');if(bk&&sub)bk.lastChild.textContent=_nb?(_nb.textContent||'').replace(/[‹<]/g,'').trim()||_nm:_nm;
+  var _nb=sub&&(t!=='cal'||(window._tbStack||[]).length||window._tbGone)&&ov.querySelector('.nav-back'),bk=document.getElementById('tb-back');if(bk&&sub)bk.lastChild.textContent=_nb?(_nb.textContent||'').replace(/[‹<]/g,'').trim()||_nm:_nm;
   document.body.classList.toggle('tb-sub',!!(page&&sub));if(ov&&sub)ov.classList.add('tbsub');
   document.body.classList.toggle('tb-pg',!!page);
   // même sous-page redessinée (autre mois…) : sans animation ; nouvelle sous-page : glisse depuis la droite ; retour : depuis la gauche
@@ -6137,9 +6137,10 @@ function confirmCustomVac(){
     if(!name)name=debStr+'–'+finStr;
   }
   if(!key&&(vacEmpty||!name)){alert('Nom et horaires requis');return;}
-  // horaires saisis identiques à la vacation prévue au cycle : pas de modification (comme choisir cette vacation)
+  // horaires saisis identiques à la vacation prévue au cycle : pas de modification (comme choisir cette vacation) ;
+  // sans pause saisie, sa pause repas éventuelle compte (D1 15h45–00h30 = 8h)
   if(key&&!vacEmpty&&!vacSame&&motif==='autre'&&!(autreAmt>0)){var _cd=new Date(key+'T12:00:00'),_cy=getCycleVac(_cd).cycleVac,_ci=_cy&&_cy!=='RH'?getVAC(_cd)[_cy]:null,_cp=_ci&&_ci.primes||{};
-    if(_ci&&debStr===_ci.deb&&finStr===_ci.fin&&dur===_ci.dur&&prime===(_cp.antenne?'antenne':_cp.reel?'reel':_cp.coord?'coord':'')){
+    if(_ci&&debStr===_ci.deb&&finStr===_ci.fin&&(dur===_ci.dur||!pauseMin)&&prime===(_cp.antenne?'antenne':_cp.reel?'reel':_cp.coord?'coord':'')){
       _cvSaveExtras();if((S.overrides||{})[key]){pushUndo('Vacation remise');delete S.overrides[key];removeHistoryForKey(key);}
       saveState();render();gcalTrigger();popCell(key);openDay(key);return;}}
   if(key){_cvSaveExtras();

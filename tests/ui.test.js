@@ -128,6 +128,10 @@ function mockApi(route) {
       ok('Navigation : accueil (rien d’ouvert)', /^\/\/\/cal\/-/.test(r.home), r.home);
       ok('Navigation : Variables, sous-page de l’Accueil, retour à l’accueil', /^pg\/sub\/\/cal\/tbpush\/Variables/.test(r.vars) && /\/Accueil$/.test(r.vars) && /^\/\/\/cal\/-\/.*\|false$/.test(r.varsBack), r.vars + ' → ' + r.varsBack);
       ok('Navigation : fiche du jour = petite fenêtre (barre masquée)', /^\/\/sheet\//.test(r.day), r.day); }
+    // Sous-page d'une sous-page de l'Accueil (Contrôle › Paie) : le retour revient à Contrôle, pas à l'accueil
+    { const r = await p.evaluate(async () => { const w = ms => new Promise(r => setTimeout(r, ms)), T = () => document.getElementById('tb-title').textContent + '/' + document.getElementById('tb-back').lastChild.textContent;
+        openMergedRenduCgModal(6, 2); await w(80); openBulletinsCal(NOW.getFullYear()); await w(80); const a = T(); _tbBack(); await w(80); const b = T() + '/' + !!document.querySelector('#modal-root .overlay'); closeModal(); await w(80); return [a, b]; });
+      ok('Navigation : Accueil › Contrôle › Paie, retour à Contrôle', /^Paie.*\/Contrôle$/.test(r[0]) && /^Contrôle\/Accueil\/true$/.test(r[1]), JSON.stringify(r)); }
     // Recherche dans l'historique
     ok('Historique : recherche (sans accents)', await p.evaluate(() => { const h = S.history; S.history = [{ t: '01/10', d: 'Mercredi 1 octobre -> Été', c: '#fff' }, { t: '02/10', d: 'Jeudi 2 octobre -> A1', c: '#fff' }, { t: '03/10', d: 'x', c: '#fff' }, { t: '04/10', d: 'y', c: '#fff' }, { t: '05/10', d: 'z', c: '#fff' }, { t: '06/10', d: 'w', c: '#fff' }];
       openHistModal(); const q = document.getElementById('hist-q'); q.value = 'ete'; _histList(); const n = document.querySelectorAll('#hist-l .hrow').length; q.value = 'jeudi a1'; _histList(); const n2 = document.querySelectorAll('#hist-l .hrow').length; S.history = h; closeModal(); return n === 1 && n2 === 1; }));
