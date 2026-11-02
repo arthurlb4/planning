@@ -2946,111 +2946,113 @@ function rhCompareShow(rh,silent){
   const fmtE=d=>Math.abs(d)<2?'=':d>0?'+'+fmtMin(d):'−'+fmtMin(-d),bad=d=>Math.abs(d)>=2;
   const dayL=k=>new Date(k+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'});
   const NAT_T={fer:'Fériés',dim:'Dimanches',rh:'RH travaillés',hs:'Heures sup',extra:'Heures en plus'},natL=k=>k.startsWith('autre:')?k.slice(6):NAT_T[k];
-  const tv=(t,a)=>'<div class="rv-cmp"><span>Tableau <b>'+fmtMin(t)+'</b></span><span>App <b>'+fmtMin(a)+'</b></span></div>';
-  const act=(k,v,on)=>'<button class="rv-b2" onclick="event.stopPropagation();rhIgnC(\''+k+'\','+Math.round(v)+','+(on?0:1)+')">'+(on?'Annuler la reprise ('+fmtE(v)+')':'Faire comme le tableau ('+fmtE(v)+')')+'</button>';
-  // Différences : une carte dépliable chacune — à voir (point orange) ou reprise du tableau (coche verte)
-  const todo=[],done=[];let ignSum=0;
-  const card=(o)=>(o.done?done:todo).push({sec:o.sec||'autre',h:'<div class="rv-it" onclick="if(!event.target.closest(\'button,a\'))this.classList.toggle(\'on\')"><div class="rv-ih">'
-    +(o.done?'<span style="color:var(--green);font-size:13px;font-weight:700;width:7px;flex:none;display:flex;justify-content:center">✓</span>':'<span class="rv-dot"'+(o.info?' style="background:var(--text3)"':'')+'></span>')
-    +'<div class="rv-tt">'+o.t+'<small>'+o.sub+'</small></div><b class="rv-v'+(o.done||o.info?' n':o.v>0?' pos':o.v<0?' neg':' n')+'">'+(o.vt!=null?o.vt:fmtE(o.v))+'</b><i class="ti ti-chevron-down rv-ch"></i></div><div class="rv-ib">'+o.body+'</div></div>'});
-  // 1. Heures acquises : une carte par mois, ses catégories en tableau (+ : le tableau vous laisse plus d'heures)
+  // Lignes : à réclamer (le tableau vous compte moins), à corriger dans l'app (il vous compte plus), sans effet, réglé.
+  // Une ligne = une phrase ; glisser vers la gauche (ou toucher) montre son action.
+  const yr=ym=>Math.floor(ym/12)!==asOf.getFullYear()?' '+Math.floor(ym/12):'',ksJs=L=>'['+L.map(x=>'[\''+x[0]+'\','+Math.round(x[1])+']').join(',')+']';
+  const nil=v=>v?fmtMin(v):'rien',its=[];
+  const it=o=>its.push(o); // {g:'rec'|'cor'|'neu'|'done', t, v (minutes, signe : + le tableau vous laisse plus), s, m, keys, go (onclick), lb}
+  const doIt=o=>o.go||(o.keys?'rhIgnMany('+ksJs(o.keys)+','+(o.g==='done'?0:1)+')':'');
+  // 1. Heures acquises, par mois et par catégorie (e = tableau − app)
   const tNat={};rh.lines.forEach(l=>{if(!l.nature)return;const k=_rhNatKey(l.nature);(tNat[l.ym]=tNat[l.ym]||{})[k]=((tNat[l.ym]||{})[k]||0)+l.acq;});
-  const acqRows=[],yr=ym=>Math.floor(ym/12)!==asOf.getFullYear()?' '+Math.floor(ym/12):'',ksJs=L=>'['+L.map(x=>'[\''+x[0]+'\','+Math.round(x[1])+']').join(',')+']';
-  // une ligne par catégorie (ou semaine) ; dès qu'il y en a plusieurs, chacune se reprend ou s'annule seule
-  const cmpT=(head,its)=>{const per=its.length>1,ln='color:var(--blue);cursor:pointer;font-size:11px;white-space:nowrap';
-    return '<table class="rc-t" style="margin-bottom:6px">'+(per?'<colgroup><col><col style="width:17%"><col style="width:17%"><col style="width:19%"><col style="width:66px"></colgroup>':'')+'<tr><th></th><th>Tableau</th><th>App</th><th>Écart</th>'+(per?'<th></th>':'')+'</tr>'
-    +its.map(i=>'<tr><td>'+i.l+(i.ig&&!per?' <span class="rc-ok">repris</span>':'')+'</td><td>'+fmtMin(i.s)+'</td><td>'+fmtMin(i.a)+'</td><td class="'+(i.e>0?'rc-pos':'rc-neg')+'">'+fmtE(i.e)+'</td>'
-      +(per?'<td><a style="'+ln+(i.ig?';color:var(--green)':'')+'" onclick="event.stopPropagation();rhIgnC(\''+i.ik+'\','+Math.round(i.e)+','+(i.ig?0:1)+')">'+(i.ig?'✓ repris':'reprendre')+'</a></td>':'')+'</tr>').join('')+'</table>';};
-  const btns=(its,what)=>{const op=its.filter(i=>!i.ig),dn=its.filter(i=>i.ig),eo=op.reduce((t,i)=>t+i.e,0),ed=dn.reduce((t,i)=>t+i.e,0);
-    return (op.length?'<button class="rv-b2" onclick="event.stopPropagation();rhIgnMany('+ksJs(op.map(i=>[i.ik,i.e]))+',1)">Faire comme le tableau'+what+' ('+fmtE(eo)+')</button>':'')
-      +(dn.length?'<button class="rv-b2" onclick="event.stopPropagation();rhIgnMany('+ksJs(dn.map(i=>[i.ik,i.e]))+',0)">Annuler la reprise ('+fmtE(ed)+')</button>':'');};
+  const acqRows=[],acqIts=[];
   for(let ym=R.st.genFrom;ym<asOfYM;ym++){const T=tNat[ym]||{},A=R.nat[ym]||{},s=Object.values(T).reduce((a,b)=>a+b,0),a=R.acq[ym]||0,adj=R.adjM[ym]||0;if(!s&&!a)continue;acqRows.push({ym,s,a,adj});
-    const ks=[...new Set(Object.keys(A).filter(k=>A[k]>0).concat(Object.keys(T)))],diffs=ks.map(k=>({k,s:T[k]||0,a:k.startsWith('autre:')?0:(A[k]||0)})).filter(x=>bad(x.a-x.s)),used=new Set(),sw=[];
+    const ks=[...new Set(Object.keys(A).filter(k=>A[k]>0).concat(Object.keys(T)))],diffs=ks.map(k=>({k,s:T[k]||0,a:k.startsWith('autre:')?0:(A[k]||0)})).filter(x=>bad(x.a-x.s)),used=new Set();
     const daysOf=k=>(k==='hs'?(R.det[ym+':hs']||[]).concat(R.det[ym+':ram']||[]):(R.det[ym+':'+k]||[])).map(x=>(/^\d{4}-/.test(x.lbl)?dayL(x.lbl):x.lbl)+' '+fmtMin(x.v));
+    // même durée rangée dans une autre catégorie : sans effet
     diffs.filter(x=>x.a>x.s).forEach(x=>{const y=diffs.find(z=>z.a<z.s&&!used.has(z)&&Math.abs((z.a-z.s)+(x.a-x.s))<2);if(!y||used.has(x))return;used.add(x);used.add(y);
-      sw.push(fmtMin(x.a-x.s)+' en '+natL(x.k).toLowerCase()+' dans l’app, en '+natL(y.k).toLowerCase()+' au tableau : même durée, sans effet sur le solde');});
-    const its=diffs.filter(x=>!used.has(x)).map(x=>{const e=x.s-x.a,ik='acq'+ym+x.k.replace(/[^a-z0-9]/gi,'');return {l:natL(x.k),s:x.s,a:x.a,e,ik,ig:_rhCIgn(ik,e),dl:daysOf(x.k)};});
-    if(!its.length&&!sw.length)continue;
-    const op=its.filter(i=>!i.ig),allIg=its.length&&!op.length;
-    card({sec:'acq',t:MFc(ym)+yr(ym),sub:allIg?'Repris du tableau':op.length?op.map(i=>i.l).join(' · '):'Catégorie différente',v:op.reduce((t,i)=>t+i.e,0),vt:its.length?(allIg?fmtE(its.reduce((t,i)=>t+i.e,0)):null):'=',info:!its.length,done:allIg,
-      body:(its.length?cmpT('',its):'')+_suPts(its.filter(i=>i.dl.length).map(i=>i.l+' dans l’app → '+i.dl.join(' · ')).concat(its.filter(i=>!i.dl.length).map(i=>i.l+' : rien dans l’app')).concat(sw))+btns(its,' en '+MF[ym%12])});}
-  // 2. Rendus des semaines citées par le gestionnaire : une seule carte
-  const wIts=[];Object.keys(rh.weeks||{}).map(Number).sort((a,b)=>a-b).forEach(w=>{const mon=_rhWeekMon(asOf.getFullYear(),w);if(dk(new Date(mon.getTime()+6*864e5))<=R.st.from||(rh.lastWeek&&w>rh.lastWeek))return;
-    const c=rh.weeks[w],a=R.wkA[w]||0,d=a-c;if(!bad(d))return;const ik='wkm'+(mon.getFullYear()*12+mon.getMonth())+'s'+w;wIts.push({l:'S'+w+' <small style="color:var(--text3)">'+mon.toLocaleDateString('fr-FR',{day:'numeric',month:'short'})+'</small>',w,s:c,a,e:d,ik,ig:_rhCIgn(ik,d)});});
-  if(wIts.length){const op=wIts.filter(i=>!i.ig),allIg=!op.length;
-    card({sec:'rend',t:'Rendus par semaine',sub:allIg?'Repris du tableau':(op.length>1?op.length+' semaines : ':'')+op.map(i=>'S'+i.w).join(' · '),v:op.reduce((t,i)=>t+i.e,0),vt:allIg?fmtE(wIts.reduce((t,i)=>t+i.e,0)):null,done:allIg,
-      body:cmpT('',wIts)+_suPts(['Heures de rendus déduites chaque semaine, d’après les commentaires du tableau'])+btns(wIts,'')});}
+      it({g:'neu',t:MFc(ym)+yr(ym)+' · autre catégorie',v:0,s:fmtMin(x.a-x.s)+' en '+natL(x.k).toLowerCase()+' dans l’app, en '+natL(y.k).toLowerCase()+' au tableau',m:'Même durée : sans effet sur le solde'});});
+    diffs.filter(x=>!used.has(x)).forEach(x=>{const e=x.s-x.a,ik='acq'+ym+x.k.replace(/[^a-z0-9]/gi,'');acqIts.push({ym,k:x.k,s:x.s,a:x.a,e,ik,ig:_rhCIgn(ik,e),dl:daysOf(x.k)});});}
+  // heures comptées un mois plus tôt ou plus tard d'un côté que de l'autre (même catégorie, total égal) : sans effet
+  const shifted=new Set();
+  acqIts.forEach(x=>{if(x.ig||shifted.has(x))return;const y=acqIts.find(z=>z!==x&&!z.ig&&!shifted.has(z)&&z.k===x.k&&z.ym===x.ym+1&&Math.abs(z.e+x.e)<2);if(!y)return;shifted.add(x);shifted.add(y);
+    const ap=x.e<0?x:y,tb=x.e<0?y:x;
+    it({g:'neu',t:natL(x.k)+' · '+MF[x.ym%12]+' / '+MF[y.ym%12],v:0,s:fmtMin(Math.abs(x.e))+' en '+MF[ap.ym%12]+' dans l’app, en '+MF[tb.ym%12]+' au tableau',m:'Même total, mois différent : sans effet sur le solde',keys:[[x.ik,x.e],[y.ik,y.e]],lb:'Faire comme le tableau'});});
+  acqIts.filter(x=>!shifted.has(x)).forEach(x=>it({g:x.ig?'done':x.e<0?'rec':'cor',t:MFc(x.ym)+yr(x.ym)+' · '+natL(x.k).toLowerCase(),v:x.e,
+    s:nil(x.s)+' au tableau, '+nil(x.a)+' dans l’app',m:x.dl.length?'Dans l’app : '+x.dl.join(' · '):'',keys:[[x.ik,x.e]],
+    lb:x.ig?'Annuler':x.e<0?'Accepter le tableau':'Faire comme le tableau'}));
+  // 2. Rendus des semaines citées par le gestionnaire (d = app − tableau : + le tableau en déduit moins)
+  Object.keys(rh.weeks||{}).map(Number).sort((a,b)=>a-b).forEach(w=>{const mon=_rhWeekMon(asOf.getFullYear(),w);if(dk(new Date(mon.getTime()+6*864e5))<=R.st.from||(rh.lastWeek&&w>rh.lastWeek))return;
+    const c=rh.weeks[w],a=R.wkA[w]||0,d=a-c;if(!bad(d))return;const ik='wkm'+(mon.getFullYear()*12+mon.getMonth())+'s'+w,ig=_rhCIgn(ik,d);
+    it({g:ig?'done':d<0?'rec':'cor',t:'Rendus S'+w+' · '+mon.toLocaleDateString('fr-FR',{day:'numeric',month:'short'}),v:d,s:nil(c)+' déduit au tableau, '+nil(a)+' dans l’app',keys:[[ik,d]],
+      lb:ig?'Annuler':d<0?'Accepter le tableau':'Faire comme le tableau'});});
   // 3. Matelas ou heures : le gestionnaire prend parfois sur des heures acquises après coup (même total)
   const eH=R.tabH-R.appH,eM=R.hasMat?R.tabM-R.appM:0,acqE=acqRows.reduce((t,r)=>t+r.s-r.a,0),consE=R.consA-R.consT,matE=R.matA-R.matT;
   const xk=Object.keys(pr.ignRhC||{}).filter(k=>/^xfer\d+$/.test(k))[0],xv=xk?pr.ignRhC[xk]:0;
   const xfer=R.hasMat&&bad(matE)&&bad(consE)&&(matE>0)!==(consE>0)?Math.sign(matE)*Math.min(Math.abs(matE),Math.abs(consE)):0;
-  if(bad(xfer)&&(matE>0&&R.matK.length||xk))card({t:'Matelas ou heures',sub:(matE>0?'Le gestionnaire a pris '+fmtMin(matE)+' sur vos heures, l’app sur le matelas':'Reprise à ajuster de '+fmtMin(-matE)),v:matE,
-    body:_suPts(['Rendus pris sur le matelas → tableau '+fmtMin(R.matT)+', app '+fmtMin(R.matA),'Même total : seul l’endroit où les heures sont prises change','Faire comme le tableau → '+fmtMin(Math.abs(matE))+(matE>0?' rendus au matelas, retirés des heures':' retirés du matelas, rendus aux heures')])
-      +'<button class="rv-b2" onclick="event.stopPropagation();rhXferAccept('+Math.round(matE)+')">Faire comme le tableau</button>'});
-  if(xk)card({t:'Matelas ou heures',sub:'Repris du tableau',vt:fmtMin(xv),done:1,
-    body:_suPts([fmtMin(xv)+' de rendus pris sur les heures '+moisDe(+xk.slice(4))+' au lieu du matelas, comme le gestionnaire'])+'<button class="rv-b2" onclick="event.stopPropagation();rhXferUndoAdj(\''+xk+'\')">Annuler la reprise ('+fmtMin(xv)+' au matelas)</button>'});
-  // 4. Reports accordés par le gestionnaire
-  const tRep=_rhRepOf(rh),repL=Object.keys(tRep).map(Number).filter(ym=>ym<asOfYM&&ym>=R.st.genFrom-3&&tRep[ym]!==getEphExtensions(ym)).sort((a,b)=>a-b);
-  if(repL.length)card({t:'Reports',sub:repL.map(ym=>MFc(ym)+' : '+(tRep[ym]?'+'+tRep[ym]*3+' mois':'aucun')+' au tableau').join(' · '),info:1,vt:'',
-    body:_suPts(repL.map(ym=>MFc(ym)+' → '+(tRep[ym]?'+'+tRep[ym]*3+' mois':'aucun')+' au tableau, '+(getEphExtensions(ym)?'+'+getEphExtensions(ym)*3+' mois':'aucun')+' dans l’app').concat(['Les reports sont accordés par le gestionnaire']))
-      +'<button class="rv-b2" onclick="event.stopPropagation();rhApplyReports('+JSON.stringify(repL.map(ym=>[ym,tRep[ym]]))+')">Faire comme le tableau</button>'});
-  // 4b. Heures restantes mois par mois : le tableau peut différer de l'app (reports, consommations saisies autrement)
-  const MS=ym=>MF[ym%12]+(Math.floor(ym/12)!==asOf.getFullYear()?' '+Math.floor(ym/12):''),fdS=d=>d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'});
+  if(bad(xfer)&&(matE>0&&R.matK.length||xk))it({g:'neu',t:'Matelas ou heures',v:0,s:matE>0?'Le gestionnaire a pris '+fmtMin(matE)+' de rendus sur vos heures, l’app sur le matelas':'Reprise à ajuster de '+fmtMin(-matE),
+    m:'Même total : seul l’endroit où les heures sont prises change',go:'rhXferAccept('+Math.round(matE)+')',lb:'Faire comme le tableau'});
+  if(xk)it({g:'done',t:'Matelas ou heures',v:xv,s:fmtMin(xv)+' de rendus pris sur les heures '+moisDe(+xk.slice(4))+' au lieu du matelas, comme le gestionnaire',go:'rhXferUndoAdj(\''+xk+'\')',lb:'Annuler'});
+  // 4. Heures expirées que le tableau compte encore, sans report accordé : question au gestionnaire
+  const MS=ym=>MF[ym%12]+yr(ym),fdS=d=>d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'});
   const vOf=l=>{const v=l.rep?(l.validRep||l.valid):l.valid;return v?new Date(v.getUTCFullYear(),v.getUTCMonth(),v.getUTCDate(),12):null;};
-  const tRem={},tExp={},tLost={},stD=new Date(R.st.d+'T12:00:00');
-  rh.lines.forEach(l=>{if(!l.nature||!(l.solde>0))return;const v=vOf(l);if(!v||v>=asOf){tRem[l.ym]=(tRem[l.ym]||0)+l.solde;if(v)tExp[l.ym]=v;}else if(v>=stD){const x=tLost[l.ym]||(tLost[l.ym]={min:0,v});x.min+=l.solde;}});
-  // heures que le tableau laisse expirer alors que l'app les a utilisées (le gestionnaire a pris avant des heures valables plus longtemps)
+  const tLost={},stD=new Date(R.st.d+'T12:00:00');
+  rh.lines.forEach(l=>{if(!l.nature||!(l.solde>0))return;const v=vOf(l);if(v&&v<asOf&&v>=stD){const x=tLost[l.ym]||(tLost[l.ym]={min:0,v});x.min+=l.solde;}});
   const lostL=[];Object.keys(tLost).map(Number).sort((a,b)=>a-b).forEach(ym=>{const x=tLost[ym],d=x.min-(R.expA[ym]||0);if(!bad(d))return;lostL.push({ym,min:d,v:dk(x.v)});
-    card({t:fmtMin(d)+' de '+MS(ym)+' sans report officiel',sub:'Expirées le '+fdS(x.v)+' · encore comptées au tableau',v:0,vt:fmtMin(d),info:true,
-      body:_suPts(['Le tableau les compte toujours dans le solde : l’app aussi, tant qu’il les compte','Aucun report n’a été accordé : elles peuvent être retirées à tout moment',
-        'Les prochains rendus sont pris dessus en premier (heures les plus anciennes) : à poser au plus vite, ou à faire reporter','Question prête dans le mail au gestionnaire'])});});
-  // 5. Le reste : heures expirées à d'autres dates
-  const restH=eH-acqE-consE;
-  if(bad(restH)){const ig=_rhCIgn('rest',restH);if(ig)ignSum+=restH;
-    card({t:'Heures expirées',sub:ig?'Ignoré':(restH>0?'L’app en perd ':'Le tableau en perd ')+fmtMin(Math.abs(restH))+' de plus',v:restH,done:ig,
-      body:_suPts(['Heures arrivées à échéance à d’autres dates',repL.length?'Reports différents → voir « Reports »':'Souvent un report différent']).replace('</ul>','</ul>')+'<div style="margin-top:6px">'+_rhIgnLink('rest',restH)+'</div>'});}
+    it({g:'rec',t:MFc(ym)+yr(ym)+' · sans report officiel',v:0,vt:fmtMin(d),s:fmtMin(d)+' expirées le '+fdS(x.v)+', encore comptées au tableau',m:'Elles peuvent être retirées à tout moment : à poser vite, ou à faire reporter (question prête dans le mail au gestionnaire)'});});
+  // 5. Le reste : heures perdues à l'expiration — souvent la conséquence des écarts ci-dessus (heures manquantes, reports)
+  const restH=eH-acqE-consE,igRest=bad(restH)&&_rhCIgn('rest',restH);let ignSum=igRest?restH:0;
+  // Reports différents : gérés dans la page Rendus (rappelés dans les détails)
+  const tRep=_rhRepOf(rh),repL=Object.keys(tRep).map(Number).filter(ym=>ym<asOfYM&&ym>=R.st.genFrom-3&&tRep[ym]!==getEphExtensions(ym)).sort((a,b)=>a-b);
+  const G=g=>its.filter(o=>o.g===g),rec=G('rec'),cor=G('cor'),neu=G('neu'),done=G('done'),nTodo=rec.length+cor.length;
   const dTot=eH+eM,de=dTot-ignSum; // + : le tableau vous laisse plus
-  if(S.profile){const _c={ed:dk(asOf),d:Math.round(-dTot),de:Math.round(-de),lost:lostL,n:todo.length};const _o=S.profile.rhCmp;if(!_o||_o.ed!==_c.ed||_o.d!==_c.d||_o.de!==_c.de||_o.n!==_c.n||JSON.stringify(_o.lost||[])!==JSON.stringify(lostL)){S.profile.rhCmp=_c;saveState();if(!silent)try{render();}catch(e){}}}
+  if(S.profile){const _c={ed:dk(asOf),d:Math.round(-dTot),de:Math.round(-de),lost:lostL,n:nTodo};const _o=S.profile.rhCmp;if(!_o||_o.ed!==_c.ed||_o.d!==_c.d||_o.de!==_c.de||_o.n!==_c.n||JSON.stringify(_o.lost||[])!==JSON.stringify(lostL)){S.profile.rhCmp=_c;saveState();if(!silent)try{render();}catch(e){}}}
   if(silent)return;
-  // Résumé : deux lignes, puis une phrase
-  const row=(l,t,a,e)=>'<tr><td style="font-size:13px;color:var(--text2);padding:4px 0;text-align:left">'+l+'</td>'
-    +'<td style="font-size:13px;color:var(--text3);text-align:right;padding:4px 0">'+fmtMin(t)+'</td><td style="font-size:15px;font-weight:600;text-align:right;padding:4px 0;color:var(--rend-text)">'+fmtMin(a)+'</td>'
-    +'<td style="font-size:13px;font-weight:600;text-align:right;padding:4px 0;color:'+(!bad(e)?'var(--green)':e>0?'var(--green)':'var(--red)')+'">'+(bad(e)?fmtE(e):'✓')+'</td></tr>';
-  const ok=!bad(eH)&&!bad(eM),st=ok?'✓ Identique au tableau':!bad(dTot)?'Même total, répartition différente':(dTot>0?'En votre faveur : ':'À faire corriger : ')+fmtE(dTot);
-  const stC=ok||dTot>=0||!bad(dTot)?'var(--green)':'var(--red)';
+  // ── Page ──
+  const row=o=>{const a=doIt(o),col=o.g==='done'||o.g==='neu'||!o.v?'var(--text2)':o.v>0?'var(--green)':'var(--red)';
+    return '<div class="tg-r'+(o.g==='done'?' tg-done':'')+'">'+(a?'<div class="tg-a"><button class="'+(o.g==='done'?'tg-un':'')+'" onclick="event.stopPropagation();'+a+'">'+o.lb+'</button></div>':'')
+      +'<div class="tg-f"'+(a?' onclick="_tgTap(this)"':'')+'><div class="tg-h"><b>'+(o.g==='done'?'<i class="ti ti-check" style="color:var(--green);margin-right:4px"></i>':'')+o.t+'</b>'
+      +'<span style="color:'+col+'">'+(o.vt!=null?o.vt:o.v?fmtMin(Math.abs(o.v)):'=')+'</span></div><div class="tg-s">'+o.s+'</div>'+(o.m?'<div class="tg-m">'+o.m+'</div>':'')+'</div></div>';};
+  const sec=(t,sub,L,extra)=>L.length?'<div class="rv-sec">'+t+' <span>'+sub+'</span></div>'+(extra||'')+L.map(row).join(''):'';
   const fold=(t,sub,body,open)=>'<div class="rv-sec" style="cursor:pointer" onclick="this.nextElementSibling.classList.toggle(\'on\');this.querySelector(\'.rv-ch\').classList.toggle(\'r\')">'+t+' <span>'+(sub||'')+' <i class="ti ti-chevron-down rv-ch"></i></span></div><div class="rv-det'+(open?' on':'')+'">'+body+'</div>';
-  const t3=(l,t,a,c,inv,note)=>'<tr'+(c?' class="'+c+'"':'')+'><td>'+l+'</td><td>'+(t?fmtMin(t):'—')+'</td><td>'+(a?fmtMin(a):'—')+'</td>'+(bad(t-a)?'<td class="'+((inv?a-t:t-a)>0?'rc-pos':'rc-neg')+'">'+fmtE(inv?a-t:t-a)+(note?'<br><small style="color:var(--text3);font-weight:400">'+note+'</small>':'')+'</td>':'<td><span class="rc-ok">✓</span></td>')+'</tr>';
-  // écart d'origine (calcul de l'app seul), « repris » quand l'app fait comme le tableau
-  const cA0=R.consA+R.adjr,mA0=R.matA+R.xadj,rp=v=>bad(v)?'dont '+fmtMin(Math.abs(v))+' repris':'';
-  const consTbl='<table class="rc-t"><tr><th></th><th>Tableau</th><th>App</th><th>Écart</th></tr>'+t3('Sur les heures',R.consT,cA0,'',1,rp(R.adjr))+(R.hasMat?t3('Sur le matelas',R.matT,mA0,'',1,rp(R.xadj)):'')+t3('Total',R.consT+R.matT,cA0+mA0,'rc-tot',1,rp(R.adjr+R.xadj))+'</table>';
-  const html='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet rv-sheet tabmod">'+head
-    +'<div style="font-size:11px;color:var(--text3);text-align:center;margin:0 0 8px">tableau du '+fd(dk(asOf))+' · départ : '+_startTxt(R.st).split(' · ')[0]+'</div>'
-    +'<div style="display:flex;justify-content:center;gap:8px;margin:0 0 12px"><button class="adj-pill" style="width:auto;padding:0 14px;height:30px;font-size:13px" onclick="_rhView()"><i class="ti ti-table" style="margin-right:4px"></i>Voir le tableau</button><button class="adj-pill" style="width:auto;padding:0 14px;height:30px;font-size:13px" onclick="rhCompareOpen()"><i class="ti ti-file-import" style="margin-right:4px"></i>Importer</button></div>'
-    +'<div class="hd-card" style="padding:10px 14px 12px">'
-    +'<table style="width:100%;border-collapse:collapse;table-layout:fixed"><colgroup><col><col style="width:62px"><col style="width:72px"><col style="width:62px"></colgroup>'
+  // Réponse en haut : une phrase, un chiffre
+  const ok=!bad(eH)&&!bad(eM),big=ok?'Identique au tableau':!bad(de)?'Même total que le tableau':'Le tableau vous compte '+fmtMin(Math.abs(de))+' de '+(de>0?'plus':'moins')+' que l’app';
+  const bigC=ok||!bad(de)||de>0?'var(--green)':'var(--red)';
+  const cnt=[rec.length?rec.length+' à réclamer':'',cor.length?cor.length+' à corriger dans l’app':'',!nTodo&&neu.length?'rien à faire':''].filter(Boolean).join(' · ');
+  const nums='<table style="width:100%;border-collapse:collapse;table-layout:fixed"><colgroup><col><col style="width:64px"><col style="width:64px"><col style="width:64px"></colgroup>'
     +'<tr style="font-size:11px;color:var(--text3)"><td></td><td style="text-align:right">tableau</td><td style="text-align:right">app</td><td style="text-align:right">écart</td></tr>'
-    +row('Heures de rendus',R.tabH,R.appH,eH)+(R.hasMat?row('Matelas',R.tabM,R.appM,eM):'')+'</table>'
-    +'<div style="font-size:13px;font-weight:600;margin-top:8px;color:'+stC+'">'+st+'</div>'
-    +(todo.length?'<div style="font-size:11px;color:var(--text3);margin-top:2px">'+todo.length+' différence'+(todo.length>1?'s':'')+' à voir ci-dessous</div>':'')
-    +(aoff?'<div style="font-size:11px;color:var(--text3);margin-top:4px">Plus de différence avec ce tableau → reprise retirée : '+aoff.join(', ')+'</div>':'')
-    +(done.length?'<div style="font-size:11px;color:var(--text3);margin-top:2px">'+done.length+' différence'+(done.length>1?'s reprises':' reprise')+' du tableau</div><button class="rv-b2" onclick="rhRevertAll()">Annuler les '+done.length+' reprise'+(done.length>1?'s':'')+' du tableau</button>':'')
-    +(R.lag.length?'<div style="font-size:11px;color:var(--text3);margin-top:4px">'+fmtMin(R.lag.reduce((t,k)=>t+getDur(new Date(k+'T12:00:00')),0))+' de rendus après la S'+R.lw+' : pas encore au tableau, mis de côté</div>':'')
-    +'</div>'
-    +(todo.length?'<div style="font-size:11px;color:var(--text3);margin:12px 2px -6px;line-height:1.4">Écart <b class="rc-pos">+</b> : le tableau vous laisse plus d’heures que l’app · <b class="rc-neg">−</b> : moins</div>':'')
-    +[['acq','Heures acquises','par mois'],['rend','Rendus déduits',''],['autre','Autres','']].map(x=>{const L=todo.filter(o=>o.sec===x[0]);return L.length?'<div class="rv-sec">'+x[1]+' <span>'+x[2]+'</span></div>'+L.map(o=>o.h).join(''):'';}).join('')
-    +(done.length?'<div class="rv-more" onclick="var d=this.nextElementSibling;d.style.display=d.style.display===\'none\'?\'\':\'none\';this.textContent=d.style.display===\'none\'?\'Afficher les '+done.length+' reprise'+(done.length>1?'s':'')+' du tableau\':\'Masquer\'">Afficher les '+done.length+' reprise'+(done.length>1?'s':'')+' du tableau</div><div style="display:none">'+done.map(o=>o.h).join('')+'</div>':'')
-    +fold('Total des rendus déduits','depuis le départ',consTbl)
-    +fold('Départ du calcul',_startTxt(R.st).split(' · ')[0],'<div style="font-size:13px;color:var(--text2);line-height:1.45">Vos heures sont calculées à partir du <b style="color:var(--text)">'+_startTxt(R.st).split(' · ')[0]+'</b>.</div>'
-      +'<button class="rv-b2" onclick="openStartModal()">Changer le départ</button>')
-
+    +[['Heures de rendus',R.tabH,R.appH,eH]].concat(R.hasMat?[['Matelas',R.tabM,R.appM,eM]]:[]).map(x=>'<tr><td style="font-size:13px;color:var(--text2);padding:3px 0">'+x[0]+'</td><td style="font-size:13px;text-align:right">'+fmtMin(x[1])+'</td><td style="font-size:13px;text-align:right">'+fmtMin(x[2])+'</td><td style="font-size:13px;text-align:right;color:'+(!bad(x[3])?'var(--green)':x[3]>0?'var(--green)':'var(--red)')+'">'+(bad(x[3])?fmtE(x[3]):'✓')+'</td></tr>').join('')+'</table>';
+  const restNote=bad(restH)?'<div class="tg-note"><i class="ti ti-info-circle"></i><div><b>'+(restH>0?'L’app':'Le tableau')+' perd '+fmtMin(Math.abs(restH))+' de plus à l’expiration.</b> C’est en général la conséquence des lignes ci-dessus (heures manquantes, reports différents) : à revoir une fois celles-ci réglées.'
+    +'<div style="margin-top:4px">'+_rhIgnLink('rest',restH)+'</div></div></div>':'';
+  const cA0=R.consA+R.adjr,mA0=R.matA+R.xadj,rp=v=>bad(v)?'dont '+fmtMin(Math.abs(v))+' repris':'';
+  const t3=(l,t,a,c,note)=>'<tr'+(c?' class="'+c+'"':'')+'><td>'+l+'</td><td>'+(t?fmtMin(t):'—')+'</td><td>'+(a?fmtMin(a):'—')+'</td>'+(bad(t-a)?'<td class="'+(a-t>0?'rc-pos':'rc-neg')+'">'+fmtE(a-t)+(note?'<br><small style="color:var(--text3);font-weight:400">'+note+'</small>':'')+'</td>':'<td><span class="rc-ok">✓</span></td>')+'</tr>';
+  const consTbl='<div style="font-size:11px;color:var(--text3);margin:2px 0 4px">Rendus déduits depuis le départ</div><table class="rc-t"><tr><th></th><th>Tableau</th><th>App</th><th>Écart</th></tr>'+t3('Sur les heures',R.consT,cA0,'',rp(R.adjr))+(R.hasMat?t3('Sur le matelas',R.matT,mA0,'',rp(R.xadj)):'')+t3('Total',R.consT+R.matT,cA0+mA0,'rc-tot',rp(R.adjr+R.xadj))+'</table>';
+  const repTxt=repL.length?'<div style="font-size:11px;color:var(--text3);margin:12px 0 4px">Reports (accordés par le gestionnaire)</div>'+_suPts(repL.map(ym=>MFc(ym)+' : '+(tRep[ym]?'+'+tRep[ym]*3+' mois':'aucun')+' au tableau, '+(getEphExtensions(ym)?'+'+getEphExtensions(ym)*3+' mois':'aucun')+' dans l’app'))
+    +'<button class="rv-b2" onclick="rhApplyReports('+JSON.stringify(repL.map(ym=>[ym,tRep[ym]]))+')">Reports comme le tableau</button>':'';
+  const depTxt='<div style="font-size:11px;color:var(--text3);margin:12px 0 4px">Départ du calcul</div><div style="font-size:13px;color:var(--text2)">'+_startTxt(R.st).split(' · ')[0]+'</div><button class="rv-b2" onclick="openStartModal()">Changer le départ</button>';
+  const html='<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet rv-sheet tabmod">'+head
+    +'<div style="font-size:11px;color:var(--text3);text-align:center;margin:0 0 10px">tableau du '+fd(dk(asOf))+'</div>'
+    +'<div class="hd-card tg-top"><div class="tg-big" style="color:'+bigC+'">'+(ok?'<i class="ti ti-circle-check"></i> ':'')+big+'</div>'
+    +(cnt?'<div class="tg-cnt">'+cnt+'</div>':'')
+    +(aoff?'<div class="tg-cnt">Plus de différence → reprise retirée : '+aoff.join(', ')+'</div>':'')
+    +(R.lag.length?'<div class="tg-cnt">'+fmtMin(R.lag.reduce((t,k)=>t+getDur(new Date(k+'T12:00:00')),0))+' de rendus après la S'+R.lw+' : pas encore au tableau, mis de côté</div>':'')
+    +'<div class="tg-pills"><button class="adj-pill" onclick="_rhView()"><i class="ti ti-table"></i>Voir le tableau</button><button class="adj-pill" onclick="rhCompareOpen()"><i class="ti ti-file-import"></i>Importer</button></div>'
+    +'<div class="tg-nums-t" onclick="this.nextElementSibling.classList.toggle(\'on\');this.querySelector(\'.rv-ch\').classList.toggle(\'r\')">Les chiffres <i class="ti ti-chevron-down rv-ch"></i></div><div class="tg-nums">'+nums+'</div></div>'
+    +sec('À réclamer','le tableau vous compte moins',rec)
+    +sec('À corriger dans l’app','le tableau vous compte plus',cor,cor.length>1?'<button class="rv-b2" style="margin:0 0 8px" onclick="rhIgnMany('+ksJs([].concat.apply([],cor.map(o=>o.keys||[])))+',1)">Tout faire comme le tableau</button>':'')
+    +restNote
+    +(nTodo?'<div class="tg-hint">Glisser une ligne vers la gauche (ou la toucher) pour la régler</div>':'')
+    +(neu.length?fold('Sans effet',neu.length+'',neu.map(row).join(''),!nTodo):'')
+    +(done.length?fold('Réglé',done.length+'',done.map(row).join('')+(done.length>1?'<button class="rv-b2" onclick="rhRevertAll()">Tout annuler</button>':'')):'')
+    +fold('Détails','rendus déduits, reports, départ',consTbl+repTxt+depTxt)
     +'<div style="height:6px"></div><button class="mcancel mclose" onclick="closeModal()">Fermer</button>'
     +'</div></div>';
-  // page redessinée après une reprise : les cartes ouvertes le restent, à la même hauteur
-  const _old=document.querySelector('#modal-root .rv-sheet'),_op=_old?[...(_old.querySelectorAll('.rv-it.on .rv-tt'))].map(e=>e.firstChild.textContent):[],_sy=_old?_old.scrollTop:0;
+  // page redessinée après une reprise : les dépliants ouverts le restent, à la même hauteur
+  const _old=document.querySelector('#modal-root .rv-sheet'),_op=_old?[...(_old.querySelectorAll('.rv-det.on'))].map(e=>(e.previousElementSibling||{}).textContent):[],_sy=_old?_old.scrollTop:0;
   document.getElementById('modal-root').innerHTML=html;
-  if(_old){const ns=document.querySelector('#modal-root .rv-sheet');if(ns){ns.querySelectorAll('.rv-it').forEach(e=>{const t=e.querySelector('.rv-tt');if(t&&_op.indexOf(t.firstChild.textContent)>=0)e.classList.add('on');});ns.scrollTop=_sy;}}
+  const ns=document.querySelector('#modal-root .rv-sheet');
+  if(_old&&ns){ns.querySelectorAll('.rv-det').forEach(e=>{const p=e.previousElementSibling;if(p&&_op.indexOf(p.textContent)>=0){e.classList.add('on');const c=p.querySelector('.rv-ch');if(c)c.classList.add('r');}});ns.scrollTop=_sy;}
+  if(ns)_tgSwipe(ns);
   if(window._rvFrom)_swipeNav(null,function(){_rvGoBack();});
 }
+// Ligne du tableau Gestion : toucher ou glisser vers la gauche montre son action (une seule ouverte à la fois)
+function _tgTap(f){var r=f.parentNode,on=!r.classList.contains('open');document.querySelectorAll('.tg-r.open').forEach(function(x){x.classList.remove('open');x.querySelector('.tg-f').style.transform='';});if(on){var a=r.querySelector('.tg-a');if(a)r.style.setProperty('--tgw',a.offsetWidth+'px');r.classList.add('open');_haptic();}}
+function _tgSwipe(root){var f=null,sx=0,sy=0,lock=0,w=0,base=0;
+  root.addEventListener('touchstart',function(e){f=e.target.closest('.tg-f');if(!f||!f.parentNode.querySelector('.tg-a')||e.touches[0].clientX<28){f=null;return;}sx=e.touches[0].clientX;sy=e.touches[0].clientY;lock=0;w=f.parentNode.querySelector('.tg-a').offsetWidth;base=f.parentNode.classList.contains('open')?-w:0;},{passive:true});
+  root.addEventListener('touchmove',function(e){if(!f)return;var dx=e.touches[0].clientX-sx,dy=e.touches[0].clientY-sy;
+    if(!lock){if(Math.abs(dx)<8&&Math.abs(dy)<8)return;lock=Math.abs(dx)>Math.abs(dy)?1:-1;}if(lock<0){f=null;return;}
+    if(e.cancelable)e.preventDefault();f.style.transition='none';f.style.transform='translateX('+Math.min(0,Math.max(-w-30,base+dx))+'px)';},{passive:false});
+  root.addEventListener('touchend',function(e){if(!f)return;var x=f;f=null;if(lock<1)return;var dx=e.changedTouches[0].clientX-sx,open=base+dx<-w/2;x.style.transition='';x.style.transform='';
+    window._eatClickAt=Date.now();document.querySelectorAll('.tg-r.open').forEach(function(r){if(r!==x.parentNode)r.classList.remove('open');});x.parentNode.style.setProperty('--tgw',w+'px');x.parentNode.classList.toggle('open',open);if(open)_haptic();},{passive:true});}
 
 
 
