@@ -206,6 +206,7 @@ function situation(opts) {
   eq('Durée / horaires : même durée commencée 1h plus tôt → 0 / 1h00', [hsW('Tot', 'duree'), hsW('Tot', 'horaires')], [0, 60]);
   eq('Durée / horaires : plus courte → 0 / 0', [hsW('Court', 'duree'), hsW('Court', 'horaires')], [0, 0]);
   eq('Durée / horaires : 05h45–14h15 au lieu de 03h45–10h45 → 1h30 / 3h30', [hsW('Tard', 'duree'), hsW('Tard', 'horaires')], [90, 210]);
+  eq('Heures sup du jour (fiche) : suivent la méthode choisie (durée 1h30, horaires 3h30)', a.run('S.overrides={"2026-10-06":{vac:"Tard",motif:"autre"}};_v="Tard";var r=[];S.profile=S.profile||{};delete S.profile.hsMode;r.push(_dayHSMin(new Date(2026,9,6,12)));S.profile.hsMode="horaires";r.push(_dayHSMin(new Date(2026,9,6,12)));delete S.profile.hsMode;r'), [90, 210]);
   eq('Méthode par défaut : durée', a.run('delete S.profile.hsMode;_hsMode()'), 'duree');
   eq('Échange même jour : pas d’heure sup', a.run('S.overrides={"2026-10-06":{vac:"Long",echange:true,ecSelf:true,pair:"2026-10-06"}};getVac=function(d){return dk(d)==="2026-10-06"?{vac:"Long",absent:false,echange:true,ecSelf:true,cycleVac:"A1"}:{vac:"",absent:false};};_dayHSMin(new Date(2026,9,6,12))'), 0);
 }

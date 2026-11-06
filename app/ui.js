@@ -5984,7 +5984,7 @@ function openCustomVacModal(){
   var opts=(key?'<div class="cv-sec">Motif</div><div id="cv-motif" style="margin-bottom:14px"><select id="cv-motif-sel" onchange="_cvSetMotif(this.value)" style="width:100%;padding:10px 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:15px;background:var(--bg2);color:var(--text);font-family:var(--font);-webkit-appearance:none">'
       +(W.when==='other'?'':mB('autre','Horaires modifiés'))+mB('echange','Échange')+mB('forme','Formation suivie')+mB('formateur','Formateur')+mB('detache','Détachement')+mB('syndic','Délégation syndicale')+'</select></div>':'')
     ;
-  window._cvCalcRef=cI&&!cI.mixte?{n:cN,dur:cI.dur||0,nuit:calcNuitMinShift(cI),deb:cI.deb}:(cI?{n:'',dur:-1}:{n:'',dur:0});
+  window._cvCalcRef=cI&&!cI.mixte?{n:cN,dur:cI.dur||0,nuit:calcNuitMinShift(cI),deb:cI.deb,fin:cI.fin}:(cI?{n:'',dur:-1}:{n:'',dur:0});
   var dO='<option value="0">—</option>';for(var d=15;d<=600;d+=15)dO+='<option value="'+d+'"'+(x&&x.dur===d?' selected':'')+'>'+fmtMin(d)+'</option>';
   var card='margin:0 0 10px;padding:12px';
   if(key&&W.when==='week'){_exState.mode='week';
@@ -6069,7 +6069,11 @@ function _cvCalc(){var el=document.getElementById('cv-calc'),R=window._cvCalcRef
   var g=function(id){var e=document.getElementById(id);return e?e.value:'';},d=g('custom-deb'),f=g('custom-fin');if(!d||!f){none();return;}
   var a=parseHM(d),b=parseHM(f),t=b-a;if(t<=0)t+=1440;var pz=parseInt(g('custom-pause'))||0;if(pz>=45)t-=pz;if(t<=0){none();return;}
   var l1=_isDet(window._cvMotif)?'<b style="color:var(--text2)">'+fmtMin(t)+'</b> faites · '+(R.n&&R.dur>0?'compte '+R.n+' ('+fmtMin(R.dur)+'), ':'')+'ni heures sup ni rendus':R.dur<0?'<b style="color:var(--text2)">'+fmtMin(t)+'</b> faites':!R.dur?'<b style="color:var(--text2)">'+fmtMin(t)+'</b> faites, en heures sup (jour de repos).'
-    :(function(){var x=t-R.dur;return '<b style="color:var(--text2)">'+fmtMin(t)+'</b> faites · '+R.n+' prévue '+fmtMin(R.dur)+(x>0?' → <b style="color:var(--blue)">+'+fmtMin(x)+' en heures sup</b>':x<0?' → '+fmtMin(R.dur)+' comptées':'');})();
+    :(function(){var x=t-R.dur,dm=parseHM(R.deb||''),fm=parseHM(R.fin||'');
+      // méthode « horaires » : seulement ce qui sort des horaires prévus (comme une mixte), d'après début et fin saisis
+      if(_hsMode()==='horaires'&&R.deb&&R.fin&&!isNaN(dm)&&!isNaN(fm)){var f2=fm<=dm?fm+1440:fm,b2=b<=a?b+1440:b;x=Math.max(0,dm-a)+Math.max(0,b2-f2);
+        return '<b style="color:var(--text2)">'+fmtMin(t)+'</b> faites · '+R.n+' prévue '+R.deb+'–'+R.fin+(x>0?' → <b style="color:var(--blue)">+'+fmtMin(x)+' en heures sup</b> <span style="color:var(--text3)">(hors horaires prévus)</span>':' → '+fmtMin(R.dur)+' comptées');}
+      return '<b style="color:var(--text2)">'+fmtMin(t)+'</b> faites · '+R.n+' prévue '+fmtMin(R.dur)+(x>0?' → <b style="color:var(--blue)">+'+fmtMin(x)+' en heures sup</b>':x<0?' → '+fmtMin(R.dur)+' comptées':'');})();
   // Ce que le jour rapporte en plus : nuit (formation suivie → la plus grande des deux), matin, panier, majoration du jour
   var _W=window._cvW||{},syn=window._cvMotif==='syndic'&&R.dur>0,forme=(window._cvMotif==='forme'||syn)&&R.dur>0,key=_W.when==='other'&&_W.role==='give'&&_W.other?_W.other:pendingKey,date=key?new Date(key+'T12:00:00'):null,ch=[];
   var nu=calcNuitMinShift({deb:d,fin:f}),nf=forme&&(R.nuit||0)>nu;if(forme)nu=Math.max(nu,R.nuit||0);if(nu>0)ch.push('<span style="color:#9c7fe0">Nuit '+fmtMin(nu)+(nf?' (celle de '+R.n+')':'')+'</span>');

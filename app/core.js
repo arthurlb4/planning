@@ -1637,7 +1637,7 @@ function _dayHSMin(date){
     if(!vac||vac==='RH')return 0;
     if(_ov&&_ov.vac&&!_ov.echange&&_isDet(_ov.motif))return 0;
     if(_ov&&_ov.vac&&!_ov.echange&&cycleVac&&VAC[cycleVac]&&VAC[cycleVac].mixte)w=(VAC[cycleVac].dur||0)+_calcMixteHsMin(cycleVac,_ov.vac,VAC);
-    else if(_ov&&_ov.vac&&!_ov.echange&&cycleVac&&cycleVac!=='RH'&&VAC[cycleVac])w=Math.max(VAC[cycleVac].dur||0,VAC[vac]?VAC[vac].dur:0);
+    else if(_ov&&_ov.vac&&!_ov.echange&&cycleVac&&cycleVac!=='RH'&&VAC[cycleVac])w=_hsMode()==='horaires'&&VAC[vac]&&_toMinApp(VAC[cycleVac].deb)!==null&&_toMinApp(VAC[vac].deb)!==null?(VAC[cycleVac].dur||0)+_calcMixteHsMin(cycleVac,vac,VAC):Math.max(VAC[cycleVac].dur||0,VAC[vac]?VAC[vac].dur:0); // méthode choisie (Réglages › Calcul)
     else if(_ov&&_ov.vac&&!_ov.echange&&!_ov.hs)w=(!cycleVac||cycleVac==='RH'||!VAC[cycleVac])?(VAC[vac]?VAC[vac].dur:0):VAC[cycleVac].dur;
     else w=VAC[vac]?VAC[vac].dur:0;
   }
