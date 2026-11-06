@@ -6372,7 +6372,7 @@ function init(){
     render();
     setTimeout(pushSyncAlerts,3000);
     _lineSoon();
-    setTimeout(_verCheck,1500);
+    var _vt0=Date.now();setTimeout(function(){_verCheck().then(function(){_verNow(_vt0);});},1500); // nouvelle version : rechargée tout de suite si rien n'a encore été touché
     const hpn=document.getElementById('hdr-profile-name');
     if(hpn&&S&&S.profile)hpn.textContent=S.profile.name||'Profil';
     // inscription pas terminée (présentation, ligne et heures, paie) : on y revient, avant tout le reste ; terminée ailleurs : on la ferme
@@ -6869,7 +6869,6 @@ function _verCheck(){
       if(!m||m[1]===_appVer||_syncAbort)return false;
       // inscription : rechargée tant qu'il n'y a rien à perdre (début), sinon un lien le propose
       if(document.getElementById('setup')&&SU)_suSave(); // inscription : saisie gardée, reprise à la même étape après rechargement
-      if(!document.getElementById('setup')&&document.getElementById('modal-root').innerHTML)return false; // pas pendant une saisie
       // déjà tenté pour cette version il y a moins d'une minute : on attend (avant, une tentative ratée bloquait cette version pour de bon)
       var k='pl_ver_rl';try{var _t=(sessionStorage.getItem(k)||'').split('|');if(_t[0]===m[1]&&Date.now()-(+_t[1]||0)<60000)return false;}catch(e){}
       // Inscription en cours : rechargée tout de suite (rien à perdre, saisie gardée)
@@ -6897,18 +6896,20 @@ function _verApply(){
 // l'écran d'ouverture (le motif) revient et l'app se recharge dessous, comme une ouverture normale
 window._visAt=0;window._tapAt=0;
 document.addEventListener('pointerdown',function(){window._tapAt=Date.now();},true);
-function _verOnResume(){window._visAt=Date.now();
-  _verCheck().then(function(){
-    if(!window._verPending||document.hidden||window._tapAt>window._visAt||Date.now()-window._visAt>4000||document.querySelector('#modal-root .overlay')||document.getElementById('setup'))return;
-    var c=window._bootCopy&&window._bootCopy.cloneNode(true);
-    if(c&&_isPhone()){c.classList.add('logo');c.style.opacity='0';c.style.transition='opacity .22s ease';document.body.appendChild(c);void c.offsetWidth;c.style.opacity='1';setTimeout(_verApply,260);}
-    else _verApply();
-  });}
+// Saisie en cours (petite fenêtre, question) : pas de rechargement ; une page d'onglet ouverte (Suivi, Réglages…) ne bloque pas
+function _verBusy(){var ov=document.querySelector('#modal-root .overlay');return !!(ov&&!ov.classList.contains('tbpage'))||!!document.getElementById('ask')||!!document.getElementById('setup');}
+// Nouvelle version trouvée juste après l'ouverture ou le retour, avant le moindre appui : l'écran d'ouverture revient et l'app se recharge dessous
+function _verNow(t0){
+  if(!window._verPending||document.hidden||window._tapAt>t0||Date.now()-t0>6000||_verBusy())return;
+  var c=window._bootCopy&&window._bootCopy.cloneNode(true);
+  if(c&&_isPhone()){c.classList.add('logo');c.style.opacity='0';c.style.transition='opacity .22s ease';document.body.appendChild(c);void c.offsetWidth;c.style.opacity='1';setTimeout(_verApply,260);}
+  else _verApply();}
+function _verOnResume(){var t0=window._visAt=Date.now();_verCheck().then(function(){_verNow(t0);});}
 // En quittant l'app : rechargée sur la nouvelle version, sans que ça se voie ; si aucune n'a encore été cherchée
 // depuis un moment, on regarde d'abord (le rechargement se fait si l'app est toujours en arrière-plan)
 window._verAt=0;
 document.addEventListener('visibilitychange',function(){
-  if(!document.hidden||document.querySelector('#modal-root .overlay'))return;
+  if(!document.hidden||_verBusy())return;
   if(window._verPending){_verApply();return;}
   if(Date.now()-window._verAt<60000)return;
   _verCheck().then(function(){if(document.hidden&&window._verPending)_verApply();});
@@ -7058,7 +7059,7 @@ async function cloudLoadAll(){
   setTimeout(function(){_swapRefresh(true);if(/[?&]swap=1/.test(location.search)){try{history.replaceState(null,'',location.pathname);}catch(e){}openSwaps(0);}},1500);
   // au lancement, l'app s'ouvre sur la copie gardée : si une version plus récente existe, elle se recharge dessus
   // avant toute question (sinon une ancienne version pouvait proposer un cycle d'une autre équipe)
-  _verCheck().then(function(rl){if(!rl){checkPendingLineChoice();setTimeout(_checkAnnounce,1200);}});
+  var _vt1=Date.now();_verCheck().then(function(rl){_verNow(_vt1);if(!rl&&!window._verPending){checkPendingLineChoice();setTimeout(_checkAnnounce,1200);}});
   gcalStartPoll();
   window.addEventListener('focus',function(){cloudRefresh();});
   // Sync on visibility change (mobile: app comes back to foreground)

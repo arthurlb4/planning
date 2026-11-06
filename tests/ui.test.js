@@ -128,6 +128,11 @@ function mockApi(route) {
       ok('Navigation : accueil (rien d’ouvert)', /^\/\/\/cal\/-/.test(r.home), r.home);
       ok('Navigation : Variables, sous-page de l’Accueil, retour à l’accueil', /^pg\/sub\/\/cal\/tbpush\/Variables/.test(r.vars) && /\/Accueil$/.test(r.vars) && /^\/\/\/cal\/-\/.*\|false$/.test(r.varsBack), r.vars + ' → ' + r.varsBack);
       ok('Navigation : fiche du jour = petite fenêtre (barre masquée)', /^\/\/sheet\//.test(r.day), r.day); }
+    // Nouvelle version publiée pendant qu'une page d'onglet est ouverte : repérée quand même, et installable (pas une saisie)
+    { const r = await p.evaluate(async () => { const f0 = window.fetch; _tbGo('suivi'); await new Promise(r => setTimeout(r, 80));
+        window.fetch = u => String(u) === location.href ? Promise.resolve(new Response('<meta name="app-version" content="v9.99">')) : f0(u);
+        sessionStorage.removeItem('pl_ver_rl'); await _verCheck(); window.fetch = f0; const r = [window._verPending, _verBusy()]; window._verPending = null; _tbGo('cal'); return r; });
+      ok('Nouvelle version repérée avec une page ouverte (Suivi), rien ne bloque son installation', r[0] === 'v9.99' && r[1] === false, JSON.stringify(r)); }
     // Sous-page d'une sous-page de l'Accueil (Contrôle › Paie) : le retour revient à Contrôle, pas à l'accueil
     { const r = await p.evaluate(async () => { const w = ms => new Promise(r => setTimeout(r, ms)), T = () => document.getElementById('tb-title').textContent + '/' + document.getElementById('tb-back').lastChild.textContent;
         openMergedRenduCgModal(6, 2); await w(80); openBulletinsCal(NOW.getFullYear()); await w(80); const a = T(); _tbBack(); await w(80); const b = T() + '/' + !!document.querySelector('#modal-root .overlay'); closeModal(); await w(80); return [a, b]; });
