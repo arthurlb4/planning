@@ -427,11 +427,42 @@ function _verLt(a, b) { var x = _verNum(a), y = _verNum(b); for (var i = 0; i < 
 // Version d'un profil enregistré : empreinte du texte stocké (l'app la renvoie pour dire sur quelle version elle a travaillé)
 function _rev(str) { var h = 5381; str = str || ''; for (var i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0; return (h >>> 0).toString(36) + '.' + str.length; }
 
+// Lecteur IPTV : récupère une liste M3U à la place du navigateur (serveurs qui refusent les navigateurs, adresses en http).
+// Réservé aux pages du site, uniquement des listes M3U (pas un relais général), taille limitée.
+var IPTV_MAX = 40 * 1024 * 1024;
+async function iptvM3u(request, url) {
+  var o = request.headers.get('Origin') || '';
+  var h = { 'Access-Control-Allow-Origin': ALLOWED_ORIGINS.indexOf(o) >= 0 ? o : ALLOWED_ORIGIN, 'Vary': 'Origin', 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' };
+  var err = function (m, s) { return new Response(m, { status: s, headers: h }); };
+  if (request.method !== 'GET') return err('Méthode non autorisée', 405);
+  if (ALLOWED_ORIGINS.indexOf(o) < 0) return err('Origine non autorisée', 403);
+  var t;
+  try { t = new URL(url.searchParams.get('url') || ''); } catch (e) { return err('Adresse invalide', 400); }
+  if (!/^https?:$/.test(t.protocol)) return err('Adresse invalide', 400);
+  var host = t.hostname.toLowerCase();
+  if (host === 'localhost' || /\.(local|internal|localhost)$/.test(host) || /^(127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|0\.|\[)/.test(host))
+    return err('Adresse non autorisée', 400);
+  var r;
+  try {
+    r = await fetch(t.toString(), { redirect: 'follow', headers: { 'User-Agent': 'VLC/3.0.21 LibVLC/3.0.21', 'Accept': '*/*' } });
+  } catch (e) { return err('Serveur de la liste injoignable', 502); }
+  if (!r.ok) return err('Le serveur de la liste répond ' + r.status, 502);
+  var len = +(r.headers.get('Content-Length') || 0);
+  if (len > IPTV_MAX) return err('Liste trop lourde', 413);
+  var buf = await r.arrayBuffer();
+  if (buf.byteLength > IPTV_MAX) return err('Liste trop lourde', 413);
+  var text = new TextDecoder('utf-8').decode(buf);
+  var head = text.slice(0, 4096).replace(/^﻿/, '').trim();
+  if (!/^#EXTM3U/i.test(head) && !/^#EXTINF/im.test(head) && !/^https?:\/\//im.test(head)) return err('Ce n\'est pas une liste M3U', 422);
+  return new Response(text, { status: 200, headers: h });
+}
+
 async function handle(request, env, ctx) {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
     try {
     var url = new URL(request.url);
     var path = url.pathname;
+    if (path === '/iptv/m3u') return iptvM3u(request, url);
     var body = await request.json().catch(function(){ return {}; });
     var appVer = url.searchParams.get('av');
     if (MIN_APP && appVer && !path.startsWith('/admin') && _verLt(appVer, MIN_APP)) return resp({ error: 'update', min: MIN_APP }, 426);

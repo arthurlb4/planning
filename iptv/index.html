@@ -608,16 +608,20 @@ $('#plList').addEventListener('click', async e => {
 });
 function stopAll() { token++; stopEngines(); S.current = null; document.body.classList.remove('playing'); setStatus('msg', '<span class="hint">Choisissez une chaîne dans la liste.</span>'); $('#nowName').textContent = '—'; $('#nowSub').textContent = ''; document.title = 'Lecteur IPTV'; }
 
+/* Liste par adresse : directement si le serveur l'accepte, sinon via le serveur de l'app (CORS, adresse en http, blocage) */
+const RELAY = 'https://planning-gcal.arthur-lebreton94.workers.dev/iptv/m3u?url=';
 async function fetchText(url) {
-  let res;
-  try { res = await fetch(url, { cache: 'no-store' }); }
-  catch (e) {
-    throw new Error(location.protocol === 'https:' && /^http:/i.test(url)
-      ? 'Adresse en http bloquée par le navigateur. Téléchargez le fichier puis importez-le.'
-      : 'Le serveur refuse la lecture depuis un navigateur (CORS). Téléchargez le fichier puis importez-le.');
+  const mixed = location.protocol === 'https:' && /^http:/i.test(url);
+  if (!mixed) {
+    try { const res = await fetch(url, { cache: 'no-store' }); if (res.ok) return await res.text(); } catch (e) {}
   }
-  if (!res.ok) throw new Error('Le serveur répond ' + res.status + '. Vérifiez l\'adresse ou vos identifiants.');
-  return res.text();
+  let res;
+  try { res = await fetch(RELAY + encodeURIComponent(url), { cache: 'no-store' }); }
+  catch (e) { throw new Error('Impossible de joindre le serveur de l\'app. Vérifiez votre connexion, ou téléchargez le fichier puis importez-le.'); }
+  if (res.ok) return res.text();
+  const msg = (await res.text().catch(() => '')).slice(0, 200);
+  if (res.status === 502 && /répond (401|403|404|5\d\d)/.test(msg)) throw new Error(msg + '. Vérifiez l\'adresse et vos identifiants ; certains fournisseurs bloquent aussi les serveurs (essayez alors d\'importer le fichier).');
+  throw new Error((msg || 'Erreur ' + res.status) + '.');
 }
 async function savePlaylist(p) {
   const { channels } = parseM3U(p.text);
