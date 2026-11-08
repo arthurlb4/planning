@@ -430,6 +430,8 @@ function _rev(str) { var h = 5381; str = str || ''; for (var i = 0; i < str.leng
 // Lecteur IPTV : récupère une liste M3U à la place du navigateur (serveurs qui refusent les navigateurs, adresses en http).
 // Réservé aux pages du site, uniquement des listes M3U (pas un relais général), taille limitée.
 var IPTV_MAX = 40 * 1024 * 1024;
+var IPTV_UAS = ['VLC/3.0.21 LibVLC/3.0.21', 'IPTVSmartersPro', 'okhttp/4.12.0', 'Kodi/21.1 (Windows NT 10.0; Win64; x64) App_Bitness/64 Version/21.1-(21.1.0)-Git:20240804-0',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36', ''];
 async function iptvM3u(request, url) {
   var o = request.headers.get('Origin') || '';
   var h = { 'Access-Control-Allow-Origin': ALLOWED_ORIGINS.indexOf(o) >= 0 ? o : ALLOWED_ORIGIN, 'Vary': 'Origin', 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' };
@@ -442,11 +444,16 @@ async function iptvM3u(request, url) {
   var host = t.hostname.toLowerCase();
   if (host === 'localhost' || /\.(local|internal|localhost)$/.test(host) || /^(127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|0\.|\[)/.test(host))
     return err('Adresse non autorisée', 400);
-  var r;
-  try {
-    r = await fetch(t.toString(), { redirect: 'follow', headers: { 'User-Agent': 'VLC/3.0.21 LibVLC/3.0.21', 'Accept': '*/*' } });
-  } catch (e) { return err('Serveur de la liste injoignable', 502); }
-  if (!r.ok) return err('Le serveur de la liste répond ' + r.status, 502);
+  // Certains fournisseurs refusent selon le lecteur annoncé (codes maison, ex. 884) : on essaie ceux des applis IPTV courantes
+  var r = null, codes = [];
+  for (var ua of IPTV_UAS) {
+    try { r = await fetch(t.toString(), { redirect: 'follow', headers: ua ? { 'User-Agent': ua, 'Accept': '*/*' } : { 'Accept': '*/*' } }); }
+    catch (e) { r = null; codes.push('injoignable'); continue; }
+    if (r.ok) break;
+    codes.push(r.status); r = null;
+  }
+  if (!r) return err(codes.every(function (c) { return c === 'injoignable'; }) ? 'Serveur de la liste injoignable'
+    : 'Le serveur de la liste répond ' + codes.filter(function (c, i) { return c !== 'injoignable' && codes.indexOf(c) === i; }).join(', '), 502);
   var len = +(r.headers.get('Content-Length') || 0);
   if (len > IPTV_MAX) return err('Liste trop lourde', 413);
   var buf = await r.arrayBuffer();
