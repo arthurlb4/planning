@@ -460,6 +460,12 @@ async function iptvM3u(request, url) {
   if (buf.byteLength > IPTV_MAX) return err('Liste trop lourde', 413);
   var text = new TextDecoder('utf-8').decode(buf);
   var head = text.slice(0, 4096).replace(/^﻿/, '').trim();
+  // API Xtream Codes (ce que font la plupart des applis IPTV avec un lien get.php) : réponse JSON
+  if (/\/player_api\.php$/i.test(t.pathname)) {
+    if (!/^[\[{]/.test(head)) return err('Réponse inattendue du serveur IPTV', 422);
+    h['Content-Type'] = 'application/json; charset=utf-8';
+    return new Response(text, { status: 200, headers: h });
+  }
   if (!/^#EXTM3U/i.test(head) && !/^#EXTINF/im.test(head) && !/^https?:\/\//im.test(head)) return err('Ce n\'est pas une liste M3U', 422);
   return new Response(text, { status: 200, headers: h });
 }

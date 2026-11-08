@@ -603,7 +603,7 @@ $('#plList').addEventListener('click', async e => {
   } else if (r) {
     const p = S.playlists.find(x => x.id === r.dataset.refresh);
     r.disabled = true;
-    try { const text = await fetchText(p.url); await savePlaylist({ ...p, text }); toast('Liste mise à jour'); }
+    try { const text = await fetchPlaylist(p.url); await savePlaylist({ ...p, text }); toast('Liste mise à jour'); }
     catch (err) { toast(err.message); r.disabled = false; }
   }
 });
@@ -621,8 +621,43 @@ async function fetchText(url) {
   catch (e) { throw new Error('Impossible de joindre le serveur de l\'app. Vérifiez votre connexion, ou téléchargez le fichier puis importez-le.'); }
   if (res.ok) return res.text();
   const msg = (await res.text().catch(() => '')).slice(0, 200);
-  if (res.status === 502 && /répond/.test(msg)) throw new Error(msg + '. Votre fournisseur refuse les demandes qui ne viennent pas d\'un appareil chez vous. Solution : ouvrez l\'adresse de la liste dans Safari (ou Chrome), enregistrez le fichier (sur iPhone : Partager › Enregistrer dans Fichiers), puis « Importer un fichier… » ici.');
   throw new Error((msg || 'Erreur ' + res.status) + '.');
+}
+/* Lien Xtream (get.php?username=…&password=…) : si la liste M3U est refusée, on interroge le serveur comme les applis IPTV
+   (player_api.php : catégories et chaînes), puis on en fait une liste M3U */
+function xtreamParts(url) {
+  try {
+    const u = new URL(url), user = u.searchParams.get('username'), pass = u.searchParams.get('password');
+    return user && pass ? { base: u.origin, user, pass, output: (u.searchParams.get('output') || '').toLowerCase() } : null;
+  } catch (e) { return null; }
+}
+async function xtreamToM3U(x) {
+  const api = x.base + '/player_api.php?username=' + encodeURIComponent(x.user) + '&password=' + encodeURIComponent(x.pass);
+  const json = async u => { const t = await fetchText(u); try { return JSON.parse(t); } catch (e) { throw new Error('Réponse illisible du serveur IPTV.'); } };
+  const info = await json(api), ui = info && info.user_info;
+  if (!ui || String(ui.auth) === '0') throw new Error('Identifiants refusés par le serveur IPTV.');
+  if (ui.status && !/^active$/i.test(ui.status)) throw new Error('Abonnement « ' + ui.status + ' » selon le serveur IPTV.');
+  const [cats, streams] = await Promise.all([json(api + '&action=get_live_categories'), json(api + '&action=get_live_streams')]);
+  const cat = {}; (Array.isArray(cats) ? cats : []).forEach(c => { cat[c.category_id] = c.category_name; });
+  const fmts = (ui.allowed_output_formats || []).map(f => String(f).toLowerCase());
+  const ext = x.output === 'm3u8' || x.output === 'hls' ? 'm3u8' : x.output === 'ts' ? 'ts' : fmts.includes('m3u8') ? 'm3u8' : 'ts';
+  const q = v => String(v == null ? '' : v).replace(/"/g, "'").replace(/[\r\n]+/g, ' ');
+  const list = (Array.isArray(streams) ? streams : []).slice().sort((a, b) => (+a.num || 0) - (+b.num || 0));
+  if (!list.length) throw new Error('Aucune chaîne en direct sur ce compte.');
+  const out = ['#EXTM3U'];
+  for (const s of list) {
+    out.push('#EXTINF:-1 tvg-id="' + q(s.epg_channel_id) + '" tvg-name="' + q(s.name) + '" tvg-logo="' + q(s.stream_icon) + '" group-title="' + q(cat[s.category_id] || 'Sans catégorie') + '",' + q(s.name));
+    out.push(x.base + '/live/' + encodeURIComponent(x.user) + '/' + encodeURIComponent(x.pass) + '/' + s.stream_id + '.' + ext);
+  }
+  return out.join('\n');
+}
+async function fetchPlaylist(url) {
+  try { return await fetchText(url); }
+  catch (e) {
+    const x = xtreamParts(url); if (!x) throw e;
+    try { return await xtreamToM3U(x); }
+    catch (e2) { throw new Error('Liste M3U : ' + e.message + ' Connexion Xtream : ' + e2.message); }
+  }
 }
 async function savePlaylist(p) {
   const { channels } = parseM3U(p.text);
@@ -648,7 +683,7 @@ $('#addUrlBtn').onclick = async () => {
   const url = $('#addUrl').value.trim(), b = $('#addUrlBtn');
   if (!/^https?:\/\//i.test(url)) { $('#addErr').textContent = 'Entrez une adresse commençant par http:// ou https://'; return; }
   b.disabled = true; b.textContent = 'Chargement…';
-  try { await addPlaylist(await fetchText(url), url); }
+  try { await addPlaylist(await fetchPlaylist(url), url); }
   catch (e) { $('#addErr').textContent = e.message; }
   b.disabled = false; b.textContent = 'Charger l\'adresse';
 };
