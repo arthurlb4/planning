@@ -23,6 +23,8 @@ function createWindow() {
   session.defaultSession.webRequest.onBeforeSendHeaders((d, cb) => {
     const h = d.requestHeaders;
     if (!OWN.test(d.url) && !d.url.startsWith('file:')) { delete h.Origin; delete h.Referer; }
+    // Serveur de l'app (relais des listes) : il n'accepte que les demandes venant du site
+    else if (/^https:\/\/planning-gcal\./.test(d.url)) h.Origin = 'https://franceinfoplanning.com';
     cb({ requestHeaders: h });
   });
 
