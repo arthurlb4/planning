@@ -455,22 +455,25 @@ async function play(c) {
   document.title = c.name + ' · IPTV';
   setStatus('load');
 
-  const url = c.url, k = kindOf(url);
+  // Chaque adresse possible (variantes https et .m3u8, voir streamVariants) × chaque façon de lire selon son format
   const nativeHls = !!video.canPlayType('application/vnd.apple.mpegurl');
-  const chain = k === 'hls' ? (nativeHls ? ['native', 'hls'] : ['hls', 'native'])
-              : k === 'file' ? ['native']
-              : ['mpegts', 'hls', 'native'];
+  const chain = [];
+  for (const u of streamVariants(c.url)) {
+    const k = kindOf(u);
+    (k === 'hls' ? (nativeHls ? ['native', 'hls'] : ['hls', 'native']) : k === 'file' ? ['native'] : ['mpegts', 'hls', 'native'])
+      .forEach(eng => chain.push([eng, u]));
+  }
   let i = -1;
   const next = async () => {
     if (t !== token) return;
     stopEngines();
     if (++i >= chain.length) return fail(c);
-    const eng = chain[i];
+    const [eng, url] = chain[i];
     let done = false, timer;
     const ok = () => { if (done || t !== token) return; done = true; clearTimeout(timer); setStatus(null); };
     const ko = () => { if (done || t !== token) return; done = true; clearTimeout(timer); next(); };
     attempt = { ok, ko };
-    timer = setTimeout(ko, 20000);                      // rien reçu en 20 s : on essaie autrement
+    timer = setTimeout(ko, 12000);                      // rien reçu en 12 s : on essaie autrement
     try {
       if (eng === 'native') {
         video.src = url;
@@ -505,10 +508,30 @@ video.addEventListener('playing', () => attempt && attempt.ok());
 video.addEventListener('loadeddata', () => attempt && attempt.ok());
 video.addEventListener('error', () => { if (video.getAttribute('src') && attempt) attempt.ko(); });
 
+/* Adresses à essayer pour une chaîne :
+   - chaîne Xtream en .ts (ou sans extension) : d'abord sa version .m3u8 (HLS), que Safari sur iPhone et Chrome lisent eux-mêmes ;
+   - adresse en http sur cette page en https (bloquée par le navigateur) : sa version https, au même port puis au port standard. */
+function streamVariants(url) {
+  const out = [], add = u => { if (!out.includes(u)) out.push(u); };
+  const fmt = [];
+  const m = url.match(/^(.*\/live\/[^/]+\/[^/]+\/\d+)(\.ts)?([?#].*)?$/i);
+  if (m) { fmt.push(m[1] + '.m3u8' + (m[3] || '')); fmt.push(url); } else fmt.push(url);
+  const secure = location.protocol === 'https:';
+  for (const u of fmt) {
+    if (secure && /^http:/i.test(u)) {
+      try {
+        const x = new URL(u); x.protocol = 'https:'; add(x.toString());
+        if (x.port) { x.port = ''; add(x.toString()); }
+      } catch (e) {}
+    } else add(u);
+  }
+  return out.length ? out : [url];
+}
+
 function fail(c) {
   const mixed = location.protocol === 'https:' && /^http:/i.test(c.url);
   const why = mixed
-    ? 'Ce flux est en <b>http</b> : le navigateur le bloque sur une page sécurisée (https).'
+    ? 'Ce flux est en <b>http</b> : le navigateur le bloque sur une page sécurisée (https), et le serveur ne le propose pas en https.'
     : 'Le flux ne répond pas au navigateur : serveur hors ligne, accès refusé aux navigateurs (CORS) ou format non pris en charge.';
   setStatus('msg', `<b style="color:var(--text)">Lecture impossible</b><br><span class="hint">${why}<br>VLC le lira sans ces limites.</span>`,
     `<button class="btn" onclick="play(S.current)">Réessayer</button><a class="btn primary" href="${esc(vlcUrl(c.url))}">Ouvrir dans VLC</a>`);
@@ -640,7 +663,8 @@ async function xtreamToM3U(x) {
   const [cats, streams] = await Promise.all([json(api + '&action=get_live_categories'), json(api + '&action=get_live_streams')]);
   const cat = {}; (Array.isArray(cats) ? cats : []).forEach(c => { cat[c.category_id] = c.category_name; });
   const fmts = (ui.allowed_output_formats || []).map(f => String(f).toLowerCase());
-  const ext = x.output === 'm3u8' || x.output === 'hls' ? 'm3u8' : x.output === 'ts' ? 'ts' : fmts.includes('m3u8') ? 'm3u8' : 'ts';
+  // HLS (.m3u8) dès que le compte l'autorise, même si le lien demande du .ts : les navigateurs lisent mal le .ts (pas du tout sur iPhone)
+  const ext = fmts.includes('m3u8') || x.output === 'm3u8' || x.output === 'hls' ? 'm3u8' : 'ts';
   const q = v => String(v == null ? '' : v).replace(/"/g, "'").replace(/[\r\n]+/g, ' ');
   const list = (Array.isArray(streams) ? streams : []).slice().sort((a, b) => (+a.num || 0) - (+b.num || 0));
   if (!list.length) throw new Error('Aucune chaîne en direct sur ce compte.');
