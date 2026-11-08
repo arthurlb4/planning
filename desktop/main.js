@@ -7,6 +7,8 @@ const PAGE = 'https://franceinfoplanning.com/iptv/';
 const OWN = /^https?:\/\/(www\.)?franceinfoplanning\.com\/|^https:\/\/cdn\.jsdelivr\.net\/|^https:\/\/planning-gcal\./;
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+// Pistes audio et vidéo des fichiers (films en plusieurs langues) accessibles à la page : choix de la langue
+app.commandLine.appendSwitch('enable-blink-features', 'AudioVideoTracks');
 
 function createWindow() {
   const win = new BrowserWindow({

@@ -196,7 +196,7 @@ body.homeview #channels,body.homeview #player{display:none}
 #miniBar{display:none}
 body.homeview.mini #player{display:flex;position:fixed;right:var(--mr,18px);bottom:var(--mb,18px);width:min(var(--mw,420px),calc(100vw - 36px));height:auto;z-index:35;border-radius:14px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.6);border:.5px solid var(--border);order:0}
 body.homeview.mini #screen{flex:none;aspect-ratio:16/9;width:100%}
-body.homeview.mini #now,body.homeview.mini #stats{display:none}
+body.homeview.mini #now,body.homeview.mini #stats,body.homeview.mini #trackMenu{display:none}
 body.homeview.mini #miniBar{display:flex;position:absolute;top:8px;right:8px;gap:6px;z-index:5}
 #miniBar .btn{height:32px;width:32px;background:rgba(0,0,0,.6);border-color:transparent}
 #miniMove{cursor:grab;touch-action:none}
@@ -212,6 +212,13 @@ body.solo #now{position:absolute;top:0;left:0;right:0;z-index:6;background:linea
 body.solo #player:hover #now,body.solo.ui #now{opacity:1}
 body.solo #soloExit{display:inline-flex}
 body.solo #miniBar,body.solo #miniSize,body.solo #soloBtn,body.solo #miniBtn{display:none!important}
+#trackMenu{position:absolute;right:12px;bottom:56px;z-index:7;min-width:240px;max-width:calc(100% - 24px);max-height:calc(100% - 80px);overflow:auto;background:rgba(22,22,21,.96);border:.5px solid var(--border);border-radius:14px;padding:8px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+#trackMenu[hidden]{display:none}
+#trackMenu h4{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin:8px 8px 4px}
+#trackMenu button{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:8px 10px;border-radius:9px;color:var(--text);font-size:14px}
+#trackMenu button:hover{background:var(--bg3)}
+#trackMenu button .ck{width:16px;color:var(--blue);font-weight:800}
+#trackMenu .no{padding:6px 10px;color:var(--text3);font-size:13px}
 #guide .pg{padding:10px 0;border-bottom:.5px solid var(--border)}
 #guide .pg .tm{color:var(--text3);font-size:12px}
 #guide .pg .ti{font-weight:600;margin:2px 0}
@@ -288,6 +295,7 @@ body.solo #miniBar,body.solo #miniSize,body.solo #soloBtn,body.solo #miniBtn{dis
       <video id="video" controls playsinline autoplay></video>
       <div id="status"><div class="msg hint">Choisissez une chaîne dans la liste.</div></div>
       <div id="stats" hidden></div>
+      <div id="trackMenu" hidden></div>
       <div id="miniSize" title="Glisser pour changer la taille"></div>
       <div id="miniBar">
         <button class="btn icon" id="miniMove" title="Glisser pour déplacer"><svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg></button>
@@ -304,6 +312,7 @@ body.solo #miniBar,body.solo #miniSize,body.solo #soloBtn,body.solo #miniBtn{dis
         <button class="btn icon star" id="nowFav" title="Favori"><svg viewBox="0 0 24 24"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z"/></svg></button>
         <button class="btn icon" id="pipBtn" title="Image dans l'image"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="11" width="7" height="6" rx="1"/></svg></button>
         <button class="btn icon" id="guideBtn" title="Programme (EPG)"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M7 14h4M7 17h7"/></svg></button>
+        <button class="btn icon" id="trackBtn" title="Audio et sous-titres"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M7 15h3M13 15h4M7 11h6M15 11h2"/></svg></button>
         <button class="btn icon" id="statsBtn" title="Qualité de l'image et du son"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg></button>
         <button class="btn icon" id="soloBtn" title="Lecteur seul (pleine page)"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
         <button class="btn icon" id="soloExit" title="Quitter le lecteur seul (Échap)"><svg viewBox="0 0 24 24"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg></button>
@@ -807,7 +816,7 @@ async function play(c, alts) {
     if (++i >= chain.length) return fail(c);
     const [eng, url] = chain[i];
     let done = false, timer;
-    const ok = () => { if (done || t !== token) return; done = true; clearTimeout(timer); setStatus(null); S.engine = eng; S.playUrl = url; S.master = null; vodResume(); if (eng !== 'hls') S.found = null; if (!$('#stats').hidden) refreshStats(); };
+    const ok = () => { if (done || t !== token) return; done = true; clearTimeout(timer); setStatus(null); S.engine = eng; S.playUrl = url; S.master = null; vodResume(); setTimeout(applyTrackPrefs, 300); if (eng !== 'hls') S.found = null; if (!$('#stats').hidden) refreshStats(); };
     const ko = () => { if (done || t !== token) return; done = true; clearTimeout(timer); next(); };
     attempt = { ok, ko };
     timer = setTimeout(ko, 12000);                      // rien reçu en 12 s : on essaie autrement
@@ -826,6 +835,9 @@ async function play(c, alts) {
         });
         // codecs trouvés dans le flux lui-même (quand la liste HLS ne les annonce pas)
         hls.on(Hls.Events.BUFFER_CODECS, (ev, d) => { S.found = { v: d.video && d.video.codec, a: d.audio && d.audio.codec, ch: d.audio && d.audio.metadata && d.audio.metadata.channelCount }; });
+        hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => setTimeout(applyTrackPrefs, 0));
+        hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, () => setTimeout(applyTrackPrefs, 0));
+        hls.on(Hls.Events.AUDIO_TRACK_SWITCHED, renderTrackMenu);
         hls.loadSource(url); hls.attachMedia(video);
       } else if (eng === 'mpegts') {
         await loadLib('mpegts'); if (t !== token || done) return;
@@ -1279,6 +1291,69 @@ function vodResume() {
   video.readyState >= 1 ? go() : video.addEventListener('loadedmetadata', go, { once: true });
 }
 setInterval(() => { const c = S.current; if (c && c.vod && !video.paused && video.currentTime > 30) LS.set('pos.' + c.url, Math.floor(video.currentTime)); }, 5000);
+
+/* ---------- Pistes audio et sous-titres : choix dans un menu, langue préférée retenue (français et sans sous-titres au départ) ---------- */
+const LANGS = { fr: 'Français', fra: 'Français', fre: 'Français', en: 'Anglais', eng: 'Anglais', de: 'Allemand', deu: 'Allemand', ger: 'Allemand', es: 'Espagnol', spa: 'Espagnol',
+  it: 'Italien', ita: 'Italien', pt: 'Portugais', por: 'Portugais', ar: 'Arabe', ara: 'Arabe', nl: 'Néerlandais', nld: 'Néerlandais', tr: 'Turc', tur: 'Turc', pl: 'Polonais', pol: 'Polonais',
+  ja: 'Japonais', jpn: 'Japonais', ko: 'Coréen', kor: 'Coréen', zh: 'Chinois', zho: 'Chinois', ru: 'Russe', rus: 'Russe', qaa: 'Version originale', mul: 'Plusieurs langues' };
+const lang2 = l => { l = String(l || '').toLowerCase().split('-')[0]; return { fra: 'fr', fre: 'fr', eng: 'en', deu: 'de', ger: 'de', spa: 'es', ita: 'it', por: 'pt', ara: 'ar', nld: 'nl', tur: 'tr', pol: 'pl', jpn: 'ja', kor: 'ko', zho: 'zh', rus: 'ru' }[l] || l; };
+function trackLabel(t, n) {
+  const ln = LANGS[String(t.lang || '').toLowerCase()] || LANGS[lang2(t.lang)] || '';
+  const nm = (t.name || '').trim();
+  const same = /^(english|french|francais|german|deutsch|spanish|espanol|italian|italiano|portuguese|arabic|dutch|turkish|polish|japanese|korean|chinese|russian|original|und|unknown)$/i.test(norm(nm));
+  const lbl = nm && norm(nm) !== norm(ln) && !same ? (ln ? `${ln} · ${nm}` : nm) : ln || nm || 'Piste ' + n;
+  return lbl + (t.ch ? ` <span style="color:var(--text3)">${t.ch === '6' ? '5.1' : t.ch === '2' ? 'stéréo' : t.ch + ' canaux'}</span>` : '') + (t.kind === 'captions' ? ' <span style="color:var(--text3)">(malentendants)</span>' : '');
+}
+function trackLists() {
+  const A = [], T = [];
+  if (S.engine === 'hls' && hls && hls.audioTracks && hls.audioTracks.length) hls.audioTracks.forEach((t, i) => A.push({ i, lang: t.lang, name: t.name, ch: t.attrs && t.attrs.CHANNELS, on: hls.audioTrack === i }));
+  else if (video.audioTracks && video.audioTracks.length) for (let i = 0; i < video.audioTracks.length; i++) { const t = video.audioTracks[i]; A.push({ i, lang: t.language, name: t.label, on: t.enabled }); }
+  for (let i = 0; i < video.textTracks.length; i++) { const t = video.textTracks[i]; if (t.kind === 'metadata' || t.kind === 'chapters') continue; T.push({ i, lang: t.language, name: t.label, kind: t.kind, on: t.mode === 'showing' }); }
+  return { A, T };
+}
+function setAudio(i, remember) {
+  const { A } = trackLists(), t = A.find(x => x.i === i); if (!t) return;
+  if (S.engine === 'hls' && hls && hls.audioTracks && hls.audioTracks.length) hls.audioTrack = i;
+  else for (let j = 0; j < video.audioTracks.length; j++) video.audioTracks[j].enabled = j === i;
+  if (remember) LS.set('pref.audio', lang2(t.lang) || t.name || '');
+  renderTrackMenu();
+}
+function setSub(i, remember) {
+  const { T } = trackLists(), t = T.find(x => x.i === i);
+  for (let j = 0; j < video.textTracks.length; j++) { const tt = video.textTracks[j]; if (tt.kind === 'metadata' || tt.kind === 'chapters') continue; tt.mode = j === i ? 'showing' : 'disabled'; }
+  if (S.engine === 'hls' && hls && hls.subtitleTracks) {
+    const k = t ? hls.subtitleTracks.findIndex(x => (x.name || '') === (t.name || '') && lang2(x.lang) === lang2(t.lang)) : -1;
+    hls.subtitleDisplay = k >= 0; hls.subtitleTrack = k;
+  }
+  if (remember) LS.set('pref.sub', t ? (lang2(t.lang) || t.name || 'on') : 'off');
+  renderTrackMenu();
+}
+function applyTrackPrefs() {
+  const { A, T } = trackLists(), pa = LS.get('pref.audio', 'fr'), ps = LS.get('pref.sub', 'off');
+  const ga = A.find(t => lang2(t.lang) === pa || t.name === pa);
+  if (ga && !ga.on) setAudio(ga.i);
+  if (ps === 'off') { if (T.some(t => t.on)) setSub(-1); }
+  else { const gs = T.find(t => lang2(t.lang) === ps || t.name === ps); if (gs && !gs.on) setSub(gs.i); }
+  renderTrackMenu();
+}
+function renderTrackMenu() {
+  const m = $('#trackMenu'); if (m.hidden) return;
+  const { A, T } = trackLists(), ck = on => `<span class="ck">${on ? '✓' : ''}</span>`;
+  let h = '<h4>Audio</h4>';
+  h += A.length > 1 ? A.map((t, n) => `<button data-aud="${t.i}">${ck(t.on)}${trackLabel(t, n + 1)}</button>`).join('')
+    : `<div class="no">${A.length ? trackLabel(A[0], 1) + ' (seule piste)' : 'Une seule piste'}${S.engine === 'mpegts' ? ' · ce format ne permet pas le choix' : ''}</div>`;
+  h += '<h4>Sous-titres</h4>' + `<button data-sub="-1">${ck(!T.some(t => t.on))}Désactivés</button>` + (T.length ? T.map((t, n) => `<button data-sub="${t.i}">${ck(t.on)}${trackLabel(t, n + 1)}</button>`).join('') : '<div class="no">Aucun sous-titre fourni</div>');
+  m.innerHTML = h;
+}
+$('#trackBtn').onclick = e => { e.stopPropagation(); const m = $('#trackMenu'); m.hidden = !m.hidden; renderTrackMenu(); };
+$('#trackMenu').addEventListener('click', e => {
+  e.stopPropagation();
+  const a = e.target.closest('[data-aud]'), t = e.target.closest('[data-sub]');
+  if (a) setAudio(+a.dataset.aud, true); else if (t) setSub(+t.dataset.sub, true);
+});
+document.addEventListener('click', e => { if (!e.target.closest('#trackMenu,#trackBtn')) $('#trackMenu').hidden = true; });
+if (video.audioTracks) video.audioTracks.addEventListener('addtrack', () => setTimeout(applyTrackPrefs, 0));
+video.textTracks.addEventListener('addtrack', () => setTimeout(applyTrackPrefs, 0));
 
 /* ---------- Mini lecteur : déplaçable (✥) et redimensionnable (coin haut gauche), retenus d'une fois sur l'autre ---------- */
 function miniApply() {
