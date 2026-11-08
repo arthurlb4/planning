@@ -195,7 +195,7 @@ textarea.field{height:110px;padding:10px 12px;resize:vertical;font-family:ui-mon
     <h2>Ouvrir la chaîne ailleurs <button class="btn icon" data-close aria-label="Fermer"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></h2>
     <p class="hint" style="margin-bottom:12px">Si le flux ne passe pas dans le navigateur, VLC le lit presque toujours.</p>
     <div class="row">
-      <a class="btn primary" id="vlcLink" href="#">Ouvrir dans VLC</a>
+      <button class="btn primary" id="vlcLink">Ouvrir dans VLC</button>
       <button class="btn" id="copyLink">Copier le lien</button>
       <a class="btn" id="rawLink" href="#" target="_blank" rel="noopener noreferrer">Ouvrir le lien</a>
     </div>
@@ -534,9 +534,20 @@ function fail(c) {
     ? 'Ce flux est en <b>http</b>, bloqué sur une page sécurisée (https), et sa version https ne s\'ouvre pas dans ce navigateur (serveur qui refuse les navigateurs, ou pas de https). Sur iPhone et Mac, Safari passe souvent là où Chrome, Edge ou Firefox échouent.'
     : 'Le flux ne répond pas au navigateur : serveur hors ligne, accès refusé aux navigateurs (CORS) ou format non pris en charge.';
   setStatus('msg', `<b style="color:var(--text)">Lecture impossible</b><br><span class="hint">${why}<br>VLC le lira sans ces limites.</span>`,
-    `<button class="btn" onclick="play(S.current)">Réessayer</button><a class="btn primary" href="${esc(vlcUrl(c.url))}">Ouvrir dans VLC</a>`);
+    `<button class="btn" onclick="play(S.current)">Réessayer</button><button class="btn primary" onclick="openVlc(S.current)">Ouvrir dans VLC</button>`);
 }
+/* Ouvrir dans VLC : lien de l'appli sur iPhone / Android ; sur ordinateur (pas de lien vlc://), petit fichier .m3u que VLC ouvre */
+const MOBILE = /iphone|ipad|ipod|android/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 function vlcUrl(u) { return /android/i.test(navigator.userAgent) ? 'vlc://' + u : 'vlc-x-callback://x-callback-url/stream?url=' + encodeURIComponent(u); }
+function openVlc(c) {
+  if (!c) return;
+  if (MOBILE) { location.href = vlcUrl(c.url); return; }
+  const blob = new Blob(['#EXTM3U\n#EXTINF:-1,' + c.name.replace(/[\r\n]+/g, ' ') + '\n' + c.url + '\n'], { type: 'audio/x-mpegurl' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = (c.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9 _.-]+/g, ' ').replace(/\s+/g, ' ').trim() || 'chaine') + '.m3u';
+  document.body.appendChild(a); a.click(); setTimeout(() => a.remove(), 1000); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  toast('Fichier téléchargé : ouvrez-le avec VLC');
+}
 
 function step(d) {
   if (!S.view.length) return;
@@ -560,9 +571,10 @@ if (!document.pictureInPictureEnabled && !video.webkitSupportsPresentationMode) 
 $('#moreBtn').onclick = () => {
   if (!S.current) return;
   const u = S.current.url;
-  $('#vlcLink').href = vlcUrl(u); $('#rawLink').href = u; $('#linkField').value = u;
+  $('#rawLink').href = u; $('#linkField').value = u;
   openModal('moreModal');
 };
+$('#vlcLink').onclick = () => openVlc(S.current);
 $('#copyLink').onclick = async () => {
   try { await navigator.clipboard.writeText($('#linkField').value); toast('Lien copié'); }
   catch (e) { $('#linkField').select(); document.execCommand('copy'); toast('Lien copié'); }
