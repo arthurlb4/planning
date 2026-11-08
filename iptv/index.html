@@ -802,11 +802,12 @@ async function play(c, alts) {
   // Chaque adresse possible (variantes https et .m3u8, voir streamVariants) × chaque façon de lire selon son format
   // HLS : lecteur de Safari d'abord sur iPhone / Mac (il passe sans autorisation du serveur) ; ailleurs hls.js d'abord
   // (plus fiable, et donne codec, débit, images/s), le lecteur du navigateur ensuite
-  const nativeHls = !!video.canPlayType('application/vnd.apple.mpegurl') && /safari/i.test(navigator.userAgent) && !/chrome|chromium|crios|fxios|edg|android|electron/i.test(navigator.userAgent);
+  // Version télé (window.PREFER_NATIVE) : décodeur de la télé d'abord (vraie 4K, HEVC, Dolby), hls.js / mpegts.js en secours
+  const nativeHls = !!video.canPlayType('application/vnd.apple.mpegurl') && (window.PREFER_NATIVE || (/safari/i.test(navigator.userAgent) && !/chrome|chromium|crios|fxios|edg|android|electron/i.test(navigator.userAgent)));
   const chain = [];
   for (const u of streamVariants(c.url)) {
     const k = kindOf(u);
-    (k === 'hls' ? (nativeHls ? ['native', 'hls'] : ['hls', 'native']) : k === 'file' ? ['native'] : ['mpegts', 'hls', 'native'])
+    (k === 'hls' ? (nativeHls ? ['native', 'hls'] : ['hls', 'native']) : k === 'file' ? ['native'] : window.PREFER_NATIVE ? ['native', 'mpegts', 'hls'] : ['mpegts', 'hls', 'native'])
       .forEach(eng => chain.push([eng, u]));
   }
   let i = -1;

@@ -1,0 +1,43 @@
+name: Appli Samsung TV (Lecteur IPTV)
+
+# Prépare le projet Tizen (config.xml, chargeur, icône, copie de la version télé) et le met en téléchargement
+# (Releases du dépôt, version « iptv-tv »). La signature et l'installation se font sur le PC avec l'extension
+# VS Code « Tizen TV » (certificat Samsung personnel).
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tv/**'
+      - 'iptv/**'
+      - 'scripts/build-tv.js'
+      - '.github/workflows/tv.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: iptv-tv
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Version télé et projet Tizen
+        run: |
+          npm install --no-save --no-package-lock esbuild@0.24.0
+          mkdir -p /tmp/LecteurIPTV
+          cp tv/config.xml tv/index.html tv/icon.png /tmp/LecteurIPTV/
+          node scripts/build-tv.js iptv/index.html /tmp/LecteurIPTV/tv.html
+          cd /tmp && zip -qr Lecteur-IPTV-TV.zip LecteurIPTV
+      - name: Mettre en téléchargement
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view iptv-tv >/dev/null 2>&1 || gh release create iptv-tv --title "Lecteur IPTV pour Samsung TV" --notes "Projet Tizen à signer et installer avec VS Code (extension Tizen TV)."
+          gh release upload iptv-tv /tmp/Lecteur-IPTV-TV.zip --clobber
