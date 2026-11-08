@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#161615">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="IPTV">
+<title>Lecteur IPTV</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#161615;--bg0:#191918;--bg2:#222221;--bg3:#2c2b29;--bg4:#343331;--text:#f3f2ef;--text2:#d8d6d2;--text3:#a9a7a1;--blue:#62aadc;--green:#6a9878;--red:#d9715f;--gold:#e2b84f;--border:rgba(255,250,242,.11);--font:-apple-system,BlinkMacSystemFont,'SF Pro Text','Inter','Segoe UI',sans-serif;--row:60px}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font);font-size:15px}
+body{display:flex;flex-direction:column;height:100dvh;overflow:hidden;-webkit-tap-highlight-color:transparent}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer;background:none;border:0}
+.btn{text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:38px;padding:0 14px;border-radius:999px;background:var(--bg3);border:.5px solid var(--border);color:var(--text);white-space:nowrap}
+.btn:hover{background:var(--bg4)}
+.btn.primary{background:var(--blue);color:#0d1b26;border-color:transparent;font-weight:600}
+.btn.danger{color:var(--red)}
+.btn.icon{width:38px;padding:0}
+.btn:disabled{opacity:.4;cursor:default}
+svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+
+/* En-tête */
+header{display:flex;align-items:center;gap:10px;padding:10px 16px;padding-top:max(10px,env(safe-area-inset-top));border-bottom:.5px solid var(--border);background:var(--bg0)}
+header h1{font-size:17px;font-weight:700;letter-spacing:-.01em;display:flex;align-items:center;gap:8px}
+header h1 span{color:var(--blue)}
+#plName{color:var(--text3);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}
+#groupsBtn{display:none}
+
+/* Mise en page : catégories | chaînes | lecteur */
+main{flex:1;display:grid;grid-template-columns:250px 360px 1fr;min-height:0}
+#groups{border-right:.5px solid var(--border);display:flex;flex-direction:column;min-height:0;background:var(--bg0)}
+#groupSearch{margin:10px;height:36px;border-radius:10px;border:.5px solid var(--border);background:var(--bg2);padding:0 12px;outline:none}
+#groupList{overflow:auto;flex:1;padding:0 6px 12px}
+.grp{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:9px 10px;border-radius:10px;color:var(--text2)}
+.grp:hover{background:var(--bg2)}
+.grp.on{background:var(--bg3);color:var(--text);font-weight:600}
+.grp .n{margin-left:auto;color:var(--text3);font-size:12px;font-variant-numeric:tabular-nums}
+.grp .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sep{height:.5px;background:var(--border);margin:6px 10px}
+
+#channels{display:flex;flex-direction:column;min-height:0;border-right:.5px solid var(--border)}
+.searchbar{display:flex;align-items:center;gap:8px;margin:10px;padding:0 12px;height:38px;border-radius:12px;background:var(--bg2);border:.5px solid var(--border);color:var(--text3)}
+.searchbar input{flex:1;background:none;border:0;outline:none;color:var(--text);min-width:0}
+#listInfo{padding:0 16px 6px;color:var(--text3);font-size:12px;display:flex;justify-content:space-between;gap:8px}
+#listInfo b{color:var(--text2);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#list{flex:1;overflow:auto;position:relative;overscroll-behavior:contain}
+#spacer{width:1px}
+#rows{position:absolute;left:0;right:0;top:0}
+.ch{height:var(--row);display:flex;align-items:center;gap:12px;padding:0 10px 0 14px;cursor:pointer;border-bottom:.5px solid rgba(255,250,242,.05)}
+.ch:hover{background:var(--bg2)}
+.ch.on{background:rgba(98,170,220,.14)}
+.ch.on .nm{color:var(--blue)}
+.ch.sel{outline:1.5px solid var(--blue);outline-offset:-2px}
+.num{width:34px;text-align:right;color:var(--text3);font-size:12px;font-variant-numeric:tabular-nums;flex:none}
+.logo{width:44px;height:44px;border-radius:9px;background:var(--bg3);flex:none;position:relative;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--text3);overflow:hidden}
+.logo img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;padding:4px;background:var(--bg3)}
+.meta{min-width:0;flex:1}
+.nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+.sub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text3);font-size:12px;margin-top:2px}
+.star{width:34px;height:34px;display:flex;align-items:center;justify-content:center;color:var(--text3);border-radius:50%;flex:none}
+.star:hover{background:var(--bg3)}
+.star.on{color:var(--gold)}
+.star.on svg{fill:var(--gold)}
+.empty{padding:40px 24px;text-align:center;color:var(--text3);line-height:1.5}
+
+/* Lecteur */
+#player{display:flex;flex-direction:column;min-height:0;min-width:0;background:#000}
+#screen{position:relative;flex:1;min-height:0;display:flex;align-items:center;justify-content:center;background:#000}
+video{width:100%;height:100%;object-fit:contain;background:#000;outline:none}
+#status{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;pointer-events:none;color:var(--text2);line-height:1.45}
+#status.hide{display:none}
+#status .msg{max-width:440px}
+#status .actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;pointer-events:auto}
+.spin{width:34px;height:34px;border-radius:50%;border:3px solid rgba(255,255,255,.15);border-top-color:var(--blue);animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+#now{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bg0);border-top:.5px solid var(--border)}
+#now .meta .nm{font-size:16px;font-weight:600}
+#now .tools{display:flex;gap:6px;flex:none}
+
+/* Fenêtres */
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:50;padding:16px}
+.modal.open{display:flex}
+.sheet{background:var(--bg2);border:.5px solid var(--border);border-radius:20px;width:100%;max-width:520px;max-height:calc(100dvh - 32px);overflow:auto;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,.4)}
+.sheet h2{font-size:18px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between}
+.sheet h3{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin:18px 0 8px}
+.field{width:100%;height:40px;border-radius:10px;border:.5px solid var(--border);background:var(--bg);padding:0 12px;outline:none;margin-bottom:8px}
+textarea.field{height:110px;padding:10px 12px;resize:vertical;font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.field:focus{border-color:var(--blue)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.pl{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:12px;background:var(--bg);margin-bottom:6px;border:.5px solid var(--border)}
+.pl.on{border-color:var(--blue)}
+.pl .meta{cursor:pointer}
+.hint{color:var(--text3);font-size:13px;line-height:1.45}
+.hint a{color:var(--blue)}
+.err{color:var(--red);font-size:13px;margin-top:6px;line-height:1.4}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--bg4);padding:10px 16px;border-radius:999px;opacity:0;transition:.2s;pointer-events:none;z-index:60;font-size:14px}
+#toast.show{opacity:1;transform:translateX(-50%)}
+#overlay{display:none}
+
+/* Tablette : catégories en tiroir */
+@media (max-width:1100px){
+  main{grid-template-columns:340px 1fr}
+  #groupsBtn{display:inline-flex}
+  #groups{position:fixed;top:0;bottom:0;left:0;width:min(300px,85vw);z-index:40;transform:translateX(-100%);transition:transform .22s ease;padding-top:env(safe-area-inset-top);border-right:.5px solid var(--border)}
+  body.drawer #groups{transform:none}
+  body.drawer #overlay{display:block;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:39}
+}
+/* Téléphone : lecteur en haut, liste dessous */
+@media (max-width:760px){
+  main{display:flex;flex-direction:column}
+  #player{order:-1;flex:none;display:none}
+  body.playing #player{display:flex}
+  #screen{flex:none;aspect-ratio:16/9;width:100%}
+  #channels{flex:1;border-right:0}
+  #now{padding:8px 12px}
+  #now .meta .nm{font-size:15px}
+  #pipBtn{display:none}
+  .sheet{border-radius:20px 20px 0 0;align-self:flex-end;max-height:90dvh;padding-bottom:max(20px,env(safe-area-inset-bottom))}
+  .modal{padding:0}
+}
+</style>
+</head>
+<body>
+<header>
+  <button class="btn icon" id="groupsBtn" title="Catégories" aria-label="Catégories"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></button>
+  <h1><svg viewBox="0 0 24 24" style="color:var(--blue)"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M8 2l4 4 4-4"/></svg>Lecteur <span>IPTV</span></h1>
+  <div id="plName"></div>
+  <button class="btn" id="managePl" title="Listes de lecture"><svg viewBox="0 0 24 24"><path d="M3 6h12M3 12h12M3 18h8M17 15v6M14 18h6"/></svg><span class="lbl">Listes</span></button>
+</header>
+
+<main>
+  <aside id="groups">
+    <input id="groupSearch" placeholder="Filtrer les catégories" autocomplete="off">
+    <div id="groupList"></div>
+  </aside>
+
+  <section id="channels">
+    <label class="searchbar"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input id="search" type="search" placeholder="Rechercher une chaîne" autocomplete="off" spellcheck="false"></label>
+    <div id="listInfo"><b id="curGroup">Toutes les chaînes</b><span id="count"></span></div>
+    <div id="list"><div id="spacer"></div><div id="rows"></div></div>
+  </section>
+
+  <section id="player">
+    <div id="screen">
+      <video id="video" controls playsinline autoplay></video>
+      <div id="status"><div class="msg hint">Choisissez une chaîne dans la liste.</div></div>
+    </div>
+    <div id="now">
+      <div class="logo" id="nowLogo"></div>
+      <div class="meta"><div class="nm" id="nowName">—</div><div class="sub" id="nowSub"></div></div>
+      <div class="tools">
+        <button class="btn icon" id="prevBtn" title="Chaîne précédente (↑)"><svg viewBox="0 0 24 24"><path d="M18 15l-6-6-6 6"/></svg></button>
+        <button class="btn icon" id="nextBtn" title="Chaîne suivante (↓)"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+        <button class="btn icon star" id="nowFav" title="Favori"><svg viewBox="0 0 24 24"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z"/></svg></button>
+        <button class="btn icon" id="pipBtn" title="Image dans l'image"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="11" width="7" height="6" rx="1"/></svg></button>
+        <button class="btn icon" id="moreBtn" title="Ouvrir ailleurs"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></button>
+      </div>
+    </div>
+  </section>
+</main>
+<div id="overlay"></div>
+
+<!-- Listes de lecture -->
+<div class="modal" id="plModal">
+  <div class="sheet">
+    <h2>Listes de lecture <button class="btn icon" data-close aria-label="Fermer"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></h2>
+    <div id="plList"></div>
+    <h3>Ajouter une liste</h3>
+    <input class="field" id="addName" placeholder="Nom (facultatif)">
+    <input class="field" id="addUrl" type="url" placeholder="Adresse de la liste (http…/playlist.m3u)" autocomplete="off" spellcheck="false">
+    <div class="row">
+      <button class="btn primary" id="addUrlBtn">Charger l'adresse</button>
+      <label class="btn"><input type="file" id="addFile" accept=".m3u,.m3u8,audio/x-mpegurl,application/x-mpegurl,application/vnd.apple.mpegurl,text/plain" hidden>Importer un fichier…</label>
+    </div>
+    <details style="margin-top:12px">
+      <summary class="hint" style="cursor:pointer">Ou coller le contenu du fichier</summary>
+      <textarea class="field" id="addText" placeholder="#EXTM3U&#10;#EXTINF:-1 tvg-logo=&quot;…&quot; group-title=&quot;Infos&quot;,Ma chaîne&#10;http://…/stream.m3u8" style="margin-top:8px"></textarea>
+      <button class="btn" id="addTextBtn">Ajouter le texte</button>
+    </details>
+    <div class="err" id="addErr"></div>
+    <p class="hint" style="margin-top:16px">Pour essayer : <a href="#" id="demoBtn">chaînes françaises gratuites (iptv-org)</a>. Les listes restent dans ce navigateur, rien n'est envoyé ailleurs.</p>
+  </div>
+</div>
+
+<!-- Ouvrir ailleurs -->
+<div class="modal" id="moreModal">
+  <div class="sheet">
+    <h2>Ouvrir la chaîne ailleurs <button class="btn icon" data-close aria-label="Fermer"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></h2>
+    <p class="hint" style="margin-bottom:12px">Si le flux ne passe pas dans le navigateur, VLC le lit presque toujours.</p>
+    <div class="row">
+      <a class="btn primary" id="vlcLink" href="#">Ouvrir dans VLC</a>
+      <button class="btn" id="copyLink">Copier le lien</button>
+      <a class="btn" id="rawLink" href="#" target="_blank" rel="noopener noreferrer">Ouvrir le lien</a>
+    </div>
+    <input class="field" id="linkField" readonly style="margin-top:12px;font-family:ui-monospace,Menlo,monospace;font-size:12px">
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const LS = {
+  get(k, d) { try { const v = localStorage.getItem('iptv.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('iptv.' + k, JSON.stringify(v)); } catch (e) {} }
+};
+function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('show'), 2200); }
+
+/* ---------- Lecture du fichier M3U ---------- */
+function parseAttrs(s) {
+  const a = {}, re = /([A-Za-z0-9_:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s,]+))/g; let m;
+  while ((m = re.exec(s))) a[m[1].toLowerCase()] = (m[2] ?? m[3] ?? m[4] ?? '').trim();
+  return a;
+}
+function parseExtinf(line) {
+  const s = line.slice(line.indexOf(':') + 1);
+  let q = null, cut = -1;
+  for (let i = 0; i < s.length; i++) {               // la virgule qui sépare les attributs du nom (hors guillemets)
+    const c = s[i];
+    if (q) { if (c === q) q = null; }
+    else if (c === '"' || c === "'") q = c;
+    else if (c === ',') { cut = i; break; }
+  }
+  const meta = cut < 0 ? s : s.slice(0, cut), title = cut < 0 ? '' : s.slice(cut + 1).trim();
+  const a = parseAttrs(meta);
+  return { name: title || a['tvg-name'] || '', logo: a['tvg-logo'] || a['logo'] || '', group: a['group-title'] || '', id: a['tvg-id'] || '', chno: a['tvg-chno'] || a['channel-number'] || '' };
+}
+function parseM3U(text) {
+  const lines = String(text).replace(/^﻿/, '').split(/\r?\n/);
+  const out = []; let cur = null, extgrp = '', epg = '';
+  for (let raw of lines) {
+    const l = raw.trim(); if (!l) continue;
+    if (/^#EXTM3U/i.test(l)) { const a = parseAttrs(l); epg = a['url-tvg'] || a['x-tvg-url'] || epg; }
+    else if (/^#EXTINF/i.test(l)) cur = parseExtinf(l);
+    else if (/^#EXTGRP:/i.test(l)) { extgrp = l.slice(8).trim(); }
+    else if (l[0] === '#') continue;
+    else {
+      const ch = cur || { name: '', logo: '', group: '', id: '', chno: '' };
+      ch.url = l;
+      if (!ch.group) ch.group = extgrp || 'Sans catégorie';
+      if (!ch.name) ch.name = decodeURIComponent((l.split(/[?#]/)[0].split('/').pop() || l)).replace(/\.(m3u8?|ts|mp4)$/i, '') || l;
+      out.push(ch); cur = null; extgrp = '';
+    }
+  }
+  out.forEach((c, i) => { c.n = i + 1; c.key = norm(c.name + ' ' + c.group); });
+  return { channels: out, epg };
+}
+
+/* ---------- Stockage des listes (IndexedDB : elles peuvent peser plusieurs Mo) ---------- */
+const DB = {
+  db: null,
+  open() {
+    return new Promise(res => {
+      try {
+        const r = indexedDB.open('iptv', 1);
+        r.onupgradeneeded = () => r.result.createObjectStore('playlists', { keyPath: 'id' });
+        r.onsuccess = () => { this.db = r.result; res(); };
+        r.onerror = () => res();
+      } catch (e) { res(); }
+    });
+  },
+  tx(mode, fn) {
+    return new Promise((res, rej) => {
+      if (!this.db) return res(mode === 'readonly' ? [] : null);
+      const t = this.db.transaction('playlists', mode), st = t.objectStore('playlists'), r = fn(st);
+      t.oncomplete = () => res(r && r.result); t.onerror = () => rej(t.error);
+    });
+  },
+  all() { return this.tx('readonly', s => s.getAll()).then(r => r || []); },
+  put(p) { return this.tx('readwrite', s => s.put(p)); },
+  del(id) { return this.tx('readwrite', s => s.delete(id)); }
+};
+
+/* ---------- État ---------- */
+const S = {
+  playlists: [], pl: null, channels: [], groups: [],
+  group: LS.get('group', '*'), query: '', view: [], current: null, sel: -1,
+  fav: new Set(), recent: []
+};
+const favKey = () => 'fav.' + (S.pl ? S.pl.id : '');
+const recKey = () => 'recent.' + (S.pl ? S.pl.id : '');
+
+async function loadPlaylists() {
+  S.playlists = (await DB.all()).sort((a, b) => a.added - b.added);
+  renderPlaylists();
+  const last = LS.get('pl'), pick = S.playlists.find(p => p.id === last) || S.playlists[0];
+  if (pick) usePlaylist(pick.id); else { renderEmpty(); openModal('plModal'); }
+}
+function usePlaylist(id) {
+  const p = S.playlists.find(x => x.id === id); if (!p) return;
+  S.pl = p; LS.set('pl', id);
+  const r = parseM3U(p.text);
+  S.channels = r.channels;
+  S.fav = new Set(LS.get(favKey(), []));
+  S.recent = LS.get(recKey(), []);
+  const g = new Map();
+  for (const c of S.channels) g.set(c.group, (g.get(c.group) || 0) + 1);
+  S.groups = [...g.entries()];
+  if (S.group !== '*' && S.group !== '★' && S.group !== '⏱' && !g.has(S.group)) S.group = '*';
+  $('#plName').textContent = p.name + ' · ' + S.channels.length.toLocaleString('fr-FR') + ' chaînes';
+  renderGroups(); applyFilter(true); renderPlaylists();
+  const lastUrl = LS.get('last.' + p.id);
+  const lastCh = lastUrl && S.channels.find(c => c.url === lastUrl);
+  if (lastCh && !S.current) showNow(lastCh, true);
+}
+
+/* ---------- Catégories ---------- */
+function renderGroups() {
+  const f = norm($('#groupSearch').value);
+  const item = (id, label, n, icon) => `<button class="grp${S.group === id ? ' on' : ''}" data-g="${esc(id)}">${icon || ''}<span class="t">${esc(label)}</span><span class="n">${n.toLocaleString('fr-FR')}</span></button>`;
+  let h = '';
+  if (!f) {
+    h += item('*', 'Toutes les chaînes', S.channels.length);
+    h += item('★', 'Favoris', S.fav.size, '<svg viewBox="0 0 24 24" style="color:var(--gold)"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z"/></svg>');
+    h += item('⏱', 'Récentes', S.recent.length, '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>');
+    h += '<div class="sep"></div>';
+  }
+  h += S.groups.filter(([g]) => !f || norm(g).includes(f)).map(([g, n]) => item(g, g, n)).join('');
+  $('#groupList').innerHTML = h || '<div class="empty">Aucune catégorie</div>';
+}
+function groupLabel(g) { return g === '*' ? 'Toutes les chaînes' : g === '★' ? 'Favoris' : g === '⏱' ? 'Récentes' : g; }
+$('#groupList').addEventListener('click', e => {
+  const b = e.target.closest('.grp'); if (!b) return;
+  S.group = b.dataset.g; LS.set('group', S.group);
+  renderGroups(); applyFilter(true); document.body.classList.remove('drawer');
+});
+$('#groupSearch').addEventListener('input', renderGroups);
+$('#groupsBtn').onclick = () => document.body.classList.toggle('drawer');
+$('#overlay').onclick = () => document.body.classList.remove('drawer');
+
+/* ---------- Liste des chaînes (n'affiche que les lignes visibles : tient des dizaines de milliers d'entrées) ---------- */
+function applyFilter(resetScroll) {
+  let base;
+  if (S.group === '★') base = S.channels.filter(c => S.fav.has(c.url));
+  else if (S.group === '⏱') { const by = new Map(S.channels.map(c => [c.url, c])); base = S.recent.map(u => by.get(u)).filter(Boolean); }
+  else if (S.group === '*') base = S.channels;
+  else base = S.channels.filter(c => c.group === S.group);
+  const q = norm(S.query).trim();
+  if (q) { const words = q.split(/\s+/); base = base.filter(c => words.every(w => c.key.includes(w))); }
+  S.view = base; S.sel = S.current ? base.indexOf(S.current) : -1;
+  $('#curGroup').textContent = groupLabel(S.group) + (q ? ' · « ' + S.query.trim() + ' »' : '');
+  $('#count').textContent = base.length.toLocaleString('fr-FR') + (base.length > 1 ? ' chaînes' : ' chaîne');
+  $('#spacer').style.height = base.length * ROW + 'px';
+  if (resetScroll) $('#list').scrollTop = 0;
+  lastStart = -1; renderRows();
+}
+let ROW = 60, lastStart = -1;
+function renderRows(force) {
+  const list = $('#list'), rows = $('#rows');
+  if (!S.view.length) {
+    rows.style.transform = ''; lastStart = -1;
+    rows.innerHTML = !S.pl ? '' : `<div class="empty">${S.group === '★' ? 'Aucun favori pour l\'instant.<br>Touchez l\'étoile d\'une chaîne pour l\'ajouter.' : S.group === '⏱' ? 'Les chaînes regardées apparaîtront ici.' : 'Aucune chaîne ne correspond.'}</div>`;
+    return;
+  }
+  const start = Math.max(0, Math.floor(list.scrollTop / ROW) - 6);
+  const end = Math.min(S.view.length, start + Math.ceil(list.clientHeight / ROW) + 12);
+  if (start === lastStart && !force && rows.childElementCount === end - start) return;
+  lastStart = start;
+  let h = '';
+  for (let i = start; i < end; i++) {
+    const c = S.view[i], fav = S.fav.has(c.url);
+    h += `<div class="ch${c === S.current ? ' on' : ''}${i === S.sel ? ' sel' : ''}" data-i="${i}">
+      <span class="num">${esc(c.chno || c.n)}</span>${logoHtml(c)}
+      <div class="meta"><div class="nm">${esc(c.name)}</div><div class="sub">${esc(c.group)}</div></div>
+      <button class="star${fav ? ' on' : ''}" data-fav="${i}" aria-label="Favori"><svg viewBox="0 0 24 24"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z"/></svg></button></div>`;
+  }
+  rows.style.transform = `translateY(${start * ROW}px)`;
+  rows.innerHTML = h;
+}
+function initials(n) { return esc(String(n).replace(/[^\p{L}\p{N} ]/gu, '').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '·'); }
+function logoHtml(c) { return `<div class="logo">${initials(c.name)}${c.logo ? `<img src="${esc(c.logo)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}</div>`; }
+$('#list').addEventListener('scroll', () => requestAnimationFrame(() => renderRows()), { passive: true });
+window.addEventListener('resize', () => renderRows(true));
+$('#rows').addEventListener('click', e => {
+  const f = e.target.closest('[data-fav]');
+  if (f) { e.stopPropagation(); toggleFav(S.view[+f.dataset.fav]); return; }
+  const r = e.target.closest('.ch'); if (r) play(S.view[+r.dataset.i]);
+});
+let qT;
+$('#search').addEventListener('input', e => { clearTimeout(qT); qT = setTimeout(() => { S.query = e.target.value; applyFilter(true); }, 120); });
+
+function toggleFav(c) {
+  if (!c) return;
+  S.fav.has(c.url) ? S.fav.delete(c.url) : S.fav.add(c.url);
+  LS.set(favKey(), [...S.fav]);
+  if (S.group === '★') applyFilter(false); else renderRows(true);
+  renderGroups(); updateNowFav();
+}
+function renderEmpty() {
+  $('#rows').innerHTML = '<div class="empty">Aucune liste de lecture.<br><br><button class="btn primary" onclick="openModal(\'plModal\')">Ajouter une liste M3U</button></div>';
+  $('#count').textContent = ''; $('#plName').textContent = '';
+}
+
+/* ---------- Lecteur : HLS (hls.js / natif sur Safari), MPEG-TS (mpegts.js), fichiers (natif) ---------- */
+const video = $('#video');
+const LIBS = {
+  hls: 'https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js',
+  mpegts: 'https://cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.min.js'
+};
+const loaded = {};
+function loadLib(k) {
+  return loaded[k] || (loaded[k] = new Promise((res, rej) => {
+    const s = document.createElement('script'); s.src = LIBS[k]; s.onload = res;
+    s.onerror = () => { delete loaded[k]; rej(new Error('lib')); }; document.head.appendChild(s);
+  }));
+}
+let hls = null, mts = null, token = 0, attempt = null;
+function stopEngines() {
+  attempt = null;
+  if (hls) { try { hls.destroy(); } catch (e) {} hls = null; }
+  if (mts) { try { mts.pause(); mts.unload(); mts.detachMediaElement(); mts.destroy(); } catch (e) {} mts = null; }
+  video.removeAttribute('src'); try { video.load(); } catch (e) {}
+}
+function kindOf(url) {
+  const p = url.split(/[?#]/)[0].toLowerCase();
+  if (/\.m3u8$/.test(p) || /[?&](type|output)=(m3u8|hls)/i.test(url)) return 'hls';
+  if (/\.(mp4|m4v|webm|mkv|mov|mp3|aac|ogg|m4a)$/.test(p)) return 'file';
+  return 'ts';                                          // .ts ou adresse sans extension (Xtream) : flux MPEG-TS
+}
+function setStatus(kind, msg, actions) {
+  const el = $('#status');
+  if (!kind) { el.className = 'hide'; return; }
+  el.className = '';
+  el.innerHTML = (kind === 'load' ? '<div class="spin"></div>' : '') + (msg ? `<div class="msg">${msg}</div>` : '') + (actions ? `<div class="actions">${actions}</div>` : '');
+}
+function showNow(c, idle) {
+  S.current = c;
+  $('#nowName').textContent = c.name; $('#nowSub').textContent = c.group + ' · n° ' + (c.chno || c.n);
+  $('#nowLogo').outerHTML = logoHtml(c).replace('class="logo"', 'class="logo" id="nowLogo"');
+  updateNowFav();
+  if (idle) setStatus('msg', '<span class="hint">Dernière chaîne regardée</span>', '<button class="btn primary" onclick="play(S.current)">▶ Reprendre</button>');
+}
+function updateNowFav() { const on = S.current && S.fav.has(S.current.url); $('#nowFav').classList.toggle('on', !!on); }
+
+async function play(c) {
+  if (!c) return;
+  const t = ++token;
+  stopEngines(); showNow(c);
+  document.body.classList.add('playing');
+  S.sel = S.view.indexOf(c); renderRows(true); scrollToSel();
+  S.recent = [c.url, ...S.recent.filter(u => u !== c.url)].slice(0, 40);
+  LS.set(recKey(), S.recent); LS.set('last.' + S.pl.id, c.url);
+  if (S.group === '⏱') applyFilter(false);
+  renderGroups();
+  document.title = c.name + ' · IPTV';
+  setStatus('load');
+
+  const url = c.url, k = kindOf(url);
+  const nativeHls = !!video.canPlayType('application/vnd.apple.mpegurl');
+  const chain = k === 'hls' ? (nativeHls ? ['native', 'hls'] : ['hls', 'native'])
+              : k === 'file' ? ['native']
+              : ['mpegts', 'hls', 'native'];
+  let i = -1;
+  const next = async () => {
+    if (t !== token) return;
+    stopEngines();
+    if (++i >= chain.length) return fail(c);
+    const eng = chain[i];
+    let done = false, timer;
+    const ok = () => { if (done || t !== token) return; done = true; clearTimeout(timer); setStatus(null); };
+    const ko = () => { if (done || t !== token) return; done = true; clearTimeout(timer); next(); };
+    attempt = { ok, ko };
+    timer = setTimeout(ko, 20000);                      // rien reçu en 20 s : on essaie autrement
+    try {
+      if (eng === 'native') {
+        video.src = url;
+      } else if (eng === 'hls') {
+        await loadLib('hls'); if (t !== token || done) return;
+        if (!window.Hls || !Hls.isSupported()) return ko();
+        let recovered = false;
+        hls = new Hls({ enableWorker: true, backBufferLength: 30, manifestLoadingMaxRetry: 1 });
+        hls.on(Hls.Events.ERROR, (ev, d) => {
+          if (!d.fatal) return;
+          if (d.type === Hls.ErrorTypes.MEDIA_ERROR && !recovered) { recovered = true; hls.recoverMediaError(); }
+          else ko();
+        });
+        hls.loadSource(url); hls.attachMedia(video);
+      } else if (eng === 'mpegts') {
+        await loadLib('mpegts'); if (t !== token || done) return;
+        if (!window.mpegts || !mpegts.getFeatureList().mseLivePlayback) return ko();
+        mts = mpegts.createPlayer({ type: 'mpegts', isLive: true, url }, { enableWorker: true, liveBufferLatencyChasing: true, lazyLoad: false });
+        mts.on(mpegts.Events.ERROR, ko);
+        mts.attachMediaElement(video); mts.load();
+      }
+      const p = video.play();
+      if (p && p.catch) p.catch(e => {
+        if (t !== token) return;
+        if (e && e.name === 'NotAllowedError') setStatus('msg', '', '<button class="btn primary" onclick="video.play();setStatus(null)">▶ Lire</button>');
+      });
+    } catch (e) { ko(); }
+  };
+  next();
+}
+video.addEventListener('playing', () => attempt && attempt.ok());
+video.addEventListener('loadeddata', () => attempt && attempt.ok());
+video.addEventListener('error', () => { if (video.getAttribute('src') && attempt) attempt.ko(); });
+
+function fail(c) {
+  const mixed = location.protocol === 'https:' && /^http:/i.test(c.url);
+  const why = mixed
+    ? 'Ce flux est en <b>http</b> : le navigateur le bloque sur une page sécurisée (https).'
+    : 'Le flux ne répond pas au navigateur : serveur hors ligne, accès refusé aux navigateurs (CORS) ou format non pris en charge.';
+  setStatus('msg', `<b style="color:var(--text)">Lecture impossible</b><br><span class="hint">${why}<br>VLC le lira sans ces limites.</span>`,
+    `<button class="btn" onclick="play(S.current)">Réessayer</button><a class="btn primary" href="${esc(vlcUrl(c.url))}">Ouvrir dans VLC</a>`);
+}
+function vlcUrl(u) { return /android/i.test(navigator.userAgent) ? 'vlc://' + u : 'vlc-x-callback://x-callback-url/stream?url=' + encodeURIComponent(u); }
+
+function step(d) {
+  if (!S.view.length) return;
+  let i = S.current ? S.view.indexOf(S.current) : -1;
+  i = i < 0 ? 0 : (i + d + S.view.length) % S.view.length;
+  play(S.view[i]);
+}
+function scrollToSel() {
+  if (S.sel < 0) return;
+  const l = $('#list'), top = S.sel * ROW;
+  if (top < l.scrollTop || top + ROW > l.scrollTop + l.clientHeight) l.scrollTop = top - l.clientHeight / 2 + ROW / 2;
+}
+$('#prevBtn').onclick = () => step(-1);
+$('#nextBtn').onclick = () => step(1);
+$('#nowFav').onclick = () => toggleFav(S.current);
+$('#pipBtn').onclick = async () => {
+  try { if (document.pictureInPictureElement) await document.exitPictureInPicture(); else await video.requestPictureInPicture(); }
+  catch (e) { toast('Image dans l\'image indisponible'); }
+};
+if (!document.pictureInPictureEnabled && !video.webkitSupportsPresentationMode) $('#pipBtn').style.display = 'none';
+$('#moreBtn').onclick = () => {
+  if (!S.current) return;
+  const u = S.current.url;
+  $('#vlcLink').href = vlcUrl(u); $('#rawLink').href = u; $('#linkField').value = u;
+  openModal('moreModal');
+};
+$('#copyLink').onclick = async () => {
+  try { await navigator.clipboard.writeText($('#linkField').value); toast('Lien copié'); }
+  catch (e) { $('#linkField').select(); document.execCommand('copy'); toast('Lien copié'); }
+};
+
+/* Clavier : ↑/↓ chaînes, Entrée lire, / chercher, F plein écran, chiffres = numéro de chaîne */
+let digits = '', dT;
+document.addEventListener('keydown', e => {
+  if (e.target.matches('input,textarea') || document.querySelector('.modal.open')) {
+    if (e.key === 'Escape') { closeModals(); e.target.blur && e.target.blur(); }
+    else if (e.target.id === 'search' && e.key === 'ArrowDown') { e.preventDefault(); e.target.blur(); moveSel(1); }
+    return;
+  }
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); moveSel(e.key === 'ArrowDown' ? 1 : -1); }
+  else if (e.key === 'Enter' && S.sel >= 0) { e.preventDefault(); play(S.view[S.sel]); }
+  else if (e.key === 'PageDown' || e.key === 'PageUp') { e.preventDefault(); step(e.key === 'PageDown' ? 1 : -1); }
+  else if (e.key === '/') { e.preventDefault(); $('#search').focus(); }
+  else if (e.key === 'f' || e.key === 'F') { document.fullscreenElement ? document.exitFullscreen() : (video.requestFullscreen ? video.requestFullscreen() : video.webkitEnterFullscreen && video.webkitEnterFullscreen()); }
+  else if (e.key === 'm' || e.key === 'M') video.muted = !video.muted;
+  else if (e.key === ' ' && S.current) { e.preventDefault(); video.paused ? video.play() : video.pause(); }
+  else if (/^\d$/.test(e.key)) {
+    digits += e.key; toast('Chaîne ' + digits); clearTimeout(dT);
+    dT = setTimeout(() => {
+      const n = digits; digits = '';
+      const c = S.channels.find(x => String(x.chno) === n) || S.channels[+n - 1];
+      c ? play(c) : toast('Pas de chaîne n° ' + n);
+    }, 1100);
+  }
+});
+function moveSel(d) {
+  if (!S.view.length) return;
+  S.sel = Math.max(0, Math.min(S.view.length - 1, (S.sel < 0 ? (S.current ? S.view.indexOf(S.current) : -1) : S.sel) + d));
+  scrollToSel(); renderRows(true);
+}
+
+/* ---------- Gestion des listes ---------- */
+function openModal(id) { $('#' + id).classList.add('open'); }
+function closeModals() { document.querySelectorAll('.modal.open').forEach(m => m.classList.remove('open')); }
+document.querySelectorAll('.modal').forEach(m => m.addEventListener('click', e => { if (e.target === m || e.target.closest('[data-close]')) closeModals(); }));
+$('#managePl').onclick = () => { $('#addErr').textContent = ''; openModal('plModal'); };
+
+function renderPlaylists() {
+  $('#plList').innerHTML = S.playlists.length ? S.playlists.map(p => `
+    <div class="pl${S.pl && S.pl.id === p.id ? ' on' : ''}">
+      <div class="meta" data-use="${p.id}"><div class="nm">${esc(p.name)}</div>
+        <div class="sub">${p.count.toLocaleString('fr-FR')} chaînes · ${p.url ? 'adresse' : 'fichier'} · ${new Date(p.updated || p.added).toLocaleDateString('fr-FR')}</div></div>
+      ${p.url ? `<button class="btn icon" data-refresh="${p.id}" title="Recharger depuis l'adresse"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg></button>` : ''}
+      <button class="btn icon danger" data-del="${p.id}" title="Supprimer"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>
+    </div>`).join('') : '<p class="hint">Aucune liste enregistrée.</p>';
+}
+$('#plList').addEventListener('click', async e => {
+  const u = e.target.closest('[data-use]'), d = e.target.closest('[data-del]'), r = e.target.closest('[data-refresh]');
+  if (u) { if (!S.pl || S.pl.id !== u.dataset.use) { stopAll(); usePlaylist(u.dataset.use); } closeModals(); }
+  else if (d) {
+    const p = S.playlists.find(x => x.id === d.dataset.del);
+    if (!confirm('Supprimer « ' + p.name + ' » ?')) return;
+    await DB.del(p.id); S.playlists = S.playlists.filter(x => x !== p);
+    if (S.pl === p) { stopAll(); S.pl = null; S.channels = []; S.view = []; S.groups = []; renderGroups(); if (S.playlists[0]) usePlaylist(S.playlists[0].id); else renderEmpty(); }
+    renderPlaylists();
+  } else if (r) {
+    const p = S.playlists.find(x => x.id === r.dataset.refresh);
+    r.disabled = true;
+    try { const text = await fetchText(p.url); await savePlaylist({ ...p, text }); toast('Liste mise à jour'); }
+    catch (err) { toast(err.message); r.disabled = false; }
+  }
+});
+function stopAll() { token++; stopEngines(); S.current = null; document.body.classList.remove('playing'); setStatus('msg', '<span class="hint">Choisissez une chaîne dans la liste.</span>'); $('#nowName').textContent = '—'; $('#nowSub').textContent = ''; document.title = 'Lecteur IPTV'; }
+
+async function fetchText(url) {
+  let res;
+  try { res = await fetch(url, { cache: 'no-store' }); }
+  catch (e) {
+    throw new Error(location.protocol === 'https:' && /^http:/i.test(url)
+      ? 'Adresse en http bloquée par le navigateur. Téléchargez le fichier puis importez-le.'
+      : 'Le serveur refuse la lecture depuis un navigateur (CORS). Téléchargez le fichier puis importez-le.');
+  }
+  if (!res.ok) throw new Error('Le serveur répond ' + res.status + '. Vérifiez l\'adresse ou vos identifiants.');
+  return res.text();
+}
+async function savePlaylist(p) {
+  const { channels } = parseM3U(p.text);
+  if (!channels.length) throw new Error('Aucune chaîne trouvée : ce n\'est pas une liste M3U valide.');
+  p.count = channels.length; p.updated = Date.now();
+  await DB.put(p);
+  const i = S.playlists.findIndex(x => x.id === p.id);
+  if (i >= 0) S.playlists[i] = p; else S.playlists.push(p);
+  usePlaylist(p.id);
+  return p;
+}
+function guessName(url) { try { const u = new URL(url); return u.hostname.replace(/^www\./, ''); } catch (e) { return 'Ma liste'; } }
+async function addPlaylist(text, url, name) {
+  const err = $('#addErr'); err.textContent = '';
+  try {
+    stopAll();
+    await savePlaylist({ id: 'p' + Date.now().toString(36), name: name || $('#addName').value.trim() || (url ? guessName(url) : 'Ma liste'), url: url || '', text, added: Date.now() });
+    $('#addName').value = $('#addUrl').value = $('#addText').value = '';
+    closeModals(); toast('Liste ajoutée');
+  } catch (e) { err.textContent = e.message; }
+}
+$('#addUrlBtn').onclick = async () => {
+  const url = $('#addUrl').value.trim(), b = $('#addUrlBtn');
+  if (!/^https?:\/\//i.test(url)) { $('#addErr').textContent = 'Entrez une adresse commençant par http:// ou https://'; return; }
+  b.disabled = true; b.textContent = 'Chargement…';
+  try { await addPlaylist(await fetchText(url), url); }
+  catch (e) { $('#addErr').textContent = e.message; }
+  b.disabled = false; b.textContent = 'Charger l\'adresse';
+};
+$('#addFile').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  await addPlaylist(await f.text(), '', $('#addName').value.trim() || f.name.replace(/\.m3u8?$/i, ''));
+  e.target.value = '';
+};
+$('#addTextBtn').onclick = () => { const t = $('#addText').value; if (t.trim()) addPlaylist(t, ''); };
+$('#demoBtn').onclick = async e => {
+  e.preventDefault();
+  const url = 'https://iptv-org.github.io/iptv/countries/fr.m3u';
+  try { await addPlaylist(await fetchText(url), url, 'France (iptv-org)'); } catch (er) { $('#addErr').textContent = er.message; }
+};
+/* Glisser un fichier .m3u sur la page */
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', async e => {
+  e.preventDefault(); const f = e.dataTransfer.files[0]; if (!f) return;
+  await addPlaylist(await f.text(), '', f.name.replace(/\.m3u8?$/i, ''));
+});
+
+/* Démarrage */
+ROW = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--row')) || 60;
+DB.open().then(loadPlaylists);
+</script>
+</body>
+</html>
