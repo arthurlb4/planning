@@ -1,0 +1,50 @@
+name: Appli Windows (Lecteur IPTV)
+
+# Fabrique Lecteur-IPTV.exe sur un serveur Windows et le met en téléchargement
+# (onglet Releases du dépôt, version « iptv-desktop », toujours remplacée par la dernière).
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'desktop/**'
+      - 'iptv/**'
+      - '.github/workflows/desktop.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: iptv-desktop
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Copie de secours de la page (si le site est injoignable)
+        run: copy iptv\index.html desktop\index.html
+        shell: cmd
+
+      - name: Fabriquer l'exe
+        working-directory: desktop
+        run: |
+          npm install --no-audit --no-fund
+          npx electron-builder --win --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Mettre en téléchargement
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view iptv-desktop >/dev/null 2>&1 || gh release create iptv-desktop --title "Lecteur IPTV pour Windows" --notes "Télécharger Lecteur-IPTV.exe ci-dessous, puis l'ouvrir (pas d'installation)."
+          gh release upload iptv-desktop desktop/dist/Lecteur-IPTV.exe --clobber
