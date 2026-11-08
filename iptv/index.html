@@ -10,6 +10,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="IPTV">
 <title>Lecteur IPTV</title>
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
+<link rel="apple-touch-icon" href="icon-180.png">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--bg:#161615;--bg0:#191918;--bg2:#222221;--bg3:#2c2b29;--bg4:#343331;--text:#f3f2ef;--text2:#d8d6d2;--text3:#a9a7a1;--blue:#62aadc;--green:#6a9878;--red:#d9715f;--gold:#e2b84f;--border:rgba(255,250,242,.11);--font:-apple-system,BlinkMacSystemFont,'SF Pro Text','Inter','Segoe UI',sans-serif;--row:60px}
@@ -104,8 +107,37 @@ textarea.field{height:110px;padding:10px 12px;resize:vertical;font-family:ui-mon
 #overlay{display:none}
 
 /* Accueil : un grand carré par marque (Canal+, beIN…), ses chaînes dessous avec le programme en cours ; Agenda sport */
-#home,#agenda{grid-column:2 / -1;overflow:auto;padding:6px 24px 40px;display:none;min-height:0}
-body.homeview:not(.agenda) #home,body.homeview.agenda #agenda{display:block}
+#home,#agenda,#vod{grid-column:2 / -1;overflow:auto;padding:6px 24px 40px;display:none;min-height:0}
+body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.homeview.vod #vod{display:block}
+/* VOD façon Netflix : rangées d'affiches */
+.vtop{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:14px 0 4px}
+.vtop .searchbar{margin:0;flex:1;min-width:200px;max-width:420px}
+.vrow{margin-top:22px}
+.vrow h3{font-size:17px;font-weight:700;margin:0 2px 10px;display:flex;align-items:baseline;gap:10px}
+.vrow h3 small{font-size:12px;color:var(--text3);font-weight:500}
+.vscroll{display:flex;gap:12px;overflow-x:auto;padding:2px 2px 10px;scroll-snap-type:x proximity;scrollbar-width:thin}
+.poster{flex:none;width:150px;scroll-snap-align:start;cursor:pointer;border:0;background:none;color:var(--text);text-align:left;padding:0}
+.poster .im{position:relative;width:100%;aspect-ratio:2/3;border-radius:12px;overflow:hidden;background:linear-gradient(160deg,#34332f,#1b1b1a);display:flex;align-items:center;justify-content:center;padding:10px;text-align:center;font-weight:700;color:var(--text3);font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.35);transition:transform .15s}
+.poster:hover .im{transform:scale(1.04)}
+.poster .im img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.poster .rt{position:absolute;top:7px;left:7px;font-size:11px;font-weight:800;padding:2px 6px;border-radius:6px;background:rgba(0,0,0,.7);color:var(--gold);z-index:1}
+.poster .kd{position:absolute;top:7px;right:7px;font-size:10px;font-weight:800;padding:2px 6px;border-radius:6px;background:rgba(0,0,0,.7);color:#fff;z-index:1}
+.poster .pt{font-size:13px;font-weight:600;margin-top:7px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.3}
+.poster .py{font-size:12px;color:var(--text3)}
+.vgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:18px 14px;margin-top:14px}
+.vgrid .poster{width:auto}
+.vd{display:grid;grid-template-columns:170px 1fr;gap:18px}
+.vd .cv{width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:12px;background:var(--bg3)}
+#vodDetail .vd h3{font-size:22px;margin:0 0 4px;text-transform:none;letter-spacing:0;color:var(--text)}
+.vd .mt{color:var(--text3);font-size:13px;margin-bottom:10px}
+.vd .plot{line-height:1.5;color:var(--text2);font-size:14px}
+.vd .cr{color:var(--text3);font-size:12px;margin-top:8px;line-height:1.45}
+.eps{margin-top:14px}
+.ep{display:flex;gap:10px;align-items:center;width:100%;text-align:left;padding:9px 8px;border-radius:10px;color:var(--text)}
+.ep:hover{background:var(--bg3)}
+.ep .n{width:28px;color:var(--text3);font-variant-numeric:tabular-nums;flex:none}
+.ep .d{color:var(--text3);font-size:12px}
+#vodModal .sheet{max-width:760px}
 body.homeview #channels,body.homeview #player{display:none}
 .hsec h2,#agenda h2{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--text3);margin:22px 2px 12px;font-weight:700}
 .brands{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;align-items:start}
@@ -189,7 +221,7 @@ body.solo #miniBar,body.solo #miniSize,body.solo #soloBtn,body.solo #miniBtn{dis
 /* Tablette : catégories en tiroir */
 @media (max-width:1100px){
   main{grid-template-columns:340px 1fr}
-  #home,#agenda{grid-column:1 / -1}
+  #home,#agenda,#vod{grid-column:1 / -1}
   #groupsBtn{display:inline-flex}
   #groups{position:fixed;top:0;bottom:0;left:0;width:min(300px,85vw);z-index:40;transform:translateX(-100%);transition:transform .22s ease;padding-top:env(safe-area-inset-top);border-right:.5px solid var(--border)}
   body.drawer #groups{transform:none}
@@ -207,7 +239,10 @@ body.solo #miniBar,body.solo #miniSize,body.solo #soloBtn,body.solo #miniBtn{dis
   #pipBtn{display:none}
   .sheet{border-radius:20px 20px 0 0;align-self:flex-end;max-height:90dvh;padding-bottom:max(20px,env(safe-area-inset-bottom))}
   .modal{padding:0}
-  #home,#agenda{flex:1;padding:0 14px 30px}
+  #home,#agenda,#vod{flex:1;padding:0 14px 30px}
+  .poster{width:112px}
+  .vgrid{grid-template-columns:repeat(auto-fill,minmax(104px,1fr))}
+  .vd{grid-template-columns:110px 1fr;gap:12px}
   .brands{grid-template-columns:1fr 1fr;gap:10px}
   .sq{max-height:150px}
   .sq img{max-width:72%}
@@ -224,10 +259,11 @@ body.solo #miniBar,body.solo #miniSize,body.solo #soloBtn,body.solo #miniBtn{dis
 <body>
 <header>
   <button class="btn icon" id="groupsBtn" title="Catégories" aria-label="Catégories"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></button>
-  <h1><svg viewBox="0 0 24 24" style="color:var(--blue)"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M8 2l4 4 4-4"/></svg>Lecteur <span>IPTV</span></h1>
+  <h1><svg viewBox="0 0 512 512" style="flex:none;stroke:none;width:28px;height:28px" aria-hidden="true"> <defs> <linearGradient id="lg1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2f86e8"/><stop offset="1" stop-color="#7a3fe0"/></linearGradient> <linearGradient id="lg2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1e2747"/><stop offset="1" stop-color="#121830"/></linearGradient> </defs> <rect width="512" height="512" rx="112" fill="url(#lg1)"/> <g stroke="#fff" stroke-width="18" stroke-linecap="round"><path d="M256 146 L196 84"/><path d="M256 146 L316 84"/></g> <circle cx="196" cy="84" r="14" fill="#fff"/><circle cx="316" cy="84" r="14" fill="#fff"/> <rect x="88" y="146" width="336" height="240" rx="40" fill="#fff"/> <rect x="114" y="170" width="284" height="192" rx="22" fill="url(#lg2)"/> <path d="M232 222 L232 310 L306 266 Z" fill="#fff"/> <rect x="160" y="392" width="34" height="30" rx="10" fill="#fff"/><rect x="318" y="392" width="34" height="30" rx="10" fill="#fff"/> </svg>Lecteur <span>IPTV</span></h1>
   <div id="plName"></div>
   <button class="btn" id="homeBtn" title="Accueil"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7M5 10v10h5v-6h4v6h5V10"/></svg><span class="lbl">Accueil</span></button>
   <button class="btn" id="agendaBtn" title="Agenda sport"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><circle cx="12" cy="15.5" r="2.5"/></svg><span class="lbl">Agenda</span></button>
+  <button class="btn" id="vodBtn" title="Films et séries"><svg viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M3 8l3-5M9 8l3-5M15 8l3-5M3 8h18"/></svg><span class="lbl">Films & séries</span></button>
   <button class="btn" id="managePl" title="Listes de lecture"><svg viewBox="0 0 24 24"><path d="M3 6h12M3 12h12M3 18h8M17 15v6M14 18h6"/></svg><span class="lbl">Listes</span></button>
 </header>
 
@@ -245,6 +281,7 @@ body.solo #miniBar,body.solo #miniSize,body.solo #soloBtn,body.solo #miniBtn{dis
 
   <section id="home"><div id="homeInner"></div></section>
   <section id="agenda"><div id="agendaInner"></div></section>
+  <section id="vod"><div id="vodInner"></div></section>
 
   <section id="player">
     <div id="screen">
@@ -311,6 +348,14 @@ body.solo #miniBar,body.solo #miniSize,body.solo #soloBtn,body.solo #miniBtn{dis
   <div class="sheet">
     <h2><span id="guideTitle">Programme</span> <button class="btn icon" data-close aria-label="Fermer"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></h2>
     <div id="guide"></div>
+  </div>
+</div>
+
+<!-- Fiche d'un film ou d'une série -->
+<div class="modal" id="vodModal">
+  <div class="sheet">
+    <h2><span></span><button class="btn icon" data-close aria-label="Fermer"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></h2>
+    <div id="vodDetail"></div>
   </div>
 </div>
 
@@ -453,11 +498,35 @@ function renderGroups() {
     h += item('⏱', 'Récentes', S.recent.length, '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>');
     h += '<div class="sep"></div>';
   }
-  h += S.groups.filter(([g]) => !f || norm(g).includes(f)).map(([g, n]) => item(g, g, n)).join('');
+  const match = ([g]) => !f || norm(g).includes(f);
+  const shown = S.groups.filter(([g]) => langOf(g) !== 'xx'), hidden = S.groups.filter(([g]) => langOf(g) === 'xx');
+  h += shown.filter(match).map(([g, n]) => item(g, g, n)).join('');
+  // Catégories étrangères (et adultes) rangées dans « Masqué », dépliable
+  if (hidden.length) {
+    const open = S.showHidden || (f && hidden.some(match));
+    h += `<div class="sep"></div><button class="grp" data-hid><svg viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.9 5.1A10 10 0 0 1 12 5c6 0 10 7 10 7a17 17 0 0 1-3.2 3.9M6.6 6.6C3.9 8.3 2 12 2 12s4 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/></svg><span class="t">Masqué</span><span class="n">${open ? '▾' : '▸'} ${hidden.length}</span></button>`;
+    if (open) h += '<div style="opacity:.7">' + hidden.filter(match).map(([g, n]) => item(g, g, n)).join('') + '</div>';
+  }
   $('#groupList').innerHTML = h || '<div class="empty">Aucune catégorie</div>';
+}
+/* Langue d'une catégorie d'après son nom : 'fr', 'xx' (étrangère ou adulte) ou '' (inconnue, gardée visible) */
+const COUNTRY = new Set('UK US USA CA DE AT CH IT ES PT NL BE PL TR GR RO BG RS HR AL AR MA DZ TN EG SA AE QA KW IN PK BD CN JP KR TH VN PH ID MY BR MX CO CL PE VE AU NZ IE SE NO DK FI RU UA HU CZ SK SI IL IR AF KU KR LB SY IQ JO CY MK BA ME XK LT LV EE IS LU MT SN CI CM CD NG GH KE ZA ET SO EN EX LAT ARB ESP ITA GER DEU POR NED BEL POL TUR GRE ROM BUL SRB CRO ALB ARA IND PAK CHN JPN KOR THA VIE PHI IDN BRA MEX AUS RUS UKR HUN CZE SWE NOR DEN FIN ISR IRN KUR AFR'.split(' '));
+const FR_RE = /(^|[^a-z])(fr|fra|france|french|vf|vff|vfq|vostfr|francais|français)([^a-z]|$)/i;
+const XX_RE = /\b(arab(ic|e)?|africa|latino|italia|espa[nñ]a|spanish|deutsch|german|portugu|brasil|brazil|turk|polsk|poland|nederland|dutch|belgi|suisse|swiss|qu[ée]bec|canad|english|irish|greek|romani|bulgar|serbi|croat|albani|ex-?yu|india|hindi|punjabi|urdu|pakistan|bangla|chinese|china|japan|korea|thai|vietnam|filipino|indonesia|malay|australia|russia|ukrain|hungar|czech|slovak|sloven|israel|persian|farsi|afghan|kurd|maroc|morocc|alg[ée]rie|algeri|tunisi|egypt|saudi|gulf|caribbean|haiti|somali|african|amharic|xxx|adult|adulte|18\+|porn)/i;
+function langOf(name) {
+  const s = String(name || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+  if (/\b(xxx|adult|adulte|18\+|porn)/i.test(s)) return 'xx';
+  const m = s.match(/^\W*([A-Za-z]{2,3})\s*[:|\]\-]/);
+  if (m && /^(FR|FRA)$/i.test(m[1])) return 'fr';
+  if (m && COUNTRY.has(m[1].toUpperCase())) return 'xx';
+  if (FR_RE.test(s)) return 'fr';
+  const w = s.match(/^\W*([A-Za-z]{3})\s/);                 // « USA NFL », « ITA SERIE A »
+  if (w && COUNTRY.has(w[1].toUpperCase())) return 'xx';
+  return XX_RE.test(s) ? 'xx' : '';
 }
 function groupLabel(g) { return g === 'home' ? 'Accueil' : g === '*' ? 'Toutes les chaînes' : g === '★' ? 'Favoris' : g === '⏱' ? 'Récentes' : g; }
 $('#groupList').addEventListener('click', e => {
+  if (e.target.closest('[data-hid]')) { S.showHidden = !S.showHidden; renderGroups(); return; }
   const b = e.target.closest('.grp'); if (!b) return;
   S.group = b.dataset.g; LS.set('group', S.group);
   renderGroups(); applyFilter(true); document.body.classList.remove('drawer');
@@ -591,8 +660,9 @@ function renderHome() {
 function setHomeView(on, mini, page) {
   document.body.classList.toggle('homeview', !!on);
   document.body.classList.toggle('agenda', !!on && page === 'agenda');
+  document.body.classList.toggle('vod', !!on && page === 'vod');
   document.body.classList.toggle('mini', !!(on && mini && S.current && document.body.classList.contains('playing')));
-  if (on && page === 'agenda') renderAgenda(); else if (on) renderHome();
+  if (on && page === 'agenda') renderAgenda(); else if (on && page === 'vod') renderVod(); else if (on) renderHome();
 }
 $('#homeInner').addEventListener('click', e => {
   const b = e.target.closest('[data-play]'); if (!b) return;
@@ -698,7 +768,7 @@ function setStatus(kind, msg, actions) {
 }
 function showNow(c, idle) {
   S.current = c;
-  $('#nowName').textContent = c.name; $('#nowSub').textContent = c.group + ' · n° ' + (c.chno || c.n);
+  $('#nowName').textContent = c.name; $('#nowSub').textContent = c.vod ? c.group : c.group + ' · n° ' + (c.chno || c.n);
   $('#nowLogo').outerHTML = logoHtml(c).replace('class="logo"', 'class="logo" id="nowLogo"');
   updateNowFav(); nowEpg(c);
   if (idle) setStatus('msg', '<span class="hint">Dernière chaîne regardée</span>', '<button class="btn primary" onclick="play(S.current)">▶ Reprendre</button>');
@@ -737,7 +807,7 @@ async function play(c, alts) {
     if (++i >= chain.length) return fail(c);
     const [eng, url] = chain[i];
     let done = false, timer;
-    const ok = () => { if (done || t !== token) return; done = true; clearTimeout(timer); setStatus(null); S.engine = eng; S.playUrl = url; S.master = null; if (eng !== 'hls') S.found = null; if (!$('#stats').hidden) refreshStats(); };
+    const ok = () => { if (done || t !== token) return; done = true; clearTimeout(timer); setStatus(null); S.engine = eng; S.playUrl = url; S.master = null; vodResume(); if (eng !== 'hls') S.found = null; if (!$('#stats').hidden) refreshStats(); };
     const ko = () => { if (done || t !== token) return; done = true; clearTimeout(timer); next(); };
     attempt = { ok, ko };
     timer = setTimeout(ko, 12000);                      // rien reçu en 12 s : on essaie autrement
@@ -784,7 +854,10 @@ function streamVariants(url) {
   const out = [], add = u => { if (!out.includes(u)) out.push(u); };
   const fmt = [];
   const m = url.match(/^(.*\/live\/[^/]+\/[^/]+\/\d+)(\.ts)?([?#].*)?$/i);
-  if (m) { fmt.push(m[1] + '.m3u8' + (m[3] || '')); fmt.push(url); } else fmt.push(url);
+  const v = url.match(/^(.*\/(?:movie|series)\/[^/]+\/[^/]+\/\d+)\.(\w+)$/i);
+  if (m) { fmt.push(m[1] + '.m3u8' + (m[3] || '')); fmt.push(url); }
+  else if (v) { fmt.push(url); if (v[2].toLowerCase() !== 'm3u8') fmt.push(v[1] + '.m3u8'); }
+  else fmt.push(url);
   const secure = location.protocol === 'https:';
   for (const u of fmt) {
     if (secure && /^http:/i.test(u)) {
@@ -1040,6 +1113,172 @@ $('#agendaInner').addEventListener('click', e => {
 });
 $('#agendaBtn').onclick = () => { document.body.classList.remove('drawer'); setHomeView(true, true, 'agenda'); };
 setInterval(() => { if (document.body.classList.contains('agenda') && document.body.classList.contains('homeview')) renderAgenda(); }, 60000);
+
+/* ---------- Films & séries (VOD du serveur Xtream) façon Netflix : nouveautés, populaires, mieux notés, le meilleur de
+   chaque service (Netflix, Apple TV+, Disney+…), catégories. Seulement les catalogues en français (VF, VOSTFR). ---------- */
+const V = { data: null, loading: null, tab: 'home', q: '', cat: null };
+const SERVICES = [['Netflix', /netflix/i], ['Apple TV+', /apple/i], ['Disney+', /disney/i], ['Prime Video', /prime|amazon/i], ['Canal+', /canal|my ?canal/i],
+  ['Max', /\b(hbo|max)\b/i], ['Paramount+', /paramount/i], ['OCS', /\bocs\b/i], ['France.tv', /france\.?\s?tv/i], ['Arte', /\barte\b/i], ['TF1+', /tf1/i], ['M6+', /\bm6\b/i], ['Crunchyroll', /crunchyroll/i]];
+async function xget(q) {
+  const x = epgCtx(); if (!x) throw new Error('Pas de connexion Xtream');
+  const t = await fetchText(x.base + '/player_api.php?username=' + encodeURIComponent(x.user) + '&password=' + encodeURIComponent(x.pass) + q);
+  return JSON.parse(t);
+}
+function cleanTitle(n) {
+  let t = String(n || '').replace(/\s+/g, ' ').trim(), k = 0;
+  const tag = /^[\[(|]*\s*(fr|vf|vff|vfq|vostfr|french|multi|4k|uhd|fhd|hd|sd|hdr|top|new)\s*[\])|]*\s*[-:|·]?\s*/i;
+  while (tag.test(t) && k++ < 4) t = t.replace(tag, '');
+  return t.replace(/\s*[\[(](19|20)\d\d[\])]\s*$/, '').replace(/\s*[-|]?\s*(4k|uhd|fhd|hdr|multi|vostfr|vf|vff|fr)\s*$/i, '').trim() || n;
+}
+const yearOf = (...v) => { for (const x of v) { const m = String(x || '').match(/\b(19[3-9]\d|20[0-4]\d)\b/); if (m) return +m[1]; } return 0; };
+const rate10 = v => { const r = +v.rating || (+v.rating_5based * 2) || 0; return r > 10 ? r / 10 : r; };
+async function loadVod() {
+  if (V.data && V.data.pl === S.pl) return V.data;
+  if (V.loading) return V.loading;
+  V.loading = (async () => {
+    const safe = q => xget(q).catch(() => []);
+    const [vc, vs, sc, ss] = await Promise.all([safe('&action=get_vod_categories'), safe('&action=get_vod_streams'), safe('&action=get_series_categories'), safe('&action=get_series')]);
+    const cats = {};
+    const pick = (list, kind) => {
+      const arr = Array.isArray(list) ? list : [];
+      const fr = arr.filter(c => langOf(c.category_name) === 'fr');
+      // catalogue mélangé : seulement les catégories en français ; catalogue français sans préfixes : tout sauf l'étranger
+      const keep = fr.length >= Math.max(3, arr.length * 0.2) ? fr : arr.filter(c => langOf(c.category_name) !== 'xx');
+      keep.forEach(c => { cats[kind + c.category_id] = { id: kind + c.category_id, kind, name: cleanTitle(c.category_name) || c.category_name, raw: c.category_name }; });
+    };
+    pick(vc, 'm'); pick(sc, 's');
+    const seen = new Map(), items = [];
+    const add = it => {
+      const key = (it.tmdb ? 't' + it.tmdb : norm(it.name).replace(/\W+/g, '') + it.year) + it.kind;
+      const old = seen.get(key);
+      if (old) { if (!old.cats.includes(it.cats[0])) old.cats.push(it.cats[0]); if (!old.cover && it.cover) old.cover = it.cover; return; }
+      seen.set(key, it); items.push(it);
+    };
+    (Array.isArray(vs) ? vs : []).forEach(v => { const c = 'm' + v.category_id; if (!cats[c]) return;
+      add({ kind: 'movie', id: v.stream_id, name: cleanTitle(v.name), raw: v.name, year: yearOf(v.year, v.releaseDate, v.name), rating: rate10(v), added: +v.added || 0,
+        cover: v.stream_icon || '', ext: v.container_extension || 'mp4', cats: [c], tmdb: v.tmdb || v.tmdb_id || '' }); });
+    (Array.isArray(ss) ? ss : []).forEach(v => { const c = 's' + v.category_id; if (!cats[c]) return;
+      add({ kind: 'series', id: v.series_id, name: cleanTitle(v.name), raw: v.name, year: yearOf(v.year, v.releaseDate, v.release_date, v.name), rating: rate10(v),
+        added: +v.last_modified || 0, cover: v.cover || '', cats: [c], plot: v.plot || '', genre: v.genre || '', tmdb: v.tmdb || '' }); });
+    Object.values(cats).forEach(c => { c.service = (SERVICES.find(([, re]) => re.test(c.raw)) || [])[0] || ''; });
+    items.forEach(it => { it.services = [...new Set(it.cats.map(c => cats[c].service).filter(Boolean))]; });
+    return (V.data = { pl: S.pl, cats, items });
+  })();
+  try { return await V.loading; } finally { V.loading = null; }
+}
+function posterHtml(it, i) {
+  const r = it.rating ? `<span class="rt">★ ${it.rating.toFixed(1)}</span>` : '';
+  return `<button class="poster" data-v="${i}" title="${esc(it.name)}${it.year ? ' (' + it.year + ')' : ''}"><div class="im">${esc(it.name)}${it.cover ? `<img src="${esc(it.cover)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}${r}${it.kind === 'series' ? '<span class="kd">SÉRIE</span>' : ''}</div><div class="pt">${esc(it.name)}</div><div class="py">${it.year || ''}</div></button>`;
+}
+function vodRow(title, sub, list) { if (!list.length) return ''; return `<div class="vrow"><h3>${esc(title)}${sub ? `<small>${esc(sub)}</small>` : ''}</h3><div class="vscroll">${list.map(it => posterHtml(it, V.shown.push(it) - 1)).join('')}</div></div>`; }
+async function renderVod() {
+  const box = $('#vodInner');
+  if (!S.pl) { box.innerHTML = '<div class="empty">Ajoutez ou déverrouillez une liste pour voir les films et séries.</div>'; return; }
+  if (!epgCtx()) { box.innerHTML = '<div class="empty">Les films et séries viennent du serveur de l\'abonnement (connexion Xtream) : pas disponibles pour cette liste.</div>'; return; }
+  if (!V.data || V.data.pl !== S.pl) box.innerHTML = '<div class="spin" style="margin:60px auto"></div><p class="hint" style="text-align:center">Chargement des catalogues…</p>';
+  let D;
+  try { D = await loadVod(); } catch (e) { box.innerHTML = `<div class="empty">Catalogues indisponibles : ${esc(e.message)}</div>`; return; }
+  if (!document.body.classList.contains('vod')) return;
+  V.shown = [];
+  const all = D.items, movies = all.filter(i => i.kind === 'movie'), series = all.filter(i => i.kind === 'series');
+  const yr = new Date().getFullYear(), byAdded = (a, b) => b.added - a.added, byRate = (a, b) => b.rating - a.rating || b.added - a.added;
+  let h = `<div class="vtop">
+    ${['home:Accueil', 'movie:Films', 'series:Séries', 'cats:Catégories'].map(t => { const [k, l] = t.split(':'); return `<button class="chip${V.tab === k && !V.q ? ' on' : ''}" data-tab="${k}">${l}</button>`; }).join('')}
+    <label class="searchbar"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input id="vodQ" type="search" placeholder="Titre d'un film ou d'une série" value="${esc(V.q)}" autocomplete="off"></label></div>`;
+  if (!all.length) { box.innerHTML = h + '<div class="empty">Aucun film ni série en français trouvé sur ce serveur.</div>'; return; }
+  const q = norm(V.q).trim();
+  if (q) {
+    const w = q.split(/\s+/), res = all.filter(i => w.every(x => norm(i.name).includes(x))).sort(byAdded).slice(0, 120);
+    h += `<div class="vgrid">${res.map(it => posterHtml(it, V.shown.push(it) - 1)).join('')}</div>` + (res.length ? '' : '<div class="empty">Aucun résultat.</div>');
+  } else if (V.tab === 'cats') {
+    if (V.cat) {
+      const c = D.cats[V.cat], res = all.filter(i => i.cats.includes(V.cat)).sort(byAdded);
+      h += `<div class="vrow"><h3><button class="chip" data-cat="">‹ Catégories</button> ${esc(c.name)} <small>${res.length} titres · ${c.kind === 's' ? 'séries' : 'films'}</small></h3></div><div class="vgrid">${res.slice(0, 400).map(it => posterHtml(it, V.shown.push(it) - 1)).join('')}</div>`;
+    } else {
+      const cnt = {}; all.forEach(i => i.cats.forEach(c => cnt[c] = (cnt[c] || 0) + 1));
+      const list = Object.values(D.cats).filter(c => cnt[c.id]);
+      for (const [kind, label] of [['m', 'Films'], ['s', 'Séries']]) {
+        const l = list.filter(c => c.kind === kind); if (!l.length) continue;
+        h += `<div class="vrow"><h3>${label}</h3><div style="display:flex;flex-wrap:wrap;gap:8px">${l.map(c => `<button class="chip" data-cat="${c.id}">${esc(c.name)} <span style="color:var(--text3)">${cnt[c.id]}</span></button>`).join('')}</div></div>`;
+      }
+    }
+  } else {
+    const pool = V.tab === 'movie' ? movies : V.tab === 'series' ? series : all;
+    const recent = i => (i.year && i.year >= yr - 2) || (i.added && Date.now() / 1000 - i.added < 120 * 86400);
+    // « Populaires » : le serveur ne donne pas d'audience ; approché par les titres récents les mieux notés
+    h += vodRow('Populaires en ce moment', 'récents et bien notés', pool.filter(i => recent(i) && i.rating >= 6.5).sort(byRate).slice(0, 40));
+    if (V.tab !== 'series') h += vodRow('Nouveautés · films', 'derniers ajouts', movies.slice().sort(byAdded).slice(0, 40));
+    if (V.tab !== 'movie') h += vodRow('Nouveautés · séries', 'dernières mises à jour', series.slice().sort(byAdded).slice(0, 40));
+    h += vodRow('Les mieux notés', '', pool.filter(i => i.rating >= 7 && (!i.year || i.year >= yr - 25)).sort(byRate).slice(0, 40));
+    for (const [svc] of SERVICES) {
+      const l = pool.filter(i => i.services.includes(svc)); if (l.length < 4) continue;
+      h += vodRow('Le meilleur de ' + svc, l.length + ' titres', l.slice().sort(byRate).slice(0, 40));
+    }
+  }
+  box.innerHTML = h;
+  const qi = $('#vodQ'); if (V.q) { qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); }
+}
+let vodQT;
+$('#vodInner').addEventListener('input', e => { if (e.target.id !== 'vodQ') return; clearTimeout(vodQT); vodQT = setTimeout(() => { V.q = e.target.value; renderVod(); }, 250); });
+$('#vodInner').addEventListener('click', e => {
+  const t = e.target.closest('[data-tab]'), c = e.target.closest('[data-cat]'), p = e.target.closest('[data-v]');
+  if (t) { V.tab = t.dataset.tab; V.q = ''; V.cat = null; renderVod(); $('#vod').scrollTop = 0; }
+  else if (c) { V.tab = 'cats'; V.cat = c.dataset.cat || null; renderVod(); $('#vod').scrollTop = 0; }
+  else if (p) openVod(V.shown[+p.dataset.v]);
+});
+$('#vodBtn').onclick = () => { document.body.classList.remove('drawer'); setSolo(false); setHomeView(true, true, 'vod'); };
+const fmtDur = s => { s = +s || 0; if (!s) return ''; const h = Math.floor(s / 3600), m = Math.round(s % 3600 / 60); return h ? `${h} h ${String(m).padStart(2, '0')}` : `${m} min`; };
+function vodUrl(kind, id, ext) { const x = epgCtx(); return `${x.base}/${kind}/${encodeURIComponent(x.user)}/${encodeURIComponent(x.pass)}/${id}.${ext || 'mp4'}`; }
+async function openVod(it) {
+  if (!it) return;
+  $('#vodModal h2 span').textContent = it.kind === 'series' ? 'Série' : 'Film';
+  $('#vodDetail').innerHTML = '<div class="spin" style="margin:30px auto"></div>'; openModal('vodModal');
+  let info = {}, eps = null;
+  try {
+    if (it.kind === 'movie') { const j = await xget('&action=get_vod_info&vod_id=' + it.id); info = j.info || {}; }
+    else { const j = await xget('&action=get_series_info&series_id=' + it.id); info = j.info || {}; eps = j.episodes || {}; }
+  } catch (e) {}
+  const cover = info.movie_image || info.cover_big || info.cover || it.cover;
+  const meta = [it.year || (info.releasedate || info.releaseDate || '').slice(0, 4), info.genre || it.genre, fmtDur(info.duration_secs) || info.duration, it.rating ? '★ ' + it.rating.toFixed(1) : '', it.services.join(', ')].filter(Boolean).join(' · ');
+  let h = `<div class="vd"><div>${cover ? `<img class="cv" src="${esc(cover)}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">` : '<div class="cv"></div>'}</div><div>
+    <h3>${esc(it.name)}</h3><div class="mt">${esc(meta)}</div>
+    <div class="plot">${esc(info.plot || info.description || it.plot || '')}</div>
+    ${info.director ? `<div class="cr">Réalisation : ${esc(info.director)}</div>` : ''}${info.cast || info.actors ? `<div class="cr">Avec : ${esc(info.cast || info.actors)}</div>` : ''}`;
+  if (it.kind === 'movie') {
+    const url = vodUrl('movie', it.id, it.ext), pos = LS.get('pos.' + url, 0);
+    h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-pm="${esc(url)}">▶ ${pos > 60 ? 'Reprendre à ' + fmtDur(pos) : 'Lecture'}</button>${pos > 60 ? `<button class="btn" data-pm="${esc(url)}" data-zero>Depuis le début</button>` : ''}<button class="btn" data-vlc="${esc(url)}">VLC</button></div>`;
+  } else {
+    const seasons = Object.keys(eps || {}).sort((a, b) => a - b);
+    if (!seasons.length) h += '<p class="hint" style="margin-top:14px">Aucun épisode trouvé.</p>';
+    else {
+      const cur = LS.get('season.' + it.id, seasons[0]), sel = seasons.includes(String(cur)) ? String(cur) : seasons[0];
+      h += `<div class="row" style="margin-top:14px"><select class="field" id="seasonSel" style="width:auto;margin:0">${seasons.map(n => `<option value="${n}"${n === sel ? ' selected' : ''}>Saison ${n}</option>`).join('')}</select></div><div class="eps">`;
+      h += (eps[sel] || []).map(e => { const url = vodUrl('series', e.id, e.container_extension), pos = LS.get('pos.' + url, 0), d = e.info || {};
+        return `<button class="ep" data-pm="${esc(url)}" data-ep="${esc(it.name + ' · S' + sel + 'E' + (e.episode_num || ''))}"><span class="n">${esc(e.episode_num || '')}</span><span style="flex:1;min-width:0"><b>${esc(cleanTitle(e.title || 'Épisode ' + e.episode_num))}</b><div class="d">${esc([fmtDur(d.duration_secs) || d.duration, pos > 60 ? 'vu jusqu\'à ' + fmtDur(pos) : ''].filter(Boolean).join(' · '))}</div></span>▶</button>`; }).join('');
+      h += '</div>';
+    }
+  }
+  $('#vodDetail').innerHTML = h + '</div></div>';
+  V.open = { it, eps, cover };
+}
+$('#vodDetail').addEventListener('change', e => { if (e.target.id === 'seasonSel') { LS.set('season.' + V.open.it.id, e.target.value); openVod(V.open.it); } });
+$('#vodDetail').addEventListener('click', e => {
+  const b = e.target.closest('[data-pm]'), v = e.target.closest('[data-vlc]');
+  if (v) return openVlc({ name: V.open.it.name, url: v.dataset.vlc });
+  if (!b) return;
+  const it = V.open.it, url = b.dataset.pm;
+  if (b.hasAttribute('data-zero')) LS.set('pos.' + url, 0);
+  closeModals();
+  play({ name: b.dataset.ep || it.name, url, group: it.kind === 'series' ? 'Série' : 'Film' + (it.year ? ' · ' + it.year : ''), logo: V.open.cover || it.cover, n: 0, chno: '', vod: true, key: '' });
+});
+// Reprise : position retenue toutes les 5 s, reprise à l'ouverture (sauf presque à la fin)
+function vodResume() {
+  const c = S.current; if (!c || !c.vod) return;
+  const pos = LS.get('pos.' + c.url, 0);
+  const go = () => { if (pos > 60 && (!video.duration || pos < video.duration - Math.min(120, video.duration * 0.1))) { video.currentTime = pos; toast('Reprise à ' + fmtDur(pos)); } };
+  video.readyState >= 1 ? go() : video.addEventListener('loadedmetadata', go, { once: true });
+}
+setInterval(() => { const c = S.current; if (c && c.vod && !video.paused && video.currentTime > 30) LS.set('pos.' + c.url, Math.floor(video.currentTime)); }, 5000);
 
 /* ---------- Mini lecteur : déplaçable (✥) et redimensionnable (coin haut gauche), retenus d'une fois sur l'autre ---------- */
 function miniApply() {

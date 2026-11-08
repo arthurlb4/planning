@@ -11,7 +11,7 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 function createWindow() {
   const win = new BrowserWindow({
     width: 1400, height: 860, minWidth: 360, minHeight: 500,
-    backgroundColor: '#161615', title: 'Lecteur IPTV', autoHideMenuBar: true,
+    backgroundColor: '#161615', title: 'Lecteur IPTV', autoHideMenuBar: true, icon: path.join(__dirname, 'icon.png'),
     webPreferences: {
       webSecurity: false,                 // pas de blocage CORS : les serveurs IPTV n'autorisent pas les navigateurs
       allowRunningInsecureContent: true,  // flux en http depuis la page en https
