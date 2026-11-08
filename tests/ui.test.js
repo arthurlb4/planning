@@ -148,6 +148,8 @@ function mockApi(route) {
     ok('Horaires saisis identiques à la vacation du cycle : plus de modification', await p.evaluate(() => { const k = [...document.querySelectorAll('#cal .dci[data-key]')].map(e => e.dataset.key).find(k => k > dk(NOW) && !(S.overrides || {})[k] && getVac(new Date(k + 'T12:00:00')).vac && getVac(new Date(k + 'T12:00:00')).vac !== 'RH');
       const d = new Date(k + 'T12:00:00'), cv = getCycleVac(d).cycleVac, ci = getVAC(d)[cv], other = Object.keys(getVAC(d)).find(v => v !== cv && v !== 'RH' && v !== 'SV');
       pendingKey = k; avw(other); const a = !!S.overrides[k]; pendingKey = k; openCustomVacModal();
+      // prime de la vacation du cycle aussi (sinon celle de l'autre vacation, ex. Antenne pour A1 certains jours, reste choisie)
+      const cp = ci.primes || {}; document.getElementById('custom-prime').value = cp.antenne ? 'antenne' : cp.reel ? 'reel' : cp.coord ? 'coord' : '';
       document.getElementById('custom-deb').value = ci.deb; document.getElementById('custom-fin').value = ci.fin; confirmCustomVac(); const b = !(S.overrides || {})[k]; closeModal(); return a && b; }));
     const lr = SENT['/lines/register'];
     if (process.env.SHOW) console.log(JSON.stringify(lr));
