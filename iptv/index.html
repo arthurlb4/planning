@@ -122,9 +122,33 @@ body.homeview #channels,body.homeview #player{display:none}
 .tile .fam{font-weight:700;font-size:14px;padding:10px 12px 0;display:flex;justify-content:space-between;gap:8px}
 .tile .fam span{color:var(--text3);font-weight:500;font-size:12px}
 .tile select,.tile .one{margin:8px 10px 10px;height:36px;border-radius:10px;background:var(--bg);border:.5px solid var(--border);padding:0 10px;color:var(--text);font-size:14px}
-.tile .one{display:flex;align-items:center;color:var(--text2)}
+.tile .one{display:block;line-height:36px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tile.on{border-color:var(--blue)}
 #homeHint{margin-top:26px}
+.tile .epg{padding:4px 12px 0;font-size:12px;color:var(--text2);min-height:34px;line-height:1.35}
+.tile .epg .ti{display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+.tile .epg .tm{color:var(--text3);font-size:11px}
+.bar{height:3px;border-radius:2px;background:rgba(255,255,255,.12);margin-top:4px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--blue)}
+#nowEpg{font-size:12px;color:var(--text2);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#nowEpg b{color:var(--text);font-weight:600}
+/* Infos de qualité (codec, résolution, images/s…) par-dessus l'image */
+#stats{position:absolute;top:10px;left:10px;z-index:4;background:rgba(10,10,10,.82);border:.5px solid var(--border);border-radius:12px;padding:10px 12px;font:12px/1.55 ui-monospace,Menlo,Consolas,monospace;color:#e8e6e1;max-width:calc(100% - 20px);pointer-events:auto}
+#stats[hidden]{display:none}
+#stats table{border-collapse:collapse}#stats td{padding:0 10px 0 0;vertical-align:top}#stats td:first-child{color:#9d9b95;white-space:nowrap}
+#stats .x{position:absolute;top:4px;right:6px;color:#9d9b95;font-size:14px;padding:2px 4px}
+/* Mini lecteur : la lecture continue dans un coin pendant qu'on parcourt l'accueil */
+#miniBar{display:none}
+body.homeview.mini #player{display:flex;position:fixed;right:18px;bottom:18px;width:min(420px,calc(100vw - 36px));height:auto;z-index:35;border-radius:14px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.6);border:.5px solid var(--border);order:0}
+body.homeview.mini #screen{flex:none;aspect-ratio:16/9;width:100%}
+body.homeview.mini #now,body.homeview.mini #stats{display:none}
+body.homeview.mini #miniBar{display:flex;position:absolute;top:8px;right:8px;gap:6px;z-index:5}
+#miniBar .btn{height:32px;width:32px;background:rgba(0,0,0,.6);border-color:transparent}
+#guide .pg{padding:10px 0;border-bottom:.5px solid var(--border)}
+#guide .pg .tm{color:var(--text3);font-size:12px}
+#guide .pg .ti{font-weight:600;margin:2px 0}
+#guide .pg.on .ti{color:var(--blue)}
+#guide .pg .ds{color:var(--text3);font-size:13px;line-height:1.4}
 
 /* Tablette : catégories en tiroir */
 @media (max-width:1100px){
@@ -151,6 +175,9 @@ body.homeview #channels,body.homeview #player{display:none}
   .tiles{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
   .tile .face .txt{font-size:17px}
   .tile .fam span{display:none}
+  #now .tools{gap:4px}
+  #now .tools .btn.icon{width:32px;height:32px}
+  #prevBtn,#nextBtn,#nowLogo{display:none}
   header .lbl,#plName{display:none}
   header h1{flex:1}
 }
@@ -183,15 +210,23 @@ body.homeview #channels,body.homeview #player{display:none}
     <div id="screen">
       <video id="video" controls playsinline autoplay></video>
       <div id="status"><div class="msg hint">Choisissez une chaîne dans la liste.</div></div>
+      <div id="stats" hidden></div>
+      <div id="miniBar">
+        <button class="btn icon" id="miniOpen" title="Agrandir"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/></svg></button>
+        <button class="btn icon" id="miniClose" title="Arrêter"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
     </div>
     <div id="now">
       <div class="logo" id="nowLogo"></div>
-      <div class="meta"><div class="nm" id="nowName">—</div><div class="sub" id="nowSub"></div></div>
+      <div class="meta"><div class="nm" id="nowName">—</div><div class="sub" id="nowSub"></div><div id="nowEpg"></div></div>
       <div class="tools">
         <button class="btn icon" id="prevBtn" title="Chaîne précédente (↑)"><svg viewBox="0 0 24 24"><path d="M18 15l-6-6-6 6"/></svg></button>
         <button class="btn icon" id="nextBtn" title="Chaîne suivante (↓)"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
         <button class="btn icon star" id="nowFav" title="Favori"><svg viewBox="0 0 24 24"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z"/></svg></button>
         <button class="btn icon" id="pipBtn" title="Image dans l'image"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="11" width="7" height="6" rx="1"/></svg></button>
+        <button class="btn icon" id="guideBtn" title="Programme (EPG)"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M7 14h4M7 17h7"/></svg></button>
+        <button class="btn icon" id="statsBtn" title="Qualité de l'image et du son"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg></button>
+        <button class="btn icon" id="miniBtn" title="Mini lecteur : retour à l'accueil sans couper"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><rect x="12" y="12" width="7" height="6" rx="1" fill="currentColor"/></svg></button>
         <button class="btn icon" id="moreBtn" title="Ouvrir ailleurs"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg></button>
       </div>
     </div>
@@ -205,7 +240,7 @@ body.homeview #channels,body.homeview #player{display:none}
     <h2>Listes de lecture <button class="btn icon" data-close aria-label="Fermer"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></h2>
     <div id="builtinBox" style="display:none;margin-bottom:14px;padding:14px;border-radius:14px;background:var(--bg);border:.5px solid var(--blue)">
       <div class="hint" style="margin-bottom:10px"><b style="color:var(--text)">Mon abonnement</b> · liste intégrée à l'appli, chiffrée. Entrez son mot de passe : une seule fois sur cet appareil.</div>
-      <div class="row"><input class="field" id="bPass" placeholder="xxxx-xxxx-xxxx" autocomplete="off" autocapitalize="off" spellcheck="false" style="flex:1;min-width:0;margin:0"><button class="btn primary" id="bBtn">Déverrouiller</button></div>
+      <div class="row"><input class="field" id="bPass" placeholder="Mot de passe" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" style="flex:1;min-width:0;margin:0"><button class="btn primary" id="bBtn">Déverrouiller</button></div>
       <div class="err" id="bErr"></div>
     </div>
     <div id="plList"></div>
@@ -224,6 +259,14 @@ body.homeview #channels,body.homeview #player{display:none}
     </details>
     <div class="err" id="addErr"></div>
     <p class="hint" style="margin-top:16px">Pour essayer : <a href="#" id="demoBtn">chaînes françaises gratuites (iptv-org)</a>. Les listes restent dans ce navigateur, rien n'est envoyé ailleurs.</p>
+  </div>
+</div>
+
+<!-- Programme de la chaîne (EPG) -->
+<div class="modal" id="guideModal">
+  <div class="sheet">
+    <h2><span id="guideTitle">Programme</span> <button class="btn icon" data-close aria-label="Fermer"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></h2>
+    <div id="guide"></div>
   </div>
 </div>
 
@@ -377,7 +420,7 @@ $('#groupList').addEventListener('click', e => {
   setHomeView(S.group === 'home');
 });
 $('#homeBtn').onclick = () => {
-  S.group = 'home'; renderGroups(); applyFilter(true); document.body.classList.remove('drawer'); setHomeView(true);
+  S.group = 'home'; renderGroups(); applyFilter(true); document.body.classList.remove('drawer'); setHomeView(true, true);
 };
 $('#groupSearch').addEventListener('input', renderGroups);
 $('#groupsBtn').onclick = () => document.body.classList.toggle('drawer');
@@ -403,7 +446,7 @@ const HOME = [
     { t: 'TF1', ch: [['TF1', 'tf1'], ['TMC', 'tmc'], ['TFX', 'tfx'], ['TF1 Séries Films', 'tf1 series films|tf1 series film'], ['LCI', 'lci']] },
     { t: 'France Télévisions', ch: [['France 2', 'france 2'], ['France 3', 'france 3'], ['France 4', 'france 4'], ['France 5', 'france 5'], ['franceinfo', 'franceinfo|france info']] },
     { t: 'M6', ch: [['M6', 'm6'], ['W9', 'w9'], ['6ter', '6ter'], ['Gulli', 'gulli'], ['Paris Première', 'paris premiere']] },
-    { t: 'Arte et autres', ch: [['Arte', 'arte'], ['RMC Story', 'rmc story'], ['RMC Découverte', 'rmc decouverte'], ['Chérie 25', 'cherie 25'], ['TV5Monde', 'tv5monde|tv5 monde'], ['LCP', 'lcp|lcp an']] }
+    { t: 'Arte et autres', ch: [['Arte', 'arte'], ['RMC Story', 'rmc story'], ['RMC Découverte', 'rmc decouverte'], ['RMC Life', 'rmc life|cherie 25'], ['TV5Monde', 'tv5monde|tv5 monde'], ['LCP', 'lcp|lcp an']] }
   ] },
   { sec: 'Info', fams: [
     { t: 'Info', ch: [['BFMTV', 'bfmtv|bfm tv'], ['CNews', 'cnews|c news'], ['LCI', 'lci'], ['franceinfo', 'franceinfo|france info'], ['France 24', 'france 24']] }
@@ -413,6 +456,27 @@ const QMAP = { '8k': 4, '4k': 4, 'uhd': 4, '2160p': 4, '2160': 4, 'fhd': 3, '108
 const HEVC = new Set(['hevc', 'h265', 'x265', '265']);
 const DROP = new Set(['h264', '264', 'h', '50fps', '60fps', 'fps', '50', '60', 'hdr', 'raw', 'vip', 'backup', 'bk', 'multi', 'audio', 'dolby', 'fr', 'fra', 'ᴴᴰ']);
 const QLBL = { 4: '4K', 3: 'FHD', 2: 'HD', 1: 'SD' };
+/* Logos à jour (dépôt public tv-logo/tv-logos, figé sur une version) : ceux des listes IPTV sont souvent anciens */
+const LOGO_BASE = 'https://cdn.jsdelivr.net/gh/tv-logo/tv-logos@d32e347bb7c4c640dceec23957802ad9182f58a6/countries/';
+const LOGOS = {
+  'Canal+': 'canal-plus', 'Canal+ Foot': 'canal-plus-foot', 'Canal+ Sport': 'canal-plus-sport', 'Canal+ Sport 360': 'canal-plus-sport-360',
+  'Canal+ Premier League': 'canal-plus-premier-league', 'Canal+ Live 1': 'canal-plus-sport', 'Canal+ Live 2': 'canal-plus-sport',
+  'Infosport+': 'infosport-plus', 'Canal+ Cinéma(s)': 'canal-plus-cinemas', 'Canal+ Séries': 'canal-plus-series', 'Canal+ Grand Écran': 'canal-plus-grand-ecran',
+  'beIN SPORTS 1': 'bein-sports-1-french', 'beIN SPORTS 2': 'bein-sports-2-french', 'beIN SPORTS 3': 'bein-sports-3-french',
+  'beIN SPORTS MAX 4': 'bein-sports', 'beIN SPORTS MAX 5': 'bein-sports', 'beIN SPORTS MAX 6': 'bein-sports',
+  'Eurosport 1': 'eurosport-1', 'Eurosport 2': 'eurosport-2', 'RMC Sport 1': 'rmc-sport-1', 'RMC Sport 2': 'rmc-sport-2', 'RMC Sport 3': 'rmc-sport-3',
+  'Ligue 1+': 'ligue-1plus', 'DAZN 1': 'belgium/dazn-1-fr-be', 'DAZN 2': 'belgium/dazn-2-fr-be', "L'Équipe": 'lequipe',
+  'TF1': 'tf1', 'TMC': 'tmc', 'TFX': 'tfx', 'TF1 Séries Films': 'tf1-series-films', 'LCI': 'lci',
+  'France 2': 'france-2', 'France 3': 'france-3', 'France 4': 'france-4', 'France 5': 'france-5', 'franceinfo': 'franceinfo',
+  'M6': 'm6', 'W9': 'w9', '6ter': '6ter', 'Gulli': 'gulli', 'Paris Première': 'paris-premiere',
+  'Arte': 'arte', 'RMC Story': 'rmc-story', 'RMC Découverte': 'rmc-decouverte', 'RMC Life': 'rmc-life', 'TV5Monde': 'tv5-monde', 'LCP': 'lcp',
+  'BFMTV': 'bfm-tv', 'CNews': 'c-news', 'France 24': 'france-24'
+};
+const logoUrl = label => { const f = LOGOS[label]; return f ? LOGO_BASE + (f.includes('/') ? f : 'france/' + f + '-fr') + '.png' : ''; };
+const LABEL_BY_CANON = {};
+HOME.forEach(sec => sec.fams.forEach(f => f.ch.forEach(([label, al]) => al.split('|').forEach(a => { LABEL_BY_CANON[canonText(a)] = LABEL_BY_CANON[canonText(a)] || label; }))));
+// Logo d'une chaîne : l'officiel si c'est une des chaînes françaises connues, sinon celui de la liste
+function chLogo(c) { const ci = chInfo(c); return (ci.fr && logoUrl(LABEL_BY_CANON[ci.canon])) || c.logo; }
 function canonText(s) { return s.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\+/g, ' plus ').replace(/[^a-z0-9]+/g, ' ').trim(); }
 // Nom ramené à l'essentiel, qualité, codec, et si la chaîne est française (préfixe « FR: », « |FR| » ou catégorie France)
 function chInfo(c) {
@@ -457,23 +521,30 @@ function renderHome() {
   let h = '', sec = '';
   fams.forEach((f, i) => {
     if (f.sec !== sec) { h += (sec ? '</div></div>' : '') + `<div class="hsec"><h2>${esc(f.sec)}</h2><div class="tiles">`; sec = f.sec; }
-    const si = homeSel(f), s = f.subs[si], c = s.list[0], q = chInfo(c).q;
+    const si = homeSel(f), s = f.subs[si], c = s.list[0], q = chInfo(c).q, lg = logoUrl(s.label) || c.logo;
     const on = S.current && f.subs.some(x => x.list.includes(S.current));
     h += `<div class="tile${on ? ' on' : ''}">
       <button class="face" data-tile="${i}" title="Regarder ${esc(s.label)}">
-        ${c.logo ? `<img src="${esc(c.logo)}" alt="" referrerpolicy="no-referrer" onerror="this.nextElementSibling.hidden=false;this.remove()"><span class="txt" hidden>${esc(s.label)}</span>` : `<span class="txt">${esc(s.label)}</span>`}
+        ${lg ? `<img src="${esc(lg)}" alt="" referrerpolicy="no-referrer" onerror="this.nextElementSibling.hidden=false;this.remove()"><span class="txt" hidden>${esc(s.label)}</span>` : `<span class="txt">${esc(s.label)}</span>`}
         <span class="q${q === 4 ? ' k4' : ''}">${QLBL[q]}</span>
         <span class="play"><svg viewBox="0 0 24 24"><path d="M7 4v16l13-8z"/></svg></span>
       </button>
       <div class="fam">${esc(f.t)}<span>${f.subs.length > 1 ? f.subs.length + ' chaînes' : ''}</span></div>
+      <div class="epg" data-epg="${i}"></div>
       ${f.subs.length > 1 ? `<select data-sel="${i}" aria-label="Chaîne ${esc(f.t)}">${f.subs.map((x, j) => `<option value="${j}"${j === si ? ' selected' : ''}>${esc(x.label)} · ${QLBL[chInfo(x.list[0]).q]}</option>`).join('')}</select>`
         : `<div class="one">${esc(s.label)} · ${QLBL[q]}</div>`}
     </div>`;
   });
   h += '</div></div><p class="hint" id="homeHint">Chaque tuile lance la chaîne dans la meilleure qualité de votre liste ; si elle ne passe pas, la qualité suivante est essayée toute seule. Toutes les autres chaînes : menu ☰.</p>';
   $('#homeInner').innerHTML = h;
+  fillTileEpg();
 }
-function setHomeView(on) { document.body.classList.toggle('homeview', !!on); if (on) renderHome(); }
+// Accueil ; mini = la chaîne en cours continue dans un coin
+function setHomeView(on, mini) {
+  document.body.classList.toggle('homeview', !!on);
+  document.body.classList.toggle('mini', !!(on && mini && S.current && document.body.classList.contains('playing')));
+  if (on) renderHome();
+}
 $('#homeInner').addEventListener('click', e => {
   const b = e.target.closest('[data-tile]'); if (!b) return;
   const f = S.tiles[+b.dataset.tile], s = f.subs[homeSel(f)];
@@ -525,7 +596,7 @@ function renderRows(force) {
   rows.innerHTML = h;
 }
 function initials(n) { return esc(String(n).replace(/[^\p{L}\p{N} ]/gu, '').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '·'); }
-function logoHtml(c) { return `<div class="logo">${initials(c.name)}${c.logo ? `<img src="${esc(c.logo)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}</div>`; }
+function logoHtml(c) { const lg = chLogo(c); return `<div class="logo">${initials(c.name)}${lg ? `<img src="${esc(lg)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}</div>`; }
 $('#list').addEventListener('scroll', () => requestAnimationFrame(() => renderRows()), { passive: true });
 window.addEventListener('resize', () => renderRows(true));
 $('#rows').addEventListener('click', e => {
@@ -584,7 +655,7 @@ function showNow(c, idle) {
   S.current = c;
   $('#nowName').textContent = c.name; $('#nowSub').textContent = c.group + ' · n° ' + (c.chno || c.n);
   $('#nowLogo').outerHTML = logoHtml(c).replace('class="logo"', 'class="logo" id="nowLogo"');
-  updateNowFav();
+  updateNowFav(); nowEpg(c);
   if (idle) setStatus('msg', '<span class="hint">Dernière chaîne regardée</span>', '<button class="btn primary" onclick="play(S.current)">▶ Reprendre</button>');
 }
 function updateNowFav() { const on = S.current && S.fav.has(S.current.url); $('#nowFav').classList.toggle('on', !!on); }
@@ -594,7 +665,7 @@ async function play(c, alts) {
   const t = ++token;
   S.alts = alts || [];                                  // autres qualités de la même chaîne, essayées si celle-ci ne passe pas
   setHomeView(false);
-  stopEngines(); showNow(c);
+  stopEngines(); showNow(c); S.found = null;
   document.body.classList.add('playing');
   S.sel = S.view.indexOf(c); renderRows(true); scrollToSel();
   S.recent = [c.url, ...S.recent.filter(u => u !== c.url)].slice(0, 40);
@@ -605,7 +676,9 @@ async function play(c, alts) {
   setStatus('load');
 
   // Chaque adresse possible (variantes https et .m3u8, voir streamVariants) × chaque façon de lire selon son format
-  const nativeHls = !!video.canPlayType('application/vnd.apple.mpegurl');
+  // HLS : lecteur de Safari d'abord sur iPhone / Mac (il passe sans autorisation du serveur) ; ailleurs hls.js d'abord
+  // (plus fiable, et donne codec, débit, images/s), le lecteur du navigateur ensuite
+  const nativeHls = !!video.canPlayType('application/vnd.apple.mpegurl') && /safari/i.test(navigator.userAgent) && !/chrome|chromium|crios|fxios|edg|android|electron/i.test(navigator.userAgent);
   const chain = [];
   for (const u of streamVariants(c.url)) {
     const k = kindOf(u);
@@ -619,7 +692,7 @@ async function play(c, alts) {
     if (++i >= chain.length) return fail(c);
     const [eng, url] = chain[i];
     let done = false, timer;
-    const ok = () => { if (done || t !== token) return; done = true; clearTimeout(timer); setStatus(null); };
+    const ok = () => { if (done || t !== token) return; done = true; clearTimeout(timer); setStatus(null); S.engine = eng; S.playUrl = url; S.master = null; if (eng !== 'hls') S.found = null; if (!$('#stats').hidden) refreshStats(); };
     const ko = () => { if (done || t !== token) return; done = true; clearTimeout(timer); next(); };
     attempt = { ok, ko };
     timer = setTimeout(ko, 12000);                      // rien reçu en 12 s : on essaie autrement
@@ -636,6 +709,8 @@ async function play(c, alts) {
           if (d.type === Hls.ErrorTypes.MEDIA_ERROR && !recovered) { recovered = true; hls.recoverMediaError(); }
           else ko();
         });
+        // codecs trouvés dans le flux lui-même (quand la liste HLS ne les annonce pas)
+        hls.on(Hls.Events.BUFFER_CODECS, (ev, d) => { S.found = { v: d.video && d.video.codec, a: d.audio && d.audio.codec, ch: d.audio && d.audio.metadata && d.audio.metadata.channelCount }; });
         hls.loadSource(url); hls.attachMedia(video);
       } else if (eng === 'mpegts') {
         await loadLib('mpegts'); if (t !== token || done) return;
@@ -691,6 +766,143 @@ function fail(c) {
   setStatus('msg', `<b style="color:var(--text)">Lecture impossible</b><br><span class="hint">${why}<br>VLC le lira sans ces limites.</span>`,
     `<button class="btn" onclick="play(S.current)">Réessayer</button><button class="btn primary" onclick="openVlc(S.current)">Ouvrir dans VLC</button>`);
 }
+/* ---------- EPG (guide des programmes) : celui du serveur Xtream de la liste, chaîne par chaîne (léger) ---------- */
+const EPG = new Map();                                   // stream_id -> { at, list }
+let epgBusy = 0; const epgQueue = [];
+function epgCtx() { const x = S.pl && S.pl.url && xtreamParts(S.pl.url); return x || null; }
+function streamId(c) { const m = c && c.url.match(/\/live\/[^/]+\/[^/]+\/(\d+)/); return m ? m[1] : null; }
+const b64txt = v => { try { return new TextDecoder().decode(Uint8Array.from(atob(v || ''), ch => ch.charCodeAt(0))); } catch (e) { return v || ''; } };
+function epgSlot(fn) { return new Promise(res => { const go = async () => { epgBusy++; try { res(await fn()); } finally { epgBusy--; const n = epgQueue.shift(); if (n) n(); } }; epgBusy < 4 ? go() : epgQueue.push(go); }); }
+async function getEpg(c, limit) {
+  const x = epgCtx(), id = streamId(c); if (!x || !id) return null;
+  const hit = EPG.get(id);
+  if (hit && Date.now() - hit.at < 10 * 60000 && hit.list.length >= Math.min(limit || 4, hit.n)) return hit.list.filter(p => p.end > Date.now());
+  return epgSlot(async () => {
+    try {
+      const api = x.base + '/player_api.php?username=' + encodeURIComponent(x.user) + '&password=' + encodeURIComponent(x.pass) + '&action=get_short_epg&stream_id=' + id + '&limit=' + (limit || 4);
+      const j = JSON.parse(await fetchText(api));
+      const list = (j.epg_listings || []).map(e => ({ title: b64txt(e.title).trim(), desc: b64txt(e.description).trim(),
+        start: +e.start_timestamp * 1000 || Date.parse(e.start), end: +e.stop_timestamp * 1000 || Date.parse(e.end) })).filter(p => p.title && p.end).sort((a, b) => a.start - b.start);
+      EPG.set(id, { at: Date.now(), list, n: limit || 4 });
+      return list.filter(p => p.end > Date.now());
+    } catch (e) { EPG.set(id, { at: Date.now(), list: [], n: 99 }); return []; }
+  });
+}
+const hm = t => new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+const pct = p => Math.max(0, Math.min(100, (Date.now() - p.start) / (p.end - p.start) * 100));
+function fillTileEpg() {
+  if (!epgCtx()) return;
+  S.tiles.forEach(async (f, i) => {
+    const c = f.subs[homeSel(f)].list[0], list = await getEpg(c, 2), el = document.querySelector(`[data-epg="${i}"]`);
+    if (!el || !list || !list.length) return;
+    const p = list[0];
+    el.innerHTML = `<div class="ti">${esc(p.title)}</div><div class="tm">${hm(p.start)} – ${hm(p.end)}</div><div class="bar"><i style="width:${pct(p)}%"></i></div>`;
+    el.title = p.title + (p.desc ? ' — ' + p.desc : '') + (list[1] ? '\nEnsuite (' + hm(list[1].start) + ') : ' + list[1].title : '');
+  });
+}
+async function nowEpg(c) {
+  const el = $('#nowEpg'); el.textContent = '';
+  const list = await getEpg(c, 2); if (S.current !== c || !list || !list.length) return;
+  el.innerHTML = `<b>${esc(list[0].title)}</b> · ${hm(list[0].start)}–${hm(list[0].end)}${list[1] ? ' · ensuite ' + esc(list[1].title) + ' (' + hm(list[1].start) + ')' : ''}`;
+}
+setInterval(() => { if (S.current) nowEpg(S.current); if (document.body.classList.contains('homeview')) fillTileEpg(); }, 60000);
+$('#guideBtn').onclick = async () => {
+  const c = S.current; if (!c) return;
+  $('#guideTitle').textContent = 'Programme · ' + c.name;
+  $('#guide').innerHTML = '<div class="spin" style="margin:20px auto"></div>'; openModal('guideModal');
+  if (!epgCtx()) { $('#guide').innerHTML = '<p class="hint">Le programme vient du serveur de l\'abonnement (connexion Xtream) : pas disponible pour cette liste.</p>'; return; }
+  const list = await getEpg(c, 16);
+  $('#guide').innerHTML = list && list.length ? list.map(p => `<div class="pg${p.start <= Date.now() ? ' on' : ''}"><div class="tm">${new Date(p.start).toLocaleDateString('fr-FR', { weekday: 'short' })} ${hm(p.start)} – ${hm(p.end)}</div><div class="ti">${esc(p.title)}</div>${p.desc ? `<div class="ds">${esc(p.desc)}</div>` : ''}${p.start <= Date.now() ? `<div class="bar"><i style="width:${pct(p)}%"></i></div>` : ''}</div>`).join('')
+    : '<p class="hint">Pas de programme fourni pour cette chaîne.</p>';
+};
+
+/* ---------- Qualité de l'image et du son : codec, résolution, images/s, débit, son, images perdues, tampon ---------- */
+function codecName(c) {
+  if (!c) return '';
+  const s = String(c).split(',').map(x => x.trim());
+  return s.map(k => {
+    let m;
+    if ((m = k.match(/^avc[13]\.([0-9a-f]{2})[0-9a-f]{2}([0-9a-f]{2})/i))) return 'H.264 ' + ({ '42': 'Baseline', '4d': 'Main', '58': 'Extended', '64': 'High', '6e': 'High 10' }[m[1].toLowerCase()] || '') + ' ' + (parseInt(m[2], 16) / 10).toFixed(1);
+    if (/^(hvc1|hev1)/i.test(k)) return 'HEVC (H.265)' + (/^(hvc1|hev1)\.2/i.test(k) ? ' Main 10' : ' Main');
+    if (/^av01/i.test(k)) return 'AV1'; if (/^vp0?9/i.test(k)) return 'VP9';
+    if (/^mp4a\.40\.2$/i.test(k)) return 'AAC-LC'; if (/^mp4a\.40\.5$/i.test(k)) return 'HE-AAC'; if (/^mp4a\.40\.29$/i.test(k)) return 'HE-AAC v2';
+    if (/^mp4a\.40\.34$|^mp3$/i.test(k)) return 'MP3'; if (/^mp4a\.6b$/i.test(k)) return 'MP3'; if (/^mp4a/i.test(k)) return 'AAC';
+    if (/^ac-3$/i.test(k)) return 'Dolby Digital (AC-3)'; if (/^ec-3$/i.test(k)) return 'Dolby Digital Plus (E-AC-3)'; if (/^opus$/i.test(k)) return 'Opus';
+    return k;
+  }).join(' + ') + ' <span style="color:#7d7b76">(' + esc(c) + ')</span>';
+}
+const kbps = b => b ? (b >= 1e6 ? (b / 1e6).toFixed(1) + ' Mb/s' : Math.round(b / 1e3) + ' kb/s') : '';
+let fpsN = 0, fpsT = 0, fps = 0, fpsCb = 0;
+function fpsLoop() {
+  if (!('requestVideoFrameCallback' in HTMLVideoElement.prototype)) return;
+  if (fpsCb) return;
+  const f = (now, md) => {
+    if (!fpsT) { fpsT = now; fpsN = md.presentedFrames; }
+    else if (now - fpsT >= 1000) { fps = (md.presentedFrames - fpsN) * 1000 / (now - fpsT); fpsT = now; fpsN = md.presentedFrames; }
+    fpsCb = $('#stats').hidden ? 0 : video.requestVideoFrameCallback(f);
+  };
+  fpsT = 0; fpsCb = video.requestVideoFrameCallback(f);
+}
+// Lecteur du navigateur (sans hls.js) : on lit la liste de lecture HLS pour y trouver codecs, résolution, images/s annoncés
+async function masterInfo() {
+  if (S.master !== null || !S.playUrl || kindOf(S.playUrl) !== 'hls') return;
+  S.master = {};
+  try {
+    const t = await (await fetch(S.playUrl)).text(), m = t.match(/#EXT-X-STREAM-INF:([^\n]+)/);
+    if (m) { const a = parseAttrs(m[1]); S.master = { codecs: a.codecs, res: a.resolution, fps: a['frame-rate'], bw: +a.bandwidth || +a['average-bandwidth'] }; }
+  } catch (e) {}
+}
+function refreshStats() {
+  const el = $('#stats'); if (el.hidden) return;
+  const row = (k, v) => v ? `<tr><td>${k}</td><td>${v}</td></tr>` : '';
+  const q = video.getVideoPlaybackQuality ? video.getVideoPlaybackQuality() : null;
+  let vc = '', ac = '', declared = '', bitrate = '', real = '', audio = '', declFps = '';
+  if (S.engine === 'hls' && hls) {
+    const L = hls.levels && hls.levels[hls.currentLevel >= 0 ? hls.currentLevel : hls.loadLevel];
+    const F = S.found || {};
+    vc = codecName(F.v); ac = codecName(F.a); if (F.ch) audio = F.ch === 1 ? 'mono' : F.ch === 2 ? 'stéréo' : F.ch === 6 ? '5.1' : F.ch + ' canaux';
+    if (L) { vc = codecName(L.videoCodec) || vc; ac = codecName(L.audioCodec) || ac; bitrate = kbps(L.bitrate); declared = L.width ? L.width + '×' + L.height : ''; declFps = L.frameRate || (L.attrs && L.attrs['FRAME-RATE']) || ''; }
+    const at = hls.audioTracks && hls.audioTracks[hls.audioTrack];
+    if (at && at.attrs && at.attrs.CHANNELS) audio = at.attrs.CHANNELS + ' canaux' + (at.lang ? ' · ' + at.lang : '');
+    real = kbps(hls.bandwidthEstimate) + ' (estimation réseau)';
+  } else if (S.engine === 'mpegts' && mts) {
+    const mi = mts.mediaInfo || {}, st = mts.statisticsInfo || {};
+    vc = codecName(mi.videoCodec); ac = codecName(mi.audioCodec); declFps = mi.fps ? mi.fps.toFixed(2) : '';
+    audio = [mi.audioChannelCount && (mi.audioChannelCount === 1 ? 'mono' : mi.audioChannelCount === 2 ? 'stéréo' : mi.audioChannelCount === 6 ? '5.1' : mi.audioChannelCount + ' canaux'), mi.audioSampleRate && (mi.audioSampleRate / 1000) + ' kHz'].filter(Boolean).join(' · ');
+    real = st.speed ? kbps(st.speed * 8 * 1024) : '';
+  } else {
+    masterInfo(); const M = S.master || {};
+    vc = codecName(M.codecs); declared = M.res ? M.res.replace('x', '×') : ''; declFps = M.fps || ''; bitrate = kbps(M.bw);
+  }
+  const buf = video.buffered.length ? (video.buffered.end(video.buffered.length - 1) - video.currentTime) : 0;
+  const lost = q && q.totalVideoFrames ? `${q.droppedVideoFrames} / ${q.totalVideoFrames} (${(q.droppedVideoFrames / q.totalVideoFrames * 100).toFixed(1)} %)` : '';
+  el.innerHTML = `<button class="x" onclick="toggleStats(false)">✕</button><table>
+    ${row('Chaîne', esc(S.current ? S.current.name : ''))}
+    ${row('Résolution', video.videoWidth ? `${video.videoWidth}×${video.videoHeight}${video.videoHeight >= 2000 ? ' (4K)' : video.videoHeight >= 1000 ? ' (Full HD)' : video.videoHeight >= 700 ? ' (HD)' : ' (SD)'}` : '')}
+    ${row('Images/s', (fps ? fps.toFixed(1) + ' mesurées' : '') + (declFps ? (fps ? ' · ' : '') + declFps + ' annoncées' : ''))}
+    ${row('Vidéo', vc || '<span style="color:#7d7b76">non communiqué par ce lecteur</span>')}
+    ${row('Son', ac)}
+    ${row('Canaux', audio)}
+    ${row('Débit annoncé', bitrate)}
+    ${row('Débit reçu', real)}
+    ${row('Images perdues', lost)}
+    ${row('Tampon', buf > 0 ? buf.toFixed(1) + ' s' : '')}
+    ${row('Lecteur', { hls: 'hls.js', mpegts: 'mpegts.js', native: 'lecteur du navigateur' }[S.engine] || '')}
+    ${row('Format', S.playUrl ? (kindOf(S.playUrl) === 'hls' ? 'HLS (.m3u8)' : kindOf(S.playUrl) === 'ts' ? 'MPEG-TS' : 'fichier') + (/^https:/.test(S.playUrl) ? ' · https' : ' · http') : '')}
+  </table>`;
+}
+function toggleStats(on) {
+  const el = $('#stats'); el.hidden = on === undefined ? !el.hidden : !on;
+  if (!el.hidden) { fpsLoop(); refreshStats(); } else { fps = 0; }
+}
+$('#statsBtn').onclick = () => toggleStats();
+setInterval(refreshStats, 1000);
+
+/* ---------- Mini lecteur ---------- */
+$('#miniBtn').onclick = () => { if (!S.current) return; S.group = 'home'; renderGroups(); applyFilter(true); setHomeView(true, true); };
+$('#miniOpen').onclick = () => setHomeView(false);
+$('#miniClose').onclick = () => { stopAll(); setHomeView(true); };
+
 /* Ouvrir dans VLC : lien de l'appli sur iPhone / Android ; sur ordinateur (pas de lien vlc://), petit fichier .m3u que VLC ouvre */
 const MOBILE = /iphone|ipad|ipod|android/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 function vlcUrl(u) { return /android/i.test(navigator.userAgent) ? 'vlc://' + u : 'vlc-x-callback://x-callback-url/stream?url=' + encodeURIComponent(u); }
@@ -798,7 +1010,7 @@ $('#plList').addEventListener('click', async e => {
     catch (err) { toast(err.message); r.disabled = false; }
   }
 });
-function stopAll() { token++; stopEngines(); S.current = null; document.body.classList.remove('playing'); setStatus('msg', '<span class="hint">Choisissez une chaîne dans la liste.</span>'); $('#nowName').textContent = '—'; $('#nowSub').textContent = ''; document.title = 'Lecteur IPTV'; }
+function stopAll() { token++; stopEngines(); S.current = null; document.body.classList.remove('playing', 'mini'); $('#stats').hidden = true; $('#nowEpg').textContent = ''; setStatus('msg', '<span class="hint">Choisissez une chaîne dans la liste.</span>'); $('#nowName').textContent = '—'; $('#nowSub').textContent = ''; document.title = 'Lecteur IPTV'; }
 
 /* Liste par adresse : directement si le serveur l'accepte, sinon via le serveur de l'app (CORS, adresse en http, blocage) */
 const RELAY = 'https://planning-gcal.arthur-lebreton94.workers.dev/iptv/m3u?url=';
@@ -898,8 +1110,8 @@ $('#demoBtn').onclick = async e => {
 };
 /* Liste intégrée : lien de l'abonnement chiffré (AES-256-GCM, clé tirée du mot de passe par PBKDF2). Le mot de passe n'est
    écrit nulle part dans le code : demandé une fois par appareil, puis la liste reste enregistrée sur l'appareil. */
-const BUILTIN = { salt: 'wDv24p+avsKl/gpWSCG4rw==', iv: 'jgyTES2bl6xRlUm/',
-  data: 'p7yhnLO5Qk0X5D3dJQgXn2fI3JuKnGraLEU/l4bEheCxR4Tv7AiyQv4k5lZj+Jgo3RA29YZu7spzWxsvAWPUPRe45bAWpWBi0Jg/Kqi+lZD0L0nY6UKWOlfRtupFJsyKnVCnP2KESJQBmSYX' };
+const BUILTIN = { salt: 'ICM8NZYZdHDn21X1oKdVVQ==', iv: 'NYYZVYKCFXsb31rz',
+  data: '4jCbRo8czPnqsiSETCELl8Z6lQczQlySU0guZsyY0VVaJBoufNKqGmQnMwyWehL0WQYZYHIrMigw08JzXK0ROSmZrLUeGcxpDHlunsCIWWoNLTRgYk665MCi47WY5n44WfqhgGNCWZeLN4jR' };
 const b64d = s => Uint8Array.from(atob(s), ch => ch.charCodeAt(0));
 async function unlockBuiltin(pass) {
   const C = crypto.subtle;
