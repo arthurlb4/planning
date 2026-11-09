@@ -15,7 +15,8 @@ let remuxBase = '';
 ipcMain.on('remux-base', e => { e.returnValue = remuxBase; });
 
 const PAGE = 'https://franceinfoplanning.com/iptv/';
-const OWN = /^https?:\/\/(www\.)?franceinfoplanning\.com\/|^https:\/\/cdn\.jsdelivr\.net\/|^https:\/\/planning-gcal\./;
+// Sites dont les en-têtes Origin / Referer sont gardés (le site, ses bibliothèques, le relais, YouTube pour les bandes-annonces)
+const OWN = /^https?:\/\/(www\.)?franceinfoplanning\.com\/|^https:\/\/cdn\.jsdelivr\.net\/|^https:\/\/planning-gcal\.|^https:\/\/([a-z0-9-]+\.)*(youtube(-nocookie)?\.com|ytimg\.com|googlevideo\.com|google\.com|gstatic\.com)\//;
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 // Pistes audio et vidéo des fichiers (films en plusieurs langues) accessibles à la page : choix de la langue

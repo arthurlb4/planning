@@ -32,7 +32,7 @@ svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-l
 header{display:flex;align-items:center;gap:10px;padding:10px 16px;padding-top:max(10px,env(safe-area-inset-top));border-bottom:.5px solid var(--border);background:var(--bg0)}
 header h1{font-size:17px;font-weight:700;letter-spacing:-.01em;display:flex;align-items:center;gap:8px}
 header h1 span{color:var(--blue)}
-#plName{color:var(--text3);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}
+#plName{visibility:hidden;min-width:0;flex:1}
 
 /* Mise en page : catégories | chaînes | lecteur */
 main{flex:1;display:grid;grid-template-columns:380px 1fr;min-height:0}
@@ -142,6 +142,8 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 .ep .n{width:28px;color:var(--text3);font-variant-numeric:tabular-nums;flex:none}
 .ep .d{color:var(--text3);font-size:12px}
 #vodModal .sheet{max-width:760px}
+#vodTrailer{position:relative;width:100%;padding-top:56.25%;border-radius:12px;overflow:hidden;background:#000;margin-bottom:16px}
+#vodTrailer iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:0}
 body.homeview #channels,body.homeview #player{display:none}
 .hsec h2,#agenda h2{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--text3);margin:22px 2px 12px;font-weight:700}
 .brands{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;align-items:start}
@@ -1212,11 +1214,23 @@ async function xget(q) {
   const t = await fetchText(x.base + '/player_api.php?username=' + encodeURIComponent(x.user) + '&password=' + encodeURIComponent(x.pass) + q);
   return JSON.parse(t);
 }
+// Étiquettes de service que les fournisseurs collent devant les titres (« NF - The Crown » = Netflix)
+const SVC_TAGS = { NF: 'Netflix', NFX: 'Netflix', NETFLIX: 'Netflix', AMZ: 'Prime Video', PV: 'Prime Video', PRIME: 'Prime Video', DSNP: 'Disney+', DNP: 'Disney+', DISNEY: 'Disney+',
+  ATVP: 'Apple TV+', APPLE: 'Apple TV+', HMAX: 'Max', MAX: 'Max', HBO: 'Max', PMTP: 'Paramount+', PARAMOUNT: 'Paramount+', CNLP: 'Canal+', CANAL: 'Canal+', OCS: 'OCS', CR: 'Crunchyroll' };
+// Étiquette en tête, seulement suivie d'un séparateur (« NF - », « AMZ: », « |FR| », « [4K] ») : « Top Gun » reste « Top Gun »
+const TAG_RE = /^\s*(?:[\[(|]\s*)?\b(fr|fra|vf|vff|vfq|vfi|vostfr|vost|french|truefrench|multi|4k|uhd|fhd|hd|sd|hdr|hdr10|dv|hevc|x265|h265|x264|top|new|nouveau|nf|nfx|netflix|amz|pv|prime|dsnp|dnp|disney|atvp|apple|hmax|max|hbo|pmtp|paramount|cnlp|canal|ocs|cr)\b\s*(?:[\])|]+\s*[-:·]?|[-:|·])\s*/i;
+function titleTags(n) { const out = []; let t = String(n || ''), k = 0, m; while ((m = t.match(TAG_RE)) && k++ < 6) { const s2 = SVC_TAGS[m[1].toUpperCase()]; if (s2) out.push(s2); t = t.slice(m[0].length); } return out; }
 function cleanTitle(n) {
-  let t = String(n || '').replace(/\s+/g, ' ').trim(), k = 0;
-  const tag = /^[\[(|]*\s*(fr|vf|vff|vfq|vostfr|french|multi|4k|uhd|fhd|hd|sd|hdr|top|new)\s*[\])|]*\s*[-:|·]?\s*/i;
-  while (tag.test(t) && k++ < 4) t = t.replace(tag, '');
-  return t.replace(/\s*[\[(](19|20)\d\d[\])]\s*$/, '').replace(/\s*[-|]?\s*(4k|uhd|fhd|hdr|multi|vostfr|vf|vff|fr)\s*$/i, '').trim() || n;
+  const scene = /\w\.\w+\.\w/.test(String(n || ''));          // « Oppenheimer.2023.FRENCH.1080p »
+  let t = String(n || '').replace(/[_.]+(?=\S)/g, ' ').replace(/\s+/g, ' ').trim(), k = 0;
+  while (TAG_RE.test(t) && k++ < 6) t = t.replace(TAG_RE, '');
+  t = t.replace(/\s*[\[(][^\])]*(?:4k|uhd|fhd|hdr|multi|vostfr|vff?|french|hevc|x26[45]|1080p?|2160p?|720p?)[^\])]*[\])]/gi, '')   // [MULTI 4K], (VOSTFR)
+       .replace(/\s*[\[(](19|20)\d\d[\])]/g, '')                                                                                       // (2023)
+       .replace(/\s+-\s*(19|20)\d\d$/, '')                                                                                            // … - 2023
+       .replace(/(\s*[-|·]?\s*\b(4k|uhd|fhd|hdr|hdr10|dv|hevc|x265|h265|x264|1080p|2160p|720p|multi|vostfr|vost|vff|vf|truefrench|french|fr)\b)+\s*$/gi, '')
+       .replace(scene ? /\s+(19|20)\d\d$/ : /\s+-\s*(19|20)\d\d$/, '')                                                               // année restée (fichier, ou « - 2023 »)
+       .replace(/\s*[-|:·]\s*$/, '').replace(/\s{2,}/g, ' ').trim();
+  return t || String(n || '').trim();
 }
 const yearOf = (...v) => { for (const x of v) { const m = String(x || '').match(/\b(19[3-9]\d|20[0-4]\d)\b/); if (m) return +m[1]; } return 0; };
 const rate10 = v => { const r = +v.rating || (+v.rating_5based * 2) || 0; return r > 10 ? r / 10 : r; };
@@ -1235,7 +1249,7 @@ async function loadVod(force) {
   if (!force && V.data && V.data.pl === S.pl) return V.data;
   if (V.loading) return V.loading;
   V.loading = (async () => {
-    const cacheId = 'vod:' + listKey(S.pl);
+    const cacheId = 'vod3:' + listKey(S.pl);                // version des filtres : un changement recharge le catalogue
     if (!force) { const c = await DB.cacheGet(cacheId); if (c && Date.now() - c.at < 12 * 3600e3 && c.data && c.data.items) { c.data.pl = S.pl; return (V.data = c.data); } }
     const progress = t => { const el = document.getElementById('vodProg'); if (el) el.textContent = t; };
     let firstErr = '';
@@ -1292,7 +1306,7 @@ async function loadVod(force) {
     await Promise.all([worker(), worker(), worker(), worker()]);
     if (!ok) throw new Error('le serveur refuse les listes de films' + (firstErr ? ' (' + firstErr + ')' : ''));
     Object.values(cats).forEach(c => { c.service = (SERVICES.find(([, re]) => re.test(c.raw)) || [])[0] || ''; });
-    items.forEach(it => { it.services = [...new Set(it.cats.map(c => cats[c].service).filter(Boolean))]; });
+    items.forEach(it => { it.services = [...new Set(it.cats.map(c => cats[c].service).concat(titleTags(it.raw)).filter(Boolean))]; });
     const data = { pl: S.pl, cats, items, excluded };
     DB.cachePut({ id: cacheId, at: Date.now(), data: { cats, items, excluded } });
     return (V.data = data);
@@ -1454,6 +1468,31 @@ $('#vodInner').addEventListener('click', e => {
 $('#vodBtn').onclick = () => { document.body.classList.remove('drawer'); setSolo(false); setHomeView(true, true, 'vod'); };
 const fmtDur = s => { s = +s || 0; if (!s) return ''; const h = Math.floor(s / 3600), m = Math.round(s % 3600 / 60); return h ? `${h} h ${String(m).padStart(2, '0')}` : `${m} min`; };
 function vodUrl(kind, id, ext) { const x = epgCtx(); return `${x.base}/${kind}/${encodeURIComponent(x.user)}/${encodeURIComponent(x.pass)}/${id}.${ext || 'mp4'}`; }
+/* Bande-annonce (comme Netflix) : retrouvée sur TMDB (identifiant du titre ou titre + année), vidéo YouTube en français si
+   possible, lancée sans le son en haut de la fiche. Nécessite la clé TMDB (Films & séries › Popularité réelle). */
+async function trailerFor(it) {
+  if (!LS.get('pref.tmdb', '')) return null;
+  const kind = it.kind === 'series' ? 'tv' : 'movie';
+  let id = it.tmdb;
+  if (!id) {
+    const q = { query: it.name }; if (it.year) q[kind === 'tv' ? 'first_air_date_year' : 'year'] = it.year;
+    const r = await tmdb('/search/' + kind, q).catch(() => null);
+    id = r && r.results && r.results[0] && r.results[0].id;
+  }
+  if (!id) return null;
+  const pickV = l => (l || []).filter(v => v.site === 'YouTube').sort((a, b) => (b.type === 'Trailer') - (a.type === 'Trailer') || (b.official === true) - (a.official === true))[0];
+  const fr = await tmdb('/' + kind + '/' + id + '/videos', { language: 'fr-FR' }).catch(() => null);
+  let v = pickV(fr && fr.results);
+  if (!v) { const en = await tmdb('/' + kind + '/' + id + '/videos', { language: 'en-US' }).catch(() => null); v = pickV(en && en.results); }
+  return v ? v.key : null;
+}
+async function showTrailer(it) {
+  const key = await trailerFor(it).catch(() => null);
+  if (!key || !$('#vodModal').classList.contains('open') || !V.open || V.open.it !== it || $('#vodTrailer')) return;
+  const box = document.createElement('div'); box.id = 'vodTrailer';
+  box.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(key)}?autoplay=1&mute=1&rel=0&modestbranding=1&playsinline=1" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" title="Bande-annonce"></iframe>`;
+  $('#vodDetail').prepend(box);
+}
 async function openVod(it) {
   if (!it) return;
   $('#vodModal h2 span').textContent = it.kind === 'series' ? 'Série' : 'Film';
@@ -1484,6 +1523,7 @@ async function openVod(it) {
     }
   }
   $('#vodDetail').innerHTML = h + '</div></div>';
+  showTrailer(it);
   V.open = { it, eps, cover };
 }
 $('#vodDetail').addEventListener('change', e => { if (e.target.id === 'seasonSel') { LS.set('season.' + V.open.it.id, e.target.value); openVod(V.open.it); } });
@@ -1654,7 +1694,7 @@ miniDrag($('#miniMove'), (r, dx, dy) => { const m = LS.get('mini', {});
 miniApply();
 $('#miniBtn').onclick = () => { if (!S.current) return; S.group = 'home'; renderGroups(); applyFilter(true); setHomeView(true, true); };
 $('#miniOpen').onclick = () => setHomeView(false);
-$('#miniClose').onclick = () => { const ag = document.body.classList.contains('agenda'); stopAll(); setHomeView(true, false, ag ? 'agenda' : null); };
+$('#miniClose').onclick = () => { const b = document.body.classList, page = b.contains('agenda') ? 'agenda' : b.contains('vod') ? 'vod' : null; stopAll(); setHomeView(true, false, page); };
 
 /* ---------- Plein écran (un seul) : l'image sur tout l'écran, la barre de la chaîne par-dessus ; le plein écran du lecteur
    vidéo est masqué pour ne pas faire doublon. Sans plein écran possible (iPhone), l'image remplit la fenêtre. ---------- */
@@ -1740,7 +1780,7 @@ function moveSel(d) {
 
 /* ---------- Gestion des listes ---------- */
 function openModal(id) { $('#' + id).classList.add('open'); }
-function closeModals() { document.querySelectorAll('.modal.open').forEach(m => m.classList.remove('open')); }
+function closeModals() { document.querySelectorAll('.modal.open').forEach(m => m.classList.remove('open')); document.querySelectorAll('#vodTrailer').forEach(f => f.remove()); }
 document.querySelectorAll('.modal').forEach(m => m.addEventListener('click', e => { if (e.target === m || e.target.closest('[data-close]')) closeModals(); }));
 $('#managePl').onclick = () => { $('#addErr').textContent = ''; openModal('plModal'); };
 
