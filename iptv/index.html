@@ -755,6 +755,7 @@ HOME.forEach(sec => sec.fams.forEach(f => f.ch.forEach(([label, al]) => al.split
 function chLogo(c) { const ci = chInfo(c); return (ci.fr && logoUrl(LABEL_BY_CANON[ci.canon])) || c.logo; }
 function canonText(s) { return s.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\+/g, ' plus ').replace(/[^a-z0-9]+/g, ' ').trim(); }
 // Nom ramené à l'essentiel, qualité, codec, et si la chaîne est française (préfixe « FR: », « |FR| » ou catégorie France)
+const REGIONAL = /cara[iïí]b|caribbean|antill|martiniq|guadeloup|guyan|r[ée]union|outre[- ]?mer|dom[- ]?tom|\bafri|oc[ée]an indien|polyn[ée]s|cal[ée]doni|mayotte|tahiti/i;
 function chInfo(c) {
   if (c._ci) return c._ci;
   const pre = s => ((s || '').normalize('NFKD').match(/^\W*([A-Za-z]{2,3})\s*[:|\]]/) || [])[1];
@@ -768,7 +769,10 @@ function chInfo(c) {
     else if (!DROP.has(t) && t) keep.push(t);
   }
   if (keep.length > 1 && cc && keep[0] === cc.toLowerCase()) keep.shift();
-  return (c._ci = { canon: keep.join(' '), q: q || 2, hevc, fr: !cc || cc === 'FR' || cc === 'FRA' });
+  // Version outre-mer ou étrangère d'une chaîne française (catégorie « FR| CARIBBEAN », « Réunion »…) : même nom, autres
+  // programmes → pas mélangée avec la chaîne de métropole (accueil, qualités de rechange, guide)
+  const reg = REGIONAL.test(c.group || '') || REGIONAL.test(c.name || '');
+  return (c._ci = { canon: keep.join(' '), q: q || 2, hevc, fr: (!cc || cc === 'FR' || cc === 'FRA') && !reg });
 }
 // Pour chaque bouquet : ses chaînes trouvées, chacune avec toutes ses versions, de la meilleure qualité à la moins bonne
 function homeIndex() {
