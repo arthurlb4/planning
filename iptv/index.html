@@ -238,7 +238,12 @@ body.solo #player:hover #now,body.solo.ui #now{opacity:1}
 body.solo #soloExit{display:inline-flex}
 body.solo #miniBar,body.solo #miniSize,body.solo #soloBtn,body.solo #miniBtn{display:none!important}
 #vbar{position:absolute;left:0;right:0;bottom:0;z-index:5;display:none;align-items:center;gap:10px;padding:10px 14px;background:linear-gradient(transparent,rgba(0,0,0,.8));color:#fff;font-size:13px;font-variant-numeric:tabular-nums}
-body.remux #vbar{display:flex}
+body.remux #vbar{display:flex;transition:opacity .3s}
+body.playing #screen.idle #vbar{opacity:0;pointer-events:none}
+body.playing #screen.idle,body.playing #screen.idle video{cursor:none}
+/* Film ou série en lecture : l'image sur toute la largeur (pas de liste des chaînes) */
+body.vodplay:not(.homeview) main{grid-template-columns:1fr}
+body.vodplay:not(.homeview) #channels{display:none}
 #vbar input[type=range]{flex:1;accent-color:var(--blue);min-width:60px}
 #vbar .btn{height:32px;width:auto;padding:0 10px;background:rgba(0,0,0,.45);border-color:transparent;color:#fff}
 #trackMenu{position:absolute;right:12px;bottom:56px;z-index:7;min-width:240px;max-width:calc(100% - 24px);max-height:calc(100% - 80px);overflow:auto;background:rgba(22,22,21,.96);border:.5px solid var(--border);border-radius:14px;padding:8px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
@@ -540,6 +545,19 @@ function usePlaylist(id) {
 /* ---------- Catégories ---------- */
 function renderGroups() {
   const f = norm($('#groupSearch').value);
+  const bc = document.body.classList;
+  if ((bc.contains('vod') && bc.contains('homeview')) || (bc.contains('vodplay') && !bc.contains('homeview'))) {
+    // Films & séries : leurs catégories à la place de celles des chaînes
+    const D = V.data; if (!D) { $('#groupList').innerHTML = '<div class="empty">Catalogue en chargement…</div>'; return; }
+    const cnt = {}; D.items.forEach(i => i.cats.forEach(c => cnt[c] = (cnt[c] || 0) + 1));
+    let h = '';
+    for (const [kind, label] of [['m', 'Films'], ['s', 'Séries']]) {
+      const l = Object.values(D.cats).filter(c => c.kind === kind && cnt[c.id] && (!f || norm(c.name).includes(f))); if (!l.length) continue;
+      h += `<div class="sep"></div><div class="hint" style="padding:6px 12px;font-weight:700">${label}</div>` + l.map(c => `<button class="grp${V.cat === c.id ? ' on' : ''}" data-vcat="${c.id}"><span class="t">${esc(c.name)}</span><span class="n">${cnt[c.id]}</span></button>`).join('');
+    }
+    $('#groupList').innerHTML = h || '<div class="empty">Aucune catégorie</div>';
+    return;
+  }
   const item = (id, label, n, icon) => `<button class="grp${S.group === id ? ' on' : ''}" data-g="${esc(id)}">${icon || ''}<span class="t">${esc(label)}</span><span class="n">${n.toLocaleString('fr-FR')}</span></button>`;
   let h = '';
   if (!f) {
@@ -578,6 +596,8 @@ function langOf(name) {
 function groupLabel(g) { return g === 'home' ? 'Accueil' : g === '*' ? 'Toutes les chaînes' : g === '★' ? 'Favoris' : g === '⏱' ? 'Récentes' : g; }
 $('#groupList').addEventListener('click', e => {
   if (e.target.closest('[data-hid]')) { S.showHidden = !S.showHidden; renderGroups(); return; }
+  const vc = e.target.closest('[data-vcat]');
+  if (vc) { V.tab = 'cats'; V.cat = vc.dataset.vcat; V.q = ''; document.body.classList.remove('drawer'); setHomeView(true, true, 'vod'); $('#vod').scrollTop = 0; return; }
   const b = e.target.closest('.grp'); if (!b) return;
   S.group = b.dataset.g; LS.set('group', S.group);
   renderGroups(); applyFilter(true); document.body.classList.remove('drawer');
@@ -587,7 +607,7 @@ $('#homeBtn').onclick = () => {
   S.group = 'home'; renderGroups(); applyFilter(true); document.body.classList.remove('drawer'); setSolo(false); setHomeView(true, true);
 };
 $('#groupSearch').addEventListener('input', renderGroups);
-$('#groupsBtn').onclick = () => document.body.classList.toggle('drawer');
+$('#groupsBtn').onclick = () => { renderGroups(); document.body.classList.toggle('drawer'); };
 $('#overlay').onclick = () => document.body.classList.remove('drawer');
 
 /* ---------- Accueil : principales chaînes françaises, regroupées par bouquet, dans la meilleure qualité de la liste ----------
@@ -839,6 +859,7 @@ async function play(c, alts) {
   setHomeView(false);
   stopEngines(); showNow(c); S.found = null;
   document.body.classList.add('playing');
+  document.body.classList.toggle('vodplay', !!c.vod);
   S.sel = S.view.indexOf(c); renderRows(true); scrollToSel();
   S.recent = [c.url, ...S.recent.filter(u => u !== c.url)].slice(0, 40);
   LS.set(recKey(), S.recent); LS.set('last.' + S.pl.id, c.url);
@@ -1477,9 +1498,10 @@ async function renderVod() {
     }
     // Réglage de la vraie popularité
     const key = LS.get('pref.tmdb', '');
-    h += `<div class="tmdbbox"><b>Popularité réelle (TMDB)</b> ${key ? (POP ? '· activée' : '· ' + esc(TM.err || 'indisponible')) : ''}
+    const tbox = `<div class="tmdbbox"><b>Popularité réelle (TMDB)</b> ${key ? (POP ? '· activée' : '· ' + esc(TM.err || 'indisponible')) : ''}
       <p class="hint" style="margin:6px 0 10px">${key ? 'Tendances et classements par service mis à jour toutes les 12 h.' : 'Votre serveur ne donne aucune audience. Avec une clé gratuite TMDB (themoviedb.org › compte › Paramètres › API, « Clé d\'API » ou « Jeton d\'accès en lecture »), l\'accueil montre les vraies tendances de la semaine et ce qui est le plus regardé en France sur Netflix, Prime Video, Disney+, Apple TV+, Canal+…'}</p>
       <div class="row"><input class="field" id="tmdbKey" type="password" placeholder="Clé d'API TMDB" value="${esc(key)}" autocomplete="off" spellcheck="false" style="flex:1;min-width:0;margin:0"><button class="chip" data-tmdb>Enregistrer</button>${key ? '<button class="chip" data-tmdbre>↻</button>' : ''}</div></div>`;
+    if (key) h += tbox; else h = h.replace('<div class="vrow">', tbox + '<div class="vrow">');
   }
   box.innerHTML = h;
   const qi = $('#vodQ'); if (V.q) { qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); }
@@ -1868,6 +1890,13 @@ $('#soloExit').onclick = () => setSolo(false);
 document.addEventListener('mousemove', () => { if (!document.body.classList.contains('solo')) return; document.body.classList.add('ui'); clearTimeout(soloT); soloT = setTimeout(() => document.body.classList.remove('ui'), 2500); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.body.classList.contains('solo') && !document.fullscreenElement) setSolo(false); });
 video.addEventListener('dblclick', () => setSolo(!document.body.classList.contains('solo')));
+// Boutons sur l'image : estompés après 3 s sans mouvement pendant la lecture
+let idleT;
+function wake() { const sc = $('#screen'); sc.classList.remove('idle'); clearTimeout(idleT); idleT = setTimeout(() => { if (!video.paused) sc.classList.add('idle'); }, 3000); }
+['mousemove', 'touchstart', 'click'].forEach(ev => $('#screen').addEventListener(ev, wake, { passive: true }));
+document.addEventListener('keydown', wake);
+video.addEventListener('pause', () => { clearTimeout(idleT); $('#screen').classList.remove('idle'); });
+video.addEventListener('playing', wake);
 
 /* Ouvrir dans VLC : lien de l'appli sur iPhone / Android ; sur ordinateur (pas de lien vlc://), petit fichier .m3u que VLC ouvre */
 const MOBILE = /iphone|ipad|ipod|android/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -1966,7 +1995,7 @@ $('#plList').addEventListener('click', async e => {
     catch (err) { toast(err.message); r.disabled = false; }
   }
 });
-function stopAll() { token++; stopEngines(); S.current = null; document.body.classList.remove('playing', 'mini', 'hasmatch'); MATCH.ev = null; MATCH.key = ''; $('#stats').hidden = true; $('#nowEpg').textContent = ''; setStatus('msg', '<span class="hint">Choisissez une chaîne dans la liste.</span>'); $('#nowName').textContent = '—'; $('#nowSub').textContent = ''; document.title = 'Lecteur IPTV'; }
+function stopAll() { token++; stopEngines(); S.current = null; document.body.classList.remove('playing', 'mini', 'hasmatch', 'vodplay'); MATCH.ev = null; MATCH.key = ''; $('#stats').hidden = true; $('#nowEpg').textContent = ''; setStatus('msg', '<span class="hint">Choisissez une chaîne dans la liste.</span>'); $('#nowName').textContent = '—'; $('#nowSub').textContent = ''; document.title = 'Lecteur IPTV'; }
 
 /* Liste par adresse : directement si le serveur l'accepte, sinon via le serveur de l'app (CORS, adresse en http, blocage) */
 const RELAY = 'https://planning-gcal.arthur-lebreton94.workers.dev/iptv/m3u?url=';
