@@ -190,7 +190,9 @@ body.homeview #channels,body.homeview #player{display:none}
 #homeHint{margin-top:26px}
 /* Agenda */
 .ag-days,.ag-sports{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 6px;scrollbar-width:none}
-.ag-days{margin-top:16px}
+.ag-days{margin:14px -24px 0;padding:10px 24px;background:var(--bg0);border-top:.5px solid var(--border);border-bottom:.5px solid var(--border);position:sticky;top:-6px;z-index:2}
+.ag-sports{margin-top:12px}
+.chip:disabled{opacity:.35;cursor:default}
 .chip{flex:none;height:34px;padding:0 14px;border-radius:999px;background:var(--bg2);border:.5px solid var(--border);color:var(--text2);font-size:14px;white-space:nowrap}
 .chip.on{background:var(--text);color:var(--bg);font-weight:600;border-color:transparent}
 .ev{display:grid;grid-template-columns:64px 1fr;gap:14px;padding:14px 4px;border-bottom:.5px solid var(--border)}
@@ -274,6 +276,7 @@ body.remux #vbar{display:flex}
   .sheet{border-radius:20px 20px 0 0;align-self:flex-end;max-height:90dvh;padding-bottom:max(20px,env(safe-area-inset-bottom))}
   .modal{padding:0}
   #home,#agenda,#vod{flex:1;padding:0 14px 30px}
+  .ag-days{margin-left:-14px;margin-right:-14px;padding-left:14px;padding-right:14px}
   .poster{width:112px}
   .vgrid{grid-template-columns:repeat(auto-fill,minmax(104px,1fr))}
   .vd{grid-template-columns:110px 1fr;gap:12px}
@@ -1199,14 +1202,18 @@ async function renderAgenda(force) {
   const days = [...new Set(upcoming.map(e => dayKey(e.start)))];
   if (!days.includes(AGENDA.day)) AGENDA.day = days[0];
   const ofDay = upcoming.filter(e => dayKey(e.start) === AGENDA.day);
-  const sports = ['Tous', ...[...new Set(ofDay.map(e => e.sport))].sort((a, b) => ofDay.filter(e => e.sport === b).length - ofDay.filter(e => e.sport === a).length)];
+  // Catégories fixes, grisées quand rien ce jour-là ; « Autres » regroupe tous les autres sports
+  const MAIN = ['Football', 'Tennis', 'Basket', 'Rugby'], sportOf = e => MAIN.includes(e.sport) ? e.sport : 'Autres';
+  const sports = ['Tous', ...MAIN, 'Autres'];
   if (!sports.includes(AGENDA.sport)) AGENDA.sport = 'Tous';
-  const list = ofDay.filter(e => AGENDA.sport === 'Tous' || e.sport === AGENDA.sport);
+  const has = n => n === 'Tous' ? ofDay.length > 0 : ofDay.some(e => sportOf(e) === n);
+  if (!has(AGENDA.sport)) AGENDA.sport = 'Tous';
+  const list = ofDay.filter(e => AGENDA.sport === 'Tous' || sportOf(e) === AGENDA.sport);
   const liveNow = upcoming.filter(e => e.start <= now);
   let h = `<h2 style="display:flex;justify-content:space-between;align-items:center">Agenda sport <button class="btn" id="agRefresh" style="height:30px;font-size:12px;text-transform:none;letter-spacing:0">↻ Actualiser</button></h2>`;
   if (!upcoming.length) { box.innerHTML = h + '<div class="empty">Aucun match ou course trouvé dans les programmes de vos chaînes sport.<br>Le programme fourni par l\'abonnement est peut-être incomplet.</div>'; return; }
   h += `<div class="ag-days">${days.map(d => { const e = upcoming.find(x => dayKey(x.start) === d); return `<button class="chip${d === AGENDA.day ? ' on' : ''}" data-day="${d}">${dayLabel(e.start)}</button>`; }).join('')}</div>`;
-  h += `<div class="ag-sports">${sports.map(n => `<button class="chip${n === AGENDA.sport ? ' on' : ''}" data-sport="${esc(n)}">${esc(n)}</button>`).join('')}</div>`;
+  h += `<div class="ag-sports">${sports.map(n => `<button class="chip${n === AGENDA.sport ? ' on' : ''}" data-sport="${esc(n)}"${has(n) ? '' : ' disabled title="Rien ce jour-là"'}>${esc(n)}</button>`).join('')}</div>`;
   if (liveNow.length && AGENDA.day === days[0]) h += `<p class="hint" style="margin:8px 2px 0">${liveNow.length} en direct en ce moment</p>`;
   h += list.map((e, k) => {
     const live = e.start <= now;
@@ -1226,7 +1233,7 @@ $('#agendaInner').addEventListener('click', e => {
   const d = e.target.closest('[data-day]'), sp = e.target.closest('[data-sport]'), ev = e.target.closest('[data-ev]');
   if (e.target.closest('#agRefresh')) return renderAgenda(true);
   if (d) { AGENDA.day = d.dataset.day; renderAgenda(); }
-  else if (sp) { AGENDA.sport = sp.dataset.sport; LS.set('ag.sport', AGENDA.sport); renderAgenda(); }
+  else if (sp && !sp.disabled) { AGENDA.sport = sp.dataset.sport; LS.set('ag.sport', AGENDA.sport); renderAgenda(); }
   else if (ev) { const [k, j] = ev.dataset.ev.split(':').map(Number), x = AGENDA.shown[k].tv[j]; play(x.list[0], x.list.slice(1)); }
 });
 $('#agendaBtn').onclick = () => { document.body.classList.remove('drawer'); setHomeView(true, true, 'agenda'); };
