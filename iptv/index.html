@@ -1001,6 +1001,707 @@ function copyErr() {
   const txt = S.errText || '';
   (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => toast('Code d\'erreur copié'), () => { prompt('Copiez ce texte :', txt); });
 }
+/* ---------- EPG (guide des programmes) : celui du serveur Xtream de la liste, chaîne par chaîne (léger) ---------- */
+const EPG = new Map();                                   // stream_id -> { at, list }
+let epgBusy = 0; const epgQueue = [];
+function epgCtx() { const x = S.pl && S.pl.url && xtreamParts(S.pl.url); return x || null; }
+function streamId(c) { const m = c && c.url.match(/\/live\/[^/]+\/[^/]+\/(\d+)/); return m ? m[1] : null; }
+const b64txt = v => { try { return new TextDecoder().decode(Uint8Array.from(atob(v || ''), ch => ch.charCodeAt(0))); } catch (e) { return v || ''; } };
+function epgSlot(fn) { return new Promise(res => { const go = async () => { epgBusy++; try { res(await fn()); } finally { epgBusy--; const n = epgQueue.shift(); if (n) n(); } }; epgBusy < 4 ? go() : epgQueue.push(go); }); }
+async function getEpg(c, limit) {
+  const x = epgCtx(), id = streamId(c); if (!x || !id) return null;
+  const hit = EPG.get(id);
+  if (hit && Date.now() - hit.at < 10 * 60000 && hit.list.length >= Math.min(limit || 4, hit.n)) return hit.list.filter(p => p.end > Date.now());
+  return epgSlot(async () => {
+    try {
+      const api = x.base + '/player_api.php?username=' + encodeURIComponent(x.user) + '&password=' + encodeURIComponent(x.pass) + '&action=get_short_epg&stream_id=' + id + '&limit=' + (limit || 4);
+      const j = JSON.parse(await fetchText(api));
+      const list = (j.epg_listings || []).map(e => ({ title: b64txt(e.title).trim(), desc: b64txt(e.description).trim(),
+        start: +e.start_timestamp * 1000 || Date.parse(e.start), end: +e.stop_timestamp * 1000 || Date.parse(e.end) })).filter(p => p.title && p.end).sort((a, b) => a.start - b.start);
+      EPG.set(id, { at: Date.now(), list, n: limit || 4 });
+      return list.filter(p => p.end > Date.now());
+    } catch (e) { EPG.set(id, { at: Date.now(), list: [], n: 99 }); return []; }
+  });
+}
+const hm = t => new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+const pct = p => Math.max(0, Math.min(100, (Date.now() - p.start) / (p.end - p.start) * 100));
+function fillTileEpg() {
+  if (!epgCtx()) return;
+  S.tiles.forEach((f, i) => f.subs.forEach(async (x, j) => {
+    const list = await getEpg(x.list[0], 2), el = document.querySelector(`[data-epg="${i}:${j}"]`);
+    if (!el || !list || !list.length) return;
+    const p = list[0];
+    el.innerHTML = `<b>${esc(p.title)}</b> · ${hm(p.start)}–${hm(p.end)}<span class="bar" style="display:block;width:100%"><i style="width:${pct(p)}%"></i></span>`;
+    el.title = p.title + (p.desc ? ' — ' + p.desc : '') + (list[1] ? '\nEnsuite (' + hm(list[1].start) + ') : ' + list[1].title : '');
+  }));
+}
+async function nowEpg(c) {
+  const el = $('#nowEpg'); el.textContent = '';
+  const list = await getEpg(c, 2); if (S.current !== c || !list || !list.length) return;
+  el.innerHTML = `<b>${esc(list[0].title)}</b> · ${hm(list[0].start)}–${hm(list[0].end)}<span id="nowScore"></span>${list[1] ? ' · ensuite ' + esc(list[1].title) + ' (' + hm(list[1].start) + ')' : ''}`;
+  findMatch(c);
+}
+setInterval(() => { if (S.current) nowEpg(S.current); const b = document.body.classList; if (b.contains('homeview') && !b.contains('agenda') && !b.contains('vod')) fillTileEpg(); }, window.PREFER_NATIVE ? 300000 : 60000);
+$('#guideBtn').onclick = async () => {
+  const c = S.current; if (!c) return;
+  $('#guideTitle').textContent = 'Programme · ' + c.name;
+  $('#guide').innerHTML = '<div class="spin" style="margin:20px auto"></div>'; openModal('guideModal');
+  if (!epgCtx()) { $('#guide').innerHTML = '<p class="hint">Le programme vient du serveur de l\'abonnement (connexion Xtream) : pas disponible pour cette liste.</p>'; return; }
+  const list = await getEpg(c, 16);
+  $('#guide').innerHTML = list && list.length ? list.map(p => `<div class="pg${p.start <= Date.now() ? ' on' : ''}"><div class="tm">${new Date(p.start).toLocaleDateString('fr-FR', { weekday: 'short' })} ${hm(p.start)} – ${hm(p.end)}</div><div class="ti">${esc(p.title)}</div>${p.desc ? `<div class="ds">${esc(p.desc)}</div>` : ''}${p.start <= Date.now() ? `<div class="bar"><i style="width:${pct(p)}%"></i></div>` : ''}</div>`).join('')
+    : '<p class="hint">Pas de programme fourni pour cette chaîne.</p>';
+};
+
+/* ---------- Qualité de l'image et du son : codec, résolution, images/s, débit, son, images perdues, tampon ---------- */
+function codecName(c) {
+  if (!c) return '';
+  const s = String(c).split(',').map(x => x.trim());
+  return s.map(k => {
+    let m;
+    if ((m = k.match(/^avc[13]\.([0-9a-f]{2})[0-9a-f]{2}([0-9a-f]{2})/i))) return 'H.264 ' + ({ '42': 'Baseline', '4d': 'Main', '58': 'Extended', '64': 'High', '6e': 'High 10' }[m[1].toLowerCase()] || '') + ' ' + (parseInt(m[2], 16) / 10).toFixed(1);
+    if (/^(hvc1|hev1)/i.test(k)) return 'HEVC (H.265)' + (/^(hvc1|hev1)\.2/i.test(k) ? ' Main 10' : ' Main');
+    if (/^av01/i.test(k)) return 'AV1'; if (/^vp0?9/i.test(k)) return 'VP9';
+    if (/^mp4a\.40\.2$/i.test(k)) return 'AAC-LC'; if (/^mp4a\.40\.5$/i.test(k)) return 'HE-AAC'; if (/^mp4a\.40\.29$/i.test(k)) return 'HE-AAC v2';
+    if (/^mp4a\.40\.34$|^mp3$/i.test(k)) return 'MP3'; if (/^mp4a\.6b$/i.test(k)) return 'MP3'; if (/^mp4a/i.test(k)) return 'AAC';
+    if (/^ac-3$/i.test(k)) return 'Dolby Digital (AC-3)'; if (/^ec-3$/i.test(k)) return 'Dolby Digital Plus (E-AC-3)'; if (/^opus$/i.test(k)) return 'Opus';
+    return k;
+  }).join(' + ') + ' <span style="color:#7d7b76">(' + esc(c) + ')</span>';
+}
+const kbps = b => b ? (b >= 1e6 ? (b / 1e6).toFixed(1) + ' Mb/s' : Math.round(b / 1e3) + ' kb/s') : '';
+let fpsN = 0, fpsT = 0, fps = 0, fpsCb = 0;
+function fpsLoop() {
+  if (!('requestVideoFrameCallback' in HTMLVideoElement.prototype)) return;
+  if (fpsCb) return;
+  const f = (now, md) => {
+    if (!fpsT) { fpsT = now; fpsN = md.presentedFrames; }
+    else if (now - fpsT >= 1000) { fps = (md.presentedFrames - fpsN) * 1000 / (now - fpsT); fpsT = now; fpsN = md.presentedFrames; }
+    fpsCb = $('#stats').hidden ? 0 : video.requestVideoFrameCallback(f);
+  };
+  fpsT = 0; fpsCb = video.requestVideoFrameCallback(f);
+}
+// Lecteur du navigateur (sans hls.js) : on lit la liste de lecture HLS pour y trouver codecs, résolution, images/s annoncés
+async function masterInfo() {
+  if (S.master !== null || !S.playUrl || kindOf(S.playUrl) !== 'hls') return;
+  S.master = {};
+  try {
+    const t = await (await fetch(S.playUrl)).text(), m = t.match(/#EXT-X-STREAM-INF:([^\n]+)/);
+    if (m) { const a = parseAttrs(m[1]); S.master = { codecs: a.codecs, res: a.resolution, fps: a['frame-rate'], bw: +a.bandwidth || +a['average-bandwidth'] }; }
+  } catch (e) {}
+}
+function refreshStats() {
+  const el = $('#stats'); if (el.hidden) return;
+  const row = (k, v) => v ? `<tr><td>${k}</td><td>${v}</td></tr>` : '';
+  const q = video.getVideoPlaybackQuality ? video.getVideoPlaybackQuality() : null;
+  let vc = '', ac = '', declared = '', bitrate = '', real = '', audio = '', declFps = '';
+  if (S.engine === 'hls' && hls) {
+    const L = hls.levels && hls.levels[hls.currentLevel >= 0 ? hls.currentLevel : hls.loadLevel];
+    const F = S.found || {};
+    vc = codecName(F.v); ac = codecName(F.a); if (F.ch) audio = F.ch === 1 ? 'mono' : F.ch === 2 ? 'stéréo' : F.ch === 6 ? '5.1' : F.ch + ' canaux';
+    if (L) { vc = codecName(L.videoCodec) || vc; ac = codecName(L.audioCodec) || ac; bitrate = kbps(L.bitrate); declared = L.width ? L.width + '×' + L.height : ''; declFps = L.frameRate || (L.attrs && L.attrs['FRAME-RATE']) || ''; }
+    const at = hls.audioTracks && hls.audioTracks[hls.audioTrack];
+    if (at && at.attrs && at.attrs.CHANNELS) audio = at.attrs.CHANNELS + ' canaux' + (at.lang ? ' · ' + at.lang : '');
+    real = kbps(hls.bandwidthEstimate) + ' (estimation réseau)';
+  } else if (S.engine === 'mpegts' && mts) {
+    const mi = mts.mediaInfo || {}, st = mts.statisticsInfo || {};
+    vc = codecName(mi.videoCodec); ac = codecName(mi.audioCodec); declFps = mi.fps ? mi.fps.toFixed(2) : '';
+    audio = [mi.audioChannelCount && (mi.audioChannelCount === 1 ? 'mono' : mi.audioChannelCount === 2 ? 'stéréo' : mi.audioChannelCount === 6 ? '5.1' : mi.audioChannelCount + ' canaux'), mi.audioSampleRate && (mi.audioSampleRate / 1000) + ' kHz'].filter(Boolean).join(' · ');
+    real = st.speed ? kbps(st.speed * 8 * 1024) : '';
+  } else {
+    masterInfo(); const M = S.master || {};
+    vc = codecName(M.codecs); declared = M.res ? M.res.replace('x', '×') : ''; declFps = M.fps || ''; bitrate = kbps(M.bw);
+  }
+  const buf = video.buffered.length ? (video.buffered.end(video.buffered.length - 1) - video.currentTime) : 0;
+  const lost = q && q.totalVideoFrames ? `${q.droppedVideoFrames} / ${q.totalVideoFrames} (${(q.droppedVideoFrames / q.totalVideoFrames * 100).toFixed(1)} %)` : '';
+  el.innerHTML = `<button class="x" onclick="toggleStats(false)">✕</button><table>
+    ${row('Chaîne', esc(S.current ? S.current.name : ''))}
+    ${row('Résolution', video.videoWidth ? `${video.videoWidth}×${video.videoHeight}${video.videoHeight >= 2000 ? ' (4K)' : video.videoHeight >= 1000 ? ' (Full HD)' : video.videoHeight >= 700 ? ' (HD)' : ' (SD)'}` : '')}
+    ${row('Images/s', (fps ? fps.toFixed(1) + ' mesurées' : '') + (declFps ? (fps ? ' · ' : '') + declFps + ' annoncées' : ''))}
+    ${row('Vidéo', vc || '<span style="color:#7d7b76">non communiqué par ce lecteur</span>')}
+    ${row('Son', ac)}
+    ${row('Canaux', audio)}
+    ${row('Débit annoncé', bitrate)}
+    ${row('Débit reçu', real)}
+    ${row('Images perdues', lost)}
+    ${row('Tampon', buf > 0 ? buf.toFixed(1) + ' s' : '')}
+    ${row('Volume', video.muted ? 'coupé (muet)' : Math.round(video.volume * 100) + ' %' + (S.engine === 'native' && video.audioTracks ? ' · ' + video.audioTracks.length + ' piste(s) audio' : ''))}
+    ${row('Lecteur', { hls: 'hls.js', mpegts: 'mpegts.js', native: 'lecteur du navigateur', remux: 'ffmpeg (conversion' + (S.remux && S.remux.enc ? ' image et son' : ' du son') + ')' }[S.engine] || '')}
+    ${S.engine === 'remux' && S.remux.info ? row('Source', esc([S.remux.info.vcodec, S.remux.info.vprofile].filter(Boolean).join(' ') + ' · ' + ((S.remux.info.audio || [])[S.remux.a] || {}).codec)) : ''}
+    ${row('Format', S.playUrl ? (kindOf(S.playUrl) === 'hls' ? 'HLS (.m3u8)' : kindOf(S.playUrl) === 'ts' ? 'MPEG-TS' : 'fichier') + (/^https:/.test(S.playUrl) ? ' · https' : ' · http') : '')}
+  </table>`;
+}
+function toggleStats(on) {
+  const el = $('#stats'); el.hidden = on === undefined ? !el.hidden : !on;
+  if (!el.hidden) { fpsLoop(); refreshStats(); } else { fps = 0; }
+}
+$('#statsBtn').onclick = () => toggleStats();
+setInterval(refreshStats, 1000);
+
+/* ---------- Agenda sport : matchs et courses tirés des programmes (EPG) des chaînes sport de la liste, par jour et par sport,
+   chacun avec le bouton de la ou des chaînes qui le diffusent ---------- */
+const SPORTS = [
+  ['Football', /\b(foot(ball)?|ligue 1|ligue 2|ligue des champions|champions league|europa league|conference league|premier league|liga|serie a|bundesliga|coupe de france|coupe de la ligue|uefa|fifa|mondial|supercoupe)\b/i],
+  ['Rugby', /\b(rugby|top 14|pro d2|champions cup|challenge cup|six nations|tournoi des 6|xv de france)\b/i],
+  ['Tennis', /\b(tennis|atp|wta|roland[- ]garros|wimbledon|us open|open d'australie|masters 1000|coupe davis|billie jean king)\b/i],
+  ['Basket', /\b(basket(ball)?|nba|euroleague|euroligue|betclic [ée]lite|wnba|eurocup)\b/i],
+  ['Sports mécaniques', /\b(formule 1|f1|grand prix|motogp|moto gp|moto2|rallye|wrc|nascar|indycar|endurance|wec|24 heures)\b/i],
+  ['Cyclisme', /\b(cyclisme|tour de france|giro|vuelta|[ée]tape|paris[- ]roubaix|milan[- ]san remo|liège|critérium|paris[- ]nice)\b/i],
+  ['Handball', /\b(handball|starligue|ehf)\b/i],
+  ['Golf', /\b(golf|pga|ryder cup|dp world)\b/i],
+  ['Sports de combat', /\b(boxe|ufc|mma|pfl|combat)\b/i],
+  ['Sports US', /\b(nfl|nhl|mlb|super bowl)\b/i]
+];
+const IS_LIVE = /( - | – | \/ | vs\.? | contre |grand prix|[ée]tape|course|match|finale|demi|quart|journ[ée]e|j\d+\b|en direct|direct|live|qualif|gp\b)/i;
+const NOT_LIVE = /\b(magazine|late foot|club|r[ée]sum[ée]|best of|rediff|highlights|l'after|talk|d[ée]brief|avant[- ]match|apr[èe]s[- ]match|plateau|le mag|tel[ée]foot|documentaire|portrait|histoire|classique)\b/i;
+const AGENDA = { at: 0, events: null, day: null, sport: LS.get('ag.sport', 'Tous') };
+async function epgFull(c) {
+  const x = epgCtx(), id = streamId(c); if (!x || !id) return [];
+  return epgSlot(async () => {
+    const api = x.base + '/player_api.php?username=' + encodeURIComponent(x.user) + '&password=' + encodeURIComponent(x.pass);
+    for (const q of ['&action=get_simple_data_table&stream_id=' + id, '&action=get_short_epg&stream_id=' + id + '&limit=60']) {
+      try {
+        const j = JSON.parse(await fetchText(api + q)), l = j.epg_listings || [];
+        if (l.length) return l.map(e => ({ title: b64txt(e.title).trim(), desc: b64txt(e.description).trim(),
+          start: +e.start_timestamp * 1000 || Date.parse(e.start), end: +e.stop_timestamp * 1000 || Date.parse(e.end) })).filter(p => p.title && p.end > Date.now() - 3 * 3600e3);
+      } catch (e) {}
+    }
+    return [];
+  });
+}
+// Agenda tiré du guide TV libre XML TV Fr (préparé toutes les 3 h par GitHub, servi par le serveur de l'app) : affiches,
+// compétitions et chaînes de toute la télé française, croisées avec les chaînes de votre liste.
+const AGENDA_URL = 'https://planning-gcal.arthur-lebreton94.workers.dev/iptv/agenda';
+let chCanon = null;
+function chanFor(name) {                                    // chaîne du guide → versions de cette chaîne dans votre liste
+  if (!chCanon || chCanon.ch !== S.channels) {
+    const m = new Map();
+    S.channels.forEach(c => { const ci = chInfo(c); if (!ci.fr || !ci.canon) return; (m.get(ci.canon) || m.set(ci.canon, []).get(ci.canon)).push(c); });
+    m.forEach(l => l.sort((a, b) => chInfo(b).q - chInfo(a).q || chInfo(a).hevc - chInfo(b).hevc));
+    chCanon = { ch: S.channels, m };
+  }
+  const c = canonText(name).replace(/\b(la chaine|chaine|hd|uhd|4k)\b/g, ' ').replace(/\s+/g, ' ').trim();
+  const lbl = LABEL_BY_CANON[canonText(name)] || LABEL_BY_CANON[c];
+  const tries = [c, c.replace(/\blive\b /, ''), lbl ? canonText(lbl) : '', c.replace(/^la /, '')];
+  if (lbl) { const f = homeIndex().flatMap(f => f.subs).find(x => x.label === lbl); if (f) return { label: lbl, list: f.list }; }
+  for (const k of tries) { const l = k && chCanon.m.get(k); if (l && l.length) return { label: name, list: l }; }
+  return null;
+}
+async function loadGuideAgenda() {
+  try {
+    const r = await fetch(AGENDA_URL, { cache: 'no-store' }); if (!r.ok) return null;
+    const j = await r.json(); if (!j || !Array.isArray(j.events) || !j.events.length) return null;
+    return j.events.map(e => {
+      const tv = [], missing = [];
+      e.ch.forEach(c => { const f = chanFor(c.name); if (f && !tv.some(t => t.list[0] === f.list[0])) tv.push(f); else if (!f) missing.push(c.name); });
+      return { start: e.start, end: e.end, sport: e.sport, comp: e.comp, title: e.match || e.title, desc: e.desc, tv, missing };
+    });
+  } catch (e) { return null; }
+}
+async function loadAgenda(force) {
+  if (!force && AGENDA.events && Date.now() - AGENDA.at < 20 * 60000 && AGENDA.pl === S.pl) return AGENDA.events;
+  const guide = await loadGuideAgenda();
+  if (guide) { AGENDA.events = guide; AGENDA.src = 'guide'; AGENDA.at = Date.now(); AGENDA.pl = S.pl; return guide; }
+  AGENDA.src = 'epg';
+  const chans = [];
+  homeIndex().filter(f => f.sec === 'Sport').forEach(f => f.subs.forEach(x => chans.push(x)));
+  const map = new Map();
+  await Promise.all(chans.map(async x => {
+    for (const p of await epgFull(x.list[0])) {
+      const txt = p.title + ' ' + p.desc, sp = SPORTS.find(([, re]) => re.test(txt));
+      if (!sp || NOT_LIVE.test(p.title) || !IS_LIVE.test(p.title)) continue;
+      const key = norm(p.title).replace(/\W+/g, '') + '|' + Math.round(p.start / 6e5);
+      const ev = map.get(key) || map.set(key, { ...p, sport: sp[0], tv: [] }).get(key);
+      if (!ev.tv.some(t => t.label === x.label)) ev.tv.push(x);
+      if (p.desc.length > ev.desc.length) ev.desc = p.desc;
+    }
+  }));
+  AGENDA.events = [...map.values()].sort((a, b) => a.start - b.start); AGENDA.at = Date.now(); AGENDA.pl = S.pl;
+  return AGENDA.events;
+}
+const dayKey = t => { const d = new Date(t); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); };
+function dayLabel(t) {
+  const d = new Date(t), today = new Date(); today.setHours(0, 0, 0, 0);
+  const n = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - today) / 864e5);
+  return n === 0 ? "Aujourd'hui" : n === 1 ? 'Demain' : d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'short' });
+}
+async function renderAgenda(force) {
+  const box = $('#agendaInner');
+  if (!S.pl) { box.innerHTML = '<div class="empty">Ajoutez ou déverrouillez une liste pour voir l\'agenda.</div>'; return; }
+  if (!AGENDA.events || force || AGENDA.pl !== S.pl) box.innerHTML = '<h2>Agenda sport</h2><div class="spin" style="margin:40px auto"></div><p class="hint" style="text-align:center">Lecture du programme TV…</p>';
+  const evs = await loadAgenda(force);
+  if (!document.body.classList.contains('agenda')) return;
+  const now = Date.now(), upcoming = evs.filter(e => e.end > now);
+  const days = [...new Set(upcoming.map(e => dayKey(e.start)))];
+  if (!days.includes(AGENDA.day)) AGENDA.day = days[0];
+  const ofDay = upcoming.filter(e => dayKey(e.start) === AGENDA.day);
+  // Catégories fixes, grisées quand rien ce jour-là ; « Autres » regroupe tous les autres sports
+  const MAIN = ['Football', 'Tennis', 'Basket', 'Rugby'], sportOf = e => MAIN.includes(e.sport) ? e.sport : 'Autres';
+  const sports = ['Tous', ...MAIN, 'Autres'];
+  if (!sports.includes(AGENDA.sport)) AGENDA.sport = 'Tous';
+  const has = n => n === 'Tous' ? ofDay.length > 0 : ofDay.some(e => sportOf(e) === n);
+  if (!has(AGENDA.sport)) AGENDA.sport = 'Tous';
+  const list = ofDay.filter(e => AGENDA.sport === 'Tous' || sportOf(e) === AGENDA.sport);
+  const liveNow = upcoming.filter(e => e.start <= now);
+  let h = `<h2 style="display:flex;justify-content:space-between;align-items:center">Agenda sport <button class="btn" id="agRefresh" style="height:30px;font-size:12px;text-transform:none;letter-spacing:0">↻ Actualiser</button></h2>`;
+  if (!upcoming.length) { box.innerHTML = h + '<div class="empty">Aucun match ou course trouvé dans les programmes de vos chaînes sport.<br>Le programme fourni par l\'abonnement est peut-être incomplet.</div>'; return; }
+  h += `<div class="ag-days">${days.map(d => { const e = upcoming.find(x => dayKey(x.start) === d); return `<button class="chip${d === AGENDA.day ? ' on' : ''}" data-day="${d}">${dayLabel(e.start)}</button>`; }).join('')}</div>`;
+  h += `<div class="ag-sports">${sports.map(n => `<button class="chip${n === AGENDA.sport ? ' on' : ''}" data-sport="${esc(n)}"${has(n) ? '' : ' disabled title="Rien ce jour-là"'}>${esc(n)}</button>`).join('')}</div>`;
+  if (liveNow.length && AGENDA.day === days[0]) h += `<p class="hint" style="margin:8px 2px 0">${liveNow.length} en direct en ce moment</p>`;
+  h += list.map((e, k) => {
+    const live = e.start <= now;
+    return `<div class="ev">
+      <div class="h">${hm(e.start)}<small>${hm(e.end)}</small></div>
+      <div><div class="sp">${esc(e.sport)}${e.comp ? ' · ' + esc(e.comp) : ''}${live ? '<span class="live">EN DIRECT</span>' : ''}</div>
+        <div class="t">${esc(e.title)}</div>${e.desc ? `<div class="d">${esc(e.desc)}</div>` : ''}
+        ${live ? `<div class="bar" style="max-width:320px"><i style="width:${pct(e)}%"></i></div>` : ''}
+        <div class="tv">${e.tv.map((x, j) => { const q = chInfo(x.list[0]).q; return `<button data-ev="${k}:${j}" title="${live ? 'Regarder' : 'Ouvrir la chaîne (commence à ' + hm(e.start) + ')'}"><span class="lg">${imgOr(logoUrl(x.label) || x.list[0].logo, '', '')}</span>${esc(x.label)} <span class="qb${q === 4 ? ' k4' : ''}">${QLBL[q]}</span></button>`; }).join('')}${(e.missing || []).map(n => `<span class="chip" style="opacity:.5;height:38px;display:inline-flex;align-items:center" title="Chaîne absente de votre liste">${esc(n)}</span>`).join('')}</div>
+      </div></div>`;
+  }).join('') || '<div class="empty">Rien pour ce sport ce jour-là.</div>';
+  AGENDA.shown = list;
+  h += `<p class="hint" style="margin-top:18px">${AGENDA.src === 'guide' ? 'Programme : guide TV libre XML TV Fr (xmltvfr.fr), mis à jour toutes les 3 h. Les chaînes en gris ne sont pas dans votre liste.' : 'Programme : celui de votre abonnement.'}</p>`;
+  box.innerHTML = h;
+}
+$('#agendaInner').addEventListener('click', e => {
+  const d = e.target.closest('[data-day]'), sp = e.target.closest('[data-sport]'), ev = e.target.closest('[data-ev]');
+  if (e.target.closest('#agRefresh')) return renderAgenda(true);
+  if (d) { AGENDA.day = d.dataset.day; renderAgenda(); }
+  else if (sp && !sp.disabled) { AGENDA.sport = sp.dataset.sport; LS.set('ag.sport', AGENDA.sport); renderAgenda(); }
+  else if (ev) { const [k, j] = ev.dataset.ev.split(':').map(Number), x = AGENDA.shown[k].tv[j]; play(x.list[0], x.list.slice(1)); }
+});
+$('#agendaBtn').onclick = () => { document.body.classList.remove('drawer'); setHomeView(true, true, 'agenda'); };
+setInterval(() => { if (document.body.classList.contains('agenda') && document.body.classList.contains('homeview')) renderAgenda(); }, 60000);
+
+/* ---------- Films & séries (VOD du serveur Xtream) façon Netflix : nouveautés, populaires, mieux notés, le meilleur de
+   chaque service (Netflix, Apple TV+, Disney+…), catégories. Seulement les catalogues en français (VF, VOSTFR). ---------- */
+const V = { data: null, loading: null, tab: 'home', q: '', cat: null };
+const SERVICES = [['Netflix', /netflix/i], ['Apple TV+', /apple/i], ['Disney+', /disney/i], ['Prime Video', /prime|amazon/i], ['Canal+', /canal|my ?canal/i],
+  ['Max', /\b(hbo|max)\b/i], ['Paramount+', /paramount/i], ['OCS', /\bocs\b/i], ['France.tv', /france\.?\s?tv/i], ['Arte', /\barte\b/i], ['TF1+', /tf1/i], ['M6+', /\bm6\b/i], ['Crunchyroll', /crunchyroll/i]];
+async function xget(q) {
+  const x = epgCtx(); if (!x) throw new Error('Pas de connexion Xtream');
+  const t = await fetchText(x.base + '/player_api.php?username=' + encodeURIComponent(x.user) + '&password=' + encodeURIComponent(x.pass) + q);
+  return JSON.parse(t);
+}
+// Étiquettes de service que les fournisseurs collent devant les titres (« NF - The Crown » = Netflix)
+const SVC_TAGS = { NF: 'Netflix', NFX: 'Netflix', NETFLIX: 'Netflix', AMZ: 'Prime Video', PV: 'Prime Video', PRIME: 'Prime Video', DSNP: 'Disney+', DNP: 'Disney+', DISNEY: 'Disney+',
+  ATVP: 'Apple TV+', APPLE: 'Apple TV+', HMAX: 'Max', MAX: 'Max', HBO: 'Max', PMTP: 'Paramount+', PARAMOUNT: 'Paramount+', CNLP: 'Canal+', CANAL: 'Canal+', OCS: 'OCS', CR: 'Crunchyroll' };
+// Étiquette en tête, seulement suivie d'un séparateur (« NF - », « AMZ: », « |FR| », « [4K] ») : « Top Gun » reste « Top Gun »
+const TAG_RE = /^\s*(?:[\[(|]\s*)?\b(fr|fra|vf|vff|vfq|vfi|vostfr|vost|french|truefrench|multi|4k|uhd|fhd|hd|sd|hdr|hdr10|dv|hevc|x265|h265|x264|top|new|nouveau|nf|nfx|netflix|amz|pv|prime|dsnp|dnp|disney|atvp|apple|hmax|max|hbo|pmtp|paramount|cnlp|canal|ocs|cr)\b\s*(?:[\])|]+\s*[-:·]?|[-:|·])\s*/i;
+function titleTags(n) { const out = []; let t = String(n || ''), k = 0, m; while ((m = t.match(TAG_RE)) && k++ < 6) { const s2 = SVC_TAGS[m[1].toUpperCase()]; if (s2) out.push(s2); t = t.slice(m[0].length); } return out; }
+function cleanTitle(n) {
+  const scene = /\w\.\w+\.\w/.test(String(n || ''));          // « Oppenheimer.2023.FRENCH.1080p »
+  let t = String(n || '').replace(/[_.]+(?=\S)/g, ' ').replace(/\s+/g, ' ').trim(), k = 0;
+  const BR = /^\s*[\[(|][A-Z0-9 .+|&-]{1,14}[\])|]\s*[-:·]?\s*/;                     // « [FR] », « (NF) », « |EN| » en tête
+  while ((TAG_RE.test(t) || BR.test(t)) && k++ < 8) t = t.replace(TAG_RE, '').replace(BR, '');
+  t = t.replace(/\s*[\[(][^\])]*(?:4k|uhd|fhd|hdr|multi|vostfr|vff?|french|hevc|x26[45]|1080p?|2160p?|720p?)[^\])]*[\])]/gi, '')   // [MULTI 4K], (VOSTFR)
+       .replace(/\s*[\[(](19|20)\d\d[\])]/g, '')                                                                                       // (2023)
+       .replace(/\s+-\s*(19|20)\d\d$/, '')                                                                                            // … - 2023
+       .replace(/(\s*[-|·]?\s*\b(4k|uhd|fhd|hdr|hdr10|dv|hevc|x265|h265|x264|1080p|2160p|720p|multi|vostfr|vost|vff|vf|truefrench|french|fr)\b)+\s*$/gi, '')
+       .replace(scene ? /\s+(19|20)\d\d$/ : /\s+-\s*(19|20)\d\d$/, '')                                                               // année restée (fichier, ou « - 2023 »)
+       .replace(/(\s*[\[(][A-Z0-9 .+|&-]{1,14}[\])])+\s*$/, '')                                                                          // « [FR] », « (MULTI) » en fin
+       .replace(/\s*[-|:·]\s*$/, '').replace(/\s{2,}/g, ' ').trim();
+  return t || String(n || '').trim();
+}
+// Version originale disponible : titre ou catégorie marqués MULTI, VOSTFR, VO…
+const VO_RE = /(^|[^a-z])(multi|vostfr|vost|vosta|vo|subfrench|dual|vf\s*\+\s*vo)([^a-z]|$)/i;
+// Film ou série étranger proposé seulement en français : langue d'origine connue (TMDB) autre que le français, sans version MULTI / VOSTFR
+const vfOnly = it => !!(it.ol && it.ol !== 'fr' && !it.vo);
+const yearOf = (...v) => { for (const x of v) { const m = String(x || '').match(/\b(19[3-9]\d|20[0-4]\d)\b/); if (m) return +m[1]; } return 0; };
+const rate10 = v => { const r = +v.rating || (+v.rating_5based * 2) || 0; return r > 10 ? r / 10 : r; };
+// Titre marqué d'une autre langue en tête (« EN - Titre », « |TR| Titre », « [DE] Titre ») ; pas « IT - … » (titre « It »)
+function itemForeign(name) {
+  const m = String(name || '').match(/^\s*[\[|(]?\s*([A-Za-z]{2,3})\s*([\]|):]|\s-\s)/);
+  if (!m) return false;
+  const cc = m[1].toUpperCase();
+  if (cc === 'FR' || cc === 'FRA' || cc === 'VF' || cc === 'VFF' || cc === 'VFQ') return false;
+  if (m[2].trim() === '-' && (cc === 'IT' || m[1] !== cc)) return false;  // « It - … » : un titre, pas une langue
+  return COUNTRY.has(cc) || cc === 'EN' || cc === 'ENG' || cc === 'VO' || cc === 'SUB';
+}
+// Catalogue chargé catégorie par catégorie (seulement les françaises) : un catalogue entier peut peser des dizaines de Mo,
+// trop pour le relais et pour la télé. Gardé 12 h sur l'appareil.
+async function loadVod(force) {
+  if (!force && V.data && V.data.pl === S.pl) return V.data;
+  if (V.loading) return V.loading;
+  V.loading = (async () => {
+    const cacheId = 'vod5:' + listKey(S.pl);                // version des filtres : un changement recharge le catalogue
+    if (!force) { const c = await DB.cacheGet(cacheId); if (c && Date.now() - c.at < 12 * 3600e3 && c.data && c.data.items) { c.data.pl = S.pl; return (V.data = c.data); } }
+    const progress = t => { const el = document.getElementById('vodProg'); if (el) el.textContent = t; };
+    let firstErr = '';
+    const get = q => xget(q).catch(e => { firstErr = firstErr || e.message || String(e); return null; });
+    progress('Catégories…');
+    const [vc, sc] = await Promise.all([get('&action=get_vod_categories'), get('&action=get_series_categories')]);
+    if (!Array.isArray(vc) && !Array.isArray(sc)) throw new Error('le serveur ne donne pas ses catégories de films' + (firstErr ? ' (' + firstErr + ')' : ''));
+    const cats = {};
+    const hide = LS.get('vod.hide', []), show = LS.get('vod.show', []), excluded = [];
+    const pick = (list, kind) => {
+      const arr = Array.isArray(list) ? list : [];
+      const fr = arr.filter(c => langOf(c.category_name) === 'fr');
+      // catalogue mélangé : seulement les catégories en français ; catalogue français sans préfixes : tout sauf l'étranger
+      const auto = fr.length >= 3 ? fr : arr.filter(c => langOf(c.category_name) !== 'xx');   // catalogue international : seulement le français
+      arr.forEach(c => {
+        const raw = c.category_name, inAuto = auto.includes(c);
+        const keep = !hide.includes(raw) && (inAuto || show.includes(raw));
+        if (keep) cats[kind + c.category_id] = { id: kind + c.category_id, kind, cid: String(c.category_id), name: cleanTitle(raw) || raw, raw };
+        else excluded.push({ kind, raw, name: cleanTitle(raw) || raw, why: hide.includes(raw) ? 'masquée' : 'étrangère' });
+      });
+    };
+    pick(vc, 'm'); pick(sc, 's');
+    const list = Object.values(cats);
+    if (!list.length) throw new Error('aucune catégorie de films ou séries en français sur ce serveur');
+    const seen = new Map(), items = [];
+    const add = it => {
+      const key = (it.tmdb ? 't' + it.tmdb : norm(it.name).replace(/\W+/g, '') + it.year) + it.kind;
+      const old = seen.get(key);
+      if (old) { if (!old.cats.includes(it.cats[0])) old.cats.push(it.cats[0]); if (!old.cover && it.cover) old.cover = it.cover; old.vo = old.vo || it.vo; return; }
+      seen.set(key, it); items.push(it);
+    };
+    const take = (c, arr) => (Array.isArray(arr) ? arr : []).forEach(v => {
+      const ck = c.kind + v.category_id; if (!cats[ck]) return;          // certains serveurs renvoient tout malgré la catégorie demandée
+      if (itemForeign(v.name)) return;                                   // titre marqué d'une autre langue (« EN - … », « |TR| … »)
+      const vo = VO_RE.test(v.name) || VO_RE.test(cats[ck].raw);           // version originale proposée (MULTI, VOSTFR…)
+      if (c.kind === 'm') add({ kind: 'movie', id: v.stream_id, name: cleanTitle(v.name), raw: v.name, year: yearOf(v.year, v.releaseDate, v.name), rating: rate10(v), added: +v.added || 0,
+        cover: v.stream_icon || '', ext: v.container_extension || 'mp4', cats: [ck], tmdb: v.tmdb || v.tmdb_id || '', vo });
+      else add({ kind: 'series', id: v.series_id, name: cleanTitle(v.name), raw: v.name, year: yearOf(v.year, v.releaseDate, v.release_date, v.name), rating: rate10(v),
+        added: +v.last_modified || 0, cover: v.cover || '', cats: [ck], plot: v.plot || '', genre: v.genre || '', tmdb: v.tmdb || '', vo });
+    });
+    let done = 0, ok = 0, all = { m: false, s: false };
+    const queue = list.slice();
+    const worker = async () => {
+      while (queue.length) {
+        const c = queue.shift();
+        if (all[c.kind]) { done++; continue; }
+        const arr = await get(c.kind === 'm' ? '&action=get_vod_streams&category_id=' + c.cid : '&action=get_series&category_id=' + c.cid);
+        if (Array.isArray(arr)) {
+          ok++; take(c, arr);
+          if (new Set(arr.slice(0, 500).map(v => String(v.category_id))).size > 3) all[c.kind] = true;   // le serveur a tout renvoyé : inutile de continuer
+        }
+        progress('Catalogues ' + (++done) + ' / ' + list.length + ' · ' + items.length + ' titres');
+      }
+    };
+    await Promise.all([worker(), worker(), worker(), worker()]);
+    if (!ok) throw new Error('le serveur refuse les listes de films' + (firstErr ? ' (' + firstErr + ')' : ''));
+    Object.values(cats).forEach(c => { c.service = (SERVICES.find(([, re]) => re.test(c.raw)) || [])[0] || ''; });
+    items.forEach(it => { it.services = [...new Set(it.cats.map(c => cats[c].service).concat(titleTags(it.raw)).filter(Boolean))]; });
+    const data = { pl: S.pl, cats, items, excluded };
+    DB.cachePut({ id: cacheId, at: Date.now(), data: { cats, items, excluded } });
+    return (V.data = data);
+  })();
+  try { return await V.loading; } finally { V.loading = null; }
+}
+// Affiches TMDB : la taille utile plutôt que l'originale (moins de données, décodage plus léger, surtout sur la télé)
+const posterUrl = u => String(u || '').replace(/(image\.tmdb\.org\/t\/p\/)(original|w\d+(_and_h\d+_[a-z0-9]+)?)\//i, '$1' + (window.PREFER_NATIVE ? 'w185' : 'w342') + '/');
+function posterHtml(it, i, rank) {
+  const r = it.rating ? `<span class="rt">★ ${it.rating.toFixed(1)}</span>` : '';
+  return `<button class="poster" data-v="${i}" title="${esc(it.name)}${it.year ? ' (' + it.year + ')' : ''}"><div class="im">${esc(it.name)}${it.cover ? `<img src="${esc(posterUrl(it.cover))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}${r}${it.kind === 'series' ? '<span class="kd">SÉRIE</span>' : ''}${vfOnly(it) ? '<span class="vfo" title="Film étranger proposé seulement en français (pas de VO)">VF seule</span>' : ''}${rank ? `<span class="rk">${rank}</span>` : ''}</div><div class="pt">${esc(it.name)}</div><div class="py">${it.year || ''}</div></button>`;
+}
+function vodRow(title, sub, list, ranked) { if (!list.length) return ''; return `<div class="vrow"><h3>${esc(title)}${sub ? `<small>${esc(sub)}</small>` : ''}</h3><div class="vscroll">${list.map((it, k) => posterHtml(it, V.shown.push(it) - 1, ranked && k < 20 ? k + 1 : 0)).join('')}</div></div>`; }
+
+/* ---------- Vraie popularité : TMDB (tendances de la semaine, et le plus regardé en France sur chaque service), croisée avec
+   le catalogue de l'abonnement. Clé TMDB gratuite (themoviedb.org › Paramètres › API), partagée par la synchro. ---------- */
+const TMDB_SVC = [['Netflix', /^netflix$/i], ['Prime Video', /^(amazon )?prime video$/i], ['Disney+', /^disney( plus|\+)$/i], ['Apple TV+', /^apple tv( plus|\+)$/i],
+  ['Canal+', /^canal\+$/i], ['Max', /^(hbo )?max$/i], ['Paramount+', /^paramount( plus|\+)$/i], ['Crunchyroll', /^crunchyroll$/i]];
+const TM = { data: null, loading: null, err: '' };
+async function tmdb(path, params) {
+  const key = (LS.get('pref.tmdb', '') || '').trim(); if (!key) throw new Error('pas de clé');
+  const q = new URLSearchParams(Object.assign({ language: 'fr-FR' }, params || {}));
+  const bearer = key.length > 40; if (!bearer) q.set('api_key', key);
+  const r = await fetch('https://api.themoviedb.org/3' + path + '?' + q, bearer ? { headers: { Authorization: 'Bearer ' + key } } : {});
+  if (r.status === 401) throw new Error('clé TMDB refusée');
+  if (!r.ok) throw new Error('TMDB répond ' + r.status);
+  return r.json();
+}
+async function loadPopular(force) {
+  if (!LS.get('pref.tmdb', '')) return null;
+  if (!force && TM.data) return TM.data;
+  if (TM.loading) return TM.loading;
+  TM.loading = (async () => {
+    if (!force) { const c = await DB.cacheGet('tmdb3:fr'); if (c && Date.now() - c.at < 12 * 3600e3) return (TM.data = c.data); }
+    const meta = {}, ids = (res, kind) => (res.results || []).map(r => { const id = kind + r.id; meta[id] = { k: kind, t: r.title || r.name || '', o: r.original_title || r.original_name || '', y: +String(r.release_date || r.first_air_date || '').slice(0, 4) || 0, p: r.poster_path || '', l: r.original_language || '' }; return id; });
+    const pages = async (path, kind, params, n) => { let out = []; for (let pg = 1; pg <= n; pg++) { try { out = out.concat(ids(await tmdb(path, Object.assign({ page: pg }, params)), kind)); } catch (e) { if (pg === 1) throw e; break; } } return out; };
+    const data = { trend: [], svc: {}, svcNew: {}, meta };
+    const [tm, tt] = await Promise.all([pages('/trending/movie/week', 'm', {}, 3), pages('/trending/tv/week', 's', {}, 3)]);
+    data.trend = tm.map((x, i) => [x, i]).concat(tt.map((x, i) => [x, i])).sort((a, b) => a[1] - b[1]).map(x => x[0]);
+    let provs = [];
+    try { provs = (await tmdb('/watch/providers/movie', { watch_region: 'FR' })).results || []; } catch (e) {}
+    await Promise.all(TMDB_SVC.map(async ([name, re]) => {
+      const pr = provs.filter(p => re.test(p.provider_name.trim())).sort((a, b) => a.provider_id - b.provider_id)[0]; if (!pr) return;
+      const pa = { watch_region: 'FR', with_watch_providers: pr.provider_id, sort_by: 'popularity.desc', with_watch_monetization_types: 'flatrate' };
+      const [m, t] = await Promise.all([pages('/discover/movie', 'm', pa, 2).catch(() => []), pages('/discover/tv', 's', pa, 2).catch(() => [])]);
+      data.svc[name] = { m, s: t };
+      // Nouveautés : sorties des 4 derniers mois sur la plateforme, les plus suivies d'abord
+      const d0 = new Date(Date.now() - 120 * 864e5).toISOString().slice(0, 10), d1 = new Date().toISOString().slice(0, 10);
+      const nm = { watch_region: 'FR', with_watch_providers: pr.provider_id, with_watch_monetization_types: 'flatrate', sort_by: 'popularity.desc' };
+      const [m2, t2] = await Promise.all([pages('/discover/movie', 'm', Object.assign({ 'primary_release_date.gte': d0, 'primary_release_date.lte': d1 }, nm), 2).catch(() => []),
+        pages('/discover/tv', 's', Object.assign({ 'first_air_date.gte': d0, 'first_air_date.lte': d1 }, nm), 2).catch(() => [])]);
+      data.svcNew[name] = { m: m2, s: t2 };
+    }));
+    DB.cachePut({ id: 'tmdb3:fr', at: Date.now(), data });
+    return (TM.data = data);
+  })();
+  try { return await TM.loading; } catch (e) { TM.err = e.message; return null; } finally { TM.loading = null; }
+}
+// Titres TMDB → titres du catalogue (identifiant TMDB si le serveur le donne, sinon titre + année à un an près)
+const tnorm = t => norm(cleanTitle(t)).replace(/[^a-z0-9]+/g, ' ').trim();
+function popIndex(items) {
+  if (V.pop && V.pop.items === items) return V.pop;
+  const byId = new Map(), byT = new Map();
+  items.forEach(it => { if (it.tmdb) byId.set((it.kind === 'series' ? 's' : 'm') + it.tmdb, it); const k = (it.kind === 'series' ? 's' : 'm') + tnorm(it.name); (byT.get(k) || byT.set(k, []).get(k)).push(it); });
+  return (V.pop = { items, byId, byT });
+}
+function popMatch(id, P, meta) {
+  const m = meta[id], hit = P.byId.get(id);
+  if (hit) { if (m && m.l && !hit.ol) hit.ol = m.l; return hit; }
+  if (!m) return null;
+  for (const t of [m.t, m.o]) {
+    const l = P.byT.get(m.k + tnorm(t)) || [];
+    const it = l.find(x => !x.year || !m.y || Math.abs(x.year - m.y) <= 1); if (it) { if (m.l && !it.ol) it.ol = m.l; if (!it.cover && m.p) it.cover = 'https://image.tmdb.org/t/p/w342' + m.p; return it; }
+  }
+  return null;
+}
+function popList(idsArr, P, meta, kinds) { const seen = new Set(), out = []; for (const id of idsArr) { if (!kinds.includes(id[0])) continue; const it = popMatch(id, P, meta); if (it && !seen.has(it)) { seen.add(it); out.push(it); } } return out; }
+async function renderVod() {
+  const box = $('#vodInner');
+  if (!S.pl) { box.innerHTML = '<div class="empty">Ajoutez ou déverrouillez une liste pour voir les films et séries.</div>'; return; }
+  if (!epgCtx()) { box.innerHTML = '<div class="empty">Les films et séries viennent du serveur de l\'abonnement (connexion Xtream) : pas disponibles pour cette liste.</div>'; return; }
+  if (!V.data || V.data.pl !== S.pl) box.innerHTML = '<div class="spin" style="margin:60px auto"></div><p class="hint" style="text-align:center">Chargement des catalogues…<br><span id="vodProg"></span></p>';
+  let D;
+  try { D = await loadVod(V.force); } catch (e) { box.innerHTML = `<div class="empty">Films et séries indisponibles : ${esc(e.message)}<br><br><button class="btn" data-reload>Réessayer</button></div>`; return; }
+  finally { V.force = false; }
+  if (!document.body.classList.contains('vod')) return;
+  V.shown = [];
+  const all = D.items, movies = all.filter(i => i.kind === 'movie'), series = all.filter(i => i.kind === 'series');
+  const yr = new Date().getFullYear(), byAdded = (a, b) => b.added - a.added, byRate = (a, b) => b.rating - a.rating || b.added - a.added;
+  let h = `<div class="vtop">
+    ${['home:Accueil', 'movie:Films', 'series:Séries', 'cats:Catégories'].map(t => { const [k, l] = t.split(':'); return `<button class="chip${V.tab === k && !V.q ? ' on' : ''}" data-tab="${k}">${l}</button>`; }).join('')}
+    <button class="chip" data-reload title="Recharger les catalogues depuis le serveur">↻</button>
+    <label class="searchbar"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input id="vodQ" type="search" placeholder="Titre d'un film ou d'une série" value="${esc(V.q)}" autocomplete="off"></label></div>`;
+  if (!all.length) { box.innerHTML = h + '<div class="empty">Aucun film ni série en français trouvé sur ce serveur.</div>'; return; }
+  const q = norm(V.q).trim();
+  if (q) {
+    const w = q.split(/\s+/), res = all.filter(i => w.every(x => norm(i.name).includes(x))).sort(byAdded).slice(0, 120);
+    h += `<div class="vgrid">${res.map(it => posterHtml(it, V.shown.push(it) - 1)).join('')}</div>` + (res.length ? '' : '<div class="empty">Aucun résultat.</div>');
+  } else if (V.tab === 'cats') {
+    if (V.cat) {
+      const c = D.cats[V.cat], res = all.filter(i => i.cats.includes(V.cat)).sort(byAdded);
+      h += `<div class="vrow"><h3><button class="chip" data-cat="">‹ Catégories</button> ${esc(c.name)} <small>${res.length} titres · ${c.kind === 's' ? 'séries' : 'films'}</small></h3></div><div class="vgrid">${res.slice(0, 400).map(it => posterHtml(it, V.shown.push(it) - 1)).join('')}</div>`;
+    } else {
+      const cnt = {}; all.forEach(i => i.cats.forEach(c => cnt[c] = (cnt[c] || 0) + 1));
+      const list = Object.values(D.cats).filter(c => cnt[c.id]);
+      for (const [kind, label] of [['m', 'Films'], ['s', 'Séries']]) {
+        const l = list.filter(c => c.kind === kind); if (!l.length) continue;
+        h += `<div class="vrow"><h3>${label}<small>✕ pour masquer une catégorie</small></h3><div style="display:flex;flex-wrap:wrap;gap:8px">${l.map(c => `<span style="display:inline-flex"><button class="chip" data-cat="${c.id}" style="border-radius:999px 0 0 999px">${esc(c.name)} <span style="color:var(--text3)">${cnt[c.id]}</span></button><button class="chip" data-hidecat="${esc(c.raw)}" title="Masquer cette catégorie" style="border-radius:0 999px 999px 0;padding:0 10px;color:var(--text3)">✕</button></span>`).join('')}</div></div>`;
+      }
+      h += `<div class="vrow"><button class="chip" data-vdiag>Copier un échantillon pour diagnostic</button><small class="hint" style="margin-left:8px">noms des catégories et quelques titres bruts, à coller dans la conversation</small></div>`;
+      const ex = D.excluded || [];
+      if (ex.length) h += `<div class="vrow"><h3>Catégories écartées<small>${ex.length} · étrangères ou masquées ; touchez pour réintégrer</small></h3><div style="display:flex;flex-wrap:wrap;gap:8px;opacity:.75">${ex.map(c => `<button class="chip" data-showcat="${esc(c.raw)}" title="${c.why === 'masquée' ? 'Masquée par vous' : 'Écartée car étrangère'} · réintégrer">${esc(c.raw)} <span style="color:var(--text3)">${c.kind === 's' ? 'séries' : 'films'} · ${c.why}</span></button>`).join('')}</div></div>`;
+    }
+  } else {
+    const pool = V.tab === 'movie' ? movies : V.tab === 'series' ? series : all;
+    const recent = i => (i.year && i.year >= yr - 2) || (i.added && Date.now() / 1000 - i.added < 120 * 86400);
+    const POP = await loadPopular(V.force2); V.force2 = false;
+    if (!document.body.classList.contains('vod')) return;
+    const kinds = V.tab === 'movie' ? ['m'] : V.tab === 'series' ? ['s'] : ['m', 's'];
+    if (POP) {
+      const P = popIndex(all);
+      h += vodRow('Tendances de la semaine', 'les plus regardés en ce moment · TMDB', popList(POP.trend, P, POP.meta, kinds).slice(0, 30), true);
+      for (const [svc] of TMDB_SVC) {
+        const S2 = POP.svc[svc]; if (!S2) continue;
+        const mix = X => kinds.length === 2 ? X.m.map((x, i) => [x, i]).concat(X.s.map((x, i) => [x, i])).sort((a, b) => a[1] - b[1]).map(x => x[0]) : kinds[0] === 'm' ? X.m : X.s;
+        const l = popList(mix(S2), P, POP.meta, kinds);
+        if (l.length >= 3) h += vodRow('Les plus vus de la semaine sur ' + svc, 'en France · TMDB', l.slice(0, 30), true);
+        const N2 = POP.svcNew && POP.svcNew[svc];
+        const ln = N2 ? popList(mix(N2), P, POP.meta, kinds) : [];
+        if (ln.length >= 2) h += vodRow('Nouveautés sur ' + svc, 'sorties des 4 derniers mois · TMDB', ln.slice(0, 30));
+      }
+    } else {
+      // Sans clé TMDB : le serveur ne donne pas d'audience ; approché par les titres récents les mieux notés
+      h += vodRow('Populaires en ce moment', 'récents et bien notés', pool.filter(i => recent(i) && i.rating >= 6.5).sort(byRate).slice(0, 40));
+      for (const [svc] of SERVICES) { const l = pool.filter(i => i.services.includes(svc)); if (l.length >= 4) h += vodRow('Nouveau sur ' + svc, 'derniers ajouts au catalogue', l.slice().sort(byAdded).slice(0, 30)); }
+    }
+    if (V.tab !== 'series') h += vodRow('Nouveautés · films', 'derniers ajouts', movies.slice().sort(byAdded).slice(0, 40));
+    if (V.tab !== 'movie') h += vodRow('Nouveautés · séries', 'dernières mises à jour', series.slice().sort(byAdded).slice(0, 40));
+    h += vodRow('Les mieux notés', '', pool.filter(i => i.rating >= 7 && (!i.year || i.year >= yr - 25)).sort(byRate).slice(0, 40));
+    for (const [svc] of SERVICES) {
+      const l = pool.filter(i => i.services.includes(svc)); if (l.length < 4) continue;
+      h += vodRow('Le meilleur de ' + svc, l.length + ' titres · mieux notés', l.slice().sort(byRate).slice(0, 40));
+    }
+    // Réglage de la vraie popularité
+    const key = LS.get('pref.tmdb', '');
+    const tbox = `<div class="tmdbbox"><b>Popularité réelle (TMDB)</b> ${key ? (POP ? '· activée' : '· ' + esc(TM.err || 'indisponible')) : ''}
+      <p class="hint" style="margin:6px 0 10px">${key ? 'Tendances et classements par service mis à jour toutes les 12 h.' : 'Votre serveur ne donne aucune audience. Avec une clé gratuite TMDB (themoviedb.org › compte › Paramètres › API, « Clé d\'API » ou « Jeton d\'accès en lecture »), l\'accueil montre les vraies tendances de la semaine et ce qui est le plus regardé en France sur Netflix, Prime Video, Disney+, Apple TV+, Canal+…'}</p>
+      <div class="row"><input class="field" id="tmdbKey" type="password" placeholder="Clé d'API TMDB" value="${esc(key)}" autocomplete="off" spellcheck="false" style="flex:1;min-width:0;margin:0"><button class="chip" data-tmdb>Enregistrer</button>${key ? '<button class="chip" data-tmdbre>↻</button>' : ''}</div></div>`;
+    if (key) h += tbox; else h = h.replace('<div class="vrow">', tbox + '<div class="vrow">');
+  }
+  box.innerHTML = h;
+  const qi = $('#vodQ'); if (V.q) { qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); }
+}
+let vodQT;
+$('#vodInner').addEventListener('input', e => { if (e.target.id !== 'vodQ') return; clearTimeout(vodQT); vodQT = setTimeout(() => { V.q = e.target.value; renderVod(); }, 250); });
+$('#vodInner').addEventListener('click', e => {
+  if (e.target.closest('[data-reload]')) { V.force = true; V.data = null; renderVod(); return; }
+  if (e.target.closest('[data-vdiag]')) {
+    const D = V.data || {}, cats = Object.values(D.cats || {}), ex = D.excluded || [];
+    const sample = cats.slice(0, 40).map(c => c.raw + ' → ' + (D.items || []).filter(i => i.cats.includes(c.id)).slice(0, 3).map(i => i.raw).join(' | '));
+    const txt = 'GARDÉES (' + cats.length + ') :\n' + sample.join('\n') + '\n\nÉCARTÉES (' + ex.length + ') :\n' + ex.slice(0, 80).map(c => c.raw + ' (' + c.why + ')').join('\n');
+    (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => toast('Échantillon copié : collez-le dans la conversation'), () => { prompt('Copiez ce texte :', txt); });
+    return;
+  }
+  const hc = e.target.closest('[data-hidecat]'), sc = e.target.closest('[data-showcat]');
+  if (hc || sc) {
+    const raw = (hc || sc).dataset[hc ? 'hidecat' : 'showcat'];
+    const hide = LS.get('vod.hide', []).filter(x => x !== raw), show = LS.get('vod.show', []).filter(x => x !== raw);
+    if (hc) hide.push(raw); else show.push(raw);
+    LS.set('vod.hide', hide); LS.set('vod.show', show);
+    toast(hc ? 'Catégorie masquée' : 'Catégorie réintégrée'); V.force = true; V.data = null; renderVod(); return;
+  }
+  if (e.target.closest('[data-tmdb]')) { LS.set('pref.tmdb', ($('#tmdbKey').value || '').trim()); TM.data = null; TM.err = ''; V.force2 = true; renderVod(); return; }
+  if (e.target.closest('[data-tmdbre]')) { TM.data = null; V.force2 = true; renderVod(); return; }
+  const t = e.target.closest('[data-tab]'), c = e.target.closest('[data-cat]'), p = e.target.closest('[data-v]');
+  if (t) { V.tab = t.dataset.tab; V.q = ''; V.cat = null; renderVod(); $('#vod').scrollTop = 0; }
+  else if (c) { V.tab = 'cats'; V.cat = c.dataset.cat || null; renderVod(); $('#vod').scrollTop = 0; }
+  else if (p) openVod(V.shown[+p.dataset.v]);
+});
+$('#vodBtn').onclick = () => { document.body.classList.remove('drawer'); setSolo(false); setHomeView(true, true, 'vod'); };
+const fmtDur = s => { s = +s || 0; if (!s) return ''; const h = Math.floor(s / 3600), m = Math.round(s % 3600 / 60); return h ? `${h} h ${String(m).padStart(2, '0')}` : `${m} min`; };
+function vodUrl(kind, id, ext) { const x = epgCtx(); return `${x.base}/${kind}/${encodeURIComponent(x.user)}/${encodeURIComponent(x.pass)}/${id}.${ext || 'mp4'}`; }
+/* Bande-annonce (comme Netflix) : retrouvée sur TMDB (identifiant du titre ou titre + année), lancée sans le son en haut de la
+   fiche. Film étranger : en VOSTFR si possible (bande-annonce française marquée VOST, sinon la VO avec les sous-titres
+   français de YouTube quand la vidéo en a), en VF sinon. Nécessite la clé TMDB (Films & séries › Popularité réelle). */
+async function tmdbInfo(it) {
+  if (it._ti) return it._ti;
+  if (!LS.get('pref.tmdb', '')) return null;
+  const kind = it.kind === 'series' ? 'tv' : 'movie';
+  let id = it.tmdb;
+  if (!id) {
+    const q = { query: it.name }; if (it.year) q[kind === 'tv' ? 'first_air_date_year' : 'year'] = it.year;
+    const r = await tmdb('/search/' + kind, q).catch(() => null);
+    id = r && r.results && r.results[0] && r.results[0].id;
+  }
+  if (!id) return null;
+  const d = await tmdb('/' + kind + '/' + id, { append_to_response: 'videos', include_video_language: 'fr,en,null' }).catch(() => null);
+  if (!d) return null;
+  const ol = d.original_language || '';
+  let vids = (d.videos && d.videos.results || []).filter(v => v.site === 'YouTube');
+  if (ol && ol !== 'fr' && ol !== 'en') {                 // VO dans une autre langue (coréen, japonais, espagnol…)
+    const o = await tmdb('/' + kind + '/' + id + '/videos', { language: ol }).catch(() => null);
+    vids = vids.concat((o && o.results || []).filter(v => v.site === 'YouTube'));
+  }
+  if (ol && !it.ol) it.ol = ol;
+  return (it._ti = { id, ol, vids });
+}
+async function trailerFor(it) {
+  const ti = await tmdbInfo(it); if (!ti) return null;
+  const best = l => l.slice().sort((a, b) => (b.type === 'Trailer') - (a.type === 'Trailer') || (b.official === true) - (a.official === true))[0];
+  const lang = l => ti.vids.filter(v => v.iso_639_1 === l);
+  const fr = lang('fr'), vost = fr.filter(v => /vost|sous[- ]titr/i.test(v.name || ''));
+  if (ti.ol === 'fr') { const v = best(fr) || best(ti.vids); return v && { key: v.key, tag: '' }; }
+  if (vost.length) return { key: best(vost).key, tag: 'VOSTFR' };
+  const vo = best(lang(ti.ol));
+  if (vo) return { key: vo.key, tag: 'VO', cc: true };
+  const v = best(fr.filter(x => !/vost/i.test(x.name || ''))) || best(ti.vids);
+  return v && { key: v.key, tag: v.iso_639_1 === 'fr' ? 'VF' : 'VO', cc: v.iso_639_1 !== 'fr' };
+}
+async function showTrailer(it) {
+  const tr = await trailerFor(it).catch(() => null);
+  if (!$('#vodModal').classList.contains('open') || !V.open || V.open.it !== it) return;
+  const ln = $('#vodLang');
+  if (ln && it.ol && it.ol !== 'fr') ln.innerHTML = it.vo ? 'Version originale disponible (MULTI ou VOSTFR) : choisissez la langue avec le bouton audio et sous-titres.'
+    : '<b style="color:#e0a526">VF seule</b> : ' + (it.kind === 'series' ? 'série étrangère' : 'film étranger') + ', aucune version originale (MULTI ou VOSTFR) sur l\'abonnement.';
+  if (!tr || $('#vodTrailer')) return;
+  const box = document.createElement('div'); box.id = 'vodTrailer';
+  const cc = tr.cc ? '&cc_load_policy=1&cc_lang_pref=fr&hl=fr' : '';
+  box.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(tr.key)}?autoplay=1&mute=1&rel=0&modestbranding=1&playsinline=1${cc}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin" title="Bande-annonce"></iframe>${tr.tag ? `<span class="trtag">Bande-annonce ${tr.tag === 'VO' ? 'en VO (sous-titres français si YouTube en a)' : tr.tag}</span>` : ''}`;
+  $('#vodDetail').prepend(box);
+  if (vfOnly(it)) document.querySelectorAll('.poster').forEach(p => { const x = V.shown[+p.dataset.v]; if (x === it && !p.querySelector('.vfo')) p.querySelector('.im').insertAdjacentHTML('beforeend', '<span class="vfo">VF seule</span>'); });
+}
+async function openVod(it) {
+  if (!it) return;
+  $('#vodModal h2 span').textContent = it.kind === 'series' ? 'Série' : 'Film';
+  $('#vodDetail').innerHTML = '<div class="spin" style="margin:30px auto"></div>'; openModal('vodModal');
+  let info = {}, eps = null;
+  try {
+    if (it.kind === 'movie') { const j = await xget('&action=get_vod_info&vod_id=' + it.id); info = j.info || {}; }
+    else { const j = await xget('&action=get_series_info&series_id=' + it.id); info = j.info || {}; eps = j.episodes || {}; }
+  } catch (e) {}
+  const cover = info.movie_image || info.cover_big || info.cover || it.cover;
+  const meta = [it.year || (info.releasedate || info.releaseDate || '').slice(0, 4), info.genre || it.genre, fmtDur(info.duration_secs) || info.duration, it.rating ? '★ ' + it.rating.toFixed(1) : '', it.services.join(', ')].filter(Boolean).join(' · ');
+  let h = `<div class="vd"><div>${cover ? `<img class="cv" src="${esc(cover)}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">` : '<div class="cv"></div>'}</div><div>
+    <h3>${esc(it.name)}</h3><div class="mt">${esc(meta)}</div><div class="cr" id="vodLang"></div>
+    <div class="plot">${esc(info.plot || info.description || it.plot || '')}</div>
+    ${info.director ? `<div class="cr">Réalisation : ${esc(info.director)}</div>` : ''}${info.cast || info.actors ? `<div class="cr">Avec : ${esc(info.cast || info.actors)}</div>` : ''}`;
+  if (it.kind === 'movie') {
+    const url = vodUrl('movie', it.id, it.ext), pos = LS.get('pos.' + url, 0);
+    h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-pm="${esc(url)}">▶ ${pos > 60 ? 'Reprendre à ' + fmtDur(pos) : 'Lecture'}</button>${pos > 60 ? `<button class="btn" data-pm="${esc(url)}" data-zero>Depuis le début</button>` : ''}<button class="btn" data-vlc="${esc(url)}">VLC</button></div>`;
+  } else {
+    const seasons = Object.keys(eps || {}).sort((a, b) => a - b);
+    if (!seasons.length) h += '<p class="hint" style="margin-top:14px">Aucun épisode trouvé.</p>';
+    else {
+      const cur = LS.get('season.' + it.id, seasons[0]), sel = seasons.includes(String(cur)) ? String(cur) : seasons[0];
+      h += `<div class="row" style="margin-top:14px"><select class="field" id="seasonSel" style="width:auto;margin:0">${seasons.map(n => `<option value="${n}"${n === sel ? ' selected' : ''}>Saison ${n}</option>`).join('')}</select></div><div class="eps">`;
+      h += (eps[sel] || []).map(e => { const url = vodUrl('series', e.id, e.container_extension), pos = LS.get('pos.' + url, 0), d = e.info || {};
+        return `<button class="ep" data-pm="${esc(url)}" data-ep="${esc(it.name + ' · S' + sel + 'E' + (e.episode_num || ''))}"><span class="n">${esc(e.episode_num || '')}</span><span style="flex:1;min-width:0"><b>${esc(cleanTitle(e.title || 'Épisode ' + e.episode_num))}</b><div class="d">${esc([fmtDur(d.duration_secs) || d.duration, pos > 60 ? 'vu jusqu\'à ' + fmtDur(pos) : ''].filter(Boolean).join(' · '))}</div></span>▶</button>`; }).join('');
+      h += '</div>';
+    }
+  }
+  $('#vodDetail').innerHTML = h + '</div></div>';
+  showTrailer(it);
+  V.open = { it, eps, cover };
+}
+$('#vodDetail').addEventListener('change', e => { if (e.target.id === 'seasonSel') { LS.set('season.' + V.open.it.id, e.target.value); openVod(V.open.it); } });
+$('#vodDetail').addEventListener('click', e => {
+  const b = e.target.closest('[data-pm]'), v = e.target.closest('[data-vlc]');
+  if (v) return openVlc({ name: V.open.it.name, url: v.dataset.vlc });
+  if (!b) return;
+  const it = V.open.it, url = b.dataset.pm;
+  if (b.hasAttribute('data-zero')) LS.set('pos.' + url, 0);
+  closeModals();
+  play({ name: b.dataset.ep || it.name, url, group: it.kind === 'series' ? 'Série' : 'Film' + (it.year ? ' · ' + it.year : ''), logo: V.open.cover || it.cover, n: 0, chno: '', vod: true, key: '' });
+});
+// Reprise : position retenue toutes les 5 s, reprise à l'ouverture (sauf presque à la fin)
+/* ---------- Films convertis par ffmpeg (appli Windows) : le flux part de ss secondes ; avancer, reculer ou changer de langue
+   relance la conversion au bon endroit. Image gardée telle quelle, convertie seulement si la carte graphique ne la lit pas. ---------- */
+const fmtT = s => { s = Math.max(0, Math.floor(s || 0)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0'); };
+const curPos = () => S.remux && S.engine === 'remux' ? S.remux.ss + (video.currentTime || 0) : video.currentTime;
+async function playRemux(c, t) {
+  const base = window.desktop.remux, R = S.remux = { base, url: c.url, ss: 0, a: 0, enc: false, info: null };
+  let info = null, local = '';
+  try { info = await (await fetch(base + '/probe?url=' + encodeURIComponent(c.url))).json(); } catch (e) { local = e && e.message || String(e); }
+  if (t !== token) return;
+  const ver = 'appli ' + (window.desktop.version || '1.3 ou moins');
+  if (!info) return failRemux(c, 'le module de conversion de l\'appli est injoignable (' + local + ' · ' + ver + ')');
+  R.info = info;
+  if (!info.ok && (info.denied || /\b403\b|forbidden/i.test(info.err || ''))) return failRemux(c, 'le serveur refuse l\'accès au film (erreur 403). Le plus souvent, une autre lecture est en cours avec ce compte (autre appareil, autre appli, VLC) et l\'abonnement n\'en autorise qu\'une ; sinon le film n\'est plus disponible sur le serveur. Fermez l\'autre lecture puis Réessayer · ' + ver);
+  if (!info.ok) return failRemux(c, (info.err ? 'réponse de ffmpeg : ' + info.err : 'ffmpeg n\'a rien reçu du serveur en 25 s') + ' · ' + ver);
+  const pa = LS.get('pref.audio', 'fr'), au = info.audio || [];
+  const pick = au.find(x => lang2(x.lang) === pa) || au.find(x => x.def) || au[0];
+  R.a = pick ? pick.i : 0;
+  const ps = LS.get('pref.sub', 'off'), sb = info.subs || [];
+  const sp = ps === 'off' ? sb.find(x => x.forced && lang2(x.lang) === lang2(au[R.a] && au[R.a].lang)) : sb.find(x => lang2(x.lang) === ps && !x.forced) || sb.find(x => lang2(x.lang) === ps);
+  R.s = sp ? sp.i : -1;
+  const pos = LS.get('pos.' + c.url, 0), dur = info.duration || 0;
+  remuxStart(pos > 60 && (!dur || pos < dur - Math.min(120, dur * 0.1)) ? pos : 0, t);
+  if (pos > 60) toast('Reprise à ' + fmtDur(pos));
+}
+function remuxStart(ss, t) {
+  const R = S.remux; if (!R) return;
+  t = t || token;
+  R.ss = Math.max(0, Math.floor(ss));
+  R.sid = R.s >= 0 ? Math.random().toString(36).slice(2, 12) : ''; R.ncues = 0; clearCues(subT('r'));
+  subT('r').mode = R.s >= 0 ? 'showing' : 'disabled';
+  const hevc = /hevc|h265/i.test(R.info.vcodec || '') ? '1' : '0';
+  stopEngines(); S.engine = '';
+  setStatus('load'); video.controls = false;
+  let done = false;
+  const timer = setTimeout(() => ko(), 30000);
+  const ok = () => { if (done || t !== token) return; done = true; clearTimeout(timer); setStatus(null); S.engine = 'remux'; S.playUrl = R.url; document.body.classList.add('remux'); vbarUpdate(); setTimeout(applyTrackPrefs, 300); };
+  const ko = () => {
+    if (done || t !== token) return; done = true; clearTimeout(timer);
+    if (!R.enc) { R.enc = true; toast('Image convertie (format non lu par la carte graphique)'); return remuxStart(R.ss, t); }
+    failRemux(S.current, video.error ? 'erreur ' + video.error.code + (video.error.message ? ' · ' + video.error.message : '') : 'rien reçu en 30 s');
+  };
+  attempt = { ok, ko };
+  video.src = R.base + '/remux?url=' + encodeURIComponent(R.url) + '&ss=' + R.ss + '&a=' + R.a + '&hevc=' + hevc + (R.enc ? '&v=enc' : '') + (R.s >= 0 ? '&s=' + R.s + '&sid=' + R.sid : '');
+  loadFileCues();
+  const p = video.play(); if (p && p.catch) p.catch(() => {});
+}
 function failRemux(c, why) {
   S.tries.push({ eng: 'ffmpeg', u: 'conversion', why });
   failMsg('Conversion du film (ffmpeg) : ' + why, '<button class="btn primary" onclick="openVlc(S.current)">Ouvrir dans VLC</button>');
