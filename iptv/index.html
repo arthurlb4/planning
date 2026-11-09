@@ -124,6 +124,8 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 .poster .im img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .poster .rt{position:absolute;top:7px;left:7px;font-size:11px;font-weight:800;padding:2px 6px;border-radius:6px;background:rgba(0,0,0,.7);color:var(--gold);z-index:1}
 .poster .kd{position:absolute;top:7px;right:7px;font-size:10px;font-weight:800;padding:2px 6px;border-radius:6px;background:rgba(0,0,0,.7);color:#fff;z-index:1}
+.poster .rk{position:absolute;left:6px;bottom:2px;z-index:1;font-size:46px;font-weight:900;line-height:1;color:#111;-webkit-text-stroke:2px #f3f2ef;letter-spacing:-.04em;text-shadow:0 2px 8px rgba(0,0,0,.6)}
+.tmdbbox{margin-top:16px;padding:14px;border-radius:14px;background:var(--bg2);border:.5px solid var(--border)}
 .poster .pt{font-size:13px;font-weight:600;margin-top:7px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.3}
 .poster .py{font-size:12px;color:var(--text3)}
 .vgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:18px 14px;margin-top:14px}
@@ -1237,11 +1239,68 @@ async function loadVod(force) {
 }
 // Affiches TMDB : la taille utile plutôt que l'originale (moins de données, décodage plus léger, surtout sur la télé)
 const posterUrl = u => String(u || '').replace(/(image\.tmdb\.org\/t\/p\/)(original|w\d+(_and_h\d+_[a-z0-9]+)?)\//i, '$1' + (window.PREFER_NATIVE ? 'w185' : 'w342') + '/');
-function posterHtml(it, i) {
+function posterHtml(it, i, rank) {
   const r = it.rating ? `<span class="rt">★ ${it.rating.toFixed(1)}</span>` : '';
-  return `<button class="poster" data-v="${i}" title="${esc(it.name)}${it.year ? ' (' + it.year + ')' : ''}"><div class="im">${esc(it.name)}${it.cover ? `<img src="${esc(posterUrl(it.cover))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}${r}${it.kind === 'series' ? '<span class="kd">SÉRIE</span>' : ''}</div><div class="pt">${esc(it.name)}</div><div class="py">${it.year || ''}</div></button>`;
+  return `<button class="poster" data-v="${i}" title="${esc(it.name)}${it.year ? ' (' + it.year + ')' : ''}"><div class="im">${esc(it.name)}${it.cover ? `<img src="${esc(posterUrl(it.cover))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}${r}${it.kind === 'series' ? '<span class="kd">SÉRIE</span>' : ''}${rank ? `<span class="rk">${rank}</span>` : ''}</div><div class="pt">${esc(it.name)}</div><div class="py">${it.year || ''}</div></button>`;
 }
-function vodRow(title, sub, list) { if (!list.length) return ''; return `<div class="vrow"><h3>${esc(title)}${sub ? `<small>${esc(sub)}</small>` : ''}</h3><div class="vscroll">${list.map(it => posterHtml(it, V.shown.push(it) - 1)).join('')}</div></div>`; }
+function vodRow(title, sub, list, ranked) { if (!list.length) return ''; return `<div class="vrow"><h3>${esc(title)}${sub ? `<small>${esc(sub)}</small>` : ''}</h3><div class="vscroll">${list.map((it, k) => posterHtml(it, V.shown.push(it) - 1, ranked && k < 20 ? k + 1 : 0)).join('')}</div></div>`; }
+
+/* ---------- Vraie popularité : TMDB (tendances de la semaine, et le plus regardé en France sur chaque service), croisée avec
+   le catalogue de l'abonnement. Clé TMDB gratuite (themoviedb.org › Paramètres › API), partagée par la synchro. ---------- */
+const TMDB_SVC = [['Netflix', /^netflix$/i], ['Prime Video', /^(amazon )?prime video$/i], ['Disney+', /^disney( plus|\+)$/i], ['Apple TV+', /^apple tv( plus|\+)$/i],
+  ['Canal+', /^canal\+$/i], ['Max', /^(hbo )?max$/i], ['Paramount+', /^paramount( plus|\+)$/i], ['Crunchyroll', /^crunchyroll$/i]];
+const TM = { data: null, loading: null, err: '' };
+async function tmdb(path, params) {
+  const key = (LS.get('pref.tmdb', '') || '').trim(); if (!key) throw new Error('pas de clé');
+  const q = new URLSearchParams(Object.assign({ language: 'fr-FR' }, params || {}));
+  const bearer = key.length > 40; if (!bearer) q.set('api_key', key);
+  const r = await fetch('https://api.themoviedb.org/3' + path + '?' + q, bearer ? { headers: { Authorization: 'Bearer ' + key } } : {});
+  if (r.status === 401) throw new Error('clé TMDB refusée');
+  if (!r.ok) throw new Error('TMDB répond ' + r.status);
+  return r.json();
+}
+async function loadPopular(force) {
+  if (!LS.get('pref.tmdb', '')) return null;
+  if (!force && TM.data) return TM.data;
+  if (TM.loading) return TM.loading;
+  TM.loading = (async () => {
+    if (!force) { const c = await DB.cacheGet('tmdb:fr'); if (c && Date.now() - c.at < 12 * 3600e3) return (TM.data = c.data); }
+    const meta = {}, ids = (res, kind) => (res.results || []).map(r => { const id = kind + r.id; meta[id] = { k: kind, t: r.title || r.name || '', o: r.original_title || r.original_name || '', y: +String(r.release_date || r.first_air_date || '').slice(0, 4) || 0, p: r.poster_path || '' }; return id; });
+    const pages = async (path, kind, params, n) => { let out = []; for (let pg = 1; pg <= n; pg++) { try { out = out.concat(ids(await tmdb(path, Object.assign({ page: pg }, params)), kind)); } catch (e) { if (pg === 1) throw e; break; } } return out; };
+    const data = { trend: [], svc: {}, meta };
+    const [tm, tt] = await Promise.all([pages('/trending/movie/week', 'm', {}, 3), pages('/trending/tv/week', 's', {}, 3)]);
+    data.trend = tm.map((x, i) => [x, i]).concat(tt.map((x, i) => [x, i])).sort((a, b) => a[1] - b[1]).map(x => x[0]);
+    let provs = [];
+    try { provs = (await tmdb('/watch/providers/movie', { watch_region: 'FR' })).results || []; } catch (e) {}
+    await Promise.all(TMDB_SVC.map(async ([name, re]) => {
+      const pr = provs.filter(p => re.test(p.provider_name.trim())).sort((a, b) => a.provider_id - b.provider_id)[0]; if (!pr) return;
+      const pa = { watch_region: 'FR', with_watch_providers: pr.provider_id, sort_by: 'popularity.desc', with_watch_monetization_types: 'flatrate' };
+      const [m, t] = await Promise.all([pages('/discover/movie', 'm', pa, 2).catch(() => []), pages('/discover/tv', 's', pa, 2).catch(() => [])]);
+      data.svc[name] = { m, s: t };
+    }));
+    DB.cachePut({ id: 'tmdb:fr', at: Date.now(), data });
+    return (TM.data = data);
+  })();
+  try { return await TM.loading; } catch (e) { TM.err = e.message; return null; } finally { TM.loading = null; }
+}
+// Titres TMDB → titres du catalogue (identifiant TMDB si le serveur le donne, sinon titre + année à un an près)
+const tnorm = t => norm(cleanTitle(t)).replace(/[^a-z0-9]+/g, ' ').trim();
+function popIndex(items) {
+  if (V.pop && V.pop.items === items) return V.pop;
+  const byId = new Map(), byT = new Map();
+  items.forEach(it => { if (it.tmdb) byId.set((it.kind === 'series' ? 's' : 'm') + it.tmdb, it); const k = (it.kind === 'series' ? 's' : 'm') + tnorm(it.name); (byT.get(k) || byT.set(k, []).get(k)).push(it); });
+  return (V.pop = { items, byId, byT });
+}
+function popMatch(id, P, meta) {
+  const hit = P.byId.get(id); if (hit) return hit;
+  const m = meta[id]; if (!m) return null;
+  for (const t of [m.t, m.o]) {
+    const l = P.byT.get(m.k + tnorm(t)) || [];
+    const it = l.find(x => !x.year || !m.y || Math.abs(x.year - m.y) <= 1); if (it) { if (!it.cover && m.p) it.cover = 'https://image.tmdb.org/t/p/w342' + m.p; return it; }
+  }
+  return null;
+}
+function popList(idsArr, P, meta, kinds) { const seen = new Set(), out = []; for (const id of idsArr) { if (!kinds.includes(id[0])) continue; const it = popMatch(id, P, meta); if (it && !seen.has(it)) { seen.add(it); out.push(it); } } return out; }
 async function renderVod() {
   const box = $('#vodInner');
   if (!S.pl) { box.innerHTML = '<div class="empty">Ajoutez ou déverrouillez une liste pour voir les films et séries.</div>'; return; }
@@ -1278,15 +1337,33 @@ async function renderVod() {
   } else {
     const pool = V.tab === 'movie' ? movies : V.tab === 'series' ? series : all;
     const recent = i => (i.year && i.year >= yr - 2) || (i.added && Date.now() / 1000 - i.added < 120 * 86400);
-    // « Populaires » : le serveur ne donne pas d'audience ; approché par les titres récents les mieux notés
-    h += vodRow('Populaires en ce moment', 'récents et bien notés', pool.filter(i => recent(i) && i.rating >= 6.5).sort(byRate).slice(0, 40));
+    const POP = await loadPopular(V.force2); V.force2 = false;
+    if (!document.body.classList.contains('vod')) return;
+    const kinds = V.tab === 'movie' ? ['m'] : V.tab === 'series' ? ['s'] : ['m', 's'];
+    if (POP) {
+      const P = popIndex(all);
+      h += vodRow('Tendances de la semaine', 'les plus regardés en ce moment · TMDB', popList(POP.trend, P, POP.meta, kinds).slice(0, 30), true);
+      for (const [svc] of TMDB_SVC) {
+        const S2 = POP.svc[svc]; if (!S2) continue;
+        const l = popList(kinds.length === 2 ? S2.m.map((x, i) => [x, i]).concat(S2.s.map((x, i) => [x, i])).sort((a, b) => a[1] - b[1]).map(x => x[0]) : kinds[0] === 'm' ? S2.m : S2.s, P, POP.meta, kinds);
+        if (l.length >= 3) h += vodRow('Populaires sur ' + svc, 'en France · TMDB', l.slice(0, 30), true);
+      }
+    } else {
+      // Sans clé TMDB : le serveur ne donne pas d'audience ; approché par les titres récents les mieux notés
+      h += vodRow('Populaires en ce moment', 'récents et bien notés', pool.filter(i => recent(i) && i.rating >= 6.5).sort(byRate).slice(0, 40));
+    }
     if (V.tab !== 'series') h += vodRow('Nouveautés · films', 'derniers ajouts', movies.slice().sort(byAdded).slice(0, 40));
     if (V.tab !== 'movie') h += vodRow('Nouveautés · séries', 'dernières mises à jour', series.slice().sort(byAdded).slice(0, 40));
     h += vodRow('Les mieux notés', '', pool.filter(i => i.rating >= 7 && (!i.year || i.year >= yr - 25)).sort(byRate).slice(0, 40));
     for (const [svc] of SERVICES) {
       const l = pool.filter(i => i.services.includes(svc)); if (l.length < 4) continue;
-      h += vodRow('Le meilleur de ' + svc, l.length + ' titres', l.slice().sort(byRate).slice(0, 40));
+      h += vodRow('Le meilleur de ' + svc, l.length + ' titres · mieux notés', l.slice().sort(byRate).slice(0, 40));
     }
+    // Réglage de la vraie popularité
+    const key = LS.get('pref.tmdb', '');
+    h += `<div class="tmdbbox"><b>Popularité réelle (TMDB)</b> ${key ? (POP ? '· activée' : '· ' + esc(TM.err || 'indisponible')) : ''}
+      <p class="hint" style="margin:6px 0 10px">${key ? 'Tendances et classements par service mis à jour toutes les 12 h.' : 'Votre serveur ne donne aucune audience. Avec une clé gratuite TMDB (themoviedb.org › compte › Paramètres › API, « Clé d\'API » ou « Jeton d\'accès en lecture »), l\'accueil montre les vraies tendances de la semaine et ce qui est le plus regardé en France sur Netflix, Prime Video, Disney+, Apple TV+, Canal+…'}</p>
+      <div class="row"><input class="field" id="tmdbKey" type="password" placeholder="Clé d'API TMDB" value="${esc(key)}" autocomplete="off" spellcheck="false" style="flex:1;min-width:0;margin:0"><button class="chip" data-tmdb>Enregistrer</button>${key ? '<button class="chip" data-tmdbre>↻</button>' : ''}</div></div>`;
   }
   box.innerHTML = h;
   const qi = $('#vodQ'); if (V.q) { qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); }
@@ -1295,6 +1372,8 @@ let vodQT;
 $('#vodInner').addEventListener('input', e => { if (e.target.id !== 'vodQ') return; clearTimeout(vodQT); vodQT = setTimeout(() => { V.q = e.target.value; renderVod(); }, 250); });
 $('#vodInner').addEventListener('click', e => {
   if (e.target.closest('[data-reload]')) { V.force = true; V.data = null; renderVod(); return; }
+  if (e.target.closest('[data-tmdb]')) { LS.set('pref.tmdb', ($('#tmdbKey').value || '').trim()); TM.data = null; TM.err = ''; V.force2 = true; renderVod(); return; }
+  if (e.target.closest('[data-tmdbre]')) { TM.data = null; V.force2 = true; renderVod(); return; }
   const t = e.target.closest('[data-tab]'), c = e.target.closest('[data-cat]'), p = e.target.closest('[data-v]');
   if (t) { V.tab = t.dataset.tab; V.q = ''; V.cat = null; renderVod(); $('#vod').scrollTop = 0; }
   else if (c) { V.tab = 'cats'; V.cat = c.dataset.cat || null; renderVod(); $('#vod').scrollTop = 0; }
