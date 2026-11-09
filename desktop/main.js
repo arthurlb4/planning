@@ -1,7 +1,18 @@
 // Lecteur IPTV pour Windows : la page du lecteur (franceinfoplanning.com/iptv/) dans une fenêtre sans les limites du
 // navigateur (serveurs IPTV qui refusent les navigateurs, flux en http sur la page en https).
-const { app, BrowserWindow, session, shell } = require('electron');
+const { app, BrowserWindow, session, shell, ipcMain } = require('electron');
 const path = require('path');
+const fs = require('fs');
+const startRemux = require('./remux');
+
+// ffmpeg livré avec l'appli (hors de l'archive app.asar pour pouvoir le lancer)
+function ffmpegPath() {
+  const packed = path.join(process.resourcesPath || '', 'app.asar.unpacked', 'node_modules', 'ffmpeg-static', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg');
+  if (fs.existsSync(packed)) return packed;
+  try { return require('ffmpeg-static'); } catch (e) { return 'ffmpeg'; }
+}
+let remuxBase = '';
+ipcMain.on('remux-base', e => { e.returnValue = remuxBase; });
 
 const PAGE = 'https://franceinfoplanning.com/iptv/';
 const OWN = /^https?:\/\/(www\.)?franceinfoplanning\.com\/|^https:\/\/cdn\.jsdelivr\.net\/|^https:\/\/planning-gcal\./;
@@ -13,11 +24,12 @@ app.commandLine.appendSwitch('enable-blink-features', 'AudioVideoTracks');
 function createWindow() {
   const win = new BrowserWindow({
     width: 1400, height: 860, minWidth: 360, minHeight: 500,
-    backgroundColor: '#161615', title: 'Lecteur IPTV', autoHideMenuBar: true, icon: path.join(__dirname, 'icon.png'),
+    backgroundColor: '#161615', title: 'Lecteur IPTV', autoHideMenuBar: true, icon: path.join(__dirname, 'icon.ico'),
     webPreferences: {
       webSecurity: false,                 // pas de blocage CORS : les serveurs IPTV n'autorisent pas les navigateurs
       allowRunningInsecureContent: true,  // flux en http depuis la page en https
-      contextIsolation: true, nodeIntegration: false, sandbox: true
+      contextIsolation: true, nodeIntegration: false, sandbox: true,
+      preload: path.join(__dirname, 'preload.js')
     }
   });
 
@@ -37,5 +49,8 @@ function createWindow() {
   win.loadURL(PAGE).catch(() => win.loadFile(path.join(__dirname, 'index.html')));
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(async () => {
+  try { remuxBase = 'http://127.0.0.1:' + await startRemux(ffmpegPath()); } catch (e) {}
+  createWindow();
+});
 app.on('window-all-closed', () => app.quit());
