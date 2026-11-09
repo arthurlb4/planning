@@ -2017,6 +2017,13 @@ function liveWin() {
   if (b && b.length) { lo = r && r.length ? Math.min(lo, b.start(0)) : b.start(0); hi = Math.max(hi, b.end(b.length - 1)); }
   return hi > lo ? [lo, hi] : null;
 }
+// Point « direct » où se placer : un peu avant le bout de ce qui est reçu, pour garder du tampon (pas de coupure), et
+// celui que vise hls.js quand il lit le direct. Tant qu'on est à ce point (ou presque), le bouton DIRECT reste rouge.
+function liveTarget(w) {
+  const sync = hls && hls.liveSyncPosition;
+  return isFinite(sync) && sync > 0 ? Math.min(sync, w[1] - 3) : Math.max(w[0], w[1] - 12);
+}
+const atLive = w => !w || video.currentTime >= liveTarget(w) - 6;
 function vbarUpdate() {
   if (!S.current) return;
   const R = S.remux, rem = S.engine === 'remux' && R, live = !S.current.vod;
@@ -2028,7 +2035,7 @@ function vbarUpdate() {
   } else if (live) {
     const w = liveWin();
     if (w) { rg.min = w[0]; rg.max = w[1]; if (!drag) rg.value = video.currentTime; }
-    $('#vbLive').classList.toggle('edge', !w || w[1] - video.currentTime < 8);
+    $('#vbLive').classList.toggle('edge', atLive(w));
   } else {
     const dur = isFinite(video.duration) ? video.duration : 0;
     $('#vbCur').textContent = fmtT(video.currentTime); $('#vbDur').textContent = dur ? fmtT(dur) : '--:--';
@@ -2044,7 +2051,7 @@ function seekBy(d) {
   if (S.engine === 'remux') return remuxStart(curPos() + d);
   if (S.current && !S.current.vod) {
     const w = liveWin(); if (!w) { toast('Pas de retour possible sur ce direct'); return; }
-    const t = Math.max(w[0] + 0.5, Math.min(w[1] - 1, video.currentTime + d));
+    const t = Math.max(w[0] + 0.5, Math.min(Math.max(liveTarget(w), video.currentTime), video.currentTime + d));
     if (d < 0 && t >= video.currentTime - 1) toast('Début de ce qui a été gardé');
     else if (d > 0 && t <= video.currentTime + 1) toast('Vous êtes au direct');
     video.currentTime = t;
@@ -2055,7 +2062,7 @@ $('#vbBack').onclick = () => seekBy(-10);
 $('#vbFwd').onclick = () => seekBy(10);
 $('#vbRange').addEventListener('input', e => { if (S.engine !== 'remux') video.currentTime = +e.target.value; });
 $('#vbRange').addEventListener('change', e => { if (S.engine === 'remux') remuxStart(+e.target.value); });
-$('#vbLive').onclick = () => { const w = liveWin(); if (w) video.currentTime = w[1] - 1.5; if (video.paused) video.play().catch(() => {}); vbarUpdate(); };
+$('#vbLive').onclick = () => { const w = liveWin(); if (w && !atLive(w)) video.currentTime = liveTarget(w); if (video.paused) video.play().catch(() => {}); vbarUpdate(); };
 $('#vbPlay').onclick = () => { video.paused ? video.play() : video.pause(); vbarUpdate(); };
 $('#vbMute').onclick = () => { if (video.muted || !video.volume) { video.muted = false; if (!video.volume) video.volume = 0.5; } else video.muted = true; vbarUpdate(); };
 $('#vbVol').addEventListener('input', e => { video.volume = +e.target.value; video.muted = !video.volume; LS.set('dev.vol', video.volume); });
