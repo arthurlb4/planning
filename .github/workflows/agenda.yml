@@ -1,0 +1,37 @@
+name: Agenda sport (Lecteur IPTV)
+
+# Toutes les 3 heures : télécharge le guide TV libre XML TV Fr (xmltvfr.fr) une seule fois, en extrait les retransmissions
+# sportives (scripts/build-agenda.py) et range le résultat sur le serveur Cloudflare (clé iptv:agenda), servi aux appareils
+# par /iptv/agenda.
+on:
+  schedule:
+    - cron: '17 */3 * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/build-agenda.py'
+      - '.github/workflows/agenda.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: iptv-agenda
+  cancel-in-progress: true
+
+jobs:
+  agenda:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Agenda à partir du guide
+        run: |
+          python3 scripts/build-agenda.py > agenda.json
+          python3 -c "import json; d=json.load(open('agenda.json')); n=len(d['events']); print(n, 'événements'); assert n > 20"
+      - name: Rangement sur le serveur Cloudflare
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 686385718410239110ea2fe1bccf43be
+        run: npx --yes wrangler@3.95.0 kv key put "iptv:agenda" --path agenda.json --namespace-id 8c380577a5d8482c95ef6aceea259b55 --remote

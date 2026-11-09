@@ -921,7 +921,8 @@ function fail(c) {
     S.retry = true; return play(n, S.alts.slice(1));
   }
   if (c.vod && /\.mkv$/i.test(c.url) && !window.PREFER_NATIVE) {
-    return setStatus('msg', '<b style="color:var(--text)">Format MKV non lu ici</b><br><span class="hint">Ce film est un fichier MKV (souvent avec du son Dolby) que ce lecteur ne sait pas décoder. La télé Samsung le lit, et VLC aussi.</span>',
+    const why = !window.desktop ? (/Electron/.test(navigator.userAgent) ? 'Cette version de l\'appli Windows est ancienne : téléchargez la version 1.1 (lecture des MKV intégrée).' : 'Dans le navigateur, le MKV ne se lit pas ; l\'appli Windows (version 1.1) le lit.') : 'Le module de conversion de l\'appli n\'a pas démarré (ffmpeg introuvable).';
+    return setStatus('msg', '<b style="color:var(--text)">Format MKV non lu ici</b><br><span class="hint">Ce film est un fichier MKV (souvent avec du son Dolby). ' + why + ' La télé Samsung le lit, et VLC aussi.</span>',
       '<button class="btn primary" onclick="openVlc(S.current)">Ouvrir dans VLC</button><button class="btn" onclick="play(S.current)">Réessayer</button>');
   }
   const mixed = location.protocol === 'https:' && /^http:/i.test(c.url);
@@ -1102,8 +1103,40 @@ async function epgFull(c) {
     return [];
   });
 }
+// Agenda tiré du guide TV libre XML TV Fr (préparé toutes les 3 h par GitHub, servi par le serveur de l'app) : affiches,
+// compétitions et chaînes de toute la télé française, croisées avec les chaînes de votre liste.
+const AGENDA_URL = 'https://planning-gcal.arthur-lebreton94.workers.dev/iptv/agenda';
+let chCanon = null;
+function chanFor(name) {                                    // chaîne du guide → versions de cette chaîne dans votre liste
+  if (!chCanon || chCanon.ch !== S.channels) {
+    const m = new Map();
+    S.channels.forEach(c => { const ci = chInfo(c); if (!ci.fr || !ci.canon) return; (m.get(ci.canon) || m.set(ci.canon, []).get(ci.canon)).push(c); });
+    m.forEach(l => l.sort((a, b) => chInfo(b).q - chInfo(a).q || chInfo(a).hevc - chInfo(b).hevc));
+    chCanon = { ch: S.channels, m };
+  }
+  const c = canonText(name).replace(/\b(la chaine|chaine|hd|uhd|4k)\b/g, ' ').replace(/\s+/g, ' ').trim();
+  const lbl = LABEL_BY_CANON[canonText(name)] || LABEL_BY_CANON[c];
+  const tries = [c, c.replace(/\blive\b /, ''), lbl ? canonText(lbl) : '', c.replace(/^la /, '')];
+  if (lbl) { const f = homeIndex().flatMap(f => f.subs).find(x => x.label === lbl); if (f) return { label: lbl, list: f.list }; }
+  for (const k of tries) { const l = k && chCanon.m.get(k); if (l && l.length) return { label: name, list: l }; }
+  return null;
+}
+async function loadGuideAgenda() {
+  try {
+    const r = await fetch(AGENDA_URL, { cache: 'no-store' }); if (!r.ok) return null;
+    const j = await r.json(); if (!j || !Array.isArray(j.events) || !j.events.length) return null;
+    return j.events.map(e => {
+      const tv = [], missing = [];
+      e.ch.forEach(c => { const f = chanFor(c.name); if (f && !tv.some(t => t.list[0] === f.list[0])) tv.push(f); else if (!f) missing.push(c.name); });
+      return { start: e.start, end: e.end, sport: e.sport, comp: e.comp, title: e.match || e.title, desc: e.desc, tv, missing };
+    });
+  } catch (e) { return null; }
+}
 async function loadAgenda(force) {
   if (!force && AGENDA.events && Date.now() - AGENDA.at < 20 * 60000 && AGENDA.pl === S.pl) return AGENDA.events;
+  const guide = await loadGuideAgenda();
+  if (guide) { AGENDA.events = guide; AGENDA.src = 'guide'; AGENDA.at = Date.now(); AGENDA.pl = S.pl; return guide; }
+  AGENDA.src = 'epg';
   const chans = [];
   homeIndex().filter(f => f.sec === 'Sport').forEach(f => f.subs.forEach(x => chans.push(x)));
   const map = new Map();
@@ -1129,15 +1162,14 @@ function dayLabel(t) {
 async function renderAgenda(force) {
   const box = $('#agendaInner');
   if (!S.pl) { box.innerHTML = '<div class="empty">Ajoutez ou déverrouillez une liste pour voir l\'agenda.</div>'; return; }
-  if (!epgCtx()) { box.innerHTML = '<div class="empty">L\'agenda se construit avec le programme du serveur de l\'abonnement (connexion Xtream) : pas disponible pour cette liste.</div>'; return; }
-  if (!AGENDA.events || force || AGENDA.pl !== S.pl) box.innerHTML = '<h2>Agenda sport</h2><div class="spin" style="margin:40px auto"></div><p class="hint" style="text-align:center">Lecture des programmes des chaînes sport…</p>';
+  if (!AGENDA.events || force || AGENDA.pl !== S.pl) box.innerHTML = '<h2>Agenda sport</h2><div class="spin" style="margin:40px auto"></div><p class="hint" style="text-align:center">Lecture du programme TV…</p>';
   const evs = await loadAgenda(force);
   if (!document.body.classList.contains('agenda')) return;
   const now = Date.now(), upcoming = evs.filter(e => e.end > now);
   const days = [...new Set(upcoming.map(e => dayKey(e.start)))];
   if (!days.includes(AGENDA.day)) AGENDA.day = days[0];
   const ofDay = upcoming.filter(e => dayKey(e.start) === AGENDA.day);
-  const sports = ['Tous', ...SPORTS.map(s => s[0]).filter(n => ofDay.some(e => e.sport === n))];
+  const sports = ['Tous', ...[...new Set(ofDay.map(e => e.sport))].sort((a, b) => ofDay.filter(e => e.sport === b).length - ofDay.filter(e => e.sport === a).length)];
   if (!sports.includes(AGENDA.sport)) AGENDA.sport = 'Tous';
   const list = ofDay.filter(e => AGENDA.sport === 'Tous' || e.sport === AGENDA.sport);
   const liveNow = upcoming.filter(e => e.start <= now);
@@ -1150,13 +1182,14 @@ async function renderAgenda(force) {
     const live = e.start <= now;
     return `<div class="ev">
       <div class="h">${hm(e.start)}<small>${hm(e.end)}</small></div>
-      <div><div class="sp">${esc(e.sport)}${live ? '<span class="live">EN DIRECT</span>' : ''}</div>
+      <div><div class="sp">${esc(e.sport)}${e.comp ? ' · ' + esc(e.comp) : ''}${live ? '<span class="live">EN DIRECT</span>' : ''}</div>
         <div class="t">${esc(e.title)}</div>${e.desc ? `<div class="d">${esc(e.desc)}</div>` : ''}
         ${live ? `<div class="bar" style="max-width:320px"><i style="width:${pct(e)}%"></i></div>` : ''}
-        <div class="tv">${e.tv.map((x, j) => { const q = chInfo(x.list[0]).q; return `<button data-ev="${k}:${j}" title="${live ? 'Regarder' : 'Ouvrir la chaîne (commence à ' + hm(e.start) + ')'}"><span class="lg">${imgOr(logoUrl(x.label) || x.list[0].logo, '', '')}</span>${esc(x.label)} <span class="qb${q === 4 ? ' k4' : ''}">${QLBL[q]}</span></button>`; }).join('')}</div>
+        <div class="tv">${e.tv.map((x, j) => { const q = chInfo(x.list[0]).q; return `<button data-ev="${k}:${j}" title="${live ? 'Regarder' : 'Ouvrir la chaîne (commence à ' + hm(e.start) + ')'}"><span class="lg">${imgOr(logoUrl(x.label) || x.list[0].logo, '', '')}</span>${esc(x.label)} <span class="qb${q === 4 ? ' k4' : ''}">${QLBL[q]}</span></button>`; }).join('')}${(e.missing || []).map(n => `<span class="chip" style="opacity:.5;height:38px;display:inline-flex;align-items:center" title="Chaîne absente de votre liste">${esc(n)}</span>`).join('')}</div>
       </div></div>`;
   }).join('') || '<div class="empty">Rien pour ce sport ce jour-là.</div>';
   AGENDA.shown = list;
+  h += `<p class="hint" style="margin-top:18px">${AGENDA.src === 'guide' ? 'Programme : guide TV libre XML TV Fr (xmltvfr.fr), mis à jour toutes les 3 h. Les chaînes en gris ne sont pas dans votre liste.' : 'Programme : celui de votre abonnement.'}</p>`;
   box.innerHTML = h;
 }
 $('#agendaInner').addEventListener('click', e => {

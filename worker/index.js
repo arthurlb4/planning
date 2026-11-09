@@ -501,6 +501,10 @@ async function handle(request, env, ctx) {
     var path = url.pathname;
     if (path === '/iptv/m3u') return iptvM3u(request, url);
     if (path === '/iptv/sync') return iptvSync(request, env, url);
+    if (path === '/iptv/agenda') {                    // agenda sport préparé par GitHub (scripts/build-agenda.py) à partir de xmltvfr.fr
+      var ag = await env.PLANNING_DB.get('iptv:agenda');
+      return new Response(ag || '{"events":[]}', { status: 200, headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'public, max-age=600' } });
+    }
     var body = await request.json().catch(function(){ return {}; });
     var appVer = url.searchParams.get('av');
     if (MIN_APP && appVer && !path.startsWith('/admin') && _verLt(appVer, MIN_APP)) return resp({ error: 'update', min: MIN_APP }, 426);
