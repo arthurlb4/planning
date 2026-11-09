@@ -650,7 +650,6 @@ const HOME = [
     { t: 'TF1', ch: [['TF1', 'tf1'], ['TMC', 'tmc'], ['TFX', 'tfx'], ['TF1 Séries Films', 'tf1 series films|tf1 series film']] },
     { t: 'France Télévisions', ch: [['France 2', 'france 2'], ['France 3', 'france 3'], ['France 4', 'france 4'], ['France 5', 'france 5'], ['Arte', 'arte'], ['LCP', 'lcp|lcp an']] },
     { t: 'M6', ch: [['M6', 'm6'], ['W9', 'w9'], ['6ter', '6ter'], ['Gulli', 'gulli'], ['Paris Première', 'paris premiere']] },
-    { t: 'Autres chaînes', ch: [['RMC Story', 'rmc story'], ['RMC Découverte', 'rmc decouverte'], ['RMC Life', 'rmc life|cherie 25'], ['TV5Monde', 'tv5monde|tv5 monde']] },
     { t: 'Info', ch: [['BFMTV', 'bfmtv|bfm tv'], ['CNews', 'cnews|c news'], ['LCI', 'lci'], ['franceinfo', 'franceinfo|france info'], ['France 24', 'france 24']] }
   ] }
 ];
@@ -677,6 +676,8 @@ const LOGOS = {
 const logoUrl = label => { const f = LOGOS[label]; return f ? LOGO_BASE + (f.includes('/') ? f : 'france/' + f + '-fr') + '.png' : ''; };
 const LABEL_BY_CANON = {};
 HOME.forEach(sec => sec.fams.forEach(f => f.ch.forEach(([label, al]) => al.split('|').forEach(a => { LABEL_BY_CANON[canonText(a)] = LABEL_BY_CANON[canonText(a)] || label; }))));
+// Chaînes hors accueil dont on garde le logo officiel dans les listes
+[['RMC Story', 'rmc story'], ['RMC Découverte', 'rmc decouverte'], ['RMC Life', 'rmc life|cherie 25'], ['TV5Monde', 'tv5monde|tv5 monde']].forEach(([label, al]) => al.split('|').forEach(a => { LABEL_BY_CANON[canonText(a)] = LABEL_BY_CANON[canonText(a)] || label; }));
 // Logo d'une chaîne : l'officiel si c'est une des chaînes françaises connues, sinon celui de la liste
 function chLogo(c) { const ci = chInfo(c); return (ci.fr && logoUrl(LABEL_BY_CANON[ci.canon])) || c.logo; }
 function canonText(s) { return s.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\+/g, ' plus ').replace(/[^a-z0-9]+/g, ' ').trim(); }
@@ -715,11 +716,16 @@ function homeIndex() {
 }
 function homeChannels() { const seen = new Set(), out = []; homeIndex().forEach(f => f.subs.forEach(s => { const c = s.list[0]; if (!seen.has(c)) { seen.add(c); out.push(c); } })); return out; }
 // Logo de la marque pour le grand carré (sinon son nom en grand)
-const BRAND_LOGO = { 'Canal+': 'canal-plus', 'beIN SPORTS': 'bein-sports', 'Eurosport': 'eurosport-1', 'RMC Sport': 'rmc-sport', 'DAZN · Ligue 1+': 'ligue-1plus',
+const BRAND_LOGO = { 'Canal+': 'canal-plus', 'beIN SPORTS': 'bein-sports', 'RMC Sport': 'rmc-sport', 'DAZN · Ligue 1+': 'ligue-1plus',
   "L'Équipe": 'lequipe', 'TF1': 'tf1', 'M6': 'm6' };
-// France Télévisions : logo « france.tv » (absent de la banque de logos), dessiné ici
-const FRANCETV_LOGO = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60"><text x="100" y="42" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="40" font-weight="700" letter-spacing="-1" fill="#fff">france<tspan fill="#2f6bff">.</tspan>tv</text></svg>');
-const brandLogo = t => t === 'France Télévisions' ? FRANCETV_LOGO : BRAND_LOGO[t] ? LOGO_BASE + 'france/' + BRAND_LOGO[t] + '-fr.png' : '';
+// Logos de case absents de la banque de logos (france.tv, Eurosport sans numéro, Info générique), dessinés ici
+const svgLogo = body => 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 60">' + body + '</svg>');
+const DRAWN_LOGO = {
+  'France Télévisions': svgLogo('<text x="120" y="42" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="40" font-weight="700" letter-spacing="-1" fill="#fff">france<tspan fill="#2f6bff">.</tspan>tv</text>'),
+  'Eurosport': svgLogo('<text x="120" y="41" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="34" font-weight="900" font-style="italic" letter-spacing="-.5" fill="#fff">EUROSPORT</text>'),
+  'Info': svgLogo('<rect x="62" y="8" width="116" height="44" rx="9" fill="#e5322d"/><text x="120" y="42" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="32" font-weight="900" letter-spacing="2" fill="#fff">INFO</text>')
+};
+const brandLogo = t => DRAWN_LOGO[t] || (BRAND_LOGO[t] ? LOGO_BASE + 'france/' + BRAND_LOGO[t] + '-fr.png' : '');
 const imgOr = (src, txt, cls) => src ? `<img src="${esc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.insertAdjacentHTML('afterend','<span class=&quot;${cls}&quot;>'+this.dataset.t+'</span>');this.remove()" data-t="${esc(txt)}">` : `<span class="${cls}">${esc(txt)}</span>`;
 function renderHome() {
   const fams = homeIndex();
