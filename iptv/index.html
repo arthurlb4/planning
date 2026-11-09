@@ -563,8 +563,7 @@ const HOME = [
   { sec: 'Sport', fams: [
     { t: 'Canal+', ch: [['Canal+', 'canal plus|c plus'], ['Canal+ Foot', 'canal plus foot|c plus foot'], ['Canal+ Sport', 'canal plus sport|c plus sport'],
       ['Canal+ Sport 360', 'canal plus sport 360|canal plus sport360'], ['Canal+ Premier League', 'canal plus premier league'],
-      ['Canal+ Live 1', 'canal plus live 1'], ['Canal+ Live 2', 'canal plus live 2'], ['Infosport+', 'infosport plus|info sport plus'],
-      ['Canal+ Cinéma(s)', 'canal plus cinema|canal plus cinemas'], ['Canal+ Séries', 'canal plus series'], ['Canal+ Grand Écran', 'canal plus grand ecran'] ] },
+      ['Canal+ Live 1', 'canal plus live 1'], ['Canal+ Live 2', 'canal plus live 2'] ] },
     { t: 'beIN SPORTS', ch: [['beIN SPORTS 1', 'bein sports 1|bein sport 1|bein 1'], ['beIN SPORTS 2', 'bein sports 2|bein sport 2|bein 2'],
       ['beIN SPORTS 3', 'bein sports 3|bein sport 3|bein 3'], ['beIN SPORTS MAX 4', 'bein sports max 4|bein max 4|bein sport max 4'],
       ['beIN SPORTS MAX 5', 'bein sports max 5|bein max 5|bein sport max 5'], ['beIN SPORTS MAX 6', 'bein sports max 6|bein max 6|bein sport max 6'] ] },
@@ -814,6 +813,7 @@ async function play(c, alts) {
   video.controls = false;                               // un seul indicateur de chargement : le nôtre (contrôles remis à l'image)
   setStatus('load');
 
+
   // Chaque adresse possible (variantes https et .m3u8, voir streamVariants) × chaque façon de lire selon son format
   // HLS : lecteur de Safari d'abord sur iPhone / Mac (il passe sans autorisation du serveur) ; ailleurs hls.js d'abord
   // (plus fiable, et donne codec, débit, images/s), le lecteur du navigateur ensuite
@@ -826,6 +826,9 @@ async function play(c, alts) {
     (k === 'hls' ? (nativeHls ? ['native', 'hls'] : ['hls', 'native']) : k === 'file' ? ['native'] : preferNative ? ['native', 'mpegts', 'hls'] : ['mpegts', 'hls', 'native'])
       .forEach(eng => chain.push([eng, u]));
   }
+  // Film MKV hors télé : un seul essai direct (le navigateur ne lit le MKV qu'avec certains formats ; pas de variante HLS)
+  const mkv = c.vod && /\.mkv$/i.test(c.url) && !window.PREFER_NATIVE;
+  if (mkv) { const keep = chain.filter(([e, u]) => e === 'native' && /\.mkv$/i.test(u)); chain.length = 0; keep.forEach(x => chain.push(x)); }
   let i = -1;
   const next = async () => {
     if (t !== token) return;
@@ -911,6 +914,10 @@ function fail(c) {
   if (S.alts && S.alts.length) {
     const n = S.alts[0]; toast('Ne passe pas : essai en ' + (QLBL[chInfo(n).q] || 'autre qualité'));
     S.retry = true; return play(n, S.alts.slice(1));
+  }
+  if (c.vod && /\.mkv$/i.test(c.url) && !window.PREFER_NATIVE) {
+    return setStatus('msg', '<b style="color:var(--text)">Format MKV non lu ici</b><br><span class="hint">Ce film est un fichier MKV (souvent avec du son Dolby) que ce lecteur ne sait pas décoder. La télé Samsung le lit, et VLC aussi.</span>',
+      '<button class="btn primary" onclick="openVlc(S.current)">Ouvrir dans VLC</button><button class="btn" onclick="play(S.current)">Réessayer</button>');
   }
   const mixed = location.protocol === 'https:' && /^http:/i.test(c.url);
   const why = mixed
@@ -1174,6 +1181,15 @@ function cleanTitle(n) {
 }
 const yearOf = (...v) => { for (const x of v) { const m = String(x || '').match(/\b(19[3-9]\d|20[0-4]\d)\b/); if (m) return +m[1]; } return 0; };
 const rate10 = v => { const r = +v.rating || (+v.rating_5based * 2) || 0; return r > 10 ? r / 10 : r; };
+// Titre marqué d'une autre langue en tête (« EN - Titre », « |TR| Titre », « [DE] Titre ») ; pas « IT - … » (titre « It »)
+function itemForeign(name) {
+  const m = String(name || '').match(/^\s*[\[|(]?\s*([A-Za-z]{2,3})\s*([\]|):]|\s-\s)/);
+  if (!m) return false;
+  const cc = m[1].toUpperCase();
+  if (cc === 'FR' || cc === 'FRA' || cc === 'VF' || cc === 'VFF' || cc === 'VFQ') return false;
+  if (m[2].trim() === '-' && (cc === 'IT' || m[1] !== cc)) return false;  // « It - … » : un titre, pas une langue
+  return COUNTRY.has(cc) || cc === 'EN' || cc === 'ENG' || cc === 'VO' || cc === 'SUB';
+}
 // Catalogue chargé catégorie par catégorie (seulement les françaises) : un catalogue entier peut peser des dizaines de Mo,
 // trop pour le relais et pour la télé. Gardé 12 h sur l'appareil.
 async function loadVod(force) {
@@ -1189,12 +1205,18 @@ async function loadVod(force) {
     const [vc, sc] = await Promise.all([get('&action=get_vod_categories'), get('&action=get_series_categories')]);
     if (!Array.isArray(vc) && !Array.isArray(sc)) throw new Error('le serveur ne donne pas ses catégories de films' + (firstErr ? ' (' + firstErr + ')' : ''));
     const cats = {};
+    const hide = LS.get('vod.hide', []), show = LS.get('vod.show', []), excluded = [];
     const pick = (list, kind) => {
       const arr = Array.isArray(list) ? list : [];
       const fr = arr.filter(c => langOf(c.category_name) === 'fr');
       // catalogue mélangé : seulement les catégories en français ; catalogue français sans préfixes : tout sauf l'étranger
-      const keep = fr.length >= Math.max(3, arr.length * 0.2) ? fr : arr.filter(c => langOf(c.category_name) !== 'xx');
-      keep.forEach(c => { cats[kind + c.category_id] = { id: kind + c.category_id, kind, cid: String(c.category_id), name: cleanTitle(c.category_name) || c.category_name, raw: c.category_name }; });
+      const auto = fr.length >= Math.max(3, arr.length * 0.2) ? fr : arr.filter(c => langOf(c.category_name) !== 'xx');
+      arr.forEach(c => {
+        const raw = c.category_name, inAuto = auto.includes(c);
+        const keep = !hide.includes(raw) && (inAuto || show.includes(raw));
+        if (keep) cats[kind + c.category_id] = { id: kind + c.category_id, kind, cid: String(c.category_id), name: cleanTitle(raw) || raw, raw };
+        else excluded.push({ kind, raw, name: cleanTitle(raw) || raw, why: hide.includes(raw) ? 'masquée' : 'étrangère' });
+      });
     };
     pick(vc, 'm'); pick(sc, 's');
     const list = Object.values(cats);
@@ -1208,6 +1230,7 @@ async function loadVod(force) {
     };
     const take = (c, arr) => (Array.isArray(arr) ? arr : []).forEach(v => {
       const ck = c.kind + v.category_id; if (!cats[ck]) return;          // certains serveurs renvoient tout malgré la catégorie demandée
+      if (itemForeign(v.name)) return;                                   // titre marqué d'une autre langue (« EN - … », « |TR| … »)
       if (c.kind === 'm') add({ kind: 'movie', id: v.stream_id, name: cleanTitle(v.name), raw: v.name, year: yearOf(v.year, v.releaseDate, v.name), rating: rate10(v), added: +v.added || 0,
         cover: v.stream_icon || '', ext: v.container_extension || 'mp4', cats: [ck], tmdb: v.tmdb || v.tmdb_id || '' });
       else add({ kind: 'series', id: v.series_id, name: cleanTitle(v.name), raw: v.name, year: yearOf(v.year, v.releaseDate, v.release_date, v.name), rating: rate10(v),
@@ -1231,8 +1254,8 @@ async function loadVod(force) {
     if (!ok) throw new Error('le serveur refuse les listes de films' + (firstErr ? ' (' + firstErr + ')' : ''));
     Object.values(cats).forEach(c => { c.service = (SERVICES.find(([, re]) => re.test(c.raw)) || [])[0] || ''; });
     items.forEach(it => { it.services = [...new Set(it.cats.map(c => cats[c].service).filter(Boolean))]; });
-    const data = { pl: S.pl, cats, items };
-    DB.cachePut({ id: cacheId, at: Date.now(), data: { cats, items } });
+    const data = { pl: S.pl, cats, items, excluded };
+    DB.cachePut({ id: cacheId, at: Date.now(), data: { cats, items, excluded } });
     return (V.data = data);
   })();
   try { return await V.loading; } finally { V.loading = null; }
@@ -1331,8 +1354,10 @@ async function renderVod() {
       const list = Object.values(D.cats).filter(c => cnt[c.id]);
       for (const [kind, label] of [['m', 'Films'], ['s', 'Séries']]) {
         const l = list.filter(c => c.kind === kind); if (!l.length) continue;
-        h += `<div class="vrow"><h3>${label}</h3><div style="display:flex;flex-wrap:wrap;gap:8px">${l.map(c => `<button class="chip" data-cat="${c.id}">${esc(c.name)} <span style="color:var(--text3)">${cnt[c.id]}</span></button>`).join('')}</div></div>`;
+        h += `<div class="vrow"><h3>${label}<small>✕ pour masquer une catégorie</small></h3><div style="display:flex;flex-wrap:wrap;gap:8px">${l.map(c => `<span style="display:inline-flex"><button class="chip" data-cat="${c.id}" style="border-radius:999px 0 0 999px">${esc(c.name)} <span style="color:var(--text3)">${cnt[c.id]}</span></button><button class="chip" data-hidecat="${esc(c.raw)}" title="Masquer cette catégorie" style="border-radius:0 999px 999px 0;padding:0 10px;color:var(--text3)">✕</button></span>`).join('')}</div></div>`;
       }
+      const ex = D.excluded || [];
+      if (ex.length) h += `<div class="vrow"><h3>Catégories écartées<small>${ex.length} · étrangères ou masquées ; touchez pour réintégrer</small></h3><div style="display:flex;flex-wrap:wrap;gap:8px;opacity:.75">${ex.map(c => `<button class="chip" data-showcat="${esc(c.raw)}" title="${c.why === 'masquée' ? 'Masquée par vous' : 'Écartée car étrangère'} · réintégrer">${esc(c.raw)} <span style="color:var(--text3)">${c.kind === 's' ? 'séries' : 'films'} · ${c.why}</span></button>`).join('')}</div></div>`;
     }
   } else {
     const pool = V.tab === 'movie' ? movies : V.tab === 'series' ? series : all;
@@ -1372,6 +1397,14 @@ let vodQT;
 $('#vodInner').addEventListener('input', e => { if (e.target.id !== 'vodQ') return; clearTimeout(vodQT); vodQT = setTimeout(() => { V.q = e.target.value; renderVod(); }, 250); });
 $('#vodInner').addEventListener('click', e => {
   if (e.target.closest('[data-reload]')) { V.force = true; V.data = null; renderVod(); return; }
+  const hc = e.target.closest('[data-hidecat]'), sc = e.target.closest('[data-showcat]');
+  if (hc || sc) {
+    const raw = (hc || sc).dataset[hc ? 'hidecat' : 'showcat'];
+    const hide = LS.get('vod.hide', []).filter(x => x !== raw), show = LS.get('vod.show', []).filter(x => x !== raw);
+    if (hc) hide.push(raw); else show.push(raw);
+    LS.set('vod.hide', hide); LS.set('vod.show', show);
+    toast(hc ? 'Catégorie masquée' : 'Catégorie réintégrée'); V.force = true; V.data = null; renderVod(); return;
+  }
   if (e.target.closest('[data-tmdb]')) { LS.set('pref.tmdb', ($('#tmdbKey').value || '').trim()); TM.data = null; TM.err = ''; V.force2 = true; renderVod(); return; }
   if (e.target.closest('[data-tmdbre]')) { TM.data = null; V.force2 = true; renderVod(); return; }
   const t = e.target.closest('[data-tab]'), c = e.target.closest('[data-cat]'), p = e.target.closest('[data-v]');
@@ -1777,7 +1810,7 @@ $('#bPass').addEventListener('keydown', e => { if (e.key === 'Enter') $('#bBtn')
    Un code de synchro relie les appareils ; le serveur range le document sous l'empreinte SHA-256 du code. Fusion élément par
    élément : la modification la plus récente gagne. ---------- */
 const SYNC_URL = 'https://planning-gcal.arthur-lebreton94.workers.dev/iptv/sync';
-const SYNC_RE = /^(fav\.|recent\.|pos\.|pref\.|ag\.|season\.)/;
+const SYNC_RE = /^(fav\.|recent\.|pos\.|pref\.|ag\.|season\.|vod\.)/;
 const listKey = p => p.id === 'builtin' ? 'builtin' : (p.url || p.id);
 const SY = { busy: false, timer: 0, at: LS.get('sync.at', 0), err: '' };
 function stamps() { return LS.get('sync.stamps', {}); }
