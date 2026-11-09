@@ -115,7 +115,7 @@ function TV_JS() { return String.raw`
     var m = document.querySelector('.modal.open'); if (m) return m;
     var tm = document.getElementById('trackMenu'); if (!tm.hidden) return tm;
     if (document.body.classList.contains('solo')) return document.getElementById('now');
-    if (document.body.classList.contains('drawer')) return document.getElementById('groups');
+    if (document.body.classList.contains('drawer')) return document.getElementById('channels');
     return document;
   }
   // Éléments sélectionnables visibles, avec leur position calculée une seule fois par appui (moteur lent)
