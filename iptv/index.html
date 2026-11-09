@@ -142,6 +142,23 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 .ep .n{width:28px;color:var(--text3);font-variant-numeric:tabular-nums;flex:none}
 .ep .d{color:var(--text3);font-size:12px}
 #vodModal .sheet{max-width:760px}
+#matchBtn{display:none}
+body.hasmatch #matchBtn{display:inline-flex;color:var(--blue)}
+#nowScore{display:none;margin-left:6px;font-weight:700;color:var(--text)}
+body.hasmatch #nowScore{display:inline}
+.mh{display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:center;text-align:center;margin:6px 0 14px}
+.mh .tm{font-weight:700;font-size:15px}
+.mh .tm img{width:44px;height:44px;object-fit:contain;display:block;margin:0 auto 6px}
+.mh .sc{font-size:34px;font-weight:800;font-variant-numeric:tabular-nums}
+.mh .st{font-size:12px;color:var(--text3);margin-top:2px}
+.mev{font-size:13px;color:var(--text2);padding:4px 0;display:flex;gap:10px}
+.mev b{width:42px;color:var(--text3);font-variant-numeric:tabular-nums;flex:none}
+.mst{margin:8px 0}
+.mst .lb{display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px}
+.mst .lb span:nth-child(2){color:var(--text3)}
+.mst .bars{display:flex;gap:4px;height:6px}
+.mst .bars i{display:block;border-radius:3px;background:var(--bg4)}
+.mst .bars i.w{background:var(--blue)}
 #vodTrailer{position:relative;width:100%;padding-top:56.25%;border-radius:12px;overflow:hidden;background:#000;margin-bottom:16px}
 #vodTrailer iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:0}
 body.homeview #channels,body.homeview #player{display:none}
@@ -322,6 +339,7 @@ body.remux #vbar{display:flex}
         <button class="btn icon star" id="nowFav" title="Favori"><svg viewBox="0 0 24 24"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z"/></svg></button>
         <button class="btn icon" id="guideBtn" title="Programme (EPG)"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M7 14h4M7 17h7"/></svg></button>
         <button class="btn icon" id="trackBtn" title="Audio et sous-titres"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M7 15h3M13 15h4M7 11h6M15 11h2"/></svg></button>
+        <button class="btn icon" id="matchBtn" title="Score et statistiques du match"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></button>
         <button class="btn icon" id="statsBtn" title="Qualité de l'image et du son"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></svg></button>
         <button class="btn icon" id="soloBtn" title="Plein écran"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
         <button class="btn icon" id="soloExit" title="Quitter le plein écran (Échap)"><svg viewBox="0 0 24 24"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg></button>
@@ -367,6 +385,14 @@ body.remux #vbar{display:flex}
   <div class="sheet">
     <h2><span id="guideTitle">Programme</span> <button class="btn icon" data-close aria-label="Fermer"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></h2>
     <div id="guide"></div>
+  </div>
+</div>
+
+<!-- Score et statistiques du match en cours (ESPN) -->
+<div class="modal" id="matchModal">
+  <div class="sheet">
+    <h2><span id="matchTitle">Match</span> <button class="btn icon" data-close aria-label="Fermer"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></h2>
+    <div id="matchBox"></div>
   </div>
 </div>
 
@@ -789,6 +815,7 @@ function setStatus(kind, msg, actions) {
   el.innerHTML = (kind === 'load' ? '<div class="spin"></div>' : '') + (msg ? `<div class="msg">${msg}</div>` : '') + (actions ? `<div class="actions">${actions}</div>` : '');
 }
 function showNow(c, idle) {
+  if (S.current !== c) { document.body.classList.remove('hasmatch'); MATCH.ev = null; MATCH.key = ''; }
   S.current = c;
   $('#nowName').textContent = c.name; $('#nowSub').textContent = c.vod ? c.group : c.group + ' · n° ' + (c.chno || c.n);
   $('#nowLogo').outerHTML = logoHtml(c).replace('class="logo"', 'class="logo" id="nowLogo"');
@@ -977,7 +1004,8 @@ function fillTileEpg() {
 async function nowEpg(c) {
   const el = $('#nowEpg'); el.textContent = '';
   const list = await getEpg(c, 2); if (S.current !== c || !list || !list.length) return;
-  el.innerHTML = `<b>${esc(list[0].title)}</b> · ${hm(list[0].start)}–${hm(list[0].end)}${list[1] ? ' · ensuite ' + esc(list[1].title) + ' (' + hm(list[1].start) + ')' : ''}`;
+  el.innerHTML = `<b>${esc(list[0].title)}</b> · ${hm(list[0].start)}–${hm(list[0].end)}<span id="nowScore"></span>${list[1] ? ' · ensuite ' + esc(list[1].title) + ' (' + hm(list[1].start) + ')' : ''}`;
+  findMatch(c);
 }
 setInterval(() => { if (S.current) nowEpg(S.current); const b = document.body.classList; if (b.contains('homeview') && !b.contains('agenda') && !b.contains('vod')) fillTileEpg(); }, window.PREFER_NATIVE ? 300000 : 60000);
 $('#guideBtn').onclick = async () => {
@@ -1672,6 +1700,114 @@ document.addEventListener('click', e => { if (!e.target.closest('#trackMenu,#tra
 if (video.audioTracks) video.audioTracks.addEventListener('addtrack', () => setTimeout(applyTrackPrefs, 0));
 video.textTracks.addEventListener('addtrack', () => setTimeout(applyTrackPrefs, 0));
 
+/* ---------- Statistiques du match en cours : ESPN (site.api.espn.com, données publiques, en anglais). Le match est repéré
+   d'après l'agenda (guide TV) ou le programme de la chaîne ; les noms français sont traduits pour retrouver les équipes. ---------- */
+const ESPN = 'https://site.api.espn.com/apis/site/v2/sports/';
+const ESPN_PATHS = { Football: ['soccer/all'], Basket: ['basketball/nba', 'basketball/mens-college-basketball'], 'Sports US': ['football/nfl', 'hockey/nhl', 'baseball/mlb'], Rugby: ['rugby/270559', 'rugby/270557', 'rugby/180659', 'rugby/244293'] };
+const FR_EN = { allemagne: 'germany', angleterre: 'england', espagne: 'spain', italie: 'italy', 'pays bas': 'netherlands', belgique: 'belgium', suisse: 'switzerland',
+  autriche: 'austria', ecosse: 'scotland', 'pays de galles': 'wales', irlande: 'ireland', 'irlande du nord': 'northern ireland', bresil: 'brazil', argentine: 'argentina',
+  'etats unis': 'united states', mexique: 'mexico', maroc: 'morocco', algerie: 'algeria', tunisie: 'tunisia', senegal: 'senegal', 'cote d ivoire': 'ivory coast',
+  cameroun: 'cameroon', egypte: 'egypt', croatie: 'croatia', serbie: 'serbia', pologne: 'poland', suede: 'sweden', norvege: 'norway', danemark: 'denmark',
+  grece: 'greece', turquie: 'turkey', hongrie: 'hungary', 'republique tcheque': 'czechia', tchequie: 'czechia', slovaquie: 'slovakia', roumanie: 'romania', ukraine: 'ukraine',
+  japon: 'japan', 'coree du sud': 'south korea', 'nouvelle zelande': 'new zealand', 'afrique du sud': 'south africa', australie: 'australia', georgie: 'georgia', islande: 'iceland',
+  'paris sg': 'paris saint germain', psg: 'paris saint germain', 'paris saint germain': 'paris saint germain', rennes: 'rennais', 'stade rennais': 'rennais',
+  'bayern munich': 'bayern munich', 'inter milan': 'internazionale', inter: 'internazionale', 'milan ac': 'ac milan', milan: 'ac milan', 'juventus turin': 'juventus',
+  naples: 'napoli', 'as rome': 'roma', rome: 'roma', 'lazio rome': 'lazio', 'fc barcelone': 'barcelona', barcelone: 'barcelona', 'atletico madrid': 'atletico madrid',
+  seville: 'sevilla', 'betis seville': 'real betis', 'benfica lisbonne': 'benfica', 'sporting portugal': 'sporting', 'sporting lisbonne': 'sporting', 'fc porto': 'porto',
+  'borussia dortmund': 'dortmund', dortmund: 'dortmund', 'bayer leverkusen': 'leverkusen', leverkusen: 'leverkusen', 'leipzig': 'rb leipzig', 'tottenham': 'tottenham hotspur',
+  'brighton hove albion': 'brighton', 'saint etienne': 'st etienne', 'stade brestois': 'brest', 'olympique lyonnais': 'lyon', 'olympique de marseille': 'marseille',
+  'clermont auvergne': 'clermont', 'aek athenes': 'aek athens', 'olympiakos le piree': 'olympiacos', olympiakos: 'olympiacos', 'galatasaray': 'galatasaray',
+  'celtic glasgow': 'celtic', 'rangers glasgow': 'rangers', 'ajax amsterdam': 'ajax', 'psv eindhoven': 'psv', 'feyenoord rotterdam': 'feyenoord', 'club bruges': 'club brugge',
+  'shakhtar donetsk': 'shakhtar', 'dinamo zagreb': 'dinamo zagreb', 'etoile rouge belgrade': 'crvena zvezda', 'bodo glimt': 'bodo glimt', 'young boys berne': 'young boys', 'stade francais paris': 'stade francais', 'bordeaux begles': 'bordeaux begles' };
+const MATCH = { key: '', ev: null, sport: '', t: 0 };
+const nkey = t => norm(t).replace(/[^a-z0-9]+/g, ' ').trim();
+function teamTerms(fr) {
+  let t = nkey(fr).replace(/\b(fc|sc|ac|as|us|cf|afc|sv|vfl|rc|le|la|les|l|de|du|des|feminin|feminine|u21|u19)\b/g, ' ').replace(/\s+/g, ' ').trim();
+  const en = FR_EN[nkey(fr)] || FR_EN[t] || t;
+  return [en, t].filter(Boolean);
+}
+function sameTeam(fr, c) {
+  const names = [c.team.displayName, c.team.shortDisplayName, c.team.name, c.team.location, c.team.abbreviation].filter(Boolean).map(nkey);
+  return teamTerms(fr).some(t => names.some(n => n === t || (t.length >= 4 && (n.includes(t) || t.includes(n) && n.length >= 4)) || n.split(' ')[0] === t.split(' ')[0] && t.split(' ')[0].length >= 5));
+}
+// Programme en cours sur la chaîne jouée : « Équipe A / Équipe B » et sport
+async function currentMatchText(c) {
+  const now = Date.now(), evs = AGENDA.events || (await loadGuideAgenda().catch(() => null)) || [];
+  const ev = evs.find(e => e.start <= now + 15 * 60000 && e.end >= now && (e.tv || []).some(t => t.list.includes(c)) && /\//.test(e.title));
+  if (ev) return { text: ev.title, sport: ev.sport };
+  const list = await getEpg(c, 1); const p = list && list[0]; if (!p) return null;
+  const m = (p.title + ' ' + (p.desc || '')).match(/([A-ZÀ-Ý][\wÀ-ÿ'.\- ]{2,40}?)\s(?:\/|-|vs\.?|contre)\s([A-ZÀ-Ý][\wÀ-ÿ'.\- ]{2,40})/);
+  if (!m) return null;
+  const sp = SPORTS.find(([, re]) => re.test(p.title + ' ' + p.desc));
+  return { text: m[1] + ' / ' + m[2], sport: sp ? sp[0] : 'Football' };
+}
+async function espnFind(text, sport) {
+  const [a, b] = text.split('/').map(x => x.trim()); if (!a || !b) return null;
+  const d = new Date(), ymd = x => x.getFullYear() + String(x.getMonth() + 1).padStart(2, '0') + String(x.getDate()).padStart(2, '0');
+  const dates = [ymd(d), ymd(new Date(d - 864e5))];
+  for (const path of ESPN_PATHS[sport] || ESPN_PATHS.Football) {
+    for (const dt of dates) {
+      const j = await fetch(ESPN + path + '/scoreboard?dates=' + dt).then(r => r.json()).catch(() => null);
+      for (const e of (j && j.events) || []) {
+        const cs = e.competitions && e.competitions[0] && e.competitions[0].competitors || [];
+        if (cs.length === 2 && ((sameTeam(a, cs[0]) && sameTeam(b, cs[1])) || (sameTeam(a, cs[1]) && sameTeam(b, cs[0])))) return { path, id: e.id };
+      }
+    }
+  }
+  return null;
+}
+async function findMatch(c) {
+  const cur = await currentMatchText(c).catch(() => null);
+  if (S.current !== c) return;
+  const key = cur ? cur.text : '';
+  if (key !== MATCH.key || Date.now() - MATCH.t > 10 * 60000) { MATCH.key = key; MATCH.t = Date.now(); MATCH.ev = cur ? await espnFind(cur.text, cur.sport).catch(() => null) : null; MATCH.sport = cur ? cur.sport : ''; }
+  if (S.current !== c) return;
+  document.body.classList.toggle('hasmatch', !!MATCH.ev);
+  if (MATCH.ev) refreshMatch(false);
+}
+const STAT_FR = { possessionPct: 'Possession', totalShots: 'Tirs', shotsOnTarget: 'Tirs cadrés', wonCorners: 'Corners', foulsCommitted: 'Fautes', yellowCards: 'Cartons jaunes',
+  redCards: 'Cartons rouges', offsides: 'Hors-jeu', saves: 'Arrêts', totalPasses: 'Passes', accuratePasses: 'Passes réussies', fieldGoalPct: 'Réussite aux tirs (%)',
+  threePointFieldGoalPct: 'À 3 points (%)', freeThrowPct: 'Lancers francs (%)', totalRebounds: 'Rebonds', assists: 'Passes décisives', turnovers: 'Balles perdues',
+  steals: 'Interceptions', blocks: 'Contres', totalYards: 'Yards', firstDowns: 'Premiers essais', possessionTime: 'Possession', shotsTotal: 'Tirs', powerPlayGoals: 'Buts en supériorité' };
+const STAT_ORDER = ['possessionPct', 'totalShots', 'shotsOnTarget', 'wonCorners', 'saves', 'foulsCommitted', 'yellowCards', 'redCards', 'offsides', 'totalPasses', 'accuratePasses',
+  'fieldGoalPct', 'threePointFieldGoalPct', 'freeThrowPct', 'totalRebounds', 'assists', 'turnovers', 'steals', 'blocks', 'totalYards', 'firstDowns', 'possessionTime', 'shotsTotal', 'powerPlayGoals'];
+const LEAGUE_FR = { 'French Ligue 1': 'Ligue 1', 'French Ligue 2': 'Ligue 2', 'English Premier League': 'Premier League', 'Spanish LALIGA': 'Liga', 'Spanish LaLiga': 'Liga', 'Italian Serie A': 'Serie A',
+  'German Bundesliga': 'Bundesliga', 'UEFA Champions League': 'Ligue des champions', 'UEFA Europa League': 'Ligue Europa', 'UEFA Conference League': 'Ligue Conférence',
+  'UEFA Nations League': 'Ligue des nations', 'FIFA World Cup': 'Coupe du monde', 'Coupe de France': 'Coupe de France', 'Top 14': 'Top 14', 'NBA': 'NBA', 'NFL': 'NFL', 'NHL': 'NHL' };
+const EV_FR = { Goal: '⚽ But', 'Goal - Header': '⚽ But de la tête', 'Penalty - Scored': '⚽ Penalty', 'Own Goal': '⚽ But contre son camp', 'Yellow Card': '🟨 Carton jaune', 'Red Card': '🟥 Carton rouge', Substitution: '🔁 Remplacement', Halftime: 'Mi-temps', Kickoff: 'Coup d\'envoi', 'End Regular Time': 'Fin du temps réglementaire' };
+async function refreshMatch(render) {
+  if (!MATCH.ev) return;
+  const j = await fetch(ESPN + MATCH.ev.path + '/summary?event=' + MATCH.ev.id).then(r => r.json()).catch(() => null);
+  if (!j || !j.header) return;
+  const comp = j.header.competitions[0], cs = comp.competitors.slice().sort((x, y) => (x.homeAway === 'home' ? 0 : 1) - (y.homeAway === 'home' ? 0 : 1));
+  const st = comp.status && comp.status.type || {}, clock = comp.status && comp.status.displayClock;
+  const state = st.state === 'pre' ? 'À venir' : st.completed ? 'Terminé' : st.state === 'in' ? (st.shortDetail || clock || 'En cours') : (st.shortDetail || '');
+  const sc = cs.map(x => x.score == null ? '–' : x.score).join(' – ');
+  const ns = $('#nowScore'); if (ns) ns.textContent = ' · ' + sc + (st.state === 'in' ? ' (' + (clock || st.shortDetail || '') + ')' : st.completed ? ' (terminé)' : '');
+  if (!render && !$('#matchModal').classList.contains('open')) return;
+  const box = j.boxscore && j.boxscore.teams || [];
+  const statsOf = id => ((box.find(b => b.team.id === id) || {}).statistics || []);
+  const S0 = statsOf(cs[0].team.id), S1 = statsOf(cs[1].team.id);
+  const rows = S0.map(s => { const o = S1.find(x => x.name === s.name) || {}; return { name: s.name, label: STAT_FR[s.name] || s.label, a: s.displayValue, b: o.displayValue }; })
+    .filter(r => r.b != null && STAT_FR[r.name])
+    .sort((x, y) => STAT_ORDER.indexOf(x.name) - STAT_ORDER.indexOf(y.name));
+  rows.forEach(r => { if (/Pct$/.test(r.name) && !/%/.test(r.a)) { r.a += ' %'; r.b += ' %'; } });
+  const num = v => parseFloat(String(v).replace(',', '.')) || 0;
+  let h = `<div class="mh"><div class="tm">${cs[0].team.logo ? `<img src="${esc(cs[0].team.logo)}" alt="">` : ''}${esc(cs[0].team.displayName)}</div>
+    <div><div class="sc">${esc(sc)}</div><div class="st">${esc(state)}</div></div>
+    <div class="tm">${cs[1].team.logo ? `<img src="${esc(cs[1].team.logo)}" alt="">` : ''}${esc(cs[1].team.displayName)}</div></div>`;
+  const kev = (j.keyEvents || []).filter(k => k.type && /goal|card|penalty/i.test(k.type.text || ''));
+  if (kev.length) h += '<h3>Temps forts</h3>' + kev.map(k => `<div class="mev"><b>${esc(k.clock && k.clock.displayValue || '')}</b><span>${esc(EV_FR[k.type.text] || k.type.text)}${k.participants && k.participants[0] ? ' · ' + esc(k.participants[0].athlete.displayName) : ''}${k.team ? ' (' + esc(k.team.displayName) + ')' : ''}</span></div>`).join('');
+  if (rows.length) h += '<h3>Statistiques</h3>' + rows.map(r => { const a = num(r.a), b = num(r.b), t = a + b || 1;
+    return `<div class="mst"><div class="lb"><b>${esc(r.a)}</b><span>${esc(r.label)}</span><b>${esc(r.b)}</b></div><div class="bars"><i class="${a >= b ? 'w' : ''}" style="flex:${a / t}"></i><i class="${b > a ? 'w' : ''}" style="flex:${b / t}"></i></div></div>`; }).join('');
+  else h += '<p class="hint">Statistiques disponibles une fois le match commencé.</p>';
+  h += '<p class="hint" style="margin-top:14px">Données ESPN, mises à jour toutes les 30 s.</p>';
+  const lg = (j.header.league && j.header.league.name) || ''; $('#matchTitle').textContent = LEAGUE_FR[lg] || lg || 'Match';
+  $('#matchBox').innerHTML = h;
+}
+$('#matchBtn').onclick = () => { if (!MATCH.ev) return; $('#matchBox').innerHTML = '<div class="spin" style="margin:30px auto"></div>'; openModal('matchModal'); refreshMatch(true); };
+setInterval(() => { if (MATCH.ev && S.current) refreshMatch(false); }, 30000);
+
 /* ---------- Mini lecteur : déplaçable (✥) et redimensionnable (coin haut gauche), retenus d'une fois sur l'autre ---------- */
 function miniApply() {
   const st = document.body.style, m = LS.get('mini', {});
@@ -1811,7 +1947,7 @@ $('#plList').addEventListener('click', async e => {
     catch (err) { toast(err.message); r.disabled = false; }
   }
 });
-function stopAll() { token++; stopEngines(); S.current = null; document.body.classList.remove('playing', 'mini'); $('#stats').hidden = true; $('#nowEpg').textContent = ''; setStatus('msg', '<span class="hint">Choisissez une chaîne dans la liste.</span>'); $('#nowName').textContent = '—'; $('#nowSub').textContent = ''; document.title = 'Lecteur IPTV'; }
+function stopAll() { token++; stopEngines(); S.current = null; document.body.classList.remove('playing', 'mini', 'hasmatch'); MATCH.ev = null; MATCH.key = ''; $('#stats').hidden = true; $('#nowEpg').textContent = ''; setStatus('msg', '<span class="hint">Choisissez une chaîne dans la liste.</span>'); $('#nowName').textContent = '—'; $('#nowSub').textContent = ''; document.title = 'Lecteur IPTV'; }
 
 /* Liste par adresse : directement si le serveur l'accepte, sinon via le serveur de l'app (CORS, adresse en http, blocage) */
 const RELAY = 'https://planning-gcal.arthur-lebreton94.workers.dev/iptv/m3u?url=';
