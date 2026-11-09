@@ -1768,7 +1768,12 @@ async function renderVod() {
   finally { V.force = false; }
   if (!document.body.classList.contains('vod')) return;
   V.shown = [];
-  const all = D.items, movies = all.filter(i => i.kind === 'movie'), series = all.filter(i => i.kind === 'series');
+  // Films et séries étrangers proposés seulement en VF (pas de MULTI / VOSTFR) : retirés. La langue d'origine vient de TMDB
+  // (titres de ses listes : tendances, plus vus et nouveautés par plateforme, plus ceux dont on a ouvert la fiche)
+  const POP0 = LS.get('pref.tmdb', '') ? await loadPopular(false).catch(() => null) : null;
+  if (POP0 && D._olFor !== POP0) { const P0 = popIndex(D.items); Object.keys(POP0.meta).forEach(id => popMatch(id, P0, POP0.meta)); D._olFor = POP0; V.pop = null; }
+  if (!document.body.classList.contains('vod')) return;
+  const all = D.items.filter(i => !vfOnly(i)), movies = all.filter(i => i.kind === 'movie'), series = all.filter(i => i.kind === 'series');
   const yr = new Date().getFullYear(), byAdded = (a, b) => b.added - a.added, byRate = (a, b) => b.rating - a.rating || b.added - a.added;
   let h = `<div class="vtop">
     ${['home:Accueil', 'movie:Films', 'series:Séries', 'cats:Catégories'].map(t => { const [k, l] = t.split(':'); return `<button class="chip${V.tab === k && !V.q ? ' on' : ''}" data-tab="${k}">${l}</button>`; }).join('')}
