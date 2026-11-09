@@ -33,11 +33,13 @@ header{display:flex;align-items:center;gap:10px;padding:10px 16px;padding-top:ma
 header h1{font-size:17px;font-weight:700;letter-spacing:-.01em;display:flex;align-items:center;gap:8px}
 header h1 span{color:var(--blue)}
 #plName{color:var(--text3);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}
-#groupsBtn{display:none}
 
 /* Mise en page : catégories | chaînes | lecteur */
-main{flex:1;display:grid;grid-template-columns:250px 360px 1fr;min-height:0}
-#groups{border-right:.5px solid var(--border);display:flex;flex-direction:column;min-height:0;background:var(--bg0)}
+main{flex:1;display:grid;grid-template-columns:380px 1fr;min-height:0}
+/* Catégories : tiroir caché, ouvert par ☰ (sur tous les écrans) */
+#groups{display:flex;flex-direction:column;min-height:0;background:var(--bg0);position:fixed;top:0;bottom:0;left:0;width:300px;max-width:85vw;z-index:40;transform:translateX(-100%);transition:transform .22s ease;padding-top:env(safe-area-inset-top);border-right:.5px solid var(--border);box-shadow:8px 0 30px rgba(0,0,0,.4)}
+body.drawer #groups{transform:none}
+body.drawer #overlay{display:block;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:39}
 #groupSearch{margin:10px;height:36px;border-radius:10px;border:.5px solid var(--border);background:var(--bg2);padding:0 12px;outline:none}
 #groupList{overflow:auto;flex:1;padding:0 6px 12px}
 .grp{display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:9px 10px;border-radius:10px;color:var(--text2)}
@@ -107,7 +109,7 @@ textarea.field{height:110px;padding:10px 12px;resize:vertical;font-family:ui-mon
 #overlay{display:none}
 
 /* Accueil : un grand carré par marque (Canal+, beIN…), ses chaînes dessous avec le programme en cours ; Agenda sport */
-#home,#agenda,#vod{grid-column:2 / -1;overflow:auto;padding:6px 24px 40px;display:none;min-height:0}
+#home,#agenda,#vod{grid-column:1 / -1;overflow:auto;padding:6px 24px 40px;display:none;min-height:0}
 body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.homeview.vod #vod{display:block}
 /* VOD façon Netflix : rangées d'affiches */
 .vtop{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:14px 0 4px}
@@ -794,6 +796,8 @@ async function play(c, alts) {
   if (!c) return;
   const t = ++token;
   S.alts = alts || [];                                  // autres qualités de la même chaîne, essayées si celle-ci ne passe pas
+  if (!S.retry) S.tries = [];                           // journal des essais (montré si rien ne passe)
+  S.retry = false;
   setHomeView(false);
   stopEngines(); showNow(c); S.found = null;
   document.body.classList.add('playing');
@@ -825,21 +829,27 @@ async function play(c, alts) {
     const [eng, url] = chain[i];
     let done = false, timer;
     const ok = () => { if (done || t !== token) return; done = true; clearTimeout(timer); setStatus(null); S.engine = eng; S.playUrl = url; S.master = null; vodResume(); setTimeout(applyTrackPrefs, 300); if (eng !== 'hls') S.found = null; if (!$('#stats').hidden) refreshStats(); };
-    const ko = () => { if (done || t !== token) return; done = true; clearTimeout(timer); next(); };
+    const ko = why => {
+      if (done || t !== token) return; done = true; clearTimeout(timer);
+      if (typeof why !== 'string') why = eng === 'native' && video.error ? 'erreur ' + video.error.code + (video.error.message ? ' · ' + video.error.message : '') : 'erreur';
+      let u = url; try { const x = new URL(url); u = x.protocol.replace(':', '') + '://' + x.host + ' … ' + x.pathname.split('/').pop(); } catch (e) {}
+      S.tries.push({ eng, u, why: why.slice(0, 160) });
+      next();
+    };
     attempt = { ok, ko };
-    timer = setTimeout(ko, 12000);                      // rien reçu en 12 s : on essaie autrement
+    timer = setTimeout(() => ko('rien reçu en 12 s'), 12000);   // on essaie autrement
     try {
       if (eng === 'native') {
         video.src = url;
       } else if (eng === 'hls') {
         await loadLib('hls'); if (t !== token || done) return;
-        if (!window.Hls || !Hls.isSupported()) return ko();
+        if (!window.Hls || !Hls.isSupported()) return ko('hls.js non pris en charge ici');
         let recovered = false;
         hls = new Hls({ enableWorker: true, backBufferLength: 30, manifestLoadingMaxRetry: 1 });
         hls.on(Hls.Events.ERROR, (ev, d) => {
           if (!d.fatal) return;
           if (d.type === Hls.ErrorTypes.MEDIA_ERROR && !recovered) { recovered = true; hls.recoverMediaError(); }
-          else ko();
+          else ko((d.details || d.type || 'erreur') + (d.response && d.response.code ? ' (HTTP ' + d.response.code + ')' : '') + (d.error && d.error.message ? ' · ' + d.error.message : ''));
         });
         // codecs trouvés dans le flux lui-même (quand la liste HLS ne les annonce pas)
         hls.on(Hls.Events.BUFFER_CODECS, (ev, d) => { S.found = { v: d.video && d.video.codec, a: d.audio && d.audio.codec, ch: d.audio && d.audio.metadata && d.audio.metadata.channelCount }; });
@@ -849,9 +859,9 @@ async function play(c, alts) {
         hls.loadSource(url); hls.attachMedia(video);
       } else if (eng === 'mpegts') {
         await loadLib('mpegts'); if (t !== token || done) return;
-        if (!window.mpegts || !mpegts.getFeatureList().mseLivePlayback) return ko();
+        if (!window.mpegts || !mpegts.getFeatureList().mseLivePlayback) return ko('mpegts.js non pris en charge ici');
         mts = mpegts.createPlayer({ type: 'mpegts', isLive: true, url }, { enableWorker: true, liveBufferLatencyChasing: true, lazyLoad: false });
-        mts.on(mpegts.Events.ERROR, ko);
+        mts.on(mpegts.Events.ERROR, (type, detail, info) => ko([type, detail, info && (info.code || info.msg)].filter(Boolean).join(' · ')));
         mts.attachMediaElement(video); mts.load();
       }
       const p = video.play();
@@ -859,7 +869,7 @@ async function play(c, alts) {
         if (t !== token) return;
         if (e && e.name === 'NotAllowedError') setStatus('msg', '', '<button class="btn primary" onclick="video.play();setStatus(null)">▶ Lire</button>');
       });
-    } catch (e) { ko(); }
+    } catch (e) { ko('exception · ' + (e && e.message || e)); }
   };
   next();
 }
@@ -895,13 +905,18 @@ function streamVariants(url) {
 function fail(c) {
   if (S.alts && S.alts.length) {
     const n = S.alts[0]; toast('Ne passe pas : essai en ' + (QLBL[chInfo(n).q] || 'autre qualité'));
-    return play(n, S.alts.slice(1));
+    S.retry = true; return play(n, S.alts.slice(1));
   }
   const mixed = location.protocol === 'https:' && /^http:/i.test(c.url);
   const why = mixed
     ? 'Ce flux est en <b>http</b>, bloqué sur une page sécurisée (https), et sa version https ne s\'ouvre pas dans ce navigateur (serveur qui refuse les navigateurs, ou pas de https). Sur iPhone et Mac, Safari passe souvent là où Chrome, Edge ou Firefox échouent.'
     : 'Le flux ne répond pas au navigateur : serveur hors ligne, accès refusé aux navigateurs (CORS) ou format non pris en charge.';
-  setStatus('msg', `<b style="color:var(--text)">Lecture impossible</b><br><span class="hint">${why}<br>VLC le lira sans ces limites.</span>`,
+  // Détail des essais (lecteur, adresse, erreur exacte), pour comprendre ce qui bloque
+  const log = (S.tries || []).map(x => `<div>${esc({ native: 'appareil', hls: 'hls.js', mpegts: 'mpegts.js' }[x.eng] || x.eng)} · ${esc(x.u)} → <b>${esc(x.why)}</b></div>`).join('');
+  const ua = navigator.userAgent.replace(/^Mozilla\/5\.0 /, '').slice(0, 140);
+  setStatus('msg', `<b style="color:var(--text)">Lecture impossible</b><br><span class="hint">${why}<br>VLC le lira sans ces limites.</span>
+    <details style="pointer-events:auto;margin-top:6px;text-align:left;max-width:100%"><summary class="hint" style="cursor:pointer">Détails (à envoyer pour diagnostic)</summary>
+    <div style="font:11px/1.45 ui-monospace,Menlo,monospace;color:var(--text3);margin-top:6px;max-height:160px;overflow:auto;word-break:break-all">${log}<div>${esc(ua)}</div></div></details>`,
     `<button class="btn" onclick="play(S.current)">Réessayer</button><button class="btn primary" onclick="openVlc(S.current)">Ouvrir dans VLC</button>`);
 }
 /* ---------- EPG (guide des programmes) : celui du serveur Xtream de la liste, chaîne par chaîne (léger) ---------- */

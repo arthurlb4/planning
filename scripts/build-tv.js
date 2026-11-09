@@ -66,7 +66,7 @@ html.tv body.solo #now{background:rgba(0,0,0,.78)!important}
 html.tv .modal{background:rgba(0,0,0,.7)}
 html.tv #trackMenu,html.tv #stats{background:#1b1b1a}
 html.tv,html.tv body{cursor:none}
-html.tv #groupsBtn,html.tv #pipBtn,html.tv #moreBtn,html.tv #pasteBtn,html.tv label.btn,html.tv details,html.tv #demoBtn,html.tv #miniMove,html.tv #miniSize,html.tv #soloBtn,html.tv #soloExit{display:none!important}
+html.tv #pipBtn,html.tv #moreBtn,html.tv #pasteBtn,html.tv label.btn,html.tv details,html.tv #demoBtn,html.tv #miniMove,html.tv #miniSize,html.tv #soloBtn,html.tv #soloExit{display:none!important}
 html.tv :focus{outline:4px solid #62aadc!important;outline-offset:2px;z-index:2}
 html.tv .poster:focus{outline:none!important}
 html.tv .poster:focus .im{outline:4px solid #62aadc;outline-offset:3px}
@@ -80,7 +80,7 @@ html.tv .vgrid{grid-template-columns:repeat(auto-fill,150px)}
 html.tv .vd .cv{height:255px}
 html.tv body.homeview.mini #player{width:420px}
 html.tv body.homeview.mini #screen{height:236px}
-html.tv #groups{width:auto}
+html.tv #groups{width:340px;max-width:none}
 /* Plein écran : l'image seule, le bandeau (chaîne, programme, boutons) apparaît à la télécommande */
 html.tv body.solo #now{top:auto;bottom:0;background:linear-gradient(transparent,rgba(0,0,0,.85));padding:30px 40px}
 html.tv body.solo #now .meta .nm{font-size:22px}
