@@ -1,6 +1,6 @@
 // Lecteur IPTV pour Windows : la page du lecteur (franceinfoplanning.com/iptv/) dans une fenêtre sans les limites du
 // navigateur (serveurs IPTV qui refusent les navigateurs, flux en http sur la page en https).
-const { app, BrowserWindow, session, shell, ipcMain } = require('electron');
+const { app, BrowserWindow, session, shell, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const startRemux = require('./remux');
@@ -54,8 +54,27 @@ function createWindow() {
 
 // Identité Windows de l'appli : épinglage à la barre des tâches et regroupement des fenêtres
 app.setAppUserModelId('com.franceinfoplanning.iptv');
+// Mise à jour automatique : nouvelle version cherchée sur GitHub au lancement puis toutes les 6 h, téléchargée en arrière-plan,
+// installée à la fermeture de l'appli (ou tout de suite si on accepte de redémarrer)
+function setupUpdates(win) {
+  let autoUpdater;
+  try { autoUpdater = require('electron-updater').autoUpdater; } catch (e) { return; }
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.on('update-downloaded', info => {
+    dialog.showMessageBox(win, { type: 'info', buttons: ['Redémarrer maintenant', 'Plus tard'], defaultId: 0, cancelId: 1,
+      title: 'Mise à jour', message: 'La version ' + info.version + ' du Lecteur IPTV est prête.', detail: 'Elle s\'installera à la fermeture de l\'appli, ou tout de suite en redémarrant.' })
+      .then(r => { if (r.response === 0) autoUpdater.quitAndInstall(true, true); });
+  });
+  autoUpdater.on('error', () => {});
+  const check = () => autoUpdater.checkForUpdates().catch(() => {});
+  setTimeout(check, 8000);
+  setInterval(check, 6 * 3600e3);
+}
+
 app.whenReady().then(async () => {
   try { remuxBase = 'http://127.0.0.1:' + await startRemux(ffmpegPath()); } catch (e) {}
   createWindow();
+  if (app.isPackaged) setupUpdates(BrowserWindow.getAllWindows()[0]);
 });
 app.on('window-all-closed', () => app.quit());
