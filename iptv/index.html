@@ -330,6 +330,7 @@ body.vodplay:not(.homeview) #channels{display:none}
       <div id="status"><div class="msg hint">Choisissez une chaîne dans la liste.</div></div>
       <div id="stats" hidden></div>
       <div id="trackMenu" hidden></div>
+      <input type="file" id="subFile" accept=".srt,.vtt,.ass,.ssa,text/vtt,application/x-subrip" hidden>
       <div id="vbar"><button class="btn" id="vbPlay">❚❚</button><button class="btn" id="vbBack">−10 s</button><span id="vbCur">0:00</span><input type="range" id="vbRange" min="0" max="100" step="1" value="0"><span id="vbDur">0:00</span><button class="btn" id="vbFwd">+30 s</button><button class="btn" id="vbMute">🔊</button></div>
       <div id="miniSize" title="Glisser pour changer la taille"></div>
       <div id="miniBar">
@@ -858,6 +859,7 @@ async function play(c, alts) {
   S.retry = false;
   setHomeView(false);
   stopEngines(); showNow(c); S.found = null;
+  if (S.extFor !== c.url) { S.extCues = null; S.extFor = c.url; clearCues(subT('f')); subT('f').mode = 'disabled'; subT('r').mode = 'disabled'; }
   document.body.classList.add('playing');
   document.body.classList.toggle('vodplay', !!c.vod);
   S.sel = S.view.indexOf(c); renderRows(true); scrollToSel();
@@ -1398,10 +1400,10 @@ async function loadPopular(force) {
   if (!force && TM.data) return TM.data;
   if (TM.loading) return TM.loading;
   TM.loading = (async () => {
-    if (!force) { const c = await DB.cacheGet('tmdb:fr'); if (c && Date.now() - c.at < 12 * 3600e3) return (TM.data = c.data); }
+    if (!force) { const c = await DB.cacheGet('tmdb2:fr'); if (c && Date.now() - c.at < 12 * 3600e3) return (TM.data = c.data); }
     const meta = {}, ids = (res, kind) => (res.results || []).map(r => { const id = kind + r.id; meta[id] = { k: kind, t: r.title || r.name || '', o: r.original_title || r.original_name || '', y: +String(r.release_date || r.first_air_date || '').slice(0, 4) || 0, p: r.poster_path || '' }; return id; });
     const pages = async (path, kind, params, n) => { let out = []; for (let pg = 1; pg <= n; pg++) { try { out = out.concat(ids(await tmdb(path, Object.assign({ page: pg }, params)), kind)); } catch (e) { if (pg === 1) throw e; break; } } return out; };
-    const data = { trend: [], svc: {}, meta };
+    const data = { trend: [], svc: {}, svcNew: {}, meta };
     const [tm, tt] = await Promise.all([pages('/trending/movie/week', 'm', {}, 3), pages('/trending/tv/week', 's', {}, 3)]);
     data.trend = tm.map((x, i) => [x, i]).concat(tt.map((x, i) => [x, i])).sort((a, b) => a[1] - b[1]).map(x => x[0]);
     let provs = [];
@@ -1411,8 +1413,14 @@ async function loadPopular(force) {
       const pa = { watch_region: 'FR', with_watch_providers: pr.provider_id, sort_by: 'popularity.desc', with_watch_monetization_types: 'flatrate' };
       const [m, t] = await Promise.all([pages('/discover/movie', 'm', pa, 2).catch(() => []), pages('/discover/tv', 's', pa, 2).catch(() => [])]);
       data.svc[name] = { m, s: t };
+      // Nouveautés : sorties des 4 derniers mois sur la plateforme, les plus suivies d'abord
+      const d0 = new Date(Date.now() - 120 * 864e5).toISOString().slice(0, 10), d1 = new Date().toISOString().slice(0, 10);
+      const nm = { watch_region: 'FR', with_watch_providers: pr.provider_id, with_watch_monetization_types: 'flatrate', sort_by: 'popularity.desc' };
+      const [m2, t2] = await Promise.all([pages('/discover/movie', 'm', Object.assign({ 'primary_release_date.gte': d0, 'primary_release_date.lte': d1 }, nm), 2).catch(() => []),
+        pages('/discover/tv', 's', Object.assign({ 'first_air_date.gte': d0, 'first_air_date.lte': d1 }, nm), 2).catch(() => [])]);
+      data.svcNew[name] = { m: m2, s: t2 };
     }));
-    DB.cachePut({ id: 'tmdb:fr', at: Date.now(), data });
+    DB.cachePut({ id: 'tmdb2:fr', at: Date.now(), data });
     return (TM.data = data);
   })();
   try { return await TM.loading; } catch (e) { TM.err = e.message; return null; } finally { TM.loading = null; }
@@ -1482,12 +1490,17 @@ async function renderVod() {
       h += vodRow('Tendances de la semaine', 'les plus regardés en ce moment · TMDB', popList(POP.trend, P, POP.meta, kinds).slice(0, 30), true);
       for (const [svc] of TMDB_SVC) {
         const S2 = POP.svc[svc]; if (!S2) continue;
-        const l = popList(kinds.length === 2 ? S2.m.map((x, i) => [x, i]).concat(S2.s.map((x, i) => [x, i])).sort((a, b) => a[1] - b[1]).map(x => x[0]) : kinds[0] === 'm' ? S2.m : S2.s, P, POP.meta, kinds);
-        if (l.length >= 3) h += vodRow('Populaires sur ' + svc, 'en France · TMDB', l.slice(0, 30), true);
+        const mix = X => kinds.length === 2 ? X.m.map((x, i) => [x, i]).concat(X.s.map((x, i) => [x, i])).sort((a, b) => a[1] - b[1]).map(x => x[0]) : kinds[0] === 'm' ? X.m : X.s;
+        const l = popList(mix(S2), P, POP.meta, kinds);
+        if (l.length >= 3) h += vodRow('Les plus vus de la semaine sur ' + svc, 'en France · TMDB', l.slice(0, 30), true);
+        const N2 = POP.svcNew && POP.svcNew[svc];
+        const ln = N2 ? popList(mix(N2), P, POP.meta, kinds) : [];
+        if (ln.length >= 2) h += vodRow('Nouveautés sur ' + svc, 'sorties des 4 derniers mois · TMDB', ln.slice(0, 30));
       }
     } else {
       // Sans clé TMDB : le serveur ne donne pas d'audience ; approché par les titres récents les mieux notés
       h += vodRow('Populaires en ce moment', 'récents et bien notés', pool.filter(i => recent(i) && i.rating >= 6.5).sort(byRate).slice(0, 40));
+      for (const [svc] of SERVICES) { const l = pool.filter(i => i.services.includes(svc)); if (l.length >= 4) h += vodRow('Nouveau sur ' + svc, 'derniers ajouts au catalogue', l.slice().sort(byAdded).slice(0, 30)); }
     }
     if (V.tab !== 'series') h += vodRow('Nouveautés · films', 'derniers ajouts', movies.slice().sort(byAdded).slice(0, 40));
     if (V.tab !== 'movie') h += vodRow('Nouveautés · séries', 'dernières mises à jour', series.slice().sort(byAdded).slice(0, 40));
@@ -1620,6 +1633,9 @@ async function playRemux(c, t) {
   const pa = LS.get('pref.audio', 'fr'), au = info.audio || [];
   const pick = au.find(x => lang2(x.lang) === pa) || au.find(x => x.def) || au[0];
   R.a = pick ? pick.i : 0;
+  const ps = LS.get('pref.sub', 'off'), sb = info.subs || [];
+  const sp = ps === 'off' ? sb.find(x => x.forced && lang2(x.lang) === lang2(au[R.a] && au[R.a].lang)) : sb.find(x => lang2(x.lang) === ps && !x.forced) || sb.find(x => lang2(x.lang) === ps);
+  R.s = sp ? sp.i : -1;
   const pos = LS.get('pos.' + c.url, 0), dur = info.duration || 0;
   remuxStart(pos > 60 && (!dur || pos < dur - Math.min(120, dur * 0.1)) ? pos : 0, t);
   if (pos > 60) toast('Reprise à ' + fmtDur(pos));
@@ -1628,6 +1644,8 @@ function remuxStart(ss, t) {
   const R = S.remux; if (!R) return;
   t = t || token;
   R.ss = Math.max(0, Math.floor(ss));
+  R.sid = R.s >= 0 ? Math.random().toString(36).slice(2, 12) : ''; R.ncues = 0; clearCues(subT('r'));
+  subT('r').mode = R.s >= 0 ? 'showing' : 'disabled';
   const hevc = /hevc|h265/i.test(R.info.vcodec || '') ? '1' : '0';
   stopEngines(); S.engine = '';
   setStatus('load'); video.controls = false;
@@ -1640,7 +1658,8 @@ function remuxStart(ss, t) {
     failRemux(S.current, video.error ? 'erreur ' + video.error.code + (video.error.message ? ' · ' + video.error.message : '') : 'rien reçu en 30 s');
   };
   attempt = { ok, ko };
-  video.src = R.base + '/remux?url=' + encodeURIComponent(R.url) + '&ss=' + R.ss + '&a=' + R.a + '&hevc=' + hevc + (R.enc ? '&v=enc' : '');
+  video.src = R.base + '/remux?url=' + encodeURIComponent(R.url) + '&ss=' + R.ss + '&a=' + R.a + '&hevc=' + hevc + (R.enc ? '&v=enc' : '') + (R.s >= 0 ? '&s=' + R.s + '&sid=' + R.sid : '');
+  loadFileCues();
   const p = video.play(); if (p && p.catch) p.catch(() => {});
 }
 function failRemux(c, why) {
@@ -1688,7 +1707,9 @@ function trackLists() {
   if (S.engine === 'remux' && S.remux && S.remux.info) (S.remux.info.audio || []).forEach(t => A.push({ i: t.i, lang: t.lang, name: t.title || t.codec.toUpperCase(), ch: /5\.1/.test(t.ch) ? '6' : /stereo/.test(t.ch) ? '2' : '', on: t.i === S.remux.a }));
   else if (S.engine === 'hls' && hls && hls.audioTracks && hls.audioTracks.length) hls.audioTracks.forEach((t, i) => A.push({ i, lang: t.lang, name: t.name, ch: t.attrs && t.attrs.CHANNELS, on: hls.audioTrack === i }));
   else if (video.audioTracks && video.audioTracks.length) for (let i = 0; i < video.audioTracks.length; i++) { const t = video.audioTracks[i]; A.push({ i, lang: t.language, name: t.label, on: t.enabled }); }
-  for (let i = 0; i < video.textTracks.length; i++) { const t = video.textTracks[i]; if (t.kind === 'metadata' || t.kind === 'chapters') continue; T.push({ i, lang: t.language, name: t.label, kind: t.kind, on: t.mode === 'showing' }); }
+  for (let i = 0; i < video.textTracks.length; i++) { const t = video.textTracks[i]; if (t.kind === 'metadata' || t.kind === 'chapters' || /^__/.test(t.label)) continue; T.push({ i, lang: t.language, name: t.label, kind: t.kind, on: t.mode === 'showing' }); }
+  if (S.engine === 'remux' && S.remux && S.remux.info) (S.remux.info.subs || []).forEach(t => T.push({ i: 'r' + t.i, lang: t.lang, name: t.title || (t.forced ? 'Forcés' : ''), on: S.remux.s === t.i && subT('r').mode === 'showing' }));
+  if (S.extCues) T.push({ i: 'f', lang: '', name: 'Fichier : ' + S.extName, on: subT('f').mode === 'showing' });
   return { A, T };
 }
 function setAudio(i, remember) {
@@ -1701,7 +1722,14 @@ function setAudio(i, remember) {
 }
 function setSub(i, remember) {
   const { T } = trackLists(), t = T.find(x => x.i === i);
-  for (let j = 0; j < video.textTracks.length; j++) { const tt = video.textTracks[j]; if (tt.kind === 'metadata' || tt.kind === 'chapters') continue; tt.mode = j === i ? 'showing' : 'disabled'; }
+  for (let j = 0; j < video.textTracks.length; j++) { const tt = video.textTracks[j]; if (tt.kind === 'metadata' || tt.kind === 'chapters' || /^__/.test(tt.label)) continue; tt.mode = j === i ? 'showing' : 'disabled'; }
+  subT('f').mode = i === 'f' ? 'showing' : 'disabled';
+  const ri = typeof i === 'string' && i[0] === 'r' ? +i.slice(1) : -1;
+  if (S.engine === 'remux' && S.remux) {
+    subT('r').mode = ri >= 0 ? 'showing' : 'disabled';
+    if (ri >= 0 && S.remux.s !== ri) { S.remux.s = ri; remuxStart(curPos()); }   // autre piste : extraction relancée
+    // coupés : seulement masqués, l'extraction continue (C les rallume sans coupure)
+  }
   if (S.engine === 'hls' && hls && hls.subtitleTracks) {
     const k = t ? hls.subtitleTracks.findIndex(x => (x.name || '') === (t.name || '') && lang2(x.lang) === lang2(t.lang)) : -1;
     hls.subtitleDisplay = k >= 0; hls.subtitleTrack = k;
@@ -1710,6 +1738,7 @@ function setSub(i, remember) {
   renderTrackMenu();
 }
 function applyTrackPrefs() {
+  if (S.engine === 'remux') { renderTrackMenu(); return; }   // film converti : pistes choisies au lancement (voir playRemux)
   const { A, T } = trackLists(), pa = LS.get('pref.audio', 'fr'), ps = LS.get('pref.sub', 'off');
   const ga = A.find(t => lang2(t.lang) === pa || t.name === pa);
   if (ga && !ga.on) setAudio(ga.i);
@@ -1726,7 +1755,8 @@ function renderTrackMenu() {
   // Choix du lecteur vidéo : utile quand le son ou l'image ne passent pas avec l'un des deux
   const eng = LS.get('dev.engine', 'tv');
   h += `<h4>Lecteur vidéo</h4><button data-eng="tv">${ck(eng !== 'js')}${window.PREFER_NATIVE ? 'Lecteur de la télé (4K, Dolby)' : 'Automatique'}</button><button data-eng="js">${ck(eng === 'js')}Lecteur web (hls.js / mpegts.js)</button>`;
-  h += '<h4>Sous-titres</h4>' + `<button data-sub="-1">${ck(!T.some(t => t.on))}Désactivés</button>` + (T.length ? T.map((t, n) => `<button data-sub="${t.i}">${ck(t.on)}${trackLabel(t, n + 1)}</button>`).join('') : '<div class="no">Aucun sous-titre fourni</div>');
+  h += '<h4>Sous-titres</h4>' + `<button data-sub="-1">${ck(!T.some(t => t.on))}Désactivés</button>` + (T.length ? T.map((t, n) => `<button data-sub="${t.i}">${ck(t.on)}${trackLabel(t, n + 1)}</button>`).join('') : '<div class="no">Aucun sous-titre fourni</div>')
+    + '<button data-subfile><span class="ck">＋</span>Ajouter un fichier de sous-titres (.srt, .vtt)…</button>';
   m.innerHTML = h;
 }
 $('#trackBtn').onclick = e => { e.stopPropagation(); const m = $('#trackMenu'); m.hidden = !m.hidden; renderTrackMenu(); };
@@ -1734,12 +1764,72 @@ $('#trackMenu').addEventListener('click', e => {
   e.stopPropagation();
   const en = e.target.closest('[data-eng]');
   if (en) { LS.set('dev.engine', en.dataset.eng); $('#trackMenu').hidden = true; toast(en.dataset.eng === 'js' ? 'Lecteur web' : 'Lecteur par défaut'); if (S.current) play(S.current, S.alts); return; }
+  if (e.target.closest('[data-subfile]')) { $('#subFile').click(); return; }
   const a = e.target.closest('[data-aud]'), t = e.target.closest('[data-sub]');
-  if (a) setAudio(+a.dataset.aud, true); else if (t) setSub(+t.dataset.sub, true);
+  if (a) setAudio(+a.dataset.aud, true); else if (t) { const v = t.dataset.sub; setSub(isNaN(+v) ? v : +v, v !== 'f'); }
 });
 document.addEventListener('click', e => { if (!e.target.closest('#trackMenu,#trackBtn')) $('#trackMenu').hidden = true; });
 if (video.audioTracks) video.audioTracks.addEventListener('addtrack', () => setTimeout(applyTrackPrefs, 0));
 video.textTracks.addEventListener('addtrack', () => setTimeout(applyTrackPrefs, 0));
+
+/* ---------- Sous-titres : fichier importé (.srt / .vtt / .ass) et sous-titres intégrés aux films convertis par l'appli Windows.
+   Deux pistes internes, remplies au fil de la lecture et recalées quand le film converti repart d'un autre moment. ---------- */
+const SUBT = {};
+function subT(k) { return SUBT[k] || (SUBT[k] = video.addTextTrack('subtitles', '__' + k, 'fr')); }
+function clearCues(t) { try { while (t.cues && t.cues.length) t.removeCue(t.cues[0]); } catch (e) {} }
+function parseSubs(text) {
+  const tsec = v => { const m = v.trim().replace(',', '.').match(/(?:(\d+):)?(\d+):(\d+)(?:\.(\d+))?/); return m ? (+m[1] || 0) * 3600 + +m[2] * 60 + +m[3] + (m[4] ? +('0.' + m[4]) : 0) : NaN; };
+  const out = [];
+  if (/^\s*\[Script Info\]/i.test(text)) {                     // .ass / .ssa
+    text.split(/\r?\n/).forEach(l => { const m = l.match(/^Dialogue:\s*[^,]*,([^,]+),([^,]+),(?:[^,]*,){6}(.*)$/); if (m) out.push({ start: tsec(m[1]), end: tsec(m[2]), text: m[3].replace(/\{[^}]*\}/g, '').replace(/\\N/gi, '\n') }); });
+    return out.filter(c => c.end > c.start);
+  }
+  text.replace(/\r/g, '').split(/\n\s*\n/).forEach(b => {
+    const L = b.split('\n'), k = L.findIndex(l => l.includes('-->')); if (k < 0) return;
+    const [a, z] = L[k].split('-->');
+    const t = L.slice(k + 1).join('\n').replace(/\{\\[^}]*\}/g, '').trim();
+    if (t) out.push({ start: tsec(a), end: tsec(z.trim().split(/\s/)[0]), text: t });
+  });
+  return out.filter(c => !isNaN(c.start) && c.end > c.start);
+}
+function loadFileCues() {
+  if (!S.extCues) return;
+  const t = subT('f'), off = S.engine === 'remux' && S.remux ? S.remux.ss : 0;
+  clearCues(t);
+  S.extCues.forEach(c => { if (c.end - off > 0) try { t.addCue(new VTTCue(Math.max(0, c.start - off), c.end - off, c.text)); } catch (e) {} });
+}
+$('#subFile').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  const buf = await f.arrayBuffer();
+  let txt; try { txt = new TextDecoder('utf-8', { fatal: true }).decode(buf); } catch (er) { txt = new TextDecoder('windows-1252').decode(buf); }   // anciens .srt en Windows-1252
+  const cues = parseSubs(txt.replace(/^﻿/, ''));
+  if (!cues.length) { toast('Fichier de sous-titres illisible'); return; }
+  S.extCues = cues; S.extName = f.name.replace(/\.[^.]+$/, '');
+  loadFileCues(); setSub('f'); $('#trackMenu').hidden = true; toast(cues.length + ' sous-titres chargés');
+});
+// Sous-titres du film converti : lus au fil de la conversion
+setInterval(async () => {
+  const R = S.remux; if (S.engine !== 'remux' || !R || R.s < 0 || !R.sid) return;
+  const txt = await fetch(R.base + '/subs?id=' + R.sid, { cache: 'no-store' }).then(r => r.text()).catch(() => '');
+  const cues = parseSubs(txt), t = subT('r'); if (R.sid !== S.remux.sid) return;
+  for (let k = R.ncues || 0; k < cues.length; k++) try { t.addCue(new VTTCue(cues[k].start, cues[k].end, cues[k].text)); } catch (e) {}
+  R.ncues = cues.length;
+}, 3000);
+// C : sous-titres activés / coupés (langue préférée, sinon la première piste)
+function toggleSubs() {
+  const { T } = trackLists(); if (!T.length) { toast('Aucun sous-titre pour ce programme'); return; }
+  if (T.some(t => t.on)) { setSub(-1, true); toast('Sous-titres désactivés'); return; }
+  const ps = LS.get('pref.sub', 'fr'), pick = T.find(t => lang2(t.lang) === (ps === 'off' ? 'fr' : ps)) || T.find(t => lang2(t.lang) === 'fr') || T[0];
+  setSub(pick.i, pick.i !== 'f'); toast('Sous-titres : ' + trackLabel(pick, 1).replace(/<[^>]+>/g, ''));
+}
+// Clic sur l'image : pause / reprise (double-clic : plein écran) ; pas sur la barre des contrôles du navigateur
+let clickT;
+video.addEventListener('click', e => {
+  if (MOBILE || !S.current) return;
+  if (video.controls && e.offsetY > video.clientHeight - 60) return;
+  clearTimeout(clickT); clickT = setTimeout(() => { video.paused ? video.play() : video.pause(); }, 220);
+});
+video.addEventListener('dblclick', () => clearTimeout(clickT));
 
 /* ---------- Statistiques du match en cours : ESPN (site.api.espn.com, données publiques, en anglais). Le match est repéré
    d'après l'agenda (guide TV) ou le programme de la chaîne ; les noms français sont traduits pour retrouver les équipes. ---------- */
@@ -1945,6 +2035,7 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'PageDown' || e.key === 'PageUp') { e.preventDefault(); step(e.key === 'PageDown' ? 1 : -1); }
   else if (e.key === '/') { e.preventDefault(); $('#search').focus(); }
   else if (e.key === 'f' || e.key === 'F') setSolo(!document.body.classList.contains('solo'));
+  else if ((e.key === 'c' || e.key === 'C') && S.current) toggleSubs();
   else if (e.key === 'm' || e.key === 'M') video.muted = !video.muted;
   else if (e.key === ' ' && S.current) { e.preventDefault(); video.paused ? video.play() : video.pause(); }
   else if (/^\d$/.test(e.key)) {

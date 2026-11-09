@@ -4,7 +4,12 @@
 //   /probe?url=…                       durée, pistes audio, codec vidéo
 //   /remux?url=…&ss=…&a=…&v=copy|enc   film à partir de ss secondes, piste audio a
 const http = require('http');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const { spawn } = require('child_process');
+const TEXT_SUBS = /^(subrip|srt|ass|ssa|mov_text|webvtt|text)$/i;   // sous-titres texte (les sous-titres en images ne se convertissent pas)
+const SUBS = new Map();                                        // jeton → fichier WebVTT en cours d'écriture
 
 function probe(ffmpeg, src) {
   return new Promise(resolve => {
@@ -13,7 +18,8 @@ function probe(ffmpeg, src) {
     const done = () => {
       const d = txt.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
       const duration = d ? +d[1] * 3600 + +d[2] * 60 + +d[3] : 0;
-      const lines = txt.split(/\r?\n/), audio = [];
+      const lines = txt.split(/\r?\n/), audio = [], subs = [];
+      let si = 0;
       let vcodec = '', vprofile = '';
       lines.forEach((l, i) => {
         const v = l.match(/Stream #\d+:\d+(?:\[[^\]]*\])?(?:\(([a-z]{2,3})\))?: Video: (\w+)(?: \(([^)]*)\))?/);
@@ -24,10 +30,17 @@ function probe(ffmpeg, src) {
           for (let k = i + 1; k < Math.min(i + 6, lines.length) && !/Stream #/.test(lines[k]); k++) { const t = lines[k].match(/^\s+title\s*:\s*(.+)$/); if (t) title = t[1].trim(); }
           audio.push({ i: audio.length, lang: a[1] || '', codec: a[2], ch: a[3].trim(), title, def: /\(default\)/.test(l) });
         }
+        const sb = l.match(/Stream #\d+:\d+(?:\[[^\]]*\])?(?:\(([a-z]{2,3})\))?: Subtitle: (\w+)/);
+        if (sb) {
+          let title = '';
+          for (let k = i + 1; k < Math.min(i + 6, lines.length) && !/Stream #/.test(lines[k]); k++) { const t = lines[k].match(/^\s+title\s*:\s*(.+)$/); if (t) title = t[1].trim(); }
+          if (TEXT_SUBS.test(sb[2])) subs.push({ i: si, lang: sb[1] || '', codec: sb[2], title, forced: /forced/i.test(l + title) });
+          si++;
+        }
       });
       // En cas d'échec : la cause donnée par ffmpeg (erreur HTTP du serveur, délai, format…)
       const err = lines.filter(l => /error|failed|denied|forbidden|refused|timed out|invalid|not found|\b[45]\d\d\b/i.test(l) && !/^\s*(Stream|Duration|Input|Metadata)/.test(l)).slice(-3).join(' · ').slice(0, 300);
-      resolve({ duration, vcodec, vprofile, audio, ok: !!(duration || vcodec), err });
+      resolve({ duration, vcodec, vprofile, audio, subs, ok: !!(duration || vcodec), err });
     };
     ff.stderr.on('data', b => { txt += b; });
     ff.on('exit', done); ff.on('error', e => resolve({ ok: false, audio: [], err: 'ffmpeg ne démarre pas : ' + (e && e.message || e) }));
@@ -45,6 +58,11 @@ module.exports = function startRemux(ffmpeg) {
       res.setHeader('Access-Control-Allow-Headers', '*');
       if (req.method === 'OPTIONS') { res.statusCode = 204; return res.end(); }
       if (u.pathname === '/ping') return res.end('ok');
+      if (u.pathname === '/subs') {                                // sous-titres extraits jusqu'ici (le fichier grandit pendant la lecture)
+        const f = SUBS.get(u.searchParams.get('id') || '');
+        res.setHeader('Content-Type', 'text/vtt; charset=utf-8'); res.setHeader('Cache-Control', 'no-store');
+        return fs.readFile(f || '', (e, b) => res.end(e ? 'WEBVTT\n' : b));
+      }
       const src = u.searchParams.get('url') || '';
       if (!/^https?:\/\//i.test(src)) { res.statusCode = 400; return res.end(); }
       if (u.pathname === '/probe') {
@@ -60,11 +78,20 @@ module.exports = function startRemux(ffmpeg) {
       if (enc) args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '21', '-pix_fmt', 'yuv420p');
       else { args.push('-c:v', 'copy'); if (hevc) args.push('-tag:v', 'hvc1'); }
       args.push('-c:a', 'aac', '-ac', '2', '-b:a', '192k', '-f', 'mp4', '-movflags', 'frag_keyframe+empty_moov+default_base_moof', '-frag_duration', '1000000', 'pipe:1');
+      // Sous-titres intégrés : seconde sortie, en WebVTT dans un fichier temporaire lu par la page au fil de la lecture
+      const sIdx = u.searchParams.get('s'), sid = u.searchParams.get('sid');
+      let subFile = '';
+      if (sIdx != null && sIdx !== '' && sid && /^[\w-]{4,40}$/.test(sid)) {
+        subFile = path.join(os.tmpdir(), 'lecteur-iptv-' + sid + '.vtt');
+        try { fs.writeFileSync(subFile, 'WEBVTT\n'); } catch (e) {}
+        SUBS.set(sid, subFile);
+        args.push('-map', '0:s:' + (+sIdx), '-c:s', 'webvtt', '-flush_packets', '1', '-f', 'webvtt', '-y', subFile);
+      }
       const ff = spawn(ffmpeg, args, { windowsHide: true });
       res.writeHead(200, { 'Content-Type': 'video/mp4', 'Cache-Control': 'no-store' });
       ff.stdout.pipe(res);
       ff.stderr.on('data', () => {});
-      const kill = () => { try { ff.kill('SIGKILL'); } catch (e) {} };
+      const kill = () => { try { ff.kill('SIGKILL'); } catch (e) {} if (subFile) setTimeout(() => { fs.unlink(subFile, () => {}); SUBS.delete(sid); }, 60000); };
       req.on('close', kill); res.on('close', kill);
       ff.on('exit', () => { try { res.end(); } catch (e) {} });
     });
