@@ -1,8 +1,8 @@
-name: Agenda sport (Lecteur IPTV)
+name: Agenda sport et guide TV (Lecteur IPTV)
 
 # Toutes les 3 heures : télécharge le guide TV libre XML TV Fr (xmltvfr.fr) une seule fois, en extrait les retransmissions
-# sportives (scripts/build-agenda.py) et range le résultat sur le serveur Cloudflare (clé iptv:agenda), servi aux appareils
-# par /iptv/agenda.
+# sportives (scripts/build-agenda.py) et le guide des programmes des 30 h à venir (scripts/build-epg.py), et range les deux
+# sur le serveur Cloudflare (clés iptv:agenda et iptv:epg), servis aux appareils par /iptv/agenda et /iptv/epg.
 on:
   schedule:
     - cron: '17 */3 * * *'
@@ -10,6 +10,7 @@ on:
     branches: [main]
     paths:
       - 'scripts/build-agenda.py'
+      - 'scripts/build-epg.py'
       - '.github/workflows/agenda.yml'
   workflow_dispatch:
 
@@ -26,12 +27,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Agenda à partir du guide
+      - name: Agenda et guide des programmes
         run: |
-          python3 scripts/build-agenda.py > agenda.json
+          curl -fsSL --retry 3 -A 'lecteur-iptv-agenda (franceinfoplanning.com)' -o guide.xml.gz https://xmltvfr.fr/xmltv/xmltv_fr.xml.gz
+          python3 scripts/build-agenda.py guide.xml.gz > agenda.json
+          python3 scripts/build-epg.py guide.xml.gz > epg.json
+          python3 -c "import json; d=json.load(open('epg.json')); n=len(d['ch']); print(n, 'chaînes dans le guide'); assert n > 100"
           python3 -c "import json; d=json.load(open('agenda.json')); n=len(d['events']); print(n, 'événements'); assert n > 20"
       - name: Rangement sur le serveur Cloudflare
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: 686385718410239110ea2fe1bccf43be
-        run: npx --yes wrangler@3.95.0 kv key put "iptv:agenda" --path agenda.json --namespace-id 8c380577a5d8482c95ef6aceea259b55
+        run: |
+          npx --yes wrangler@3.95.0 kv key put "iptv:agenda" --path agenda.json --namespace-id 8c380577a5d8482c95ef6aceea259b55
+          npx --yes wrangler@3.95.0 kv key put "iptv:epg" --path epg.json --namespace-id 8c380577a5d8482c95ef6aceea259b55

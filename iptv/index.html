@@ -231,6 +231,7 @@ body.homeview #channels,body.homeview #player{display:none}
 /* Infos de qualité (codec, résolution, images/s…) par-dessus l'image */
 #stats{position:absolute;top:10px;left:10px;z-index:4;background:rgba(10,10,10,.82);border:.5px solid var(--border);border-radius:12px;padding:10px 12px;font:12px/1.55 ui-monospace,Menlo,Consolas,monospace;color:#e8e6e1;max-width:calc(100% - 20px);pointer-events:auto}
 #stats[hidden]{display:none}
+body.solo #stats{top:calc(var(--nowh, 68px) + 8px);max-height:calc(100% - var(--nowh, 68px) - 70px);overflow:auto}
 #stats table{border-collapse:collapse}#stats td{padding:0 10px 0 0;vertical-align:top}#stats td:first-child{color:#9d9b95;white-space:nowrap}
 #stats .x{position:absolute;top:4px;right:6px;color:#9d9b95;font-size:14px;padding:2px 4px}
 /* Mini lecteur : la lecture continue dans un coin pendant qu'on parcourt l'accueil */
@@ -793,7 +794,7 @@ function renderHomeList(resetScroll) {
   box.innerHTML = h;
   box.scrollTop = resetScroll ? 0 : top;
   markHomeList();
-  if (epgCtx()) fams.forEach((f, i) => f.subs.forEach(async (x, j) => {
+  fams.forEach((f, i) => f.subs.forEach(async (x, j) => {
     const list = await getEpg(x.list[0], 1), el = box.querySelector(`[data-hpe="${i}:${j}"]`);
     if (el && list && list.length) { el.textContent = list[0].title; el.title = list[0].title + ' · ' + hm(list[0].start) + '–' + hm(list[0].end); }
   }));
@@ -1060,7 +1061,44 @@ function epgCtx() { const x = S.pl && S.pl.url && xtreamParts(S.pl.url); return 
 function streamId(c) { const m = c && c.url.match(/\/live\/[^/]+\/[^/]+\/(\d+)/); return m ? m[1] : null; }
 const b64txt = v => { try { return new TextDecoder().decode(Uint8Array.from(atob(v || ''), ch => ch.charCodeAt(0))); } catch (e) { return v || ''; } };
 function epgSlot(fn) { return new Promise(res => { const go = async () => { epgBusy++; try { res(await fn()); } finally { epgBusy--; const n = epgQueue.shift(); if (n) n(); } }; epgBusy < 4 ? go() : epgQueue.push(go); }); }
+/* Guide complet : XML TV Fr (~380 chaînes, titre, épisode et résumé, 30 h à venir), préparé toutes les 3 h par GitHub et servi
+   par le serveur de l'appli. Le guide du serveur de l'abonnement ne sert plus qu'aux chaînes que ce guide ne connaît pas. */
+const GUIDE_URL = 'https://planning-gcal.arthur-lebreton94.workers.dev/iptv/epg';
+const GUIDE = { data: null, at: 0, loading: null };
+function loadGuide() {
+  if (GUIDE.data && Date.now() - GUIDE.at < 60 * 60000) return Promise.resolve(GUIDE.data);
+  if (GUIDE.loading) return GUIDE.loading;
+  GUIDE.loading = (async () => {
+    try {
+      if (!GUIDE.data) { const c = await DB.cacheGet('guide1').catch(() => null); if (c && Date.now() - c.at < 60 * 60000 && c.data) { GUIDE.data = c.data; GUIDE.at = c.at; return c.data; } }
+      const r = await fetch(GUIDE_URL, { cache: 'no-cache' }); if (!r.ok) throw new Error('guide ' + r.status);
+      const d = await r.json(); if (!d || !d.ch || !Object.keys(d.ch).length) throw new Error('guide vide');
+      GUIDE.data = d; GUIDE.at = Date.now(); DB.cachePut({ id: 'guide1', at: GUIDE.at, data: d });
+      return d;
+    } catch (e) { GUIDE.at = Date.now() - 50 * 60000; return GUIDE.data; }   // réessai dans 10 min, ancien guide gardé
+    finally { GUIDE.loading = null; }
+  })();
+  return GUIDE.loading;
+}
+// Chaîne de la liste → chaîne du guide : identifiant tvg-id (« TF1.fr »), sinon nom simplifié (« FR: France 2 HD » → france2)
+function guideId(c, G) {
+  if (c._gid !== undefined) return c._gid;
+  let id = c.id && G.ch[c.id] ? c.id : '';
+  const ci = chInfo(c);
+  if (!id && ci.fr && ci.canon) {
+    const lab = LABEL_BY_CANON[ci.canon], k1 = canonText(lab || ci.canon).replace(/ /g, '');
+    id = G.k[k1] || G.k[ci.canon.replace(/ /g, '')] || '';
+  }
+  return (c._gid = id);
+}
+function guideList(c, G) {
+  const id = G && guideId(c, G), l = id && G.ch[id]; if (!l) return null;
+  const now = Date.now();
+  return l.filter(p => p[1] * 1000 > now).map(p => ({ title: p[2], sub: p[3] || '', desc: [p[3], p[4]].filter(Boolean).join(' — '), start: p[0] * 1000, end: p[1] * 1000 }));
+}
 async function getEpg(c, limit) {
+  const G = await loadGuide(), gl = guideList(c, G);
+  if (gl && gl.length) return gl.slice(0, Math.max(limit || 4, 1));
   const x = epgCtx(), id = streamId(c); if (!x || !id) return null;
   const hit = EPG.get(id);
   if (hit && Date.now() - hit.at < 10 * 60000 && hit.list.length >= Math.min(limit || 4, hit.n)) return hit.list.filter(p => p.end > Date.now());
@@ -1078,7 +1116,6 @@ async function getEpg(c, limit) {
 const hm = t => new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 const pct = p => Math.max(0, Math.min(100, (Date.now() - p.start) / (p.end - p.start) * 100));
 function fillTileEpg() {
-  if (!epgCtx()) return;
   S.tiles.forEach((f, i) => f.subs.forEach(async (x, j) => {
     const list = await getEpg(x.list[0], 2), el = document.querySelector(`[data-epg="${i}:${j}"]`);
     if (!el || !list || !list.length) return;
@@ -1098,10 +1135,9 @@ $('#guideBtn').onclick = async () => {
   const c = S.current; if (!c) return;
   $('#guideTitle').textContent = 'Programme · ' + c.name;
   $('#guide').innerHTML = '<div class="spin" style="margin:20px auto"></div>'; openModal('guideModal');
-  if (!epgCtx()) { $('#guide').innerHTML = '<p class="hint">Le programme vient du serveur de l\'abonnement (connexion Xtream) : pas disponible pour cette liste.</p>'; return; }
-  const list = await getEpg(c, 16);
+  const list = await getEpg(c, 40);
   $('#guide').innerHTML = list && list.length ? list.map(p => `<div class="pg${p.start <= Date.now() ? ' on' : ''}"><div class="tm">${new Date(p.start).toLocaleDateString('fr-FR', { weekday: 'short' })} ${hm(p.start)} – ${hm(p.end)}</div><div class="ti">${esc(p.title)}</div>${p.desc ? `<div class="ds">${esc(p.desc)}</div>` : ''}${p.start <= Date.now() ? `<div class="bar"><i style="width:${pct(p)}%"></i></div>` : ''}</div>`).join('')
-    : '<p class="hint">Pas de programme fourni pour cette chaîne.</p>';
+    : '<p class="hint">Pas de programme trouvé pour cette chaîne.</p>';
 };
 
 /* ---------- Qualité de l'image et du son : codec, résolution, images/s, débit, son, images perdues, tampon ---------- */

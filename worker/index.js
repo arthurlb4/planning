@@ -505,6 +505,10 @@ async function handle(request, env, ctx) {
       var ag = await env.PLANNING_DB.get('iptv:agenda');
       return new Response(ag || '{"events":[]}', { status: 200, headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'public, max-age=600' } });
     }
+    if (path === '/iptv/epg') {                       // guide des programmes préparé par GitHub (scripts/build-epg.py) à partir de xmltvfr.fr
+      var eg = await env.PLANNING_DB.get('iptv:epg');
+      return new Response(eg || '{"ch":{},"k":{}}', { status: 200, headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'public, max-age=900' } });
+    }
     var body = await request.json().catch(function(){ return {}; });
     var appVer = url.searchParams.get('av');
     if (MIN_APP && appVer && !path.startsWith('/admin') && _verLt(appVer, MIN_APP)) return resp({ error: 'update', min: MIN_APP }, 426);
