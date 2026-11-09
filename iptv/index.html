@@ -787,6 +787,9 @@ function showNow(c, idle) {
 }
 function updateNowFav() { const on = S.current && S.fav.has(S.current.url); $('#nowFav').classList.toggle('on', !!on); }
 
+// Navigateurs Apple (Safari, appli sur l'écran d'accueil, Chrome ou Firefox sur iPhone/iPad, Safari sur Mac) : tous lisent le HLS
+// eux-mêmes, sans autorisation du serveur ; c'est le seul lecteur qui passe avec la plupart des fournisseurs
+const APPLE_WEBKIT = /AppleWebKit/i.test(navigator.userAgent) && !/(Chrome|Chromium|Edg|Android|Electron|OPR)\//i.test(navigator.userAgent);
 async function play(c, alts) {
   if (!c) return;
   const t = ++token;
@@ -807,7 +810,7 @@ async function play(c, alts) {
   // (plus fiable, et donne codec, débit, images/s), le lecteur du navigateur ensuite
   // Version télé (window.PREFER_NATIVE) : décodeur de la télé d'abord (vraie 4K, HEVC, Dolby), hls.js / mpegts.js en secours
   const preferNative = window.PREFER_NATIVE && LS.get('dev.engine', 'tv') !== 'js';
-  const nativeHls = !!video.canPlayType('application/vnd.apple.mpegurl') && LS.get('dev.engine', 'tv') !== 'js' && (preferNative || (/safari/i.test(navigator.userAgent) && !/chrome|chromium|crios|fxios|edg|android|electron/i.test(navigator.userAgent)));
+  const nativeHls = !!video.canPlayType('application/vnd.apple.mpegurl') && LS.get('dev.engine', 'tv') !== 'js' && (preferNative || APPLE_WEBKIT);
   const chain = [];
   for (const u of streamVariants(c.url)) {
     const k = kindOf(u);
