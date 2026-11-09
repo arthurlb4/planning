@@ -803,11 +803,12 @@ async function play(c, alts) {
   // HLS : lecteur de Safari d'abord sur iPhone / Mac (il passe sans autorisation du serveur) ; ailleurs hls.js d'abord
   // (plus fiable, et donne codec, débit, images/s), le lecteur du navigateur ensuite
   // Version télé (window.PREFER_NATIVE) : décodeur de la télé d'abord (vraie 4K, HEVC, Dolby), hls.js / mpegts.js en secours
-  const nativeHls = !!video.canPlayType('application/vnd.apple.mpegurl') && (window.PREFER_NATIVE || (/safari/i.test(navigator.userAgent) && !/chrome|chromium|crios|fxios|edg|android|electron/i.test(navigator.userAgent)));
+  const preferNative = window.PREFER_NATIVE && LS.get('pref.engine', 'tv') !== 'js';
+  const nativeHls = !!video.canPlayType('application/vnd.apple.mpegurl') && LS.get('pref.engine', 'tv') !== 'js' && (preferNative || (/safari/i.test(navigator.userAgent) && !/chrome|chromium|crios|fxios|edg|android|electron/i.test(navigator.userAgent)));
   const chain = [];
   for (const u of streamVariants(c.url)) {
     const k = kindOf(u);
-    (k === 'hls' ? (nativeHls ? ['native', 'hls'] : ['hls', 'native']) : k === 'file' ? ['native'] : window.PREFER_NATIVE ? ['native', 'mpegts', 'hls'] : ['mpegts', 'hls', 'native'])
+    (k === 'hls' ? (nativeHls ? ['native', 'hls'] : ['hls', 'native']) : k === 'file' ? ['native'] : preferNative ? ['native', 'mpegts', 'hls'] : ['mpegts', 'hls', 'native'])
       .forEach(eng => chain.push([eng, u]));
   }
   let i = -1;
@@ -1018,6 +1019,7 @@ function refreshStats() {
     ${row('Débit reçu', real)}
     ${row('Images perdues', lost)}
     ${row('Tampon', buf > 0 ? buf.toFixed(1) + ' s' : '')}
+    ${row('Volume', video.muted ? 'coupé (muet)' : Math.round(video.volume * 100) + ' %' + (S.engine === 'native' && video.audioTracks ? ' · ' + video.audioTracks.length + ' piste(s) audio' : ''))}
     ${row('Lecteur', { hls: 'hls.js', mpegts: 'mpegts.js', native: 'lecteur du navigateur' }[S.engine] || '')}
     ${row('Format', S.playUrl ? (kindOf(S.playUrl) === 'hls' ? 'HLS (.m3u8)' : kindOf(S.playUrl) === 'ts' ? 'MPEG-TS' : 'fichier') + (/^https:/.test(S.playUrl) ? ' · https' : ' · http') : '')}
   </table>`;
@@ -1343,12 +1345,17 @@ function renderTrackMenu() {
   let h = '<h4>Audio</h4>';
   h += A.length > 1 ? A.map((t, n) => `<button data-aud="${t.i}">${ck(t.on)}${trackLabel(t, n + 1)}</button>`).join('')
     : `<div class="no">${A.length ? trackLabel(A[0], 1) + ' (seule piste)' : 'Une seule piste'}${S.engine === 'mpegts' ? ' · ce format ne permet pas le choix' : ''}</div>`;
+  // Choix du lecteur vidéo : utile quand le son ou l'image ne passent pas avec l'un des deux
+  const eng = LS.get('pref.engine', 'tv');
+  h += `<h4>Lecteur vidéo</h4><button data-eng="tv">${ck(eng !== 'js')}${window.PREFER_NATIVE ? 'Lecteur de la télé (4K, Dolby)' : 'Automatique'}</button><button data-eng="js">${ck(eng === 'js')}Lecteur web (hls.js / mpegts.js)</button>`;
   h += '<h4>Sous-titres</h4>' + `<button data-sub="-1">${ck(!T.some(t => t.on))}Désactivés</button>` + (T.length ? T.map((t, n) => `<button data-sub="${t.i}">${ck(t.on)}${trackLabel(t, n + 1)}</button>`).join('') : '<div class="no">Aucun sous-titre fourni</div>');
   m.innerHTML = h;
 }
 $('#trackBtn').onclick = e => { e.stopPropagation(); const m = $('#trackMenu'); m.hidden = !m.hidden; renderTrackMenu(); };
 $('#trackMenu').addEventListener('click', e => {
   e.stopPropagation();
+  const en = e.target.closest('[data-eng]');
+  if (en) { LS.set('pref.engine', en.dataset.eng); $('#trackMenu').hidden = true; toast(en.dataset.eng === 'js' ? 'Lecteur web' : 'Lecteur par défaut'); if (S.current) play(S.current, S.alts); return; }
   const a = e.target.closest('[data-aud]'), t = e.target.closest('[data-sub]');
   if (a) setAudio(+a.dataset.aud, true); else if (t) setSub(+t.dataset.sub, true);
 });
