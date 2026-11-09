@@ -81,7 +81,8 @@ function createWindow() {
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
 
   // Page en ligne (toujours à jour) ; sans connexion au site, la copie livrée avec l'appli
-  win.loadURL(PAGE).catch(() => win.loadFile(path.join(__dirname, 'index.html')));
+  // (page redemandée au site à chaque lancement : jamais une ancienne copie gardée en cache)
+  win.loadURL(PAGE, { extraHeaders: 'Cache-Control: no-cache\nPragma: no-cache\n' }).catch(() => win.loadFile(path.join(__dirname, 'index.html')));
 }
 
 // Identité Windows de l'appli : épinglage à la barre des tâches et regroupement des fenêtres
