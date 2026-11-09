@@ -131,6 +131,7 @@ video{width:100%;height:100%;object-fit:contain;background:#000;outline:none}
 .spin{width:34px;height:34px;border-radius:50%;border:3px solid rgba(255,255,255,.15);border-top-color:var(--blue);animation:sp .8s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
 #now{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bg0);border-top:.5px solid var(--border)}
+#nowSub:empty{display:none}
 #now .meta .nm{font-size:16px;font-weight:600;display:flex;align-items:center;gap:8px;min-width:0}
 #nowName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .qsel{display:inline-flex;align-items:center;gap:2px;flex:none;height:24px;padding:0 4px 0 8px;border-radius:7px;background:var(--bg3);border:.5px solid var(--border);color:var(--text);font-size:11px;font-weight:800;letter-spacing:.03em}
@@ -144,7 +145,8 @@ video{width:100%;height:100%;object-fit:contain;background:#000;outline:none}
 #qualMenu button:hover{background:var(--bg3)}
 #qualMenu .ck{width:14px;color:var(--blue);font-weight:800}
 #qualMenu .q{font-weight:800;min-width:44px}
-#qualMenu .r{color:var(--text3);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px}
+#qualMenu .r{color:var(--text3);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px;line-height:1.35}
+#qualMenu .r b{color:var(--text2);font-weight:600}
 #now .tools{display:flex;gap:6px;flex:none}
 
 /* Fenêtres */
@@ -913,7 +915,7 @@ function applyFilter(resetScroll) {
   $('#count').textContent = base.length.toLocaleString('fr-FR') + (base.length > 1 ? ' chaînes' : ' chaîne');
   $('#spacer').style.height = base.length * ROW + 'px';
   if (resetScroll) $('#list').scrollTop = 0;
-  const hl = S.group === 'home' && !q && !!base.length;
+  const hl = S.group === 'home' && !!base.length;   // accueil en cases ; recherche : résultats rangés par catégorie
   document.body.classList.toggle('homelist', hl);
   if (hl) renderHomeList(resetScroll);
   lastStart = -1; renderRows();
@@ -922,6 +924,19 @@ function applyFilter(resetScroll) {
 function renderHomeList(resetScroll) {
   const box = $('#homeList'), fams = homeIndex(), top = box.scrollTop;
   let h = '', sec = '';
+  if (S.query.trim()) {                                 // recherche : toutes les chaînes trouvées, rangées par catégorie de la liste
+    const by = new Map(); S.view.forEach(c => (by.get(c.group) || by.set(c.group, []).get(c.group)).push(c));
+    const groups = [...by.keys()].sort((a, b) => (langOf(a) === 'xx') - (langOf(b) === 'xx'));   // catégories étrangères à la fin
+    const res = []; let n = 0;
+    groups.forEach(g => {
+      if (n >= 400) return;
+      const l = by.get(g).slice(0, 400 - n); n += l.length;
+      h += `<h2>${esc(g || 'Sans catégorie')} <span style="font-weight:500">· ${by.get(g).length}</span></h2><div class="brand"><div class="chs">` + l.map(c => { const k = res.push(c) - 1, q = chInfo(c).q;
+        return `<button class="chr" data-hs="${k}" title="${esc(c.name)}"><span class="lg">${imgOr(chLogo(c), initials(niceName(c)), '')}</span><span class="m"><span class="l">${esc(niceName(c))} <span class="qb${q === 4 ? ' k4' : ''}">${QLBL[q]}</span></span><span class="e">${esc(c.name)}</span></span></button>`; }).join('') + '</div></div>';
+    });
+    if (S.view.length > 400) h += '<p class="hint" style="padding:6px 4px">Plus de 400 chaînes trouvées : précisez la recherche.</p>';
+    box._res = res; box.innerHTML = h; box.scrollTop = 0; markHomeList(); return;
+  }
   // Favoris (étoile) en tête : les catégories n'existent plus, c'est ici qu'on les retrouve
   const favs = S.channels.filter(c => S.fav.has(c.url)); box._favs = favs;
   if (favs.length) h += '<h2>Favoris</h2><div class="brand"><div class="chs">' + favs.map((c, k) => `<button class="chr" data-hf="${k}" title="Regarder ${esc(c.name)}"><span class="lg">${imgOr(chLogo(c), initials(niceName(c)), '')}</span><span class="m"><span class="l">${esc(niceName(c))} <span class="qb${chInfo(c).q === 4 ? ' k4' : ''}">${QLBL[chInfo(c).q]}</span></span></span></button>`).join('') + '</div></div>';
@@ -944,14 +959,16 @@ function renderHomeList(resetScroll) {
 function markHomeList() {
   if (!document.body.classList.contains('homelist')) return;
   const fams = homeIndex();
+  $('#homeList').querySelectorAll('[data-hs]').forEach(b => b.classList.toggle('on', $('#homeList')._res[+b.dataset.hs] === S.current));
   $('#homeList').querySelectorAll('[data-hf]').forEach(b => b.classList.toggle('on', $('#homeList')._favs[+b.dataset.hf] === S.current));
   $('#homeList').querySelectorAll('[data-hp]').forEach(b => { const [i, j] = b.dataset.hp.split(':').map(Number), on = !!S.current && fams[i].subs[j].list.includes(S.current); b.classList.toggle('on', on); });
   $('#homeList').querySelectorAll('.brand').forEach(d => d.classList.toggle('on', !!d.querySelector('.chr.on')));
   // chaîne en cours repliée dans sa case (Ligue 1+ 7…) : on redessine pour qu'elle apparaisse
-  if (S.current && !$('#homeList .chr.on') && fams.some(f => f.show && f.subs.some((x, j) => j >= f.show && x.list.includes(S.current))) && !markHomeList.busy) { markHomeList.busy = true; renderHomeList(false); markHomeList.busy = false; }
+  if (!S.query.trim() && S.current && !$('#homeList .chr.on') && fams.some(f => f.show && f.subs.some((x, j) => j >= f.show && x.list.includes(S.current))) && !markHomeList.busy) { markHomeList.busy = true; renderHomeList(false); markHomeList.busy = false; }
 }
 $('#homeList').addEventListener('click', e => {
   const f = e.target.closest('[data-hf]'); if (f) { const c = $('#homeList')._favs[+f.dataset.hf]; if (c) play(c); return; }
+  const r = e.target.closest('[data-hs]'); if (r) { const c = $('#homeList')._res[+r.dataset.hs]; if (c) play(c, variantsOf(c).filter(x => x !== c && chInfo(x).q <= chInfo(c).q)); return; }
   const b = e.target.closest('[data-hp]'); if (!b) return;
   const [i, j] = b.dataset.hp.split(':').map(Number), s = homeIndex()[i].subs[j];
   play(s.list[0], s.list.slice(1));
@@ -1067,7 +1084,7 @@ $('#qualBtn').onclick = e => {
   e.stopPropagation();
   const m = $('#qualMenu'), c = S.current, v = variantsOf(c);
   if (!m.hidden || v.length < 2) { m.hidden = true; return; }
-  m.innerHTML = v.map((x, i) => `<button data-qv="${i}"><span class="ck">${x === c ? '✓' : ''}</span><span class="q">${esc(qLabel(x))}</span><span class="r">${esc(x.name)}</span></button>`).join('');
+  m.innerHTML = v.map((x, i) => `<button data-qv="${i}"><span class="ck">${x === c ? '✓' : ''}</span><span class="q">${esc(qLabel(x))}</span><span class="r"><b>${esc(x.group || 'Sans catégorie')}</b><br>${esc(x.name)}</span></button>`).join('');
   m._v = v; m.hidden = false;
   const r = $('#qualBtn').getBoundingClientRect(), w = m.offsetWidth, h = m.offsetHeight;
   m.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + 'px';
@@ -1083,7 +1100,7 @@ function showNow(c, idle) {
   if (S.current !== c) { document.body.classList.remove('hasmatch'); MATCH.ev = null; MATCH.key = ''; }
   S.current = c;
   $('#nowName').textContent = c.vod ? c.name : niceName(c); $('#nowName').title = c.name;
-  $('#nowSub').textContent = c.vod ? c.group : c.group + ' · n° ' + (c.chno || c.n);
+  $('#nowSub').textContent = '';                      // ni catégorie ni numéro sous le titre
   qualBtnUpdate(c);
   $('#nowLogo').outerHTML = logoHtml(c).replace('class="logo"', 'class="logo" id="nowLogo"');
   updateNowFav(); nowEpg(c);
