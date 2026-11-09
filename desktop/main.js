@@ -1,6 +1,6 @@
 // Lecteur IPTV pour Windows : la page du lecteur (franceinfoplanning.com/iptv/) dans une fenêtre sans les limites du
 // navigateur (serveurs IPTV qui refusent les navigateurs, flux en http sur la page en https).
-const { app, BrowserWindow, session, shell, ipcMain, dialog, screen } = require('electron');
+const { app, BrowserWindow, session, shell, ipcMain, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const startRemux = require('./remux');
@@ -116,12 +116,8 @@ function setupUpdates(win) {
   autoUpdater.on('update-not-available', () => send({ state: 'latest' }));
   autoUpdater.on('update-available', i => send({ state: 'downloading', version: i.version, pct: 0 }));
   autoUpdater.on('download-progress', p => send({ state: 'downloading', version: updState.version, pct: Math.round(p.percent || 0) }));
-  autoUpdater.on('update-downloaded', info => {
-    send({ state: 'ready', version: info.version });
-    dialog.showMessageBox(win, { type: 'info', buttons: ['Redémarrer maintenant', 'Plus tard'], defaultId: 0, cancelId: 1,
-      title: 'Mise à jour', message: 'La version ' + info.version + ' du Lecteur IPTV est prête.', detail: 'Elle s\'installera à la fermeture de l\'appli, ou tout de suite en redémarrant.' })
-      .then(r => { if (r.response === 0) autoUpdater.quitAndInstall(true, true); });
-  });
+  // Mise à jour prête : proposée par la page, dans le style de l'appli (bandeau « Redémarrer maintenant / Plus tard »)
+  autoUpdater.on('update-downloaded', info => send({ state: 'ready', version: info.version }));
   autoUpdater.on('error', e => send({ state: 'error', msg: String(e && e.message || e).split('\n')[0].slice(0, 200) }));
   const check = () => autoUpdater.checkForUpdates().catch(e => send({ state: 'error', msg: String(e && e.message || e).split('\n')[0].slice(0, 200) }));
   ipcMain.on('upd-check', () => { if (updState.state === 'ready') autoUpdater.quitAndInstall(true, true); else if (updState.state !== 'downloading') check(); });
