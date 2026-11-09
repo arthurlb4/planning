@@ -39,6 +39,7 @@ main{flex:1;display:grid;grid-template-columns:380px 1fr;min-height:0}
 /* Catégories : tiroir caché, ouvert par ☰ (sur tous les écrans) */
 #groups{display:flex;flex-direction:column;min-height:0;background:var(--bg0);position:fixed;top:0;bottom:0;left:0;width:300px;max-width:85vw;z-index:40;transform:translateX(-100%);transition:transform .22s ease;padding-top:env(safe-area-inset-top);border-right:.5px solid var(--border);box-shadow:8px 0 30px rgba(0,0,0,.4)}
 body.drawer #groups{transform:none}
+#appVer .btn{margin-top:6px;height:28px;font-size:12px;padding:0 10px}
 #appVer{padding:8px 14px calc(8px + env(safe-area-inset-bottom));font-size:11px;color:var(--text3);border-top:.5px solid var(--border);flex:none;font-variant-numeric:tabular-nums}
 body.drawer #overlay{display:block;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:39}
 #groupSearch{margin:10px;height:36px;border-radius:10px;border:.5px solid var(--border);background:var(--bg2);padding:0 12px;outline:none}
@@ -2181,7 +2182,19 @@ video.addEventListener('playing', wake);
 
 /* Ouvrir dans VLC : lien de l'appli sur iPhone / Android ; sur ordinateur (pas de lien vlc://), petit fichier .m3u que VLC ouvre */
 // Appli Windows : numéro de version en bas du menu ☰ (pour voir si la mise à jour est passée)
-if (window.desktop && window.desktop.version) { const v = $('#appVer'); v.textContent = 'Appli Windows v' + window.desktop.version; v.hidden = false; }
+// et état de la mise à jour automatique (appli 1.11 et plus) avec un bouton pour vérifier ou installer
+if (window.desktop && window.desktop.version) {
+  const v = $('#appVer'); v.hidden = false;
+  const show = st => {
+    const t = !st ? '' : st.state === 'checking' ? 'recherche d\'une mise à jour…' : st.state === 'latest' ? 'à jour'
+      : st.state === 'downloading' ? 'téléchargement de la v' + (st.version || '?') + ' : ' + (st.pct || 0) + ' %' : st.state === 'ready' ? 'v' + st.version + ' prête'
+      : st.state === 'error' ? 'mise à jour impossible : ' + (st.msg || 'erreur') : '';
+    const btn = !st || st.state === 'checking' || st.state === 'downloading' ? '' : `<button class="btn" id="updBtn">${st.state === 'ready' ? 'Redémarrer et installer' : 'Vérifier'}</button>`;
+    v.innerHTML = `<div>Appli Windows v${esc(window.desktop.version)}${t ? ' · ' + esc(t) : ''}</div>${btn}`;
+    const b = $('#updBtn'); if (b) b.onclick = () => { window.desktop.checkUpdate(); show({ state: 'checking' }); };
+  };
+  if (window.desktop.updState) { try { show(window.desktop.updState()); } catch (e) { show(null); } window.desktop.onUpdate(show); } else show(null);
+}
 const MOBILE = /iphone|ipad|ipod|android/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 function vlcUrl(u) { return /android/i.test(navigator.userAgent) ? 'vlc://' + u : 'vlc-x-callback://x-callback-url/stream?url=' + encodeURIComponent(u); }
 function openVlc(c) {

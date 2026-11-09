@@ -89,25 +89,35 @@ function createWindow() {
 app.setAppUserModelId('com.franceinfoplanning.iptv');
 // Mise à jour automatique : nouvelle version cherchée sur GitHub au lancement puis toutes les 6 h, téléchargée en arrière-plan,
 // installée à la fermeture de l'appli (ou tout de suite si on accepte de redémarrer)
+// L'état est montré dans le menu ☰ de la page (version, recherche, téléchargement en %, erreur) avec un bouton « Vérifier ».
+let updState = { state: 'idle' };
 function setupUpdates(win) {
   let autoUpdater;
-  try { autoUpdater = require('electron-updater').autoUpdater; } catch (e) { return; }
+  const send = st => { updState = Object.assign({ at: Date.now() }, st); try { if (!win.isDestroyed()) win.webContents.send('upd', updState); } catch (e) {} };
+  try { autoUpdater = require('electron-updater').autoUpdater; } catch (e) { send({ state: 'error', msg: 'module de mise à jour absent' }); return; }
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.on('checking-for-update', () => send({ state: 'checking' }));
+  autoUpdater.on('update-not-available', () => send({ state: 'latest' }));
+  autoUpdater.on('update-available', i => send({ state: 'downloading', version: i.version, pct: 0 }));
+  autoUpdater.on('download-progress', p => send({ state: 'downloading', version: updState.version, pct: Math.round(p.percent || 0) }));
   autoUpdater.on('update-downloaded', info => {
+    send({ state: 'ready', version: info.version });
     dialog.showMessageBox(win, { type: 'info', buttons: ['Redémarrer maintenant', 'Plus tard'], defaultId: 0, cancelId: 1,
       title: 'Mise à jour', message: 'La version ' + info.version + ' du Lecteur IPTV est prête.', detail: 'Elle s\'installera à la fermeture de l\'appli, ou tout de suite en redémarrant.' })
       .then(r => { if (r.response === 0) autoUpdater.quitAndInstall(true, true); });
   });
-  autoUpdater.on('error', () => {});
-  const check = () => autoUpdater.checkForUpdates().catch(() => {});
-  setTimeout(check, 8000);
+  autoUpdater.on('error', e => send({ state: 'error', msg: String(e && e.message || e).split('\n')[0].slice(0, 200) }));
+  const check = () => autoUpdater.checkForUpdates().catch(e => send({ state: 'error', msg: String(e && e.message || e).split('\n')[0].slice(0, 200) }));
+  ipcMain.on('upd-check', () => { if (updState.state === 'ready') autoUpdater.quitAndInstall(true, true); else if (updState.state !== 'downloading') check(); });
+  setTimeout(check, 5000);
   setInterval(check, 6 * 3600e3);
 }
+ipcMain.on('upd-state', e => { e.returnValue = updState; });
 
 app.whenReady().then(async () => {
   try { remuxBase = 'http://127.0.0.1:' + await startRemux(ffmpegPath()); } catch (e) {}
   createWindow();
-  if (app.isPackaged) setupUpdates(BrowserWindow.getAllWindows()[0]);
+  if (app.isPackaged) setupUpdates(BrowserWindow.getAllWindows()[0]); else updState = { state: 'error', msg: 'version de développement' };
 });
 app.on('window-all-closed', () => app.quit());
