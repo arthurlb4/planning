@@ -432,6 +432,30 @@ function _rev(str) { var h = 5381; str = str || ''; for (var i = 0; i < str.leng
 var IPTV_MAX = 40 * 1024 * 1024;
 var IPTV_UAS = ['VLC/3.0.21 LibVLC/3.0.21', 'IPTVSmartersPro', 'okhttp/4.12.0', 'Kodi/21.1 (Windows NT 10.0; Win64; x64) App_Bitness/64 Version/21.1-(21.1.0)-Git:20240804-0',
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36', ''];
+// Lecteur IPTV : synchronisation entre appareils (favoris, récentes, reprises, réglages, listes). Le document est rangé sous
+// l'empreinte SHA-256 du code de synchro (calculée par l'appareil : le serveur ne voit jamais le code). Fusion faite par les appareils.
+var SYNC_MAX = 400 * 1024;
+async function iptvSync(request, env, url) {
+  var h = { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
+  var out = function (d, s) { return new Response(JSON.stringify(d), { status: s || 200, headers: h }); };
+  if (request.method === 'GET') {
+    var k = url.searchParams.get('k') || '';
+    if (!/^[a-f0-9]{64}$/.test(k)) return out({ error: 'clé invalide' }, 400);
+    var doc = await env.PLANNING_DB.get('iptvsync:' + k);
+    return new Response(doc || '{}', { status: 200, headers: h });
+  }
+  if (request.method === 'POST') {
+    var txt = await request.text();
+    if (txt.length > SYNC_MAX) return out({ error: 'trop volumineux' }, 413);
+    var b; try { b = JSON.parse(txt); } catch (e) { return out({ error: 'JSON invalide' }, 400); }
+    if (!b || !/^[a-f0-9]{64}$/.test(b.k || '') || !b.doc || typeof b.doc !== 'object') return out({ error: 'requête invalide' }, 400);
+    b.doc.at = Date.now();
+    await env.PLANNING_DB.put('iptvsync:' + b.k, JSON.stringify(b.doc));
+    return out({ ok: true, at: b.doc.at });
+  }
+  return out({ error: 'méthode' }, 405);
+}
+
 async function iptvM3u(request, url) {
   var o = request.headers.get('Origin') || '';
   var h = { 'Access-Control-Allow-Origin': ALLOWED_ORIGINS.indexOf(o) >= 0 ? o : ALLOWED_ORIGIN, 'Vary': 'Origin', 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' };
@@ -476,6 +500,7 @@ async function handle(request, env, ctx) {
     var url = new URL(request.url);
     var path = url.pathname;
     if (path === '/iptv/m3u') return iptvM3u(request, url);
+    if (path === '/iptv/sync') return iptvSync(request, env, url);
     var body = await request.json().catch(function(){ return {}; });
     var appVer = url.searchParams.get('av');
     if (MIN_APP && appVer && !path.startsWith('/admin') && _verLt(appVer, MIN_APP)) return resp({ error: 'update', min: MIN_APP }, 426);

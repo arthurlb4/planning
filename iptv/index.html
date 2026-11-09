@@ -334,6 +334,8 @@ body.solo #miniBar,body.solo #miniSize,body.solo #soloBtn,body.solo #miniBtn{dis
       <div class="err" id="bErr"></div>
     </div>
     <div id="plList"></div>
+    <h3>Synchronisation entre appareils</h3>
+    <div id="syncBox"></div>
     <h3>Ajouter une liste</h3>
     <input class="field" id="addName" placeholder="Nom (facultatif)">
     <input class="field" id="addUrl" type="url" placeholder="Adresse de la liste (http…/playlist.m3u)" autocomplete="off" spellcheck="false">
@@ -391,7 +393,7 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp
 const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const LS = {
   get(k, d) { try { const v = localStorage.getItem('iptv.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
-  set(k, v) { try { localStorage.setItem('iptv.' + k, JSON.stringify(v)); } catch (e) {} }
+  set(k, v) { try { localStorage.setItem('iptv.' + k, JSON.stringify(v)); } catch (e) {} if (window.syncTouch) syncTouch(k); }
 };
 function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('show'), 2200); }
 
@@ -473,7 +475,8 @@ async function loadPlaylists() {
   S.playlists = (await DB.all()).sort((a, b) => a.added - b.added);
   renderPlaylists();
   const last = LS.get('pl'), pick = S.playlists.find(p => p.id === last) || S.playlists[0];
-  if (pick) usePlaylist(pick.id); else { renderEmpty(); openModal('plModal'); }
+  if (pick) usePlaylist(pick.id); else if (!LS.get('sync.code')) { renderEmpty(); openModal('plModal'); } else renderEmpty();
+  syncNow();
 }
 function usePlaylist(id) {
   const p = S.playlists.find(x => x.id === id); if (!p) return;
@@ -1482,6 +1485,7 @@ $('#managePl').onclick = () => { $('#addErr').textContent = ''; openModal('plMod
 
 function renderPlaylists() {
   $('#builtinBox').style.display = S.playlists.some(p => p.id === 'builtin') ? 'none' : '';
+  if (window.renderSync) renderSync();
   $('#plList').innerHTML = S.playlists.length ? S.playlists.map(p => `
     <div class="pl${S.pl && S.pl.id === p.id ? ' on' : ''}">
       <div class="meta" data-use="${p.id}"><div class="nm">${esc(p.name)}</div>
@@ -1496,7 +1500,7 @@ $('#plList').addEventListener('click', async e => {
   else if (d) {
     const p = S.playlists.find(x => x.id === d.dataset.del);
     if (!confirm('Supprimer « ' + p.name + ' » ?')) return;
-    await DB.del(p.id); S.playlists = S.playlists.filter(x => x !== p);
+    await DB.del(p.id); S.playlists = S.playlists.filter(x => x !== p); syncListRemoved(p);
     if (S.pl === p) { stopAll(); S.pl = null; S.channels = []; S.view = []; S.groups = []; renderGroups(); if (S.playlists[0]) usePlaylist(S.playlists[0].id); else renderEmpty(); }
     renderPlaylists();
   } else if (r) {
@@ -1565,6 +1569,7 @@ async function savePlaylist(p) {
   const i = S.playlists.findIndex(x => x.id === p.id);
   if (i >= 0) S.playlists[i] = p; else S.playlists.push(p);
   usePlaylist(p.id);
+  syncTouch('list@' + listKey(p));
   return p;
 }
 function guessName(url) { try { const u = new URL(url); return u.hostname.replace(/^www\./, ''); } catch (e) { return 'Ma liste'; } }
@@ -1632,6 +1637,140 @@ $('#bBtn').onclick = async () => {
   b.disabled = false; b.textContent = 'Déverrouiller';
 };
 $('#bPass').addEventListener('keydown', e => { if (e.key === 'Enter') $('#bBtn').click(); });
+
+/* ---------- Synchronisation entre appareils (PC, iPhone, télé) : favoris, récentes, reprises des films, réglages et listes.
+   Un code de synchro relie les appareils ; le serveur range le document sous l'empreinte SHA-256 du code. Fusion élément par
+   élément : la modification la plus récente gagne. ---------- */
+const SYNC_URL = 'https://planning-gcal.arthur-lebreton94.workers.dev/iptv/sync';
+const SYNC_RE = /^(fav\.|recent\.|pos\.|pref\.|ag\.|season\.)/;
+const listKey = p => p.id === 'builtin' ? 'builtin' : (p.url || p.id);
+const SY = { busy: false, timer: 0, at: LS.get('sync.at', 0), err: '' };
+function stamps() { return LS.get('sync.stamps', {}); }
+function setStamp(k, t) { const st = stamps(); st[k] = t; try { localStorage.setItem('iptv.sync.stamps', JSON.stringify(st)); } catch (e) {} }
+// clé locale → clé partagée (les favoris et récentes sont rangés par liste, repérée par son adresse, pas par son numéro local)
+function toShared(k) {
+  const m = k.match(/^(fav|recent)\.(.+)$/);
+  if (m) { const p = S.playlists.find(x => x.id === m[2]); return p ? m[1] + '@' + listKey(p) : null; }
+  return k;
+}
+function toLocal(sk) {
+  const m = sk.match(/^(fav|recent)@(.+)$/);
+  if (m) { const p = S.playlists.find(x => listKey(x) === m[2]); return p ? m[1] + '.' + p.id : null; }
+  return sk;
+}
+function syncTouch(k) {
+  if (!LS.get('sync.code') || /^sync\./.test(k)) return;
+  if (!SYNC_RE.test(k) && !/^list@/.test(k)) return;
+  const sk = /^list@/.test(k) ? k : toShared(k); if (!sk) return;
+  setStamp(sk, Date.now());
+  clearTimeout(SY.timer); SY.timer = setTimeout(syncNow, 4000);
+}
+function syncListRemoved(p) { const sk = 'list@' + listKey(p); setStamp(sk, Date.now()); const tb = LS.get('sync.tomb', {}); tb[sk] = 1; localStorage.setItem('iptv.sync.tomb', JSON.stringify(tb)); clearTimeout(SY.timer); SY.timer = setTimeout(syncNow, 1500); }
+async function syncHash(code) {
+  const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('iptv-sync:' + code.toUpperCase().replace(/[^A-Z0-9]/g, '')));
+  return [...new Uint8Array(d)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+function localItems() {
+  const st = stamps(), tomb = LS.get('sync.tomb', {}), items = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const full = localStorage.key(i); if (!full || !full.startsWith('iptv.')) continue;
+    const k = full.slice(5); if (!SYNC_RE.test(k)) continue;
+    const sk = toShared(k); if (!sk) continue;
+    try { items[sk] = [JSON.parse(localStorage.getItem(full)), st[sk] || 0]; } catch (e) {}
+  }
+  S.playlists.forEach(p => { const sk = 'list@' + listKey(p); items[sk] = [{ name: p.name, url: p.url || '' }, st[sk] || 1]; });
+  Object.keys(tomb).forEach(sk => { if (!items[sk]) items[sk] = [null, st[sk] || 1]; });
+  // reprises des films : seulement les 300 plus récentes
+  const pos = Object.keys(items).filter(k => k.startsWith('pos.')).sort((a, b) => items[b][1] - items[a][1]);
+  pos.slice(300).forEach(k => delete items[k]);
+  return items;
+}
+async function applyRemote(sk, val, t) {
+  const st = stamps();
+  if (sk.startsWith('list@')) {
+    const key = sk.slice(5), p = S.playlists.find(x => listKey(x) === key);
+    if (val === null) { if (p) { await DB.del(p.id); S.playlists = S.playlists.filter(x => x !== p); if (S.pl === p) { S.pl = null; S.channels = []; } } }
+    else if (!p && val.url) {
+      try {
+        const text = await fetchPlaylist(val.url), np = { id: key === 'builtin' ? 'builtin' : 'p' + Date.now().toString(36), name: val.name || guessName(val.url), url: val.url, text, added: key === 'builtin' ? 0 : Date.now() };
+        const { channels } = parseM3U(text); if (!channels.length) return;
+        np.count = channels.length; np.updated = Date.now(); await DB.put(np); S.playlists.push(np);
+        toast('Liste « ' + np.name + ' » ajoutée depuis un autre appareil');
+        if (!S.pl) usePlaylist(np.id);
+      } catch (e) { return; }
+    }
+    st[sk] = t; localStorage.setItem('iptv.sync.stamps', JSON.stringify(st));
+    return;
+  }
+  const lk = toLocal(sk); if (!lk) return;                 // liste pas encore sur cet appareil : appliqué plus tard
+  try { localStorage.setItem('iptv.' + lk, JSON.stringify(val)); } catch (e) {}
+  st[sk] = t; localStorage.setItem('iptv.sync.stamps', JSON.stringify(st));
+}
+async function syncNow() {
+  const code = LS.get('sync.code'); if (!code || SY.busy) return;
+  SY.busy = true; renderSync();
+  try {
+    const k = await syncHash(code);
+    const remote = await (await fetch(SYNC_URL + '?k=' + k, { cache: 'no-store' })).json();
+    const R = (remote && remote.items) || {};
+    let L = localItems(), changedLocal = false, needPush = false;
+    // listes d'abord (les favoris et récentes en dépendent)
+    const keys = Object.keys(R).sort((a, b) => (b.startsWith('list@') ? 1 : 0) - (a.startsWith('list@') ? 1 : 0));
+    for (const sk of keys) {
+      const r = R[sk], l = L[sk];
+      if (!l || r[1] > l[1]) { await applyRemote(sk, r[0], r[1]); changedLocal = true; }
+    }
+    L = localItems();
+    const merged = Object.assign({}, R);
+    for (const sk in L) if (!merged[sk] || L[sk][1] > merged[sk][1]) { merged[sk] = L[sk]; needPush = true; }
+    if (needPush || !remote.items) {
+      await fetch(SYNC_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ k, doc: { v: 1, items: merged } }) });
+    }
+    SY.at = Date.now(); LS.set('sync.at', SY.at); SY.err = '';
+    if (changedLocal) {                                    // recharger ce qui a changé
+      renderPlaylists();
+      if (S.pl) { S.fav = new Set(LS.get(favKey(), [])); S.recent = LS.get(recKey(), []); renderGroups(); applyFilter(false); updateNowFav(); }
+      else if (S.playlists[0]) usePlaylist(S.playlists[0].id);
+      if (document.body.classList.contains('homeview') && !document.body.classList.contains('agenda') && !document.body.classList.contains('vod')) renderHome();
+    }
+  } catch (e) { SY.err = 'Serveur de synchro injoignable'; }
+  SY.busy = false; renderSync();
+}
+function newSyncCode() {
+  const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', r = crypto.getRandomValues(new Uint8Array(16));
+  return [...r].map(b => A[b % A.length]).join('').replace(/(.{4})(?=.)/g, '$1-');
+}
+function renderSync() {
+  const box = $('#syncBox'); if (!box) return;
+  const code = LS.get('sync.code');
+  if (!code) {
+    box.innerHTML = `<p class="hint" style="margin-bottom:10px">Favoris, chaînes récentes, reprise des films, réglages et listes partagés entre vos appareils (PC, iPhone, télé). Créez un code ici, puis entrez-le sur les autres appareils.</p>
+      <div class="row"><button class="btn primary" id="syncNew">Créer un code</button></div>
+      <div class="row" style="margin-top:10px"><input class="field" id="syncIn" placeholder="J'ai déjà un code : XXXX-XXXX-XXXX-XXXX" autocomplete="off" autocapitalize="characters" spellcheck="false" style="flex:1;min-width:0;margin:0"><button class="btn" id="syncJoin">Relier</button></div>
+      <div class="err">${esc(SY.err)}</div>`;
+  } else {
+    box.innerHTML = `<div class="pl on" style="flex-wrap:wrap"><div class="meta"><div class="nm">Relié · code <span style="font-family:ui-monospace,Menlo,monospace;letter-spacing:.04em">${esc(code)}</span></div>
+      <div class="sub">${SY.busy ? 'Synchronisation…' : SY.err ? esc(SY.err) : SY.at ? 'Dernière synchro : ' + new Date(SY.at).toLocaleString('fr-FR', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' }) : 'Pas encore synchronisé'}</div></div>
+      <button class="btn" id="syncGo">Synchroniser</button><button class="btn danger" id="syncOff">Délier</button></div>
+      <p class="hint" style="margin-top:8px">Entrez ce code sur vos autres appareils (Listes › Synchronisation › Relier). Gardez-le pour vous : il donne accès à vos listes.</p>`;
+  }
+}
+$('#syncBox').addEventListener('click', async e => {
+  const id = e.target.id;
+  if (id === 'syncNew') { LS.set('sync.code', newSyncCode()); setAllStamps(); renderSync(); syncNow(); }
+  else if (id === 'syncJoin') {
+    const v = ($('#syncIn').value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (v.length !== 16) { SY.err = 'Le code fait 16 caractères (XXXX-XXXX-XXXX-XXXX).'; renderSync(); return; }
+    LS.set('sync.code', v.replace(/(.{4})(?=.)/g, '$1-')); SY.err = ''; renderSync(); syncNow();
+  }
+  else if (id === 'syncGo') syncNow();
+  else if (id === 'syncOff') { if (confirm('Délier cet appareil ? Ses données restent ici, elles ne se partagent plus.')) { localStorage.removeItem('iptv.sync.code'); renderSync(); } }
+});
+// À la création d'un code : tout ce qui est déjà sur cet appareil part sur le serveur
+function setAllStamps() { const now = Date.now(), st = stamps(); Object.keys(localItems()).forEach(k => { if (!st[k]) st[k] = now; }); localStorage.setItem('iptv.sync.stamps', JSON.stringify(st)); }
+setInterval(syncNow, 3 * 60000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) syncNow(); });
+renderSync();
 
 /* Glisser un fichier .m3u sur la page */
 document.addEventListener('dragover', e => e.preventDefault());
