@@ -1258,6 +1258,7 @@ function loadGuide() {
       if (!GUIDE.data) { const c = await DB.cacheGet('guide1').catch(() => null); if (c && Date.now() - c.at < 60 * 60000 && c.data) { GUIDE.data = c.data; GUIDE.at = c.at; return c.data; } }
       const r = await fetch(GUIDE_URL, { cache: 'no-cache' }); if (!r.ok) throw new Error('guide ' + r.status);
       const j = await r.json(), d = j && (j.guide || j); if (!d || !d.ch || !Object.keys(d.ch).length) throw new Error('guide vide');
+      d.nfx = (j && j.nfx) || null;          // top 10 Netflix en France, joint au même fichier
       GUIDE.data = d; GUIDE.at = Date.now(); DB.cachePut({ id: 'guide1', at: GUIDE.at, data: d });
       return d;
     } catch (e) { GUIDE.at = Date.now() - 50 * 60000; return GUIDE.data; }   // réessai dans 10 min, ancien guide gardé
@@ -1702,7 +1703,7 @@ function posterHtml(it, i, rank) {
   const r = it.rating ? `<span class="rt">★ ${it.rating.toFixed(1)}</span>` : '';
   return `<button class="poster" data-v="${i}" title="${esc(it.name)}${it.year ? ' (' + it.year + ')' : ''}"><div class="im">${esc(it.name)}${it.cover ? `<img src="${esc(posterUrl(it.cover))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}${r}${it.kind === 'series' ? '<span class="kd">SÉRIE</span>' : ''}${vfOnly(it) ? '<span class="vfo" title="Film étranger proposé seulement en français (pas de VO)">VF seule</span>' : ''}${rank ? `<span class="rk">${rank}</span>` : ''}</div><div class="pt">${esc(it.name)}</div><div class="py">${it.year || ''}</div></button>`;
 }
-function vodRow(title, sub, list, ranked) { if (!list.length) return ''; return `<div class="vrow"><h3>${esc(title)}${sub ? `<small>${esc(sub)}</small>` : ''}</h3><div class="vwrap"><button class="varr l" data-arr="-1" aria-label="Précédents"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><div class="vscroll">${list.map((it, k) => posterHtml(it, V.shown.push(it) - 1, ranked && k < 20 ? k + 1 : 0)).join('')}</div><button class="varr r" data-arr="1" aria-label="Suivants"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button></div></div>`; }
+function vodRow(title, sub, list, ranked) { if (!list.length) return ''; return `<div class="vrow"><h3>${esc(title)}${sub ? `<small>${esc(sub)}</small>` : ''}</h3><div class="vwrap"><button class="varr l" data-arr="-1" aria-label="Précédents"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><div class="vscroll">${list.map((it, k) => posterHtml(it, V.shown.push(it) - 1, Array.isArray(ranked) ? ranked[k] : ranked && k < 20 ? k + 1 : 0)).join('')}</div><button class="varr r" data-arr="1" aria-label="Suivants"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button></div></div>`; }
 
 /* ---------- Vraie popularité : TMDB (tendances de la semaine, et le plus regardé en France sur chaque service), croisée avec
    le catalogue de l'abonnement. Clé TMDB gratuite (themoviedb.org › Paramètres › API), partagée par la synchro. ---------- */
@@ -1717,6 +1718,20 @@ async function tmdb(path, params) {
   if (r.status === 401) throw new Error('clé TMDB refusée');
   if (!r.ok) throw new Error('TMDB répond ' + r.status);
   return r.json();
+}
+// Top 10 Netflix en France (classement officiel de la semaine) : titres retrouvés sur TMDB (nom, titre français, année)
+// pour être croisés avec le catalogue ; résultat gardé pour la semaine
+async function nfxResolve() {
+  const G = await loadGuide(), N = G && G.nfx; if (!N || !N.week || !LS.get('pref.tmdb', '')) return null;
+  const id = 'nfx1:' + N.week, c = await DB.cacheGet(id); if (c && c.data) return c.data;
+  const one = async (e, kind) => {
+    const r = await tmdb('/search/' + (kind === 's' ? 'tv' : 'movie'), { query: e.t }).catch(() => null), x = r && r.results && r.results[0]; if (!x) return null;
+    return { id: kind + x.id, r: e.r, m: { k: kind, t: x.title || x.name || '', o: x.original_title || x.original_name || '', y: +String(x.release_date || x.first_air_date || '').slice(0, 4) || 0, p: x.poster_path || '', l: x.original_language || '' } };
+  };
+  const list = (await Promise.all([...(N.films || []).map(e => one(e, 'm')), ...(N.tv || []).map(e => one(e, 's'))])).filter(Boolean);
+  const data = { week: N.week, list };
+  if (list.length) DB.cachePut({ id, at: Date.now(), data });
+  return data;
 }
 async function loadPopular(force) {
   if (!LS.get('pref.tmdb', '')) return null;
@@ -1820,7 +1835,19 @@ async function renderVod() {
       for (const [svc] of TMDB_SVC) {
         const S2 = POP.svc[svc]; if (!S2) continue;
         const mix = X => kinds.length === 2 ? X.m.map((x, i) => [x, i]).concat(X.s.map((x, i) => [x, i])).sort((a, b) => a[1] - b[1]).map(x => x[0]) : kinds[0] === 'm' ? X.m : X.s;
-        const l = popList(mix(S2), P, POP.meta, kinds);
+        const NF = svc === 'Netflix' ? await nfxResolve().catch(() => null) : null;
+        let top = false;
+        if (NF && NF.list.length) {                      // vrai classement des Français (publié par Netflix), films et séries à part
+          for (const kd of kinds) {
+            const its = [], rk = [];
+            NF.list.filter(e => e.id[0] === kd).sort((a, b) => a.r - b.r).forEach(e => {
+              POP.meta[e.id] = POP.meta[e.id] || e.m; const it = popMatch(e.id, P, POP.meta);
+              if (it && !its.includes(it) && !vfOnly(it)) { its.push(it); rk.push(e.r); }
+            });
+            if (its.length) { h += vodRow('Top 10 ' + (kd === 'm' ? 'films' : 'séries') + ' Netflix en France', 'classement Netflix de la semaine du ' + new Date(NF.week).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }), its, rk); top = true; }
+          }
+        }
+        const l = top ? [] : popList(mix(S2), P, POP.meta, kinds);
         if (l.length >= 3) h += vodRow('Les plus vus de la semaine sur ' + svc, 'en France · TMDB', l.slice(0, 30), true);
         const N2 = POP.svcNew && POP.svcNew[svc];
         const ln = N2 ? popList(mix(N2), P, POP.meta, kinds) : [];

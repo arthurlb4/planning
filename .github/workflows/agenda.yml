@@ -11,6 +11,7 @@ on:
     paths:
       - 'scripts/build-agenda.py'
       - 'scripts/build-epg.py'
+      - 'scripts/build-netflix.py'
       - '.github/workflows/agenda.yml'
   workflow_dispatch:
 
@@ -34,8 +35,11 @@ jobs:
           python3 scripts/build-epg.py guide.xml.gz > epg.json
           python3 -c "import json; d=json.load(open('epg.json')); n=len(d['ch']); print(n, 'chaînes dans le guide'); assert n > 100"
           python3 -c "import json; d=json.load(open('agenda.json')); n=len(d['events']); print(n, 'événements'); assert n > 20"
+          # Top 10 Netflix en France (classements publiés par Netflix) ; en cas d'échec, l'appli garde les listes TMDB
+          if curl -fsSL --retry 2 -A 'Mozilla/5.0 (lecteur-iptv)' -o netflix.tsv https://www.netflix.com/tudum/top10/data/all-weeks-countries.tsv \
+             && python3 scripts/build-netflix.py netflix.tsv > netflix.json; then python3 -c "import json; d=json.load(open('netflix.json')); print('Netflix', d['week'], len(d['films']), 'films', len(d['tv']), 'séries')"; else echo '{}' > netflix.json; echo 'Top 10 Netflix indisponible'; fi
           # Guide joint au fichier de l'agenda (même adresse, déjà servie par le serveur)
-          python3 -c "import json; a=json.load(open('agenda.json')); g=json.load(open('epg.json')); a['guide']={'at': g['at'], 'ch': g['ch'], 'k': g['k']}; json.dump(a, open('agenda.json','w'), ensure_ascii=False, separators=(',',':'))"
+          python3 -c "import json; a=json.load(open('agenda.json')); g=json.load(open('epg.json')); a['guide']={'at': g['at'], 'ch': g['ch'], 'k': g['k']}; n=json.load(open('netflix.json')); a['nfx']=n if n.get('week') else None; json.dump(a, open('agenda.json','w'), ensure_ascii=False, separators=(',',':'))"
       - name: Rangement sur le serveur Cloudflare
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
