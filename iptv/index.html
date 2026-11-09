@@ -806,8 +806,8 @@ async function play(c, alts) {
   // HLS : lecteur de Safari d'abord sur iPhone / Mac (il passe sans autorisation du serveur) ; ailleurs hls.js d'abord
   // (plus fiable, et donne codec, débit, images/s), le lecteur du navigateur ensuite
   // Version télé (window.PREFER_NATIVE) : décodeur de la télé d'abord (vraie 4K, HEVC, Dolby), hls.js / mpegts.js en secours
-  const preferNative = window.PREFER_NATIVE && LS.get('pref.engine', 'tv') !== 'js';
-  const nativeHls = !!video.canPlayType('application/vnd.apple.mpegurl') && LS.get('pref.engine', 'tv') !== 'js' && (preferNative || (/safari/i.test(navigator.userAgent) && !/chrome|chromium|crios|fxios|edg|android|electron/i.test(navigator.userAgent)));
+  const preferNative = window.PREFER_NATIVE && LS.get('dev.engine', 'tv') !== 'js';
+  const nativeHls = !!video.canPlayType('application/vnd.apple.mpegurl') && LS.get('dev.engine', 'tv') !== 'js' && (preferNative || (/safari/i.test(navigator.userAgent) && !/chrome|chromium|crios|fxios|edg|android|electron/i.test(navigator.userAgent)));
   const chain = [];
   for (const u of streamVariants(c.url)) {
     const k = kindOf(u);
@@ -940,7 +940,7 @@ async function nowEpg(c) {
   const list = await getEpg(c, 2); if (S.current !== c || !list || !list.length) return;
   el.innerHTML = `<b>${esc(list[0].title)}</b> · ${hm(list[0].start)}–${hm(list[0].end)}${list[1] ? ' · ensuite ' + esc(list[1].title) + ' (' + hm(list[1].start) + ')' : ''}`;
 }
-setInterval(() => { if (S.current) nowEpg(S.current); const b = document.body.classList; if (b.contains('homeview') && !b.contains('agenda')) fillTileEpg(); }, 60000);
+setInterval(() => { if (S.current) nowEpg(S.current); const b = document.body.classList; if (b.contains('homeview') && !b.contains('agenda') && !b.contains('vod')) fillTileEpg(); }, window.PREFER_NATIVE ? 300000 : 60000);
 $('#guideBtn').onclick = async () => {
   const c = S.current; if (!c) return;
   $('#guideTitle').textContent = 'Programme · ' + c.name;
@@ -1184,9 +1184,11 @@ async function loadVod() {
   })();
   try { return await V.loading; } finally { V.loading = null; }
 }
+// Affiches TMDB : la taille utile plutôt que l'originale (moins de données, décodage plus léger, surtout sur la télé)
+const posterUrl = u => String(u || '').replace(/(image\.tmdb\.org\/t\/p\/)(original|w\d+(_and_h\d+_[a-z0-9]+)?)\//i, '$1' + (window.PREFER_NATIVE ? 'w185' : 'w342') + '/');
 function posterHtml(it, i) {
   const r = it.rating ? `<span class="rt">★ ${it.rating.toFixed(1)}</span>` : '';
-  return `<button class="poster" data-v="${i}" title="${esc(it.name)}${it.year ? ' (' + it.year + ')' : ''}"><div class="im">${esc(it.name)}${it.cover ? `<img src="${esc(it.cover)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}${r}${it.kind === 'series' ? '<span class="kd">SÉRIE</span>' : ''}</div><div class="pt">${esc(it.name)}</div><div class="py">${it.year || ''}</div></button>`;
+  return `<button class="poster" data-v="${i}" title="${esc(it.name)}${it.year ? ' (' + it.year + ')' : ''}"><div class="im">${esc(it.name)}${it.cover ? `<img src="${esc(posterUrl(it.cover))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}${r}${it.kind === 'series' ? '<span class="kd">SÉRIE</span>' : ''}</div><div class="pt">${esc(it.name)}</div><div class="py">${it.year || ''}</div></button>`;
 }
 function vodRow(title, sub, list) { if (!list.length) return ''; return `<div class="vrow"><h3>${esc(title)}${sub ? `<small>${esc(sub)}</small>` : ''}</h3><div class="vscroll">${list.map(it => posterHtml(it, V.shown.push(it) - 1)).join('')}</div></div>`; }
 async function renderVod() {
@@ -1349,7 +1351,7 @@ function renderTrackMenu() {
   h += A.length > 1 ? A.map((t, n) => `<button data-aud="${t.i}">${ck(t.on)}${trackLabel(t, n + 1)}</button>`).join('')
     : `<div class="no">${A.length ? trackLabel(A[0], 1) + ' (seule piste)' : 'Une seule piste'}${S.engine === 'mpegts' ? ' · ce format ne permet pas le choix' : ''}</div>`;
   // Choix du lecteur vidéo : utile quand le son ou l'image ne passent pas avec l'un des deux
-  const eng = LS.get('pref.engine', 'tv');
+  const eng = LS.get('dev.engine', 'tv');
   h += `<h4>Lecteur vidéo</h4><button data-eng="tv">${ck(eng !== 'js')}${window.PREFER_NATIVE ? 'Lecteur de la télé (4K, Dolby)' : 'Automatique'}</button><button data-eng="js">${ck(eng === 'js')}Lecteur web (hls.js / mpegts.js)</button>`;
   h += '<h4>Sous-titres</h4>' + `<button data-sub="-1">${ck(!T.some(t => t.on))}Désactivés</button>` + (T.length ? T.map((t, n) => `<button data-sub="${t.i}">${ck(t.on)}${trackLabel(t, n + 1)}</button>`).join('') : '<div class="no">Aucun sous-titre fourni</div>');
   m.innerHTML = h;
@@ -1358,7 +1360,7 @@ $('#trackBtn').onclick = e => { e.stopPropagation(); const m = $('#trackMenu'); 
 $('#trackMenu').addEventListener('click', e => {
   e.stopPropagation();
   const en = e.target.closest('[data-eng]');
-  if (en) { LS.set('pref.engine', en.dataset.eng); $('#trackMenu').hidden = true; toast(en.dataset.eng === 'js' ? 'Lecteur web' : 'Lecteur par défaut'); if (S.current) play(S.current, S.alts); return; }
+  if (en) { LS.set('dev.engine', en.dataset.eng); $('#trackMenu').hidden = true; toast(en.dataset.eng === 'js' ? 'Lecteur web' : 'Lecteur par défaut'); if (S.current) play(S.current, S.alts); return; }
   const a = e.target.closest('[data-aud]'), t = e.target.closest('[data-sub]');
   if (a) setAudio(+a.dataset.aud, true); else if (t) setSub(+t.dataset.sub, true);
 });

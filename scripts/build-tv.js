@@ -57,12 +57,20 @@ console.log('OK   ' + out + ' (' + Math.round(html.length / 1024) + ' Ko)');
 function TV_CSS() { return `
 /* ===== Version télé ===== */
 html.tv body{zoom:1.3}
+/* Fluidité (moteur lent) : pas d'ombres, de flous, de dégradés ni d'animations, sauf l'indicateur de chargement */
+html.tv *,html.tv *::before,html.tv *::after{transition:none!important;animation:none!important;box-shadow:none!important;text-shadow:none!important}
+html.tv .spin{animation:sp .8s linear infinite!important}
+html.tv img,html.tv .sq,html.tv .sq img,html.tv .poster .im{filter:none!important}
+html.tv .sq,html.tv .poster .im,html.tv .tile .face{background:#2b2a28!important}
+html.tv body.solo #now{background:rgba(0,0,0,.78)!important}
+html.tv .modal{background:rgba(0,0,0,.7)}
+html.tv #trackMenu,html.tv #stats{background:#1b1b1a}
 html.tv,html.tv body{cursor:none}
 html.tv #groupsBtn,html.tv #pipBtn,html.tv #moreBtn,html.tv #pasteBtn,html.tv label.btn,html.tv details,html.tv #demoBtn,html.tv #miniMove,html.tv #miniSize,html.tv #soloBtn,html.tv #soloExit{display:none!important}
 html.tv :focus{outline:4px solid #62aadc!important;outline-offset:2px;z-index:2}
 html.tv .poster:focus{outline:none!important}
-html.tv .poster:focus .im{outline:4px solid #62aadc;outline-offset:3px;transform:scale(1.06)}
-html.tv .sq:focus .play,html.tv .sq:focus{filter:brightness(1.15)}
+html.tv .poster:focus .im{outline:4px solid #62aadc;outline-offset:3px}
+html.tv .sq:focus{background:#3a3936!important}
 html.tv .sq:focus .play{opacity:1;transform:none}
 html.tv .ch:focus{background:var(--bg3)}
 /* Tailles fixes là où le moteur ne connaît pas aspect-ratio ni min() */
@@ -110,16 +118,22 @@ function TV_JS() { return String.raw`
     if (document.body.classList.contains('drawer')) return document.getElementById('groups');
     return document;
   }
-  function shown(el) { var r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden'; }
-  function cands() { var s = scope(), l = s.querySelectorAll(SEL), o = []; for (var i = 0; i < l.length; i++) if (shown(l[i])) o.push(l[i]); return o; }
-  function focusEl(el) { if (!el) return; el.focus(); try { el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) { el.scrollIntoView(false); } }
+  // Éléments sélectionnables visibles, avec leur position calculée une seule fois par appui (moteur lent)
+  function cands() {
+    var s = scope(), l = s.querySelectorAll(SEL), o = [], H = innerHeight * 2.5;
+    for (var i = 0; i < l.length; i++) { var r = l[i].getBoundingClientRect(); if (r.width > 0 && r.height > 0 && r.bottom > -H && r.top < H) { l[i]._r = r; o.push(l[i]); } }
+    return o;
+  }
+  function focusEl(el) { if (!el) return; el.focus({ preventScroll: true }); try { el.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) { el.scrollIntoView(false); } }
+  // Touche maintenue : un déplacement par image au plus (évite l'engorgement du moteur)
+  var lastMove = 0;
   function move(dir) {
     var list = cands(), cur = document.activeElement;
     if (!cur || cur === document.body || list.indexOf(cur) < 0) { focusEl(list[0]); return; }
     var a = cur.getBoundingClientRect(), best = null, bs = Infinity;
     list.forEach(function (el) {
       if (el === cur || el.contains(cur) || cur.contains(el)) return;
-      var b = el.getBoundingClientRect(), d, o;
+      var b = el._r, d, o;
       if (dir === 'right') { d = b.left - a.right; o = Math.max(0, Math.max(a.top, b.top) - Math.min(a.bottom, b.bottom)); if (b.left + 1 < a.right && b.right <= a.right) return; }
       else if (dir === 'left') { d = a.left - b.right; o = Math.max(0, Math.max(a.top, b.top) - Math.min(a.bottom, b.bottom)); if (b.right - 1 > a.left && b.left >= a.left) return; }
       else if (dir === 'down') { d = b.top - a.bottom; o = Math.max(0, Math.max(a.left, b.left) - Math.min(a.right, b.right)); if (b.top + 1 < a.bottom && b.bottom <= a.bottom) return; }
@@ -180,7 +194,10 @@ function TV_JS() { return String.raw`
       showUi();
     }
     else if (solo && !ui && k === 13) { showUi(); focusEl(document.getElementById('nowFav')); }
-    else if (k >= 37 && k <= 40 && !(typing && (k === 37 || k === 39))) { if (solo) showUi(); move({ 37: 'left', 38: 'up', 39: 'right', 40: 'down' }[k]); }
+    else if (k >= 37 && k <= 40 && !(typing && (k === 37 || k === 39))) {
+      if (solo) showUi();
+      var now = Date.now(); if (now - lastMove > 60) { lastMove = now; move({ 37: 'left', 38: 'up', 39: 'right', 40: 'down' }[k]); }
+    }
     else if (k === 13 && document.activeElement && document.activeElement !== document.body && document.activeElement.tagName !== 'SELECT' && !typing) {
       if (solo) showUi();                                   // OK : active l'élément sélectionné (bouton, chaîne, affiche…)
       document.activeElement.click();
