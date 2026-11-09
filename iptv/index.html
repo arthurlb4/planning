@@ -73,6 +73,10 @@ body.homelist #listInfo{display:none}
 ::-webkit-scrollbar-thumb{background:transparent;border-radius:6px}
 .scrolling::-webkit-scrollbar-thumb{background:rgba(255,255,255,.28)}
 .scrolling::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.45)}
+/* Fondu à la disparition : la couleur de la barre suit (par héritage) une couleur animée de la zone qui défile */
+#homeList,#list,#vodSide,#vod,#home,#agenda{border-color:rgba(255,255,255,0);transition:border-color .8s ease}
+#homeList.scrolling,#list.scrolling,#vodSide.scrolling,#vod.scrolling,#home.scrolling,#agenda.scrolling{border-color:rgba(255,255,255,.28);transition:border-color .15s}
+#homeList::-webkit-scrollbar-thumb,#list::-webkit-scrollbar-thumb,#vodSide::-webkit-scrollbar-thumb,#vod::-webkit-scrollbar-thumb,#home::-webkit-scrollbar-thumb,#agenda::-webkit-scrollbar-thumb{background:transparent;border-right:6px solid;border-color:inherit}
 @supports not selector(::-webkit-scrollbar){*{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.2) transparent}}
 #vodSide{display:none;flex:1;min-height:0;overflow-y:auto;padding:0 10px 14px}
 body.vod.drawer #vodSide{display:block}
@@ -101,6 +105,7 @@ body.homelist #homeList{display:block}
 .num{width:34px;text-align:right;color:var(--text3);font-size:12px;font-variant-numeric:tabular-nums;flex:none}
 .logo{width:44px;height:44px;border-radius:9px;background:transparent;flex:none;position:relative;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--text3);overflow:hidden}
 .logo img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;padding:4px;background:transparent}
+.logo img+.ini{display:none}
 .logo:not(:has(img)){background:var(--bg3)}
 .meta{min-width:0;flex:1}
 .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
@@ -167,7 +172,20 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 .vrow{margin-top:22px}
 .vrow h3{font-size:17px;font-weight:700;margin:0 2px 10px;display:flex;align-items:baseline;gap:10px}
 .vrow h3 small{font-size:12px;color:var(--text3);font-weight:500}
-.vscroll{display:flex;gap:12px;overflow-x:auto;padding:2px 2px 10px;scroll-snap-type:x proximity}
+.vscroll{display:flex;gap:12px;overflow-x:auto;padding:2px 2px 12px;scroll-snap-type:x proximity;cursor:grab}
+.vscroll.drag{cursor:grabbing;scroll-snap-type:none;user-select:none}
+.vscroll.drag .poster{pointer-events:none}
+/* Rangées des films et séries : barre toujours visible, flèches comme Netflix (gauche seulement une fois qu'on a avancé) */
+.vscroll::-webkit-scrollbar-thumb,.vscroll.scrolling::-webkit-scrollbar-thumb{background:rgba(255,255,255,.2)}
+.vscroll::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.4)}
+.vwrap{position:relative}
+.varr{position:absolute;top:2px;bottom:12px;width:46px;z-index:3;display:flex;align-items:center;justify-content:center;color:#fff;opacity:0;transition:opacity .2s,background .2s;border-radius:10px}
+.varr svg{width:30px;height:30px;stroke:#fff;stroke-width:2.6;fill:none;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 2px 6px rgba(0,0,0,.6))}
+.varr.l{left:0;background:linear-gradient(90deg,rgba(0,0,0,.75),transparent)}
+.varr.r{right:0;background:linear-gradient(270deg,rgba(0,0,0,.75),transparent)}
+.vwrap:hover .varr{opacity:.85}.vwrap .varr:hover{opacity:1}
+.vwrap:not(.moved) .varr.l,.vwrap.end .varr.r{display:none}
+@media (hover:none){.varr{display:none!important}}
 .poster{flex:none;width:150px;scroll-snap-align:start;cursor:pointer;border:0;background:none;color:var(--text);text-align:left;padding:0}
 .poster .im{position:relative;width:100%;aspect-ratio:2/3;border-radius:12px;overflow:hidden;background:linear-gradient(160deg,#34332f,#1b1b1a);display:flex;align-items:center;justify-content:center;padding:10px;text-align:center;font-weight:700;color:var(--text3);font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.35);transition:transform .15s}
 .poster:hover .im{transform:scale(1.04)}
@@ -929,7 +947,8 @@ function renderRows(force) {
   rows.innerHTML = h;
 }
 function initials(n) { return esc(String(n).replace(/[^\p{L}\p{N} ]/gu, '').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase() || '·'); }
-function logoHtml(c) { const lg = chLogo(c); return `<div class="logo">${initials(c.name)}${lg ? `<img src="${esc(lg)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}</div>`; }
+// Logo, sinon initiales (cachées tant que l'image est là : elle n'a plus de fond pour les masquer)
+function logoHtml(c) { const lg = chLogo(c); return `<div class="logo">${lg ? `<img src="${esc(lg)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}<span class="ini">${initials(c.vod ? c.name : niceName(c))}</span></div>`; }
 $('#list').addEventListener('scroll', () => requestAnimationFrame(() => renderRows()), { passive: true });
 window.addEventListener('resize', () => renderRows(true));
 $('#rows').addEventListener('click', e => {
@@ -1361,6 +1380,35 @@ function toggleStats(on) {
 }
 $('#statsBtn').onclick = () => toggleStats();
 
+// Films et séries : flèches (défilement d'une page, comme Netflix) et rangées qu'on peut tirer à la souris
+function varrState(sc) {
+  const w = sc.parentElement; if (!w || !w.classList.contains('vwrap')) return;
+  w.classList.toggle('moved', sc.scrollLeft > 4);
+  w.classList.toggle('end', sc.scrollLeft + sc.clientWidth >= sc.scrollWidth - 4);
+}
+document.addEventListener('click', e => {
+  const a = e.target.closest('.varr'); if (!a) return;
+  const sc = a.parentElement.querySelector('.vscroll');
+  sc.scrollBy({ left: +a.dataset.arr * sc.clientWidth * 0.85, behavior: 'smooth' });
+});
+document.addEventListener('scroll', e => { if (e.target.classList && e.target.classList.contains('vscroll')) varrState(e.target); }, true);
+new MutationObserver(() => document.querySelectorAll('.vscroll').forEach(varrState)).observe(document.getElementById('vod'), { childList: true, subtree: true });
+let vdrag = null;
+document.addEventListener('pointerdown', e => {
+  const sc = e.pointerType === 'mouse' && e.button === 0 && e.target.closest('.vscroll'); if (!sc) return;
+  vdrag = { sc, x: e.clientX, left: sc.scrollLeft, moved: false, id: e.pointerId };
+});
+document.addEventListener('pointermove', e => {
+  if (!vdrag || e.pointerId !== vdrag.id) return;
+  const dx = e.clientX - vdrag.x;
+  if (!vdrag.moved && Math.abs(dx) > 6) { vdrag.moved = true; vdrag.sc.classList.add('drag'); }
+  if (vdrag.moved) vdrag.sc.scrollLeft = vdrag.left - dx;
+});
+document.addEventListener('pointerup', e => {
+  if (!vdrag) return;
+  const d = vdrag; vdrag = null;
+  if (d.moved) { setTimeout(() => d.sc.classList.remove('drag'), 0); e.preventDefault(); }
+});
 // Barre de défilement montrée pendant le défilement, effacée 1,5 s après
 document.addEventListener('scroll', e => {
   const el = e.target && e.target.classList ? e.target : document.documentElement;
@@ -1626,7 +1674,7 @@ function posterHtml(it, i, rank) {
   const r = it.rating ? `<span class="rt">★ ${it.rating.toFixed(1)}</span>` : '';
   return `<button class="poster" data-v="${i}" title="${esc(it.name)}${it.year ? ' (' + it.year + ')' : ''}"><div class="im">${esc(it.name)}${it.cover ? `<img src="${esc(posterUrl(it.cover))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}${r}${it.kind === 'series' ? '<span class="kd">SÉRIE</span>' : ''}${vfOnly(it) ? '<span class="vfo" title="Film étranger proposé seulement en français (pas de VO)">VF seule</span>' : ''}${rank ? `<span class="rk">${rank}</span>` : ''}</div><div class="pt">${esc(it.name)}</div><div class="py">${it.year || ''}</div></button>`;
 }
-function vodRow(title, sub, list, ranked) { if (!list.length) return ''; return `<div class="vrow"><h3>${esc(title)}${sub ? `<small>${esc(sub)}</small>` : ''}</h3><div class="vscroll">${list.map((it, k) => posterHtml(it, V.shown.push(it) - 1, ranked && k < 20 ? k + 1 : 0)).join('')}</div></div>`; }
+function vodRow(title, sub, list, ranked) { if (!list.length) return ''; return `<div class="vrow"><h3>${esc(title)}${sub ? `<small>${esc(sub)}</small>` : ''}</h3><div class="vwrap"><button class="varr l" data-arr="-1" aria-label="Précédents"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><div class="vscroll">${list.map((it, k) => posterHtml(it, V.shown.push(it) - 1, ranked && k < 20 ? k + 1 : 0)).join('')}</div><button class="varr r" data-arr="1" aria-label="Suivants"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button></div></div>`; }
 
 /* ---------- Vraie popularité : TMDB (tendances de la semaine, et le plus regardé en France sur chaque service), croisée avec
    le catalogue de l'abonnement. Clé TMDB gratuite (themoviedb.org › Paramètres › API), partagée par la synchro. ---------- */
