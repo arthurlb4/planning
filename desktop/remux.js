@@ -8,7 +8,7 @@ const { spawn } = require('child_process');
 
 function probe(ffmpeg, src) {
   return new Promise(resolve => {
-    const ff = spawn(ffmpeg, ['-hide_banner', '-i', src], { windowsHide: true });
+    const ff = spawn(ffmpeg, ['-hide_banner', '-rw_timeout', '20000000', '-i', src], { windowsHide: true });
     let txt = '';
     const done = () => {
       const d = txt.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
@@ -25,10 +25,12 @@ function probe(ffmpeg, src) {
           audio.push({ i: audio.length, lang: a[1] || '', codec: a[2], ch: a[3].trim(), title, def: /\(default\)/.test(l) });
         }
       });
-      resolve({ duration, vcodec, vprofile, audio, ok: !!(duration || vcodec) });
+      // En cas d'échec : la cause donnée par ffmpeg (erreur HTTP du serveur, délai, format…)
+      const err = lines.filter(l => /error|failed|denied|forbidden|refused|timed out|invalid|not found|\b[45]\d\d\b/i.test(l) && !/^\s*(Stream|Duration|Input|Metadata)/.test(l)).slice(-3).join(' · ').slice(0, 300);
+      resolve({ duration, vcodec, vprofile, audio, ok: !!(duration || vcodec), err });
     };
     ff.stderr.on('data', b => { txt += b; });
-    ff.on('exit', done); ff.on('error', () => resolve({ ok: false, audio: [] }));
+    ff.on('exit', done); ff.on('error', e => resolve({ ok: false, audio: [], err: 'ffmpeg ne démarre pas : ' + (e && e.message || e) }));
     setTimeout(() => { try { ff.kill('SIGKILL'); } catch (e) {} }, 25000);
   });
 }
