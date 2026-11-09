@@ -314,7 +314,7 @@ body.vodplay #sidesBtn{display:none}
 #miniBar{display:none}
 /* Mini lecteur automatique : dès qu'on quitte le lecteur (accueil, agenda, films) pendant une lecture, l'image continue en bas
    à droite ; clic sur l'image = retour au lecteur, ✕ = arrêt */
-body.homeview.mini #player{display:flex;position:fixed;right:18px;bottom:18px;width:clamp(280px,26vw,420px);height:auto;z-index:35;border-radius:14px;overflow:hidden;box-shadow:0 14px 44px rgba(0,0,0,.65);border:.5px solid var(--border);animation:miniIn .28s ease}
+body.homeview.mini #player{display:flex;position:fixed;right:18px;bottom:18px;width:var(--miniw,clamp(280px,26vw,420px));height:auto;z-index:35;border-radius:14px;overflow:hidden;box-shadow:0 14px 44px rgba(0,0,0,.65);border:.5px solid var(--border);animation:miniIn .28s ease}
 @keyframes miniIn{from{opacity:0;transform:translateY(24px) scale(.94)}}
 body.homeview.mini #screen{flex:none;aspect-ratio:16/9;width:100%;cursor:pointer}
 body.homeview.mini #now,body.homeview.mini #stats,body.homeview.mini #trackMenu,body.homeview.mini #qualMenu,body.homeview.mini #vbar{display:none!important}
@@ -323,6 +323,12 @@ body.homeview.mini #player:hover #miniBar{opacity:1}
 @media (hover:none){body.homeview.mini #miniBar{opacity:1}}
 #miniName{flex:1;min-width:0;font-size:13px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #miniBar .btn{height:32px;width:32px;background:rgba(0,0,0,.6);border-color:transparent}
+/* Poignée en haut à gauche : tirer pour agrandir ou réduire le mini lecteur (taille retenue) */
+#miniSize{display:none;position:absolute;left:0;top:0;width:22px;height:22px;z-index:6;cursor:nwse-resize;touch-action:none;opacity:0;transition:opacity .2s;background:linear-gradient(135deg,rgba(255,255,255,.85) 0 2px,transparent 2px 5px,rgba(255,255,255,.85) 5px 7px,transparent 7px)}
+body.homeview.mini #miniSize{display:block}
+body.homeview.mini #player:hover #miniSize{opacity:1}
+body.homeview.mini #miniBar{padding-left:28px}
+body.miniresize,body.miniresize *{cursor:nwse-resize!important;user-select:none!important}
 @media (max-width:760px){body.homeview.mini #player{right:12px;left:12px;bottom:12px;width:auto}}
 body.dragging,body.dragging *{user-select:none!important;cursor:grabbing}
 /* Lecteur seul : l'image sur toute la fenêtre, le reste caché */
@@ -346,7 +352,8 @@ body.playing #screen.idle #vbar{opacity:0;pointer-events:none}
 #vbar svg text{font:700 7.5px system-ui,sans-serif;fill:#fff;stroke:none}
 #vbPlay .ipa{display:none}#vbPlay.on .ip{display:none}#vbPlay.on .ipa{display:block}
 #vbMute .im{display:none}#vbMute.off .iv{display:none}#vbMute.off .im{display:block}
-#vbFull .ifx{display:none}body.solo #vbFull .ifs{display:none}body.solo #vbFull .ifx{display:block}
+#vbFull .ifx{display:none}body.solo:not(.solowin) #vbFull .ifs{display:none}body.solo:not(.solowin) #vbFull .ifx{display:block}
+#vbar #vbWin svg{fill:none}#vbWin .iwx{display:none}body.solowin #vbWin .iwo{display:none}body.solowin #vbWin .iwx{display:block}
 #vbar .tm{min-width:40px;text-align:center;font-size:12px;color:#e8e6e1}
 #vbar input[type=range]{accent-color:#fff;height:4px;cursor:pointer}
 #vbRange{flex:1;min-width:60px}
@@ -453,8 +460,10 @@ body.vodplay:not(.homeview) #channels{display:none}
         <button class="live" id="vbLive" title="Revenir au direct">DIRECT</button>
         <button class="vb" id="vbMute" title="Couper le son (M)"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="iv" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" fill="none"/><path class="im" d="M16 9l5 6M21 9l-5 6" fill="none"/></svg></button>
         <input type="range" id="vbVol" min="0" max="1" step="0.05" value="1" aria-label="Volume">
+        <button class="vb" id="vbWin" title="Pleine fenêtre (W)"><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2"/><path class="iwo" d="M8 10V8h2M16 10V8h-2M8 14v2h2M16 14v2h-2"/><path class="iwx" d="M10 8v2H8M14 8v2h2M10 16v-2H8M14 16v-2h2"/></svg></button>
         <button class="vb" id="vbFull" title="Plein écran (F)"><svg viewBox="0 0 24 24"><path class="ifs" d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" fill="none"/><path class="ifx" d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" fill="none"/></svg></button>
       </div>
+      <div id="miniSize" title="Glisser pour agrandir ou réduire"></div>
       <div id="miniBar">
         <span id="miniName"></span>
         <button class="btn icon" id="miniOpen" title="Agrandir"><svg viewBox="0 0 24 24"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"/></svg></button>
@@ -2070,7 +2079,8 @@ $('#vbLive').onclick = () => { const w = liveWin(); if (w && !atLive(w)) video.c
 $('#vbPlay').onclick = () => { video.paused ? video.play() : video.pause(); vbarUpdate(); };
 $('#vbMute').onclick = () => { if (video.muted || !video.volume) { video.muted = false; if (!video.volume) video.volume = 0.5; } else video.muted = true; vbarUpdate(); };
 $('#vbVol').addEventListener('input', e => { video.volume = +e.target.value; video.muted = !video.volume; LS.set('dev.vol', video.volume); });
-$('#vbFull').onclick = () => setSolo(!document.body.classList.contains('solo'));
+$('#vbFull').onclick = () => setSolo(!isFull());
+$('#vbWin').onclick = () => isWin() ? setSolo(false) : setSolo(true, true);
 try { const v0 = LS.get('dev.vol', 1); if (v0 >= 0 && v0 <= 1) video.volume = v0; } catch (e) {}
 video.addEventListener('ended', () => { if (S.engine === 'remux' && S.current) LS.set('pos.' + S.current.url, 0); });
 
@@ -2414,19 +2424,34 @@ setInterval(() => {
 
 /* ---------- Mini lecteur : déplaçable (✥) et redimensionnable (coin haut gauche), retenus d'une fois sur l'autre ---------- */
 $('#miniOpen').onclick = () => setHomeView(false);
+(() => {
+  const h = $('#miniSize'), apply = w => { if (w) document.body.style.setProperty('--miniw', w + 'px'); };
+  apply(LS.get('dev.miniW', 0));
+  h.addEventListener('pointerdown', e => {
+    e.preventDefault(); e.stopPropagation(); h.setPointerCapture(e.pointerId); document.body.classList.add('miniresize');
+    const w0 = $('#player').getBoundingClientRect().width, x0 = e.clientX;
+    const mv = ev => { const w = Math.round(Math.max(240, Math.min(innerWidth - 36, w0 - (ev.clientX - x0)))); apply(w); LS.set('dev.miniW', w); };
+    const up = () => { h.removeEventListener('pointermove', mv); h.removeEventListener('pointerup', up); document.body.classList.remove('miniresize'); };
+    h.addEventListener('pointermove', mv); h.addEventListener('pointerup', up);
+  });
+})();
 $('#miniClose').onclick = () => { const b = document.body.classList, page = b.contains('agenda') ? 'agenda' : b.contains('vod') ? 'vod' : null; stopAll(); setHomeView(true, false, page); };
 
 /* ---------- Plein écran (un seul) : l'image sur tout l'écran, la barre de la chaîne par-dessus ; le plein écran du lecteur
    vidéo est masqué pour ne pas faire doublon. Sans plein écran possible (iPhone), l'image remplit la fenêtre. ---------- */
 let soloT;
-function setSolo(on) {
+// Plein écran (F) ; pleine fenêtre (W) : l'image occupe toute la fenêtre de l'appli ou du navigateur, sans passer en plein écran
+function setSolo(on, win) {
   if (on) setHomeView(false);
-  document.body.classList.toggle('solo', !!on);
+  const b = document.body.classList;
+  b.toggle('solo', !!on); b.toggle('solowin', !!on && !!win);
   const fs = document.fullscreenElement || document.webkitFullscreenElement;
-  if (on && !fs && !window.PREFER_NATIVE && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
-  if (!on && fs && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+  if (on && !win && !fs && !window.PREFER_NATIVE && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
+  if ((!on || win) && fs && document.exitFullscreen) document.exitFullscreen().catch(() => {});
 }
-document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && document.body.classList.contains('solo')) document.body.classList.remove('solo', 'ui'); });
+const isFull = () => document.body.classList.contains('solo') && !document.body.classList.contains('solowin');
+const isWin = () => document.body.classList.contains('solowin');
+document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && isFull()) document.body.classList.remove('solo', 'ui'); });
 try { video.controlsList.add('nofullscreen'); video.disablePictureInPicture = true; } catch (e) {}
 $('#soloBtn').onclick = () => setSolo(true);
 $('#soloExit').onclick = () => setSolo(false);
@@ -2506,7 +2531,8 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'Enter' && S.sel >= 0 && !e.target.closest('button,a,select,[data-play],[data-v],[data-ev]')) { e.preventDefault(); play(S.view[S.sel]); }
   else if (e.key === 'PageDown' || e.key === 'PageUp') { e.preventDefault(); step(e.key === 'PageDown' ? 1 : -1); }
   else if (e.key === '/') { e.preventDefault(); $('#search').focus(); }
-  else if (e.key === 'f' || e.key === 'F') setSolo(!document.body.classList.contains('solo'));
+  else if (e.key === 'f' || e.key === 'F') setSolo(!isFull());
+  else if ((e.key === 'w' || e.key === 'W') && S.current) isWin() ? setSolo(false) : setSolo(true, true);
   else if ((e.key === 'c' || e.key === 'C') && S.current) toggleSubs();
   else if (e.key === 'm' || e.key === 'M') video.muted = !video.muted;
   else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && S.current && !e.target.closest('input,textarea,select')) { e.preventDefault(); seekBy(e.key === 'ArrowLeft' ? -10 : 10); }
