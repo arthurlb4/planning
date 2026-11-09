@@ -11,7 +11,19 @@ const { spawn } = require('child_process');
 const TEXT_SUBS = /^(subrip|srt|ass|ssa|mov_text|webvtt|text)$/i;   // sous-titres texte (les sous-titres en images ne se convertissent pas)
 const SUBS = new Map();                                        // jeton → fichier WebVTT en cours d'écriture
 
-function probe(ffmpeg, src) {
+// 403 : souvent la connexion précédente (chaîne ou film d'avant) que le serveur n'a pas encore libérée, alors qu'il
+// n'autorise qu'une lecture à la fois par compte → on réessaie deux fois, 3 s plus tard.
+async function probe(ffmpeg, src) {
+  let j;
+  for (let k = 0; k < 3; k++) {
+    if (k) await new Promise(r => setTimeout(r, 3000));
+    j = await probeOnce(ffmpeg, src);
+    if (j.ok || !/\b403\b|forbidden/i.test(j.err || '')) return j;
+  }
+  j.denied = true;
+  return j;
+}
+function probeOnce(ffmpeg, src) {
   return new Promise(resolve => {
     const ff = spawn(ffmpeg, ['-hide_banner', '-rw_timeout', '20000000', '-i', src], { windowsHide: true });
     let txt = '';
