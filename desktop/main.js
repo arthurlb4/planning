@@ -67,7 +67,18 @@ function createWindow() {
 
   // Fenêtre montrée seulement une fois l'écran de chargement (gris, logo) affiché : pas de fenêtre vide à l'ouverture
   let shown = false;
-  const show = () => { if (shown || win.isDestroyed()) return; shown = true; if (st && st.max) win.maximize(); win.show(); };
+  // Windows dessine la fenêtre en blanc pendant son animation d'ouverture / d'agrandissement : elle est montrée
+  // transparente, puis apparaît en fondu une fois en place
+  const show = () => {
+    if (shown || win.isDestroyed()) return; shown = true;
+    try { win.setOpacity(0); } catch (e) {}
+    if (st && st.max) win.maximize();
+    win.show();
+    setTimeout(() => {
+      let o = 0;
+      const t = setInterval(() => { o = Math.min(1, o + 0.15); try { if (!win.isDestroyed()) win.setOpacity(o); } catch (e) {} if (o >= 1) clearInterval(t); }, 16);
+    }, 180);
+  };
   win.once('ready-to-show', show);
   setTimeout(show, 4000);                       // site lent ou injoignable : on montre quand même
   keepState(win);
