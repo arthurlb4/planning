@@ -181,7 +181,10 @@ function TV_JS() { return String.raw`
     }
     else if (solo && !ui && k === 13) { showUi(); focusEl(document.getElementById('nowFav')); }
     else if (k >= 37 && k <= 40 && !(typing && (k === 37 || k === 39))) { if (solo) showUi(); move({ 37: 'left', 38: 'up', 39: 'right', 40: 'down' }[k]); }
-    else if (k === 13 && document.activeElement && document.activeElement.classList.contains('ch')) document.activeElement.click();
+    else if (k === 13 && document.activeElement && document.activeElement !== document.body && document.activeElement.tagName !== 'SELECT' && !typing) {
+      if (solo) showUi();                                   // OK : active l'élément sélectionné (bouton, chaîne, affiche…)
+      document.activeElement.click();
+    }
     else handled = false;
     if (handled) { e.preventDefault(); e.stopPropagation(); }
   }, true);
