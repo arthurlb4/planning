@@ -445,8 +445,8 @@ const DB = {
   open() {
     return new Promise(res => {
       try {
-        const r = indexedDB.open('iptv', 1);
-        r.onupgradeneeded = () => r.result.createObjectStore('playlists', { keyPath: 'id' });
+        const r = indexedDB.open('iptv', 2);
+        r.onupgradeneeded = () => { const d = r.result; if (!d.objectStoreNames.contains('playlists')) d.createObjectStore('playlists', { keyPath: 'id' }); if (!d.objectStoreNames.contains('cache')) d.createObjectStore('cache', { keyPath: 'id' }); };
         r.onsuccess = () => { this.db = r.result; res(); };
         r.onerror = () => res();
       } catch (e) { res(); }
@@ -461,7 +461,9 @@ const DB = {
   },
   all() { return this.tx('readonly', s => s.getAll()).then(r => r || []); },
   put(p) { return this.tx('readwrite', s => s.put(p)); },
-  del(id) { return this.tx('readwrite', s => s.delete(id)); }
+  del(id) { return this.tx('readwrite', s => s.delete(id)); },
+  cacheGet(id) { return new Promise(res => { try { const r = this.db.transaction('cache', 'readonly').objectStore('cache').get(id); r.onsuccess = () => res(r.result || null); r.onerror = () => res(null); } catch (e) { res(null); } }); },
+  cachePut(o) { return new Promise(res => { try { const t = this.db.transaction('cache', 'readwrite'); t.objectStore('cache').put(o); t.oncomplete = t.onerror = () => res(); } catch (e) { res(); } }); }
 };
 
 /* ---------- État ---------- */
@@ -1168,21 +1170,31 @@ function cleanTitle(n) {
 }
 const yearOf = (...v) => { for (const x of v) { const m = String(x || '').match(/\b(19[3-9]\d|20[0-4]\d)\b/); if (m) return +m[1]; } return 0; };
 const rate10 = v => { const r = +v.rating || (+v.rating_5based * 2) || 0; return r > 10 ? r / 10 : r; };
-async function loadVod() {
-  if (V.data && V.data.pl === S.pl) return V.data;
+// Catalogue chargé catégorie par catégorie (seulement les françaises) : un catalogue entier peut peser des dizaines de Mo,
+// trop pour le relais et pour la télé. Gardé 12 h sur l'appareil.
+async function loadVod(force) {
+  if (!force && V.data && V.data.pl === S.pl) return V.data;
   if (V.loading) return V.loading;
   V.loading = (async () => {
-    const safe = q => xget(q).catch(() => []);
-    const [vc, vs, sc, ss] = await Promise.all([safe('&action=get_vod_categories'), safe('&action=get_vod_streams'), safe('&action=get_series_categories'), safe('&action=get_series')]);
+    const cacheId = 'vod:' + listKey(S.pl);
+    if (!force) { const c = await DB.cacheGet(cacheId); if (c && Date.now() - c.at < 12 * 3600e3 && c.data && c.data.items) { c.data.pl = S.pl; return (V.data = c.data); } }
+    const progress = t => { const el = document.getElementById('vodProg'); if (el) el.textContent = t; };
+    let firstErr = '';
+    const get = q => xget(q).catch(e => { firstErr = firstErr || e.message || String(e); return null; });
+    progress('Catégories…');
+    const [vc, sc] = await Promise.all([get('&action=get_vod_categories'), get('&action=get_series_categories')]);
+    if (!Array.isArray(vc) && !Array.isArray(sc)) throw new Error('le serveur ne donne pas ses catégories de films' + (firstErr ? ' (' + firstErr + ')' : ''));
     const cats = {};
     const pick = (list, kind) => {
       const arr = Array.isArray(list) ? list : [];
       const fr = arr.filter(c => langOf(c.category_name) === 'fr');
       // catalogue mélangé : seulement les catégories en français ; catalogue français sans préfixes : tout sauf l'étranger
       const keep = fr.length >= Math.max(3, arr.length * 0.2) ? fr : arr.filter(c => langOf(c.category_name) !== 'xx');
-      keep.forEach(c => { cats[kind + c.category_id] = { id: kind + c.category_id, kind, name: cleanTitle(c.category_name) || c.category_name, raw: c.category_name }; });
+      keep.forEach(c => { cats[kind + c.category_id] = { id: kind + c.category_id, kind, cid: String(c.category_id), name: cleanTitle(c.category_name) || c.category_name, raw: c.category_name }; });
     };
     pick(vc, 'm'); pick(sc, 's');
+    const list = Object.values(cats);
+    if (!list.length) throw new Error('aucune catégorie de films ou séries en français sur ce serveur');
     const seen = new Map(), items = [];
     const add = it => {
       const key = (it.tmdb ? 't' + it.tmdb : norm(it.name).replace(/\W+/g, '') + it.year) + it.kind;
@@ -1190,15 +1202,34 @@ async function loadVod() {
       if (old) { if (!old.cats.includes(it.cats[0])) old.cats.push(it.cats[0]); if (!old.cover && it.cover) old.cover = it.cover; return; }
       seen.set(key, it); items.push(it);
     };
-    (Array.isArray(vs) ? vs : []).forEach(v => { const c = 'm' + v.category_id; if (!cats[c]) return;
-      add({ kind: 'movie', id: v.stream_id, name: cleanTitle(v.name), raw: v.name, year: yearOf(v.year, v.releaseDate, v.name), rating: rate10(v), added: +v.added || 0,
-        cover: v.stream_icon || '', ext: v.container_extension || 'mp4', cats: [c], tmdb: v.tmdb || v.tmdb_id || '' }); });
-    (Array.isArray(ss) ? ss : []).forEach(v => { const c = 's' + v.category_id; if (!cats[c]) return;
-      add({ kind: 'series', id: v.series_id, name: cleanTitle(v.name), raw: v.name, year: yearOf(v.year, v.releaseDate, v.release_date, v.name), rating: rate10(v),
-        added: +v.last_modified || 0, cover: v.cover || '', cats: [c], plot: v.plot || '', genre: v.genre || '', tmdb: v.tmdb || '' }); });
+    const take = (c, arr) => (Array.isArray(arr) ? arr : []).forEach(v => {
+      const ck = c.kind + v.category_id; if (!cats[ck]) return;          // certains serveurs renvoient tout malgré la catégorie demandée
+      if (c.kind === 'm') add({ kind: 'movie', id: v.stream_id, name: cleanTitle(v.name), raw: v.name, year: yearOf(v.year, v.releaseDate, v.name), rating: rate10(v), added: +v.added || 0,
+        cover: v.stream_icon || '', ext: v.container_extension || 'mp4', cats: [ck], tmdb: v.tmdb || v.tmdb_id || '' });
+      else add({ kind: 'series', id: v.series_id, name: cleanTitle(v.name), raw: v.name, year: yearOf(v.year, v.releaseDate, v.release_date, v.name), rating: rate10(v),
+        added: +v.last_modified || 0, cover: v.cover || '', cats: [ck], plot: v.plot || '', genre: v.genre || '', tmdb: v.tmdb || '' });
+    });
+    let done = 0, ok = 0, all = { m: false, s: false };
+    const queue = list.slice();
+    const worker = async () => {
+      while (queue.length) {
+        const c = queue.shift();
+        if (all[c.kind]) { done++; continue; }
+        const arr = await get(c.kind === 'm' ? '&action=get_vod_streams&category_id=' + c.cid : '&action=get_series&category_id=' + c.cid);
+        if (Array.isArray(arr)) {
+          ok++; take(c, arr);
+          if (new Set(arr.slice(0, 500).map(v => String(v.category_id))).size > 3) all[c.kind] = true;   // le serveur a tout renvoyé : inutile de continuer
+        }
+        progress('Catalogues ' + (++done) + ' / ' + list.length + ' · ' + items.length + ' titres');
+      }
+    };
+    await Promise.all([worker(), worker(), worker(), worker()]);
+    if (!ok) throw new Error('le serveur refuse les listes de films' + (firstErr ? ' (' + firstErr + ')' : ''));
     Object.values(cats).forEach(c => { c.service = (SERVICES.find(([, re]) => re.test(c.raw)) || [])[0] || ''; });
     items.forEach(it => { it.services = [...new Set(it.cats.map(c => cats[c].service).filter(Boolean))]; });
-    return (V.data = { pl: S.pl, cats, items });
+    const data = { pl: S.pl, cats, items };
+    DB.cachePut({ id: cacheId, at: Date.now(), data: { cats, items } });
+    return (V.data = data);
   })();
   try { return await V.loading; } finally { V.loading = null; }
 }
@@ -1213,15 +1244,17 @@ async function renderVod() {
   const box = $('#vodInner');
   if (!S.pl) { box.innerHTML = '<div class="empty">Ajoutez ou déverrouillez une liste pour voir les films et séries.</div>'; return; }
   if (!epgCtx()) { box.innerHTML = '<div class="empty">Les films et séries viennent du serveur de l\'abonnement (connexion Xtream) : pas disponibles pour cette liste.</div>'; return; }
-  if (!V.data || V.data.pl !== S.pl) box.innerHTML = '<div class="spin" style="margin:60px auto"></div><p class="hint" style="text-align:center">Chargement des catalogues…</p>';
+  if (!V.data || V.data.pl !== S.pl) box.innerHTML = '<div class="spin" style="margin:60px auto"></div><p class="hint" style="text-align:center">Chargement des catalogues…<br><span id="vodProg"></span></p>';
   let D;
-  try { D = await loadVod(); } catch (e) { box.innerHTML = `<div class="empty">Catalogues indisponibles : ${esc(e.message)}</div>`; return; }
+  try { D = await loadVod(V.force); } catch (e) { box.innerHTML = `<div class="empty">Films et séries indisponibles : ${esc(e.message)}<br><br><button class="btn" data-reload>Réessayer</button></div>`; return; }
+  finally { V.force = false; }
   if (!document.body.classList.contains('vod')) return;
   V.shown = [];
   const all = D.items, movies = all.filter(i => i.kind === 'movie'), series = all.filter(i => i.kind === 'series');
   const yr = new Date().getFullYear(), byAdded = (a, b) => b.added - a.added, byRate = (a, b) => b.rating - a.rating || b.added - a.added;
   let h = `<div class="vtop">
     ${['home:Accueil', 'movie:Films', 'series:Séries', 'cats:Catégories'].map(t => { const [k, l] = t.split(':'); return `<button class="chip${V.tab === k && !V.q ? ' on' : ''}" data-tab="${k}">${l}</button>`; }).join('')}
+    <button class="chip" data-reload title="Recharger les catalogues depuis le serveur">↻</button>
     <label class="searchbar"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input id="vodQ" type="search" placeholder="Titre d'un film ou d'une série" value="${esc(V.q)}" autocomplete="off"></label></div>`;
   if (!all.length) { box.innerHTML = h + '<div class="empty">Aucun film ni série en français trouvé sur ce serveur.</div>'; return; }
   const q = norm(V.q).trim();
@@ -1259,6 +1292,7 @@ async function renderVod() {
 let vodQT;
 $('#vodInner').addEventListener('input', e => { if (e.target.id !== 'vodQ') return; clearTimeout(vodQT); vodQT = setTimeout(() => { V.q = e.target.value; renderVod(); }, 250); });
 $('#vodInner').addEventListener('click', e => {
+  if (e.target.closest('[data-reload]')) { V.force = true; V.data = null; renderVod(); return; }
   const t = e.target.closest('[data-tab]'), c = e.target.closest('[data-cat]'), p = e.target.closest('[data-v]');
   if (t) { V.tab = t.dataset.tab; V.q = ''; V.cat = null; renderVod(); $('#vod').scrollTop = 0; }
   else if (c) { V.tab = 'cats'; V.cat = c.dataset.cat || null; renderVod(); $('#vod').scrollTop = 0; }
