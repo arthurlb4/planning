@@ -1588,11 +1588,13 @@ const fmtT = s => { s = Math.max(0, Math.floor(s || 0)); const h = Math.floor(s 
 const curPos = () => S.remux && S.engine === 'remux' ? S.remux.ss + (video.currentTime || 0) : video.currentTime;
 async function playRemux(c, t) {
   const base = window.desktop.remux, R = S.remux = { base, url: c.url, ss: 0, a: 0, enc: false, info: null };
-  let info = {};
-  try { info = await (await fetch(base + '/probe?url=' + encodeURIComponent(c.url))).json(); } catch (e) {}
+  let info = null, local = '';
+  try { info = await (await fetch(base + '/probe?url=' + encodeURIComponent(c.url))).json(); } catch (e) { local = e && e.message || String(e); }
   if (t !== token) return;
+  const ver = 'appli ' + (window.desktop.version || '1.3 ou moins');
+  if (!info) return failRemux(c, 'le module de conversion de l\'appli est injoignable (' + local + ' · ' + ver + ')');
   R.info = info;
-  if (!info.ok) return failRemux(c, info.err ? 'réponse de ffmpeg : ' + info.err : 'le fichier ne répond pas (serveur hors ligne ou adresse refusée)');
+  if (!info.ok) return failRemux(c, (info.err ? 'réponse de ffmpeg : ' + info.err : 'ffmpeg n\'a rien reçu du serveur en 25 s') + ' · ' + ver);
   const pa = LS.get('pref.audio', 'fr'), au = info.audio || [];
   const pick = au.find(x => lang2(x.lang) === pa) || au.find(x => x.def) || au[0];
   R.a = pick ? pick.i : 0;

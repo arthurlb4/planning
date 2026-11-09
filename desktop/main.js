@@ -12,7 +12,7 @@ function ffmpegPath() {
   try { return require('ffmpeg-static'); } catch (e) { return 'ffmpeg'; }
 }
 let remuxBase = '';
-ipcMain.on('remux-base', e => { e.returnValue = remuxBase; });
+ipcMain.on('remux-base', e => { e.returnValue = { remux: remuxBase, version: app.getVersion() }; });
 
 const PAGE = 'https://franceinfoplanning.com/iptv/';
 // Sites dont les en-têtes Origin / Referer sont gardés (le site, ses bibliothèques, le relais, YouTube pour les bandes-annonces)
@@ -21,6 +21,8 @@ const OWN = /^https?:\/\/(www\.)?franceinfoplanning\.com\/|^https:\/\/cdn\.jsdel
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 // Pistes audio et vidéo des fichiers (films en plusieurs langues) accessibles à la page : choix de la langue
 app.commandLine.appendSwitch('enable-blink-features', 'AudioVideoTracks');
+// La page (en ligne) appelle le module de conversion local (127.0.0.1) : pas de blocage « réseau local »
+app.commandLine.appendSwitch('disable-features', 'BlockInsecurePrivateNetworkRequests,PrivateNetworkAccessSendPreflights,PrivateNetworkAccessRespectPreflightResults,LocalNetworkAccessChecks');
 
 function createWindow() {
   const win = new BrowserWindow({
