@@ -35,6 +35,10 @@ header h1 span{color:var(--blue)}
 #plName{visibility:hidden;min-width:0;flex:1}
 
 /* Mise en page : catégories | chaînes | lecteur */
+#splash{position:fixed;inset:0;z-index:100;background:#1c1c1e;display:flex;align-items:center;justify-content:center;transition:opacity .45s ease,visibility .45s}
+#splash svg{width:96px;height:96px;border-radius:22px;box-shadow:0 12px 40px rgba(0,0,0,.45);animation:splashIn .6s ease}
+@keyframes splashIn{from{opacity:0;transform:scale(.9)}}
+#splash.out{opacity:0;visibility:hidden;pointer-events:none}
 main{flex:1;display:grid;--colL:340px;--colR:0px;grid-template-columns:var(--colL) minmax(0,1fr) var(--colR);grid-template-rows:minmax(0,1fr);min-height:0;transition:grid-template-columns .3s ease}
 #channels{grid-column:1;grid-row:1;overflow:hidden;min-width:0}#player{grid-column:2;grid-row:1}
 body.sideopen main{--colR:320px}
@@ -419,6 +423,8 @@ body.vodplay:not(.homeview) #channels{display:none}
 </style>
 </head>
 <body>
+<!-- Écran de chargement : masque la mise en place de la page (liste, accueil, guide) ; retiré en fondu une fois prête -->
+<div id="splash"><svg viewBox="0 0 512 512" aria-hidden="true"><defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a3a3c"/><stop offset="1" stop-color="#232325"/></linearGradient></defs><rect width="512" height="512" rx="112" fill="url(#sg)"/><rect x="104" y="148" width="304" height="216" rx="30" fill="none" stroke="#f2f2f2" stroke-width="14"/><path d="M236 218 L236 294 L298 256 Z" fill="#f2f2f2"/></svg></div>
 <header>
   <button class="btn icon" id="groupsBtn" title="Chaînes" aria-label="Chaînes"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></button>
   <div id="plName"></div>
@@ -2922,7 +2928,9 @@ function openHttpVersion() {
     history.replaceState(null, '', location.pathname);        // retire le code de l'adresse affichée
   }
 })();
-DB.open().then(loadPlaylists);
+const hideSplash = () => { const el = $('#splash'); if (el && !el.classList.contains('out')) { el.classList.add('out'); setTimeout(() => el.remove(), 600); } };
+setTimeout(hideSplash, 5000);                          // au plus 5 s, quoi qu'il arrive
+DB.open().then(loadPlaylists).catch(() => {}).finally(() => requestAnimationFrame(() => setTimeout(hideSplash, 350)));
 // Après une arrivée par la version iPhone : relancer la chaîne une fois les listes reçues
 setInterval(() => { if (!S.pendingPlay || !S.channels.length) return; const c = S.channels.find(x => x.url === S.pendingPlay); S.pendingPlay = ''; if (c) play(c); }, 1000);
 </script>
