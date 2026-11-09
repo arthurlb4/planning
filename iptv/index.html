@@ -1258,12 +1258,14 @@ function titleTags(n) { const out = []; let t = String(n || ''), k = 0, m; while
 function cleanTitle(n) {
   const scene = /\w\.\w+\.\w/.test(String(n || ''));          // « Oppenheimer.2023.FRENCH.1080p »
   let t = String(n || '').replace(/[_.]+(?=\S)/g, ' ').replace(/\s+/g, ' ').trim(), k = 0;
-  while (TAG_RE.test(t) && k++ < 6) t = t.replace(TAG_RE, '');
+  const BR = /^\s*[\[(|][A-Z0-9 .+|&-]{1,14}[\])|]\s*[-:·]?\s*/;                     // « [FR] », « (NF) », « |EN| » en tête
+  while ((TAG_RE.test(t) || BR.test(t)) && k++ < 8) t = t.replace(TAG_RE, '').replace(BR, '');
   t = t.replace(/\s*[\[(][^\])]*(?:4k|uhd|fhd|hdr|multi|vostfr|vff?|french|hevc|x26[45]|1080p?|2160p?|720p?)[^\])]*[\])]/gi, '')   // [MULTI 4K], (VOSTFR)
        .replace(/\s*[\[(](19|20)\d\d[\])]/g, '')                                                                                       // (2023)
        .replace(/\s+-\s*(19|20)\d\d$/, '')                                                                                            // … - 2023
        .replace(/(\s*[-|·]?\s*\b(4k|uhd|fhd|hdr|hdr10|dv|hevc|x265|h265|x264|1080p|2160p|720p|multi|vostfr|vost|vff|vf|truefrench|french|fr)\b)+\s*$/gi, '')
        .replace(scene ? /\s+(19|20)\d\d$/ : /\s+-\s*(19|20)\d\d$/, '')                                                               // année restée (fichier, ou « - 2023 »)
+       .replace(/(\s*[\[(][A-Z0-9 .+|&-]{1,14}[\])])+\s*$/, '')                                                                          // « [FR] », « (MULTI) » en fin
        .replace(/\s*[-|:·]\s*$/, '').replace(/\s{2,}/g, ' ').trim();
   return t || String(n || '').trim();
 }
@@ -1284,7 +1286,7 @@ async function loadVod(force) {
   if (!force && V.data && V.data.pl === S.pl) return V.data;
   if (V.loading) return V.loading;
   V.loading = (async () => {
-    const cacheId = 'vod3:' + listKey(S.pl);                // version des filtres : un changement recharge le catalogue
+    const cacheId = 'vod4:' + listKey(S.pl);                // version des filtres : un changement recharge le catalogue
     if (!force) { const c = await DB.cacheGet(cacheId); if (c && Date.now() - c.at < 12 * 3600e3 && c.data && c.data.items) { c.data.pl = S.pl; return (V.data = c.data); } }
     const progress = t => { const el = document.getElementById('vodProg'); if (el) el.textContent = t; };
     let firstErr = '';
@@ -1298,7 +1300,7 @@ async function loadVod(force) {
       const arr = Array.isArray(list) ? list : [];
       const fr = arr.filter(c => langOf(c.category_name) === 'fr');
       // catalogue mélangé : seulement les catégories en français ; catalogue français sans préfixes : tout sauf l'étranger
-      const auto = fr.length >= Math.max(3, arr.length * 0.2) ? fr : arr.filter(c => langOf(c.category_name) !== 'xx');
+      const auto = fr.length >= 3 ? fr : arr.filter(c => langOf(c.category_name) !== 'xx');   // catalogue international : seulement le français
       arr.forEach(c => {
         const raw = c.category_name, inAuto = auto.includes(c);
         const keep = !hide.includes(raw) && (inAuto || show.includes(raw));
@@ -1444,6 +1446,7 @@ async function renderVod() {
         const l = list.filter(c => c.kind === kind); if (!l.length) continue;
         h += `<div class="vrow"><h3>${label}<small>✕ pour masquer une catégorie</small></h3><div style="display:flex;flex-wrap:wrap;gap:8px">${l.map(c => `<span style="display:inline-flex"><button class="chip" data-cat="${c.id}" style="border-radius:999px 0 0 999px">${esc(c.name)} <span style="color:var(--text3)">${cnt[c.id]}</span></button><button class="chip" data-hidecat="${esc(c.raw)}" title="Masquer cette catégorie" style="border-radius:0 999px 999px 0;padding:0 10px;color:var(--text3)">✕</button></span>`).join('')}</div></div>`;
       }
+      h += `<div class="vrow"><button class="chip" data-vdiag>Copier un échantillon pour diagnostic</button><small class="hint" style="margin-left:8px">noms des catégories et quelques titres bruts, à coller dans la conversation</small></div>`;
       const ex = D.excluded || [];
       if (ex.length) h += `<div class="vrow"><h3>Catégories écartées<small>${ex.length} · étrangères ou masquées ; touchez pour réintégrer</small></h3><div style="display:flex;flex-wrap:wrap;gap:8px;opacity:.75">${ex.map(c => `<button class="chip" data-showcat="${esc(c.raw)}" title="${c.why === 'masquée' ? 'Masquée par vous' : 'Écartée car étrangère'} · réintégrer">${esc(c.raw)} <span style="color:var(--text3)">${c.kind === 's' ? 'séries' : 'films'} · ${c.why}</span></button>`).join('')}</div></div>`;
     }
@@ -1485,6 +1488,13 @@ let vodQT;
 $('#vodInner').addEventListener('input', e => { if (e.target.id !== 'vodQ') return; clearTimeout(vodQT); vodQT = setTimeout(() => { V.q = e.target.value; renderVod(); }, 250); });
 $('#vodInner').addEventListener('click', e => {
   if (e.target.closest('[data-reload]')) { V.force = true; V.data = null; renderVod(); return; }
+  if (e.target.closest('[data-vdiag]')) {
+    const D = V.data || {}, cats = Object.values(D.cats || {}), ex = D.excluded || [];
+    const sample = cats.slice(0, 40).map(c => c.raw + ' → ' + (D.items || []).filter(i => i.cats.includes(c.id)).slice(0, 3).map(i => i.raw).join(' | '));
+    const txt = 'GARDÉES (' + cats.length + ') :\n' + sample.join('\n') + '\n\nÉCARTÉES (' + ex.length + ') :\n' + ex.slice(0, 80).map(c => c.raw + ' (' + c.why + ')').join('\n');
+    (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => toast('Échantillon copié : collez-le dans la conversation'), () => { prompt('Copiez ce texte :', txt); });
+    return;
+  }
   const hc = e.target.closest('[data-hidecat]'), sc = e.target.closest('[data-showcat]');
   if (hc || sc) {
     const raw = (hc || sc).dataset[hc ? 'hidecat' : 'showcat'];

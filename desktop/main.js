@@ -50,6 +50,8 @@ function createWindow() {
   win.loadURL(PAGE).catch(() => win.loadFile(path.join(__dirname, 'index.html')));
 }
 
+// Identité Windows de l'appli : épinglage à la barre des tâches et regroupement des fenêtres
+app.setAppUserModelId('com.franceinfoplanning.iptv');
 app.whenReady().then(async () => {
   try { remuxBase = 'http://127.0.0.1:' + await startRemux(ffmpegPath()); } catch (e) {}
   createWindow();
