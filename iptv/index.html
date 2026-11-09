@@ -256,6 +256,10 @@ body.homeview #channels,body.homeview #player{display:none}
 .chr .l{font-weight:600;font-size:14px;display:flex;align-items:center;gap:6px}
 .qb{font-size:10px;font-weight:800;padding:1px 5px;border-radius:5px;background:var(--bg4);color:var(--text2);letter-spacing:.03em}
 .qb.k4{background:var(--gold);color:#1b1500}
+.famMore{display:flex;align-items:center;gap:6px;width:100%;padding:8px 10px;border-radius:10px;color:var(--text3);font-size:12px;font-weight:600}
+.famMore:hover{background:var(--bg3);color:var(--text)}
+.famMore svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2.2;transition:transform .2s}
+.famMore.open svg{transform:rotate(180deg)}
 .chr .e{font-size:12px;color:var(--text3);white-space:nowrap;overflow:hidden;margin-top:1px}
 .chr .e .et,#homeList .chr .e{display:block;overflow:hidden;-webkit-mask-image:linear-gradient(90deg,#000 78%,transparent);mask-image:linear-gradient(90deg,#000 78%,transparent)}
 .chr .e b{color:var(--text2);font-weight:500}
@@ -735,8 +739,8 @@ const HOME = [
       ['beIN SPORTS MAX 5', 'bein sports max 5|bein max 5|bein sport max 5'], ['beIN SPORTS MAX 6', 'bein sports max 6|bein max 6|bein sport max 6'] ] },
     { t: 'Eurosport', ch: [['Eurosport 1', 'eurosport 1|eurosport'], ['Eurosport 2', 'eurosport 2']] },
     { t: 'RMC Sport', ch: [['RMC Sport 1', 'rmc sport 1'], ['RMC Sport 2', 'rmc sport 2'], ['RMC Sport 3', 'rmc sport 3']] },
-    { t: 'DAZN · Ligue 1+', ch: [['Ligue 1+', 'ligue 1 plus|ligue1 plus|ligue 1plus'], ['Ligue 1+ 2', 'ligue 1 plus 2|ligue1 plus 2|ligue 1plus 2'], ['Ligue 1+ 3', 'ligue 1 plus 3|ligue1 plus 3|ligue 1plus 3'], ['Ligue 1+ 4', 'ligue 1 plus 4|ligue1 plus 4|ligue 1plus 4'], ['Ligue 1+ 5', 'ligue 1 plus 5|ligue1 plus 5|ligue 1plus 5'], ['Ligue 1+ 6', 'ligue 1 plus 6|ligue1 plus 6|ligue 1plus 6'], ['Ligue 1+ 7', 'ligue 1 plus 7|ligue1 plus 7|ligue 1plus 7'], ['Ligue 1+ 8', 'ligue 1 plus 8|ligue1 plus 8|ligue 1plus 8'], ['Ligue 1+ 9', 'ligue 1 plus 9|ligue1 plus 9|ligue 1plus 9'], ['Ligue 1+ 10', 'ligue 1 plus 10|ligue1 plus 10|ligue 1plus 10'],
-      ['DAZN 1', 'dazn 1|dazn'], ['DAZN 2', 'dazn 2']] },
+    { t: 'DAZN · Ligue 1+', show: 3, ch: [['Ligue 1+', 'ligue 1 plus|ligue1 plus|ligue 1plus'], ['DAZN 1', 'dazn 1|dazn'], ['DAZN 2', 'dazn 2'],
+      ['Ligue 1+ 2', 'ligue 1 plus 2|ligue1 plus 2|ligue 1plus 2'], ['Ligue 1+ 3', 'ligue 1 plus 3|ligue1 plus 3|ligue 1plus 3'], ['Ligue 1+ 4', 'ligue 1 plus 4|ligue1 plus 4|ligue 1plus 4'], ['Ligue 1+ 5', 'ligue 1 plus 5|ligue1 plus 5|ligue 1plus 5'], ['Ligue 1+ 6', 'ligue 1 plus 6|ligue1 plus 6|ligue 1plus 6'], ['Ligue 1+ 7', 'ligue 1 plus 7|ligue1 plus 7|ligue 1plus 7'], ['Ligue 1+ 8', 'ligue 1 plus 8|ligue1 plus 8|ligue 1plus 8'], ['Ligue 1+ 9', 'ligue 1 plus 9|ligue1 plus 9|ligue 1plus 9'], ['Ligue 1+ 10', 'ligue 1 plus 10|ligue1 plus 10|ligue 1plus 10']] },
     { t: "L'Équipe", ch: [["L'Équipe", 'l equipe|lequipe|l equipe tv|equipe tv|la chaine l equipe']] }
   ] },
   { sec: 'Généralistes', fams: [
@@ -806,7 +810,7 @@ function homeIndex() {
       const set = new Set(); al.split('|').forEach(a => (by.get(canonText(a)) || []).forEach(c => set.add(c)));
       return { label, list: [...set].sort(rank) };
     }).filter(s => s.list.length);
-    if (subs.length) fams.push({ sec: sec.sec, t: f.t, subs });
+    if (subs.length) fams.push({ sec: sec.sec, t: f.t, subs, show: f.show || 0 });
   }));
   S.home = { ch: S.channels, fams };
   return fams;
@@ -823,6 +827,18 @@ const DRAWN_LOGO = {
 };
 const brandLogo = t => DRAWN_LOGO[t] || (BRAND_LOGO[t] ? LOGO_BASE + 'france/' + BRAND_LOGO[t] + '-fr.png' : '');
 const imgOr = (src, txt, cls) => src ? `<img src="${esc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.insertAdjacentHTML('afterend','<span class=&quot;${cls}&quot;>'+this.dataset.t+'</span>');this.remove()" data-t="${esc(txt)}">` : `<span class="${cls}">${esc(txt)}</span>`;
+// Cases chargées (Ligue 1+ 2 à 10…) : les premières chaînes, les autres repliées derrière « ▾ N autres chaînes »
+const FAM_OPEN = new Set(LS.get('dev.famOpen', []));
+const famHidden = (f, j) => f.show && j >= f.show && !FAM_OPEN.has(f.t) && !(S.current && f.subs[j].list.includes(S.current));
+const famMore = (f, i) => { if (!f.show || f.subs.length <= f.show) return ''; const n = f.subs.length - f.show, open = FAM_OPEN.has(f.t);
+  return `<button class="famMore${open ? ' open' : ''}" data-fam="${i}"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>${open ? 'Moins de chaînes' : n + ' autre' + (n > 1 ? 's' : '') + ' chaîne' + (n > 1 ? 's' : '')}</button>`; };
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-fam]'); if (!b) return;
+  const f = homeIndex()[+b.dataset.fam]; if (!f) return;
+  FAM_OPEN.has(f.t) ? FAM_OPEN.delete(f.t) : FAM_OPEN.add(f.t); LS.set('dev.famOpen', [...FAM_OPEN]);
+  if (document.body.classList.contains('homeview') && !document.body.classList.contains('vod') && !document.body.classList.contains('agenda')) renderHome();
+  if (document.body.classList.contains('homelist')) renderHomeList(false);
+});
 function renderHome() {
   const fams = homeIndex();
   S.tiles = fams;
@@ -839,10 +855,11 @@ function renderHome() {
         <span class="play"><svg viewBox="0 0 24 24"><path d="M7 4v16l13-8z"/></svg></span>
       </button>
       <div class="chs">${f.subs.map((x, j) => { const c = x.list[0], q = chInfo(c).q, cur = S.current && x.list.includes(S.current);
+        if (famHidden(f, j)) return '';
         return `<button class="chr${cur ? ' on' : ''}" data-play="${i}:${j}" title="Regarder ${esc(x.label)}">
           <span class="lg">${imgOr(logoUrl(x.label) || c.logo, initials(x.label), '')}</span>
           <span class="m"><span class="l">${esc(x.label)} <span class="qb${q === 4 ? ' k4' : ''}">${QLBL[q]}</span></span><span class="e" data-epg="${i}:${j}"></span></span>
-        </button>`; }).join('')}</div>
+        </button>`; }).join('')}${famMore(f, i)}</div>
     </div>`;
   });
   h += '</div></div>';
@@ -897,8 +914,9 @@ function renderHomeList(resetScroll) {
   fams.forEach((f, i) => {
     if (f.sec !== sec) { h += `<h2>${esc(f.sec)}</h2>`; sec = f.sec; }
     h += `<div class="brand"><div class="sqs">${imgOr(brandLogo(f.t) || logoUrl(f.subs[0].label), f.t, 'txt')}</div><div class="chs">${f.subs.map((x, j) => { const c = x.list[0], q = chInfo(c).q;
+      if (famHidden(f, j)) return '';
       return `<button class="chr" data-hp="${i}:${j}" title="Regarder ${esc(x.label)}"><span class="lg">${imgOr(logoUrl(x.label) || c.logo, initials(x.label), '')}</span>
-        <span class="m"><span class="l">${esc(x.label)} <span class="qb${q === 4 ? ' k4' : ''}">${QLBL[q]}</span></span><span class="e" data-hpe="${i}:${j}"></span></span></button>`; }).join('')}</div></div>`;
+        <span class="m"><span class="l">${esc(x.label)} <span class="qb${q === 4 ? ' k4' : ''}">${QLBL[q]}</span></span><span class="e" data-hpe="${i}:${j}"></span></span></button>`; }).join('')}${famMore(f, i)}</div></div>`;
   });
   box.innerHTML = h;
   box.scrollTop = resetScroll ? 0 : top;
@@ -915,6 +933,8 @@ function markHomeList() {
   $('#homeList').querySelectorAll('[data-hf]').forEach(b => b.classList.toggle('on', $('#homeList')._favs[+b.dataset.hf] === S.current));
   $('#homeList').querySelectorAll('[data-hp]').forEach(b => { const [i, j] = b.dataset.hp.split(':').map(Number), on = !!S.current && fams[i].subs[j].list.includes(S.current); b.classList.toggle('on', on); });
   $('#homeList').querySelectorAll('.brand').forEach(d => d.classList.toggle('on', !!d.querySelector('.chr.on')));
+  // chaîne en cours repliée dans sa case (Ligue 1+ 7…) : on redessine pour qu'elle apparaisse
+  if (S.current && !$('#homeList .chr.on') && fams.some(f => f.show && f.subs.some((x, j) => j >= f.show && x.list.includes(S.current))) && !markHomeList.busy) { markHomeList.busy = true; renderHomeList(false); markHomeList.busy = false; }
 }
 $('#homeList').addEventListener('click', e => {
   const f = e.target.closest('[data-hf]'); if (f) { const c = $('#homeList')._favs[+f.dataset.hf]; if (c) play(c); return; }
