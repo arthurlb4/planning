@@ -57,6 +57,19 @@ body.drawer #overlay{display:block;position:fixed;inset:0;background:rgba(0,0,0,
 #listInfo b{color:var(--text2);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #list{flex:1;overflow:auto;position:relative;overscroll-behavior:contain}
 #spacer{width:1px}
+/* Liste « Accueil » à côté du lecteur : mêmes cases que l'accueil, en plus compact */
+#homeList{display:none;flex:1;min-height:0;overflow-y:auto;padding:0 10px 14px}
+body.homelist #list{display:none}
+body.homelist #homeList{display:block}
+#homeList h2{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--text3);margin:16px 4px 8px;font-weight:700}
+#homeList .brand{margin-bottom:10px;border-radius:14px}
+#homeList .sqs{display:flex;align-items:center;justify-content:center;height:64px;background:radial-gradient(120% 160% at 30% 10%,#3d3c39,#1a1a19);color:var(--text)}
+#homeList .sqs img{max-width:44%;max-height:60%;object-fit:contain;filter:drop-shadow(0 2px 6px rgba(0,0,0,.45))}
+#homeList .sqs .txt{font-size:17px;font-weight:800}
+#homeList .chs{padding:4px}
+#homeList .chr{padding:6px;gap:9px}
+#homeList .chr .lg{width:40px;height:30px}
+#homeList .chr .l{font-size:13px}
 #rows{position:absolute;left:0;right:0;top:0}
 .ch{height:var(--row);display:flex;align-items:center;gap:12px;padding:0 10px 0 14px;cursor:pointer;border-bottom:.5px solid rgba(255,250,242,.05)}
 .ch:hover{background:var(--bg2)}
@@ -323,6 +336,7 @@ body.vodplay:not(.homeview) #channels{display:none}
     <label class="searchbar"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input id="search" type="search" placeholder="Rechercher une chaîne" autocomplete="off" spellcheck="false"></label>
     <div id="listInfo"><b id="curGroup">Toutes les chaînes</b><span id="count"></span></div>
     <div id="list"><div id="spacer"></div><div id="rows"></div></div>
+    <div id="homeList"></div>
   </section>
 
   <section id="home"><div id="homeInner"></div></section>
@@ -761,10 +775,44 @@ function applyFilter(resetScroll) {
   $('#count').textContent = base.length.toLocaleString('fr-FR') + (base.length > 1 ? ' chaînes' : ' chaîne');
   $('#spacer').style.height = base.length * ROW + 'px';
   if (resetScroll) $('#list').scrollTop = 0;
+  const hl = S.group === 'home' && !q && !!base.length;
+  document.body.classList.toggle('homelist', hl);
+  if (hl) renderHomeList(resetScroll);
   lastStart = -1; renderRows();
 }
+// Accueil dans la colonne de gauche : sections et cases par bouquet (logo, chaînes, programme en cours)
+function renderHomeList(resetScroll) {
+  const box = $('#homeList'), fams = homeIndex(), top = box.scrollTop;
+  let h = '', sec = '';
+  fams.forEach((f, i) => {
+    if (f.sec !== sec) { h += `<h2>${esc(f.sec)}</h2>`; sec = f.sec; }
+    h += `<div class="brand"><div class="sqs">${imgOr(brandLogo(f.t) || logoUrl(f.subs[0].label), f.t, 'txt')}</div><div class="chs">${f.subs.map((x, j) => { const c = x.list[0], q = chInfo(c).q;
+      return `<button class="chr" data-hp="${i}:${j}" title="Regarder ${esc(x.label)}"><span class="lg">${imgOr(logoUrl(x.label) || c.logo, initials(x.label), '')}</span>
+        <span class="m"><span class="l">${esc(x.label)} <span class="qb${q === 4 ? ' k4' : ''}">${QLBL[q]}</span></span><span class="e" data-hpe="${i}:${j}"></span></span></button>`; }).join('')}</div></div>`;
+  });
+  box.innerHTML = h;
+  box.scrollTop = resetScroll ? 0 : top;
+  markHomeList();
+  if (epgCtx()) fams.forEach((f, i) => f.subs.forEach(async (x, j) => {
+    const list = await getEpg(x.list[0], 1), el = box.querySelector(`[data-hpe="${i}:${j}"]`);
+    if (el && list && list.length) { el.textContent = list[0].title; el.title = list[0].title + ' · ' + hm(list[0].start) + '–' + hm(list[0].end); }
+  }));
+}
+// Chaîne en cours en surbrillance (et sa case)
+function markHomeList() {
+  if (!document.body.classList.contains('homelist')) return;
+  const fams = homeIndex();
+  $('#homeList').querySelectorAll('[data-hp]').forEach(b => { const [i, j] = b.dataset.hp.split(':').map(Number), on = !!S.current && fams[i].subs[j].list.includes(S.current); b.classList.toggle('on', on); });
+  $('#homeList').querySelectorAll('.brand').forEach(d => d.classList.toggle('on', !!d.querySelector('.chr.on')));
+}
+$('#homeList').addEventListener('click', e => {
+  const b = e.target.closest('[data-hp]'); if (!b) return;
+  const [i, j] = b.dataset.hp.split(':').map(Number), s = homeIndex()[i].subs[j];
+  play(s.list[0], s.list.slice(1));
+});
 let ROW = 60, lastStart = -1;
 function renderRows(force) {
+  markHomeList();
   const list = $('#list'), rows = $('#rows');
   if (!S.view.length) {
     rows.style.transform = ''; lastStart = -1;
@@ -2055,6 +2103,7 @@ function step(d) {
   play(S.view[i]);
 }
 function scrollToSel() {
+  if (document.body.classList.contains('homelist')) { const on = $('#homeList .chr.on'); if (on) on.scrollIntoView({ block: 'nearest' }); return; }
   if (S.sel < 0) return;
   const l = $('#list'), top = S.sel * ROW;
   if (top < l.scrollTop || top + ROW > l.scrollTop + l.clientHeight) l.scrollTop = top - l.clientHeight / 2 + ROW / 2;
