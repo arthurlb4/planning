@@ -54,6 +54,7 @@ body.drawer #overlay{display:block;position:fixed;inset:0;background:rgba(0,0,0,
 .searchbar{display:flex;align-items:center;gap:8px;margin:10px;padding:0 12px;height:38px;border-radius:12px;background:var(--bg2);border:.5px solid var(--border);color:var(--text3)}
 .searchbar input{flex:1;background:none;border:0;outline:none;color:var(--text);min-width:0}
 #listInfo{padding:0 16px 6px;color:var(--text3);font-size:12px;display:flex;justify-content:space-between;gap:8px}
+body.homelist #listInfo{display:none}
 #listInfo b{color:var(--text2);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #list{flex:1;overflow:auto;position:relative;overscroll-behavior:contain}
 #spacer{width:1px}
@@ -99,7 +100,20 @@ video{width:100%;height:100%;object-fit:contain;background:#000;outline:none}
 .spin{width:34px;height:34px;border-radius:50%;border:3px solid rgba(255,255,255,.15);border-top-color:var(--blue);animation:sp .8s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
 #now{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bg0);border-top:.5px solid var(--border)}
-#now .meta .nm{font-size:16px;font-weight:600}
+#now .meta .nm{font-size:16px;font-weight:600;display:flex;align-items:center;gap:8px;min-width:0}
+#nowName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qsel{display:inline-flex;align-items:center;gap:2px;flex:none;height:24px;padding:0 4px 0 8px;border-radius:7px;background:var(--bg3);border:.5px solid var(--border);color:var(--text);font-size:11px;font-weight:800;letter-spacing:.03em}
+.qsel:hover{background:var(--bg4)}
+.qsel svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2.4}
+.qsel.k4{background:var(--gold);color:#1b1500;border-color:transparent}
+.qsel.one{cursor:default;padding-right:8px}.qsel.one svg{display:none}
+#qualMenu{position:fixed;z-index:60;min-width:220px;max-height:60vh;overflow:auto;background:rgba(22,22,21,.97);border:.5px solid var(--border);border-radius:14px;padding:6px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+#qualMenu[hidden]{display:none}
+#qualMenu button{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:8px 10px;border-radius:9px;color:var(--text);font-size:14px}
+#qualMenu button:hover{background:var(--bg3)}
+#qualMenu .ck{width:14px;color:var(--blue);font-weight:800}
+#qualMenu .q{font-weight:800;min-width:44px}
+#qualMenu .r{color:var(--text3);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px}
 #now .tools{display:flex;gap:6px;flex:none}
 
 /* Fenêtres */
@@ -350,6 +364,7 @@ body.vodplay:not(.homeview) #channels{display:none}
       <div id="status"><div class="msg hint">Choisissez une chaîne dans la liste.</div></div>
       <div id="stats" hidden></div>
       <div id="trackMenu" hidden></div>
+      <div id="qualMenu" hidden></div>
       <input type="file" id="subFile" accept=".srt,.vtt,.ass,.ssa,text/vtt,application/x-subrip" hidden>
       <div id="vbar"><button class="btn" id="vbPlay">❚❚</button><button class="btn" id="vbBack">−10 s</button><span id="vbCur">0:00</span><input type="range" id="vbRange" min="0" max="100" step="1" value="0"><span id="vbDur">0:00</span><button class="btn" id="vbFwd">+30 s</button><button class="btn" id="vbMute">🔊</button></div>
       <div id="miniSize" title="Glisser pour changer la taille"></div>
@@ -361,7 +376,7 @@ body.vodplay:not(.homeview) #channels{display:none}
     </div>
     <div id="now">
       <div class="logo" id="nowLogo"></div>
-      <div class="meta"><div class="nm" id="nowName">—</div><div class="sub" id="nowSub"></div><div id="nowEpg"></div></div>
+      <div class="meta"><div class="nm"><span id="nowName">—</span><button class="qsel" id="qualBtn" hidden title="Qualité de la chaîne"><span id="qualLbl"></span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button></div><div class="sub" id="nowSub"></div><div id="nowEpg"></div></div>
       <div class="tools">
         <button class="btn icon" id="prevBtn" title="Chaîne précédente (↑)"><svg viewBox="0 0 24 24"><path d="M18 15l-6-6-6 6"/></svg></button>
         <button class="btn icon" id="nextBtn" title="Chaîne suivante (↓)"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
@@ -898,10 +913,52 @@ function setStatus(kind, msg, actions) {
   el.className = '';
   el.innerHTML = (kind === 'load' ? '<div class="spin"></div>' : '') + (msg ? `<div class="msg">${msg}</div>` : '') + (actions ? `<div class="actions">${actions}</div>` : '');
 }
+/* Nom de chaîne simplifié pour le lecteur : « FR: Canal+ FHD ᴿᴬᵂ » → « Canal+ » */
+const Q_TOKEN = /^(8k|4k|uhd|2160p?|fhd|1080[pi]?|hd|720p?|sd|576p|lq|hevc|h\.?26[45]|x26[45]|\d+\s?fps|raw|vip|backup|multi|hdr|dolby|[ᴬ-ᵡ⁰-⁹ᴴᴰᴿᴬᵂᶠᵖˢ]+)$/i;
+function niceName(c) {
+  const ci = chInfo(c), lab = ci.fr && LABEL_BY_CANON[ci.canon];
+  if (lab) return lab;
+  const t = String(c.name || '').replace(/^\W*[A-Za-z]{2,3}\s*[:|\]]\s*/, '').replace(/[\[(|][^\])|]*[\])|]/g, ' ').split(/\s+/).filter(w => w && !Q_TOKEN.test(w.replace(/[^\wᴬ-ᵡ⁰-⁹]/g, '')));
+  return t.join(' ').replace(/\s*[-|:·]+\s*$/, '').trim() || c.name;
+}
+// Autres qualités de la même chaîne dans la liste (même nom simplifié), de la meilleure à la moins bonne
+function variantsOf(c) {
+  if (!c || c.vod) return [];
+  const ci = chInfo(c); if (!ci.canon) return [c];
+  if (S._varCh !== S.channels) { S._varCh = S.channels; S._var = new Map(); S.channels.forEach(x => { const k = chInfo(x); if (!x.vod && k.canon) { const key = (k.fr ? 'fr:' : 'xx:') + k.canon; (S._var.get(key) || S._var.set(key, []).get(key)).push(x); } }); }
+  const l = (S._var.get((ci.fr ? 'fr:' : 'xx:') + ci.canon) || [c]).slice();
+  return l.sort((a, b) => chInfo(b).q - chInfo(a).q || chInfo(a).hevc - chInfo(b).hevc || a.n - b.n);
+}
+const qLabel = c => { const k = chInfo(c); return QLBL[k.q] + (k.hevc ? ' HEVC' : ''); };
+function qualBtnUpdate(c) {
+  const b = $('#qualBtn'); $('#qualMenu').hidden = true;
+  if (!c || c.vod) { b.hidden = true; return; }
+  const v = variantsOf(c);
+  b.hidden = false; $('#qualLbl').textContent = qLabel(c);
+  b.classList.toggle('k4', chInfo(c).q === 4); b.classList.toggle('one', v.length < 2);
+}
+$('#qualBtn').onclick = e => {
+  e.stopPropagation();
+  const m = $('#qualMenu'), c = S.current, v = variantsOf(c);
+  if (!m.hidden || v.length < 2) { m.hidden = true; return; }
+  m.innerHTML = v.map((x, i) => `<button data-qv="${i}"><span class="ck">${x === c ? '✓' : ''}</span><span class="q">${esc(qLabel(x))}</span><span class="r">${esc(x.name)}</span></button>`).join('');
+  m._v = v; m.hidden = false;
+  const r = $('#qualBtn').getBoundingClientRect(), w = m.offsetWidth, h = m.offsetHeight;
+  m.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + 'px';
+  m.style.top = (r.bottom + 6 + h < innerHeight ? r.bottom + 6 : Math.max(8, r.top - h - 6)) + 'px';
+};
+$('#qualMenu').addEventListener('click', e => {
+  const b = e.target.closest('[data-qv]'), m = $('#qualMenu'); if (!b) return;
+  const v = m._v, x = v[+b.dataset.qv]; m.hidden = true;
+  if (x && x !== S.current) play(x, v.filter(y => y !== x && chInfo(y).q <= chInfo(x).q));   // si elle ne passe pas : qualités en dessous
+});
+document.addEventListener('click', e => { if (!e.target.closest('#qualMenu,#qualBtn')) $('#qualMenu').hidden = true; });
 function showNow(c, idle) {
   if (S.current !== c) { document.body.classList.remove('hasmatch'); MATCH.ev = null; MATCH.key = ''; }
   S.current = c;
-  $('#nowName').textContent = c.name; $('#nowSub').textContent = c.vod ? c.group : c.group + ' · n° ' + (c.chno || c.n);
+  $('#nowName').textContent = c.vod ? c.name : niceName(c); $('#nowName').title = c.name;
+  $('#nowSub').textContent = c.vod ? c.group : c.group + ' · n° ' + (c.chno || c.n);
+  qualBtnUpdate(c);
   $('#nowLogo').outerHTML = logoHtml(c).replace('class="logo"', 'class="logo" id="nowLogo"');
   updateNowFav(); nowEpg(c);
   if (idle) setStatus('msg', '<span class="hint">Dernière chaîne regardée</span>', '<button class="btn primary" onclick="play(S.current)">▶ Reprendre</button>');
@@ -927,7 +984,7 @@ async function play(c, alts) {
   LS.set(recKey(), S.recent); LS.set('last.' + S.pl.id, c.url);
   if (S.group === '⏱') applyFilter(false);
   renderGroups();
-  document.title = c.name + ' · IPTV';
+  document.title = (c.vod ? c.name : niceName(c)) + ' · IPTV';
   video.controls = false;                               // un seul indicateur de chargement : le nôtre (contrôles remis à l'image)
   setStatus('load');
 
@@ -1069,7 +1126,7 @@ const b64txt = v => { try { return new TextDecoder().decode(Uint8Array.from(atob
 function epgSlot(fn) { return new Promise(res => { const go = async () => { epgBusy++; try { res(await fn()); } finally { epgBusy--; const n = epgQueue.shift(); if (n) n(); } }; epgBusy < 4 ? go() : epgQueue.push(go); }); }
 /* Guide complet : XML TV Fr (~380 chaînes, titre, épisode et résumé, 30 h à venir), préparé toutes les 3 h par GitHub et servi
    par le serveur de l'appli. Le guide du serveur de l'abonnement ne sert plus qu'aux chaînes que ce guide ne connaît pas. */
-const GUIDE_URL = 'https://planning-gcal.arthur-lebreton94.workers.dev/iptv/epg';
+const GUIDE_URL = 'https://planning-gcal.arthur-lebreton94.workers.dev/iptv/agenda';   // guide joint au fichier de l'agenda
 const GUIDE = { data: null, at: 0, loading: null };
 function loadGuide() {
   if (GUIDE.data && Date.now() - GUIDE.at < 60 * 60000) return Promise.resolve(GUIDE.data);
@@ -1078,7 +1135,7 @@ function loadGuide() {
     try {
       if (!GUIDE.data) { const c = await DB.cacheGet('guide1').catch(() => null); if (c && Date.now() - c.at < 60 * 60000 && c.data) { GUIDE.data = c.data; GUIDE.at = c.at; return c.data; } }
       const r = await fetch(GUIDE_URL, { cache: 'no-cache' }); if (!r.ok) throw new Error('guide ' + r.status);
-      const d = await r.json(); if (!d || !d.ch || !Object.keys(d.ch).length) throw new Error('guide vide');
+      const j = await r.json(), d = j && (j.guide || j); if (!d || !d.ch || !Object.keys(d.ch).length) throw new Error('guide vide');
       GUIDE.data = d; GUIDE.at = Date.now(); DB.cachePut({ id: 'guide1', at: GUIDE.at, data: d });
       return d;
     } catch (e) { GUIDE.at = Date.now() - 50 * 60000; return GUIDE.data; }   // réessai dans 10 min, ancien guide gardé
@@ -2224,7 +2281,7 @@ $('#plList').addEventListener('click', async e => {
     catch (err) { toast(err.message); r.disabled = false; }
   }
 });
-function stopAll() { token++; stopEngines(); S.current = null; document.body.classList.remove('playing', 'mini', 'hasmatch', 'vodplay'); MATCH.ev = null; MATCH.key = ''; $('#stats').hidden = true; $('#nowEpg').textContent = ''; setStatus('msg', '<span class="hint">Choisissez une chaîne dans la liste.</span>'); $('#nowName').textContent = '—'; $('#nowSub').textContent = ''; document.title = 'Lecteur IPTV'; }
+function stopAll() { token++; stopEngines(); S.current = null; document.body.classList.remove('playing', 'mini', 'hasmatch', 'vodplay'); MATCH.ev = null; MATCH.key = ''; $('#stats').hidden = true; $('#nowEpg').textContent = ''; setStatus('msg', '<span class="hint">Choisissez une chaîne dans la liste.</span>'); $('#nowName').textContent = '—'; $('#nowSub').textContent = ''; qualBtnUpdate(null); document.title = 'Lecteur IPTV'; }
 
 /* Liste par adresse : directement si le serveur l'accepte, sinon via le serveur de l'app (CORS, adresse en http, blocage) */
 const RELAY = 'https://planning-gcal.arthur-lebreton94.workers.dev/iptv/m3u?url=';
