@@ -1,6 +1,6 @@
 // Lecteur IPTV pour Windows : la page du lecteur (franceinfoplanning.com/iptv/) dans une fenêtre sans les limites du
 // navigateur (serveurs IPTV qui refusent les navigateurs, flux en http sur la page en https).
-const { app, BrowserWindow, session, shell, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, session, shell, ipcMain, dialog, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const startRemux = require('./remux');
@@ -24,9 +24,38 @@ app.commandLine.appendSwitch('enable-blink-features', 'AudioVideoTracks');
 // La page (en ligne) appelle le module de conversion local (127.0.0.1) : pas de blocage « réseau local »
 app.commandLine.appendSwitch('disable-features', 'BlockInsecurePrivateNetworkRequests,PrivateNetworkAccessSendPreflights,PrivateNetworkAccessRespectPreflightResults,LocalNetworkAccessChecks');
 
+// Taille et position de la fenêtre gardées d'une fois sur l'autre (fichier dans le dossier de l'appli du profil Windows)
+const stateFile = () => path.join(app.getPath('userData'), 'fenetre.json');
+function loadState() {
+  try {
+    const st = JSON.parse(fs.readFileSync(stateFile(), 'utf8')), b = st.bounds;
+    if (!b || !(b.width >= 360 && b.height >= 500)) return null;
+    // Toujours visible : si l'écran d'alors n'est plus branché, la fenêtre revient sur l'écran principal
+    const wa = screen.getDisplayMatching(b).workArea;
+    const visible = b.x < wa.x + wa.width - 80 && b.x + b.width > wa.x + 80 && b.y >= wa.y - 10 && b.y < wa.y + wa.height - 80;
+    if (!visible) { delete b.x; delete b.y; }
+    b.width = Math.min(b.width, wa.width); b.height = Math.min(b.height, wa.height);
+    return { bounds: b, max: !!st.max };
+  } catch (e) { return null; }
+}
+function keepState(win) {
+  let t;
+  const save = () => {
+    try {
+      if (win.isDestroyed() || win.isMinimized()) return;
+      // getNormalBounds : la taille « normale », même si la fenêtre est agrandie ou en plein écran
+      fs.writeFileSync(stateFile(), JSON.stringify({ bounds: win.getNormalBounds(), max: win.isMaximized() }));
+    } catch (e) {}
+  };
+  const later = () => { clearTimeout(t); t = setTimeout(save, 500); };
+  ['resize', 'move', 'maximize', 'unmaximize'].forEach(ev => win.on(ev, later));
+  win.on('close', () => { clearTimeout(t); save(); });
+}
+
 function createWindow() {
+  const st = loadState();
   const win = new BrowserWindow({
-    width: 1400, height: 860, minWidth: 360, minHeight: 500,
+    width: 1400, height: 860, ...(st ? st.bounds : {}), minWidth: 360, minHeight: 500,
     backgroundColor: '#161615', title: 'Lecteur IPTV', autoHideMenuBar: true, icon: path.join(__dirname, 'icon.ico'),
     webPreferences: {
       webSecurity: false,                 // pas de blocage CORS : les serveurs IPTV n'autorisent pas les navigateurs
@@ -35,6 +64,9 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js')
     }
   });
+
+  if (st && st.max) win.maximize();
+  keepState(win);
 
   // Vers les serveurs IPTV : pas d'en-têtes propres aux pages web (Origin, Referer), comme une appli de lecture
   session.defaultSession.webRequest.onBeforeSendHeaders((d, cb) => {
