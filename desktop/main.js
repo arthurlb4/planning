@@ -56,7 +56,7 @@ function createWindow() {
   const st = loadState();
   const win = new BrowserWindow({
     width: 1400, height: 860, ...(st ? st.bounds : {}), minWidth: 360, minHeight: 500,
-    backgroundColor: '#161615', title: 'Lecteur IPTV', autoHideMenuBar: true, icon: path.join(__dirname, 'icon.ico'),
+    show: false, backgroundColor: '#1c1c1e', title: 'Lecteur IPTV', autoHideMenuBar: true, icon: path.join(__dirname, 'icon.ico'),
     webPreferences: {
       webSecurity: false,                 // pas de blocage CORS : les serveurs IPTV n'autorisent pas les navigateurs
       allowRunningInsecureContent: true,  // flux en http depuis la page en https
@@ -65,7 +65,11 @@ function createWindow() {
     }
   });
 
-  if (st && st.max) win.maximize();
+  // Fenêtre montrée seulement une fois l'écran de chargement (gris, logo) affiché : pas de fenêtre vide à l'ouverture
+  let shown = false;
+  const show = () => { if (shown || win.isDestroyed()) return; shown = true; if (st && st.max) win.maximize(); win.show(); };
+  win.once('ready-to-show', show);
+  setTimeout(show, 4000);                       // site lent ou injoignable : on montre quand même
   keepState(win);
 
   // Vers les serveurs IPTV : pas d'en-têtes propres aux pages web (Origin, Referer), comme une appli de lecture
