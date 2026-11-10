@@ -209,7 +209,7 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 .vrow{margin-top:22px}
 .vrow h3{font-size:17px;font-weight:700;margin:0 2px 10px;display:flex;align-items:baseline;gap:10px}
 .vrow h3 small{font-size:12px;color:var(--text3);font-weight:500}
-.vscroll{display:flex;gap:12px;overflow-x:auto;padding:2px 2px 12px;scroll-snap-type:x proximity;cursor:grab}
+.vscroll{display:flex;align-items:flex-start;gap:12px;overflow-x:auto;padding:2px 2px 12px;scroll-snap-type:x proximity;cursor:grab}
 .vscroll.drag{cursor:grabbing;scroll-snap-type:none;user-select:none}
 .vscroll.drag .poster{pointer-events:none}
 /* Rangées des films et séries : barre toujours visible, flèches comme Netflix (gauche seulement une fois qu'on a avancé) */
@@ -223,7 +223,23 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 .vwrap:hover .varr{opacity:.85}.vwrap .varr:hover{opacity:1}
 .vwrap:not(.moved) .varr.l,.vwrap.end .varr.r{display:none}
 @media (hover:none){.varr{display:none!important}}
-.poster{flex:none;width:150px;scroll-snap-align:start;cursor:pointer;border:0;background:none;color:var(--text);text-align:left;padding:0}
+.poster{flex:none;width:150px;scroll-snap-align:start;cursor:pointer;border:0;background:none;color:var(--text);text-align:left;padding:0;transition:width .3s cubic-bezier(.2,.8,.2,1)}
+/* Aperçu dans la rangée : l'affiche s'élargit (même hauteur, format 16:9) et pousse ses voisines ; bande-annonce et boutons dedans */
+.poster.xp .im,.poster.xp:hover .im{aspect-ratio:auto;height:var(--ph);transform:none}
+.poster .xpv{position:absolute;inset:0;z-index:2;overflow:hidden;background:#000 center/cover no-repeat;opacity:0;transition:opacity .3s}
+.poster.xp .xpv{opacity:1}
+.poster .xpv iframe{position:absolute;left:0;width:100%;top:-64px;height:calc(100% + 128px);border:0;pointer-events:none;opacity:0;transition:opacity .4s}
+.poster .xpv iframe.on{opacity:1}
+.poster .xpv .snd{position:absolute;right:8px;bottom:8px;width:32px;height:32px;border-radius:50%;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:2}
+.poster .xpv .snd svg{width:17px;height:17px;stroke:#fff;stroke-width:2;fill:#fff;stroke-linecap:round;stroke-linejoin:round}
+.poster .xpv .snd .iv{display:none}.poster .xpv .snd.on .iv{display:block}.poster .xpv .snd.on .im{display:none}
+.poster .xpb{display:none}
+.poster.xp .pt,.poster.xp .py{display:none}
+.poster.xp .xpb{display:block;margin-top:8px}
+.poster .xpb .bt{display:flex;gap:6px;margin-bottom:5px}
+.poster .xpb .btn{height:28px;padding:0 10px;font-size:12px}
+.poster .xpb .ti{font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.poster .xpb .mt{font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .poster .im{position:relative;width:100%;aspect-ratio:2/3;border-radius:12px;overflow:hidden;background:linear-gradient(160deg,#34332f,#1b1b1a);display:flex;align-items:center;justify-content:center;padding:10px;text-align:center;font-weight:700;color:var(--text3);font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.35);transition:transform .15s}
 .poster:hover .im{transform:scale(1.04)}
 .poster .im img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
@@ -1808,6 +1824,13 @@ function hovClose(fast) {
   clearTimeout(HOV.t); clearTimeout(HOV.close);
   const el = HOV.el, src = HOV.src; HOV.el = HOV.it = HOV.src = null;
   if (!el) return;
+  if (el.classList.contains('poster')) {                // aperçu dans la rangée : l'affiche reprend sa taille
+    el.classList.remove('xp'); el.style.width = '';
+    const v = el.querySelector('.xpv'), b = el.querySelector('.xpb');
+    if (v) { const f = v.querySelector('iframe'); if (f) f.remove(); }
+    setTimeout(() => { if (!el.classList.contains('xp')) { if (v) v.remove(); if (b) b.remove(); } }, fast ? 0 : 320);
+    return;
+  }
   if (fast || !src || !document.body.contains(src)) { el.remove(); return; }
   el.style.pointerEvents = 'none'; el.style.transform = hovFrom(el, src.querySelector('.im').getBoundingClientRect()); el.style.opacity = '0.4';
   setTimeout(() => el.remove(), 260);
@@ -1815,6 +1838,7 @@ function hovClose(fast) {
 function hovOpen(poster) {
   const it = V.shown[+poster.dataset.v]; if (!it || !document.body.contains(poster)) return;
   hovClose(true); HOV.it = it; HOV.src = poster;
+  if (poster.closest('.vscroll')) return hovInline(poster, it);
   const r = poster.getBoundingClientRect(), w = Math.max(320, Math.min(420, r.width * 2.3));
   const el = document.createElement('div'); el.className = 'hovc';
   el.style.width = w + 'px'; el.style.left = Math.max(10, Math.min(innerWidth - w - 10, r.left + r.width / 2 - w / 2)) + 'px';
@@ -1851,6 +1875,47 @@ function hovOpen(poster) {
     el.querySelector('.md').prepend(f);
   }).catch(() => {});
 }
+// Aperçu dans une rangée : l'affiche elle-même s'élargit (les voisines glissent), bande-annonce et boutons dedans
+function hovInline(poster, it) {
+  const im = poster.querySelector('.im'), h = im.offsetHeight, w = Math.round(h * 16 / 9);
+  poster.style.setProperty('--ph', h + 'px'); poster.style.width = w + 'px'; poster.classList.add('xp');
+  HOV.el = poster;
+  const snd = LS.get('pref.hoverSound', false);
+  im.insertAdjacentHTML('beforeend', `<span class="xpv" style="background-image:url('${esc(posterUrl(it.cover || ''))}')"><span class="snd${snd ? ' on' : ''}" data-hsnd title="Son"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="iv" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" fill="none"/><path class="im" d="M16 9l5 6M21 9l-5 6" fill="none"/></svg></span></span>`);
+  poster.insertAdjacentHTML('beforeend', `<span class="xpb"><span class="bt"><span class="btn primary" data-hplay>▶ ${it.kind === 'series' ? 'Épisodes' : 'Lecture'}</span><span class="btn" data-hinfo>Plus d'infos</span></span>
+    <span class="ti">${esc(it.name)}</span><span class="mt">${esc([it.year, it.rating ? '★ ' + it.rating.toFixed(1) : '', it.kind === 'series' ? 'Série' : 'Film', (it.services || []).join(', ')].filter(Boolean).join(' · '))}</span></span>`);
+  // si l'affiche élargie dépasse à droite, la rangée glisse pour la montrer en entier
+  setTimeout(() => { const sc = poster.closest('.vscroll'); if (!sc || HOV.el !== poster) return; const a = poster.getBoundingClientRect(), b = sc.getBoundingClientRect();
+    if (a.right > b.right - 8) { HOV.auto = Date.now(); sc.scrollBy({ left: a.right - b.right + 16, behavior: 'smooth' }); } }, 320);
+  trailerFor(it).then(tr => {
+    if (!tr || HOV.it !== it || HOV.el !== poster) return;
+    const v = poster.querySelector('.xpv'); if (!v) return;
+    const cc = tr.cc ? '&cc_load_policy=1&cc_lang_pref=fr&hl=fr' : '';
+    const f = document.createElement('iframe');
+    f.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(tr.key)}?autoplay=1&mute=${LS.get('pref.hoverSound', false) ? 0 : 1}&controls=0&disablekb=1&fs=0&iv_load_policy=3&rel=0&modestbranding=1&playsinline=1&enablejsapi=1&loop=1&playlist=${encodeURIComponent(tr.key)}${cc}`;
+    f.allow = 'autoplay; encrypted-media'; f.tabIndex = -1; f.title = 'Bande-annonce';
+    f.onload = () => setTimeout(() => f.classList.add('on'), 600);
+    v.prepend(f);
+  }).catch(() => {});
+}
+// Clics dans l'aperçu d'une rangée (avant l'ouverture normale de la fiche)
+document.addEventListener('click', e => {
+  const p = e.target.closest && e.target.closest('.poster.xp'); if (!p) return;
+  const it = V.shown[+p.dataset.v]; if (!it) return;
+  if (e.target.closest('[data-hsnd]')) {
+    e.stopPropagation(); e.preventDefault();
+    const sb = e.target.closest('[data-hsnd]'), on = !sb.classList.contains('on'); sb.classList.toggle('on', on); LS.set('pref.hoverSound', on);
+    const f = p.querySelector('iframe'); if (f) f.contentWindow.postMessage(JSON.stringify({ event: 'command', func: on ? 'unMute' : 'mute', args: [] }), '*');
+    return;
+  }
+  if (e.target.closest('[data-hplay]') && it.kind === 'movie') {
+    e.stopPropagation(); e.preventDefault(); hovClose(true);
+    const pk = vodPick(it), url = vodUrl('movie', pk.id, pk.ext);
+    play({ name: it.name, url, group: 'Film' + (it.year ? ' · ' + it.year : ''), logo: it.cover, n: 0, chno: '', vod: true, key: '', it });
+    return;
+  }
+  hovClose(true);                                        // Plus d'infos, ou clic ailleurs : la fiche s'ouvre normalement
+}, true);
 document.addEventListener('mouseover', e => {
   const p = e.target.closest && e.target.closest('#vod .poster');
   if (!p || !canHover() || document.querySelector('.vscroll.drag') || $('#vodModal').classList.contains('open')) return;
@@ -1863,7 +1928,7 @@ document.addEventListener('mouseout', e => {
   clearTimeout(HOV.t);
   if (HOV.src === p) HOV.close = setTimeout(hovClose, 120);
 });
-document.addEventListener('scroll', e => { if (HOV.el && !(e.target.closest && e.target.closest('.hovc'))) hovClose(true); }, true);
+document.addEventListener('scroll', e => { if (HOV.el && !(e.target.closest && e.target.closest('.hovc')) && !(HOV.auto && Date.now() - HOV.auto < 900)) hovClose(true); }, true);
 function posterHtml(it, i, rank) {
   const r = it.rating ? `<span class="rt">★ ${it.rating.toFixed(1)}</span>` : '';
   return `<button class="poster" data-v="${i}" title="${esc(it.name)}${it.year ? ' (' + it.year + ')' : ''}"><div class="im">${esc(it.name)}${it.cover ? `<img src="${esc(posterUrl(it.cover))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}${r}${it.kind === 'series' ? '<span class="kd">SÉRIE</span>' : ''}${vfOnly(it) ? '<span class="vfo" title="Film étranger proposé seulement en français (pas de VO)">VF seule</span>' : ''}${rank ? `<span class="rk">${rank}</span>` : ''}</div><div class="pt">${esc(it.name)}</div><div class="py">${it.year || ''}</div></button>`;
