@@ -3023,6 +3023,16 @@ function openHttpVersion() {
 const hideSplash = () => { const el = $('#splash'); if (el && !el.classList.contains('out')) { el.classList.add('out'); setTimeout(() => el.remove(), 600); } };
 setTimeout(hideSplash, 5000);                          // au plus 5 s, quoi qu'il arrive
 DB.open().then(loadPlaylists).catch(() => {}).finally(() => requestAnimationFrame(() => setTimeout(hideSplash, 350)));
+// Films et séries préparés en arrière-plan quelques secondes après l'ouverture (catalogue, popularité TMDB, top 10 Netflix) :
+// la partie Films & séries s'ouvre ensuite tout de suite. Rien si la liste n'est pas une connexion Xtream.
+setTimeout(async () => {
+  try {
+    if (!S.pl || !epgCtx() || (V.data && V.data.pl === S.pl)) return;
+    await loadVod();
+    if (LS.get('pref.tmdb', '')) { await loadPopular(false).catch(() => {}); nfxResolve().catch(() => {}); }
+    if (document.body.classList.contains('vod') && document.body.classList.contains('homeview')) renderVod();
+  } catch (e) {}
+}, window.PREFER_NATIVE ? 12000 : 3000);
 // Après une arrivée par la version iPhone : relancer la chaîne une fois les listes reçues
 setInterval(() => { if (!S.pendingPlay || !S.channels.length) return; const c = S.channels.find(x => x.url === S.pendingPlay); S.pendingPlay = ''; if (c) play(c); }, 1000);
 </script>
