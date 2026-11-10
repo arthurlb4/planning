@@ -1284,6 +1284,12 @@ function fail(c) {
       + '<button class="btn" onclick="openVlc(S.current)">Ouvrir dans VLC</button><button class="btn" onclick="copyErr()">Copier le code d\'erreur</button>');
   }
   const mixed = location.protocol === 'https:' && /^http:/i.test(c.url);
+  // iPhone / iPad / Mac (Safari) sur la page https avec une chaîne en http : bascule toute seule vers la version http de la
+  // page (une fois par chaîne), qui lit ces flux ; le message ci-dessous ne reste que si elle n'est pas disponible
+  if (mixed && APPLE_WEBKIT && !/[#&]fromhttps=1/.test(location.hash) && sessionStorage.getItem('iptv.httpTry') !== c.url) {
+    try { sessionStorage.setItem('iptv.httpTry', c.url); } catch (e) {}
+    setStatus('load', '<span class="hint">Passage à la version iPhone de la page…</span>'); openHttpVersion(); return;
+  }
   const why = mixed
     ? 'Ce flux est en <b>http</b>, bloqué sur une page sécurisée (https), et sa version https ne s\'ouvre pas dans ce navigateur (serveur qui refuse les navigateurs, ou pas de https). Sur iPhone et Mac, Safari passe souvent là où Chrome, Edge ou Firefox échouent.'
     : 'Le flux ne répond pas au navigateur : serveur hors ligne, accès refusé aux navigateurs (CORS) ou format non pris en charge.';
