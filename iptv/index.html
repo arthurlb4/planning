@@ -192,8 +192,8 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 .vvers .chip{height:30px;padding:0 12px}
 #slowBox{position:absolute;left:50%;top:16px;transform:translateX(-50%);z-index:8;display:flex;align-items:center;gap:10px;padding:10px 10px 10px 14px;border-radius:14px;background:rgba(20,20,19,.95);border:.5px solid var(--border);box-shadow:0 10px 30px rgba(0,0,0,.5);font-size:13px;max-width:calc(100% - 24px)}
 #slowBox .btn{height:32px;flex:none}
-.hovc{position:fixed;z-index:70;border-radius:14px;overflow:hidden;background:var(--bg2);border:.5px solid var(--border);box-shadow:0 18px 50px rgba(0,0,0,.7);animation:hovIn .22s ease;transform-origin:center}
-@keyframes hovIn{from{opacity:0;transform:scale(.92)}}
+.hovc{position:fixed;z-index:70;border-radius:14px;overflow:hidden;background:var(--bg2);border:.5px solid var(--border);box-shadow:0 18px 50px rgba(0,0,0,.7);transform-origin:0 0;will-change:transform}
+.hovc.anim{transition:transform .28s cubic-bezier(.2,.8,.2,1),opacity .28s ease,box-shadow .28s}
 .hovc .md{position:relative;aspect-ratio:16/9;background:#000 center/cover no-repeat;overflow:hidden}
 .hovc .md iframe{position:absolute;inset:0;width:100%;height:100%;border:0;pointer-events:none;opacity:0;transition:opacity .4s}
 .hovc .md iframe.on{opacity:1}
@@ -935,7 +935,7 @@ function renderHome() {
 }
 // Pages (accueil, agenda) ; mini = la chaîne en cours continue dans un coin
 function setHomeView(on, mini, page) {
-  if (typeof hovClose === 'function') hovClose();
+  if (typeof hovClose === 'function') hovClose(true);
   document.body.classList.toggle('homeview', !!on);
   document.body.classList.toggle('agenda', !!on && page === 'agenda');
   document.body.classList.toggle('vod', !!on && page === 'vod');
@@ -1799,10 +1799,22 @@ const posterUrl = u => String(u || '').replace(/(image\.tmdb\.org\/t\/p\/)(origi
    bande-annonce (sans le son au départ, bouton pour le mettre ; choix retenu), Lecture et Plus d'infos ; fermée en sortant */
 const HOV = { t: 0, it: null, el: null, src: null, close: 0 };
 const canHover = () => matchMedia('(hover:hover) and (pointer:fine)').matches && !window.PREFER_NATIVE;
-function hovClose() { clearTimeout(HOV.t); clearTimeout(HOV.close); if (HOV.el) HOV.el.remove(); HOV.el = HOV.it = HOV.src = null; }
+// L'aperçu part de la case de l'affiche (grandit depuis elle) et y retourne en se fermant
+function hovFrom(el, r) {
+  const b = el.getBoundingClientRect();
+  return `translate(${r.left - b.left}px,${r.top - b.top}px) scale(${r.width / b.width},${r.height / b.height})`;
+}
+function hovClose(fast) {
+  clearTimeout(HOV.t); clearTimeout(HOV.close);
+  const el = HOV.el, src = HOV.src; HOV.el = HOV.it = HOV.src = null;
+  if (!el) return;
+  if (fast || !src || !document.body.contains(src)) { el.remove(); return; }
+  el.style.pointerEvents = 'none'; el.style.transform = hovFrom(el, src.querySelector('.im').getBoundingClientRect()); el.style.opacity = '0.4';
+  setTimeout(() => el.remove(), 260);
+}
 function hovOpen(poster) {
   const it = V.shown[+poster.dataset.v]; if (!it || !document.body.contains(poster)) return;
-  hovClose(); HOV.it = it; HOV.src = poster;
+  hovClose(true); HOV.it = it; HOV.src = poster;
   const r = poster.getBoundingClientRect(), w = Math.max(320, Math.min(420, r.width * 2.3));
   const el = document.createElement('div'); el.className = 'hovc';
   el.style.width = w + 'px'; el.style.left = Math.max(10, Math.min(innerWidth - w - 10, r.left + r.width / 2 - w / 2)) + 'px';
@@ -1812,12 +1824,16 @@ function hovOpen(poster) {
     <div class="ti">${esc(it.name)}</div><div class="mt">${esc([it.year, it.rating ? '★ ' + it.rating.toFixed(1) : '', it.kind === 'series' ? 'Série' : 'Film', (it.services || []).join(', ')].filter(Boolean).join(' · '))}</div></div>`;
   document.body.appendChild(el); HOV.el = el;
   const h = el.offsetHeight; el.style.top = Math.max(10, Math.min(innerHeight - h - 10, r.top + r.height / 2 - h / 2)) + 'px';
+  // départ : exactement la case de l'affiche, puis agrandissement jusqu'à la fiche
+  el.style.transform = hovFrom(el, poster.querySelector('.im').getBoundingClientRect()); el.style.opacity = '0.6';
+  el.getBoundingClientRect(); el.classList.add('anim');
+  requestAnimationFrame(() => { el.style.transform = 'none'; el.style.opacity = '1'; });
   el.addEventListener('mouseenter', () => clearTimeout(HOV.close));
   el.addEventListener('mouseleave', () => { HOV.close = setTimeout(hovClose, 120); });
-  el.querySelector('[data-hinfo]').onclick = () => { hovClose(); openVod(it); };
-  el.querySelector('.md').addEventListener('click', ev => { if (!ev.target.closest('.snd')) { hovClose(); openVod(it); } });
+  el.querySelector('[data-hinfo]').onclick = () => { hovClose(true); openVod(it); };
+  el.querySelector('.md').addEventListener('click', ev => { if (!ev.target.closest('.snd')) { hovClose(true); openVod(it); } });
   el.querySelector('[data-hplay]').onclick = () => {
-    hovClose();
+    hovClose(true);
     if (it.kind !== 'movie') return openVod(it);
     const pk = vodPick(it), url = vodUrl('movie', pk.id, pk.ext);
     play({ name: it.name, url, group: 'Film' + (it.year ? ' · ' + it.year : ''), logo: it.cover, n: 0, chno: '', vod: true, key: '', it });
@@ -1847,7 +1863,7 @@ document.addEventListener('mouseout', e => {
   clearTimeout(HOV.t);
   if (HOV.src === p) HOV.close = setTimeout(hovClose, 120);
 });
-document.addEventListener('scroll', e => { if (HOV.el && !(e.target.closest && e.target.closest('.hovc'))) hovClose(); }, true);
+document.addEventListener('scroll', e => { if (HOV.el && !(e.target.closest && e.target.closest('.hovc'))) hovClose(true); }, true);
 function posterHtml(it, i, rank) {
   const r = it.rating ? `<span class="rt">★ ${it.rating.toFixed(1)}</span>` : '';
   return `<button class="poster" data-v="${i}" title="${esc(it.name)}${it.year ? ' (' + it.year + ')' : ''}"><div class="im">${esc(it.name)}${it.cover ? `<img src="${esc(posterUrl(it.cover))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}${r}${it.kind === 'series' ? '<span class="kd">SÉRIE</span>' : ''}${vfOnly(it) ? '<span class="vfo" title="Film étranger proposé seulement en français (pas de VO)">VF seule</span>' : ''}${rank ? `<span class="rk">${rank}</span>` : ''}</div><div class="pt">${esc(it.name)}</div><div class="py">${it.year || ''}</div></button>`;
