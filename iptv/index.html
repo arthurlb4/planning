@@ -1992,10 +1992,12 @@ async function loadPopular(force) {
   if (!force && TM.data) return TM.data;
   if (TM.loading) return TM.loading;
   TM.loading = (async () => {
-    if (!force) { const c = await DB.cacheGet('tmdb3:fr'); if (c && Date.now() - c.at < 12 * 3600e3) return (TM.data = c.data); }
+    if (!force) { const c = await DB.cacheGet('tmdb4:fr'); if (c && Date.now() - c.at < 12 * 3600e3) return (TM.data = c.data); }
     const meta = {}, ids = (res, kind) => (res.results || []).map(r => { const id = kind + r.id; meta[id] = { k: kind, t: r.title || r.name || '', o: r.original_title || r.original_name || '', y: +String(r.release_date || r.first_air_date || '').slice(0, 4) || 0, p: r.poster_path || '', l: r.original_language || '' }; return id; });
     const pages = async (path, kind, params, n) => { let out = []; for (let pg = 1; pg <= n; pg++) { try { out = out.concat(ids(await tmdb(path, Object.assign({ page: pg }, params)), kind)); } catch (e) { if (pg === 1) throw e; break; } } return out; };
-    const data = { trend: [], svc: {}, svcNew: {}, meta };
+    const data = { trend: [], svc: {}, svcNew: {}, meta, cinema: [] };
+    // Films à l'affiche dans les salles françaises (sorties en France, les plus suivis d'abord)
+    data.cinema = await pages('/movie/now_playing', 'm', { region: 'FR' }, 3).catch(() => []);
     const [tm, tt] = await Promise.all([pages('/trending/movie/week', 'm', {}, 3), pages('/trending/tv/week', 's', {}, 3)]);
     data.trend = tm.map((x, i) => [x, i]).concat(tt.map((x, i) => [x, i])).sort((a, b) => a[1] - b[1]).map(x => x[0]);
     let provs = [];
@@ -2012,7 +2014,7 @@ async function loadPopular(force) {
         pages('/discover/tv', 's', Object.assign({ 'first_air_date.gte': d0, 'first_air_date.lte': d1 }, nm), 2).catch(() => [])]);
       data.svcNew[name] = { m: m2, s: t2 };
     }));
-    DB.cachePut({ id: 'tmdb3:fr', at: Date.now(), data });
+    DB.cachePut({ id: 'tmdb4:fr', at: Date.now(), data });
     return (TM.data = data);
   })();
   try { return await TM.loading; } catch (e) { TM.err = e.message; return null; } finally { TM.loading = null; }
@@ -2094,6 +2096,10 @@ async function renderVod() {
           if (it && !its.includes(it)) { its.push(it); rk.push(e.r); }
         });
         if (its.length) h += vodRow('Les plus vus en France cette semaine · ' + (kd === 'm' ? 'films' : 'séries'), 'top 10 Netflix France, semaine du ' + new Date(NF.week).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }), its, rk);
+      }
+      if (kinds.includes('m') && POP.cinema && POP.cinema.length) {
+        const cin = popList(POP.cinema, P, POP.meta, ['m']);
+        if (cin.length) h += vodRow('À l\'affiche au cinéma en France', 'films en salles en ce moment · déjà dans votre catalogue', cin.slice(0, 30));
       }
       h += vodRow('Tendances mondiales de la semaine', 'popularité dans le monde · TMDB', popList(POP.trend, P, POP.meta, kinds).slice(0, 30), true);
       for (const [svc] of TMDB_SVC) {
