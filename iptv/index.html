@@ -2082,24 +2082,23 @@ async function renderVod() {
     const kinds = V.tab === 'movie' ? ['m'] : V.tab === 'series' ? ['s'] : ['m', 's'];
     if (POP) {
       const P = popIndex(all);
-      h += vodRow('Tendances de la semaine', 'les plus regardés en ce moment · TMDB', popList(POP.trend, P, POP.meta, kinds).slice(0, 30), true);
+      // En tête : les plus vus en France (classement officiel publié par Netflix, seule mesure française ouverte)
+      const NF = await nfxResolve().catch(() => null);
+      if (NF && NF.list.length) for (const kd of kinds) {
+        const its = [], rk = [];
+        NF.list.filter(e => e.id[0] === kd).sort((a, b) => a.r - b.r).forEach(e => {
+          POP.meta[e.id] = POP.meta[e.id] || e.m; const it = popMatch(e.id, P, POP.meta);
+          if (it && !its.includes(it)) { its.push(it); rk.push(e.r); }
+        });
+        if (its.length) h += vodRow('Les plus vus en France cette semaine · ' + (kd === 'm' ? 'films' : 'séries'), 'top 10 Netflix France, semaine du ' + new Date(NF.week).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }), its, rk);
+      }
+      h += vodRow('Tendances mondiales de la semaine', 'popularité dans le monde · TMDB', popList(POP.trend, P, POP.meta, kinds).slice(0, 30), true);
       for (const [svc] of TMDB_SVC) {
         const S2 = POP.svc[svc]; if (!S2) continue;
         const mix = X => kinds.length === 2 ? X.m.map((x, i) => [x, i]).concat(X.s.map((x, i) => [x, i])).sort((a, b) => a[1] - b[1]).map(x => x[0]) : kinds[0] === 'm' ? X.m : X.s;
-        const NF = svc === 'Netflix' ? await nfxResolve().catch(() => null) : null;
-        let top = false;
-        if (NF && NF.list.length) {                      // vrai classement des Français (publié par Netflix), films et séries à part
-          for (const kd of kinds) {
-            const its = [], rk = [];
-            NF.list.filter(e => e.id[0] === kd).sort((a, b) => a.r - b.r).forEach(e => {
-              POP.meta[e.id] = POP.meta[e.id] || e.m; const it = popMatch(e.id, P, POP.meta);
-              if (it && !its.includes(it) && !vfOnly(it)) { its.push(it); rk.push(e.r); }
-            });
-            if (its.length) { h += vodRow('Top 10 ' + (kd === 'm' ? 'films' : 'séries') + ' Netflix en France', 'classement Netflix de la semaine du ' + new Date(NF.week).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }), its, rk); top = true; }
-          }
-        }
+        const top = svc === 'Netflix' && NF && NF.list.length;   // Netflix : déjà le vrai top France en tête
         const l = top ? [] : popList(mix(S2), P, POP.meta, kinds);
-        if (l.length >= 3) h += vodRow('Les plus vus de la semaine sur ' + svc, 'en France · TMDB', l.slice(0, 30), true);
+        if (l.length >= 3) h += vodRow('Populaires sur ' + svc, 'disponibles en France · popularité mondiale TMDB', l.slice(0, 30), true);
         const N2 = POP.svcNew && POP.svcNew[svc];
         const ln = N2 ? popList(mix(N2), P, POP.meta, kinds) : [];
         if (ln.length >= 2) h += vodRow('Nouveautés sur ' + svc, 'sorties des 4 derniers mois · TMDB', ln.slice(0, 30));
