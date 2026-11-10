@@ -228,6 +228,7 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 .poster.xp .im,.poster.xp:hover .im{aspect-ratio:auto;height:var(--ph);transform:none}
 .poster .xpv{position:absolute;inset:0;z-index:2;overflow:hidden;background:#000 center/cover no-repeat;opacity:0;transition:opacity .3s}
 .poster.xp .xpv{opacity:1}
+.poster .xpv{pointer-events:none}.poster.xp .xpv{pointer-events:auto}
 .poster .xpv iframe{position:absolute;left:0;width:100%;top:-64px;height:calc(100% + 128px);border:0;pointer-events:none;opacity:0;transition:opacity .4s}
 .poster .xpv iframe.on{opacity:1}
 .poster .xpv .snd{position:absolute;right:8px;bottom:8px;width:32px;height:32px;border-radius:50%;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:2}
@@ -238,8 +239,8 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 .poster.xp .xpb{display:block;margin-top:8px}
 .poster .xpb .bt{display:flex;gap:6px;margin-bottom:5px}
 .poster .xpb .btn{height:28px;padding:0 10px;font-size:12px}
-.poster .xpb .ti{font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.poster .xpb .mt{font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.poster .xpb .ti{display:block;font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.poster .xpb .mt{display:block;font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .poster .im{position:relative;width:100%;aspect-ratio:2/3;border-radius:12px;overflow:hidden;background:linear-gradient(160deg,#34332f,#1b1b1a);display:flex;align-items:center;justify-content:center;padding:10px;text-align:center;font-weight:700;color:var(--text3);font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.35);transition:transform .15s}
 .poster:hover .im{transform:scale(1.04)}
 .poster .im img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
@@ -1891,7 +1892,7 @@ function hovOpen(poster) {
     if (!tr || HOV.it !== it || !HOV.el) return;
     const cc = tr.cc ? '&cc_load_policy=1&cc_lang_pref=fr&hl=fr' : '';
     const f = document.createElement('iframe');
-    f.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(tr.key)}?autoplay=1&mute=${LS.get('pref.hoverSound', false) ? 0 : 1}&controls=0&disablekb=1&fs=0&iv_load_policy=3&rel=0&modestbranding=1&playsinline=1&enablejsapi=1&loop=1&playlist=${encodeURIComponent(tr.key)}${cc}`;
+    f.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(tr.key)}?autoplay=1&mute=${LS.get('pref.hoverSound', false) ? 0 : 1}&controls=0&disablekb=1&fs=0&iv_load_policy=3&rel=0&modestbranding=1&playsinline=1&enablejsapi=1${cc}`;
     f.allow = 'autoplay; encrypted-media'; f.tabIndex = -1; f.title = 'Bande-annonce';
     f.onload = () => setTimeout(() => f.classList.add('on'), 600);
     el.querySelector('.md').prepend(f);
@@ -1899,24 +1900,25 @@ function hovOpen(poster) {
 }
 // Aperçu dans une rangée : l'affiche elle-même s'élargit (les voisines glissent), bande-annonce et boutons dedans
 function hovInline(poster, it) {
-  const im = poster.querySelector('.im'), h = im.offsetHeight, w = Math.round(h * 16 / 9);
-  poster.style.setProperty('--ph', h + 'px'); poster.style.width = w + 'px'; poster.classList.add('xp');
+  // La bande-annonce est d'abord chargée en coulisse ; l'affiche ne s'élargit qu'une fois la vidéo lancée (sinon rien)
   HOV.el = poster;
-  const snd = LS.get('pref.hoverSound', false);
-  im.insertAdjacentHTML('beforeend', `<span class="xpv" style="background-image:url('${esc(posterUrl(it.cover || ''))}')"><span class="snd${snd ? ' on' : ''}" data-hsnd title="Son"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="iv" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" fill="none"/><path class="im" d="M16 9l5 6M21 9l-5 6" fill="none"/></svg></span></span>`);
-  poster.insertAdjacentHTML('beforeend', `<span class="xpb"><span class="bt"><span class="btn primary" data-hplay>▶ ${it.kind === 'series' ? 'Épisodes' : 'Lecture'}</span><span class="btn" data-hinfo>Plus d'infos</span></span>
-    <span class="ti">${esc(it.name)}</span><span class="mt">${esc([it.year, it.rating ? '★ ' + it.rating.toFixed(1) : '', it.kind === 'series' ? 'Série' : 'Film', (it.services || []).join(', ')].filter(Boolean).join(' · '))}</span></span>`);
-  // si l'affiche élargie dépasse à droite, la rangée glisse pour la montrer en entier
-  setTimeout(() => { const sc = poster.closest('.vscroll'); if (!sc || HOV.el !== poster) return; const a = poster.getBoundingClientRect(), b = sc.getBoundingClientRect();
-    if (a.right > b.right - 8) { HOV.auto = Date.now(); sc.scrollBy({ left: a.right - b.right + 16, behavior: 'smooth' }); } }, 320);
   trailerFor(it).then(tr => {
     if (!tr || HOV.it !== it || HOV.el !== poster) return;
-    const v = poster.querySelector('.xpv'); if (!v) return;
-    const cc = tr.cc ? '&cc_load_policy=1&cc_lang_pref=fr&hl=fr' : '';
+    const im = poster.querySelector('.im'), snd = LS.get('pref.hoverSound', false);
+    im.insertAdjacentHTML('beforeend', `<span class="xpv" style="background-image:url('${esc(posterUrl(it.cover || ''))}')"><span class="snd${snd ? ' on' : ''}" data-hsnd title="Son"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="iv" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" fill="none"/><path class="im" d="M16 9l5 6M21 9l-5 6" fill="none"/></svg></span></span>`);
+    const v = poster.querySelector('.xpv'), cc = tr.cc ? '&cc_load_policy=1&cc_lang_pref=fr&hl=fr' : '';
     const f = document.createElement('iframe');
-    f.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(tr.key)}?autoplay=1&mute=${LS.get('pref.hoverSound', false) ? 0 : 1}&controls=0&disablekb=1&fs=0&iv_load_policy=3&rel=0&modestbranding=1&playsinline=1&enablejsapi=1&loop=1&playlist=${encodeURIComponent(tr.key)}${cc}`;
+    f.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(tr.key)}?autoplay=1&mute=${snd ? 0 : 1}&controls=0&disablekb=1&fs=0&iv_load_policy=3&rel=0&modestbranding=1&playsinline=1&enablejsapi=1${cc}`;
     f.allow = 'autoplay; encrypted-media'; f.tabIndex = -1; f.title = 'Bande-annonce';
-    f.onload = () => setTimeout(() => f.classList.add('on'), 600);
+    f.onload = () => setTimeout(() => {                 // lecture lancée (et boutons de démarrage de YouTube partis) : on ouvre
+      if (HOV.el !== poster || !document.body.contains(poster)) return;
+      const h = im.offsetHeight, w = Math.round(h * 16 / 9);
+      poster.style.setProperty('--ph', h + 'px'); poster.style.width = w + 'px'; poster.classList.add('xp'); f.classList.add('on');
+      poster.insertAdjacentHTML('beforeend', `<span class="xpb"><span class="bt"><span class="btn primary" data-hplay>▶ ${it.kind === 'series' ? 'Épisodes' : 'Lecture'}</span><span class="btn" data-hinfo>Plus d'infos</span></span>
+        <span class="ti">${esc(it.name)}</span><span class="mt">${esc([it.year, it.rating ? '★ ' + it.rating.toFixed(1) : '', it.kind === 'series' ? 'Série' : 'Film', (it.services || []).join(', ')].filter(Boolean).join(' · '))}</span></span>`);
+      setTimeout(() => { const sc = poster.closest('.vscroll'); if (!sc || HOV.el !== poster) return; const a = poster.getBoundingClientRect(), bb = sc.getBoundingClientRect();
+        if (a.right > bb.right - 8) { HOV.auto = Date.now(); sc.scrollBy({ left: a.right - bb.right + 16, behavior: 'smooth' }); } }, 320);
+    }, 1200);
     v.prepend(f);
   }).catch(() => {});
 }
