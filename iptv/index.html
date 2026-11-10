@@ -188,6 +188,10 @@ textarea.field{height:110px;padding:10px 12px;resize:vertical;font-family:ui-mon
 body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.homeview.vod #vod{display:block}
 /* VOD façon Netflix : rangées d'affiches */
 .vtop{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:8px -24px 4px;padding:10px 24px;position:sticky;top:-6px;z-index:4;background:var(--bg0);border-bottom:.5px solid var(--border)}
+.vvers{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}
+.vvers .chip{height:30px;padding:0 12px}
+#slowBox{position:absolute;left:50%;top:16px;transform:translateX(-50%);z-index:8;display:flex;align-items:center;gap:10px;padding:10px 10px 10px 14px;border-radius:14px;background:rgba(20,20,19,.95);border:.5px solid var(--border);box-shadow:0 10px 30px rgba(0,0,0,.5);font-size:13px;max-width:calc(100% - 24px)}
+#slowBox .btn{height:32px;flex:none}
 .vtop .searchbar{margin:0;flex:1;min-width:200px;max-width:420px}
 .vrow{margin-top:22px}
 .vrow h3{font-size:17px;font-weight:700;margin:0 2px 10px;display:flex;align-items:baseline;gap:10px}
@@ -338,7 +342,7 @@ body.vodplay #sidesBtn{display:none}
 #miniBar{display:none}
 /* Mini lecteur automatique : dès qu'on quitte le lecteur (accueil, agenda, films) pendant une lecture, l'image continue en bas
    à droite ; clic sur l'image = retour au lecteur, ✕ = arrêt */
-body.homeview.mini #player{display:flex;position:fixed;right:18px;bottom:18px;width:var(--miniw,clamp(280px,26vw,420px));height:auto;z-index:35;border-radius:14px;overflow:hidden;box-shadow:0 14px 44px rgba(0,0,0,.65);border:.5px solid var(--border);animation:miniIn .28s ease}
+body.homeview.mini #player{display:flex;position:fixed;right:18px;bottom:18px;width:min(var(--miniw,clamp(560px,52vw,840px)),calc(100vw - 36px));height:auto;z-index:35;border-radius:14px;overflow:hidden;box-shadow:0 14px 44px rgba(0,0,0,.65);border:.5px solid var(--border);animation:miniIn .28s ease}
 @keyframes miniIn{from{opacity:0;transform:translateY(24px) scale(.94)}}
 body.homeview.mini #screen{flex:none;aspect-ratio:16/9;width:100%;cursor:pointer}
 body.homeview.mini #now,body.homeview.mini #stats,body.homeview.mini #trackMenu,body.homeview.mini #qualMenu,body.homeview.mini #vbar{display:none!important}
@@ -1671,6 +1675,11 @@ function cleanTitle(n) {
        .replace(/\s*[-|:·]\s*$/, '').replace(/\s{2,}/g, ' ').trim();
   return t || String(n || '').trim();
 }
+// Qualité d'une version de film d'après son titre et sa catégorie (« FR - FILM ⁴ᴷ ᴴᴰᴿ », « … 2160p », « … 1080p »)
+const vodQ = t => /4k|uhd|2160|⁴ᴷ|³⁸⁴⁰|ᵁᴴᴰ|ᴴᴰᴿ|\bhdr\b/i.test(t) ? 4 : /1080|fhd|ᶠᴴᴰ/i.test(t) ? 3 : 2;
+// Versions d'un film, de la plus légère à la plus lourde ; celle choisie (retenue par film, sinon la meilleure)
+const vodVars = it => (it.vars && it.vars.length ? it.vars : [{ id: it.id, ext: it.ext, q: 2, cat: '' }]).slice().sort((a, b) => a.q - b.q);
+function vodPick(it) { const v = vodVars(it), want = LS.get('vver.' + it.id, null); return v.find(x => x.id === want) || v[v.length - 1]; }
 // Version originale disponible : titre ou catégorie marqués MULTI, VOSTFR, VO…
 const VO_RE = /(^|[^a-z])(multi|vostfr|vost|vosta|vo|subfrench|dual|vf\s*\+\s*vo)([^a-z]|$)/i;
 // Film ou série étranger proposé seulement en français : langue d'origine connue (TMDB) autre que le français, sans version MULTI / VOSTFR
@@ -1694,7 +1703,7 @@ async function loadVod(force) {
   if (!force && V.data && V.data.pl === S.pl) return V.data;
   if (V.loading) return V.loading;
   V.loading = (async () => {
-    const cacheId = 'vod5:' + listKey(S.pl);                // version des filtres : un changement recharge le catalogue
+    const cacheId = 'vod6:' + listKey(S.pl);                // version des filtres : un changement recharge le catalogue
     if (!force) { const c = await DB.cacheGet(cacheId); if (c && Date.now() - c.at < 12 * 3600e3 && c.data && c.data.items) { c.data.pl = S.pl; return (V.data = c.data); } }
     const progress = t => { const el = document.getElementById('vodProg'); if (el) el.textContent = t; };
     let firstErr = '';
@@ -1723,15 +1732,18 @@ async function loadVod(force) {
     const add = it => {
       const key = (it.tmdb ? 't' + it.tmdb : norm(it.name).replace(/\W+/g, '') + it.year) + it.kind;
       const old = seen.get(key);
-      if (old) { if (!old.cats.includes(it.cats[0])) old.cats.push(it.cats[0]); if (!old.cover && it.cover) old.cover = it.cover; old.vo = old.vo || it.vo; return; }
+      if (old) { if (!old.cats.includes(it.cats[0])) old.cats.push(it.cats[0]); if (!old.cover && it.cover) old.cover = it.cover; old.vo = old.vo || it.vo;
+        if (old.vars && it.vars && !old.vars.some(x => x.id === it.vars[0].id)) old.vars.push(it.vars[0]);   // même film, autre version (4K, HD…)
+        return; }
       seen.set(key, it); items.push(it);
     };
     const take = (c, arr) => (Array.isArray(arr) ? arr : []).forEach(v => {
       const ck = c.kind + v.category_id; if (!cats[ck]) return;          // certains serveurs renvoient tout malgré la catégorie demandée
       if (itemForeign(v.name)) return;                                   // titre marqué d'une autre langue (« EN - … », « |TR| … »)
       const vo = VO_RE.test(v.name) || VO_RE.test(cats[ck].raw);           // version originale proposée (MULTI, VOSTFR…)
-      if (c.kind === 'm') add({ kind: 'movie', id: v.stream_id, name: cleanTitle(v.name), raw: v.name, year: yearOf(v.year, v.releaseDate, v.name), rating: rate10(v), added: +v.added || 0,
-        cover: v.stream_icon || '', ext: v.container_extension || 'mp4', cats: [ck], tmdb: v.tmdb || v.tmdb_id || '', vo });
+      if (c.kind === 'm') { const vq = vodQ(v.name + ' ' + cats[ck].raw), ext = v.container_extension || 'mp4';
+        add({ kind: 'movie', id: v.stream_id, name: cleanTitle(v.name), raw: v.name, year: yearOf(v.year, v.releaseDate, v.name), rating: rate10(v), added: +v.added || 0,
+          cover: v.stream_icon || '', ext, cats: [ck], tmdb: v.tmdb || v.tmdb_id || '', vo, vars: [{ id: v.stream_id, ext, q: vq, cat: cats[ck].name }] }); }
       else add({ kind: 'series', id: v.series_id, name: cleanTitle(v.name), raw: v.name, year: yearOf(v.year, v.releaseDate, v.release_date, v.name), rating: rate10(v),
         added: +v.last_modified || 0, cover: v.cover || '', cats: [ck], plot: v.plot || '', genre: v.genre || '', tmdb: v.tmdb || '', vo });
     });
@@ -2039,7 +2051,9 @@ async function openVod(it) {
     <div class="plot">${esc(info.plot || info.description || it.plot || '')}</div>
     ${info.director ? `<div class="cr">Réalisation : ${esc(info.director)}</div>` : ''}${info.cast || info.actors ? `<div class="cr">Avec : ${esc(info.cast || info.actors)}</div>` : ''}`;
   if (it.kind === 'movie') {
-    const url = vodUrl('movie', it.id, it.ext), pos = LS.get('pos.' + url, 0);
+    const vs = vodVars(it), pick = vodPick(it), url = vodUrl('movie', pick.id, pick.ext), pos = LS.get('pos.' + url, 0);
+    // Plusieurs versions (4K et HD…) : choix ; la plus légère passe mieux sur une connexion lente
+    if (vs.length > 1) h += `<div class="vvers"><span class="hint">Version :</span>${vs.slice().reverse().map(x => `<button class="chip${x === pick ? ' on' : ''}" data-vver="${x.id}" title="${esc(x.cat)}">${QLBL[x.q] || 'HD'}${x.q === 4 ? '' : ''}</button>`).join('')}<span class="hint">${pick.q === 4 ? 'la plus lourde · une version plus légère passe mieux si la connexion est lente' : ''}</span></div>`;
     h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-pm="${esc(url)}">▶ ${pos > 60 ? 'Reprendre à ' + fmtDur(pos) : 'Lecture'}</button>${pos > 60 ? `<button class="btn" data-pm="${esc(url)}" data-zero>Depuis le début</button>` : ''}<button class="btn" data-vlc="${esc(url)}">VLC</button></div>`;
   } else {
     const seasons = Object.keys(eps || {}).sort((a, b) => a - b);
@@ -2058,13 +2072,14 @@ async function openVod(it) {
 }
 $('#vodDetail').addEventListener('change', e => { if (e.target.id === 'seasonSel') { LS.set('season.' + V.open.it.id, e.target.value); openVod(V.open.it); } });
 $('#vodDetail').addEventListener('click', e => {
+  const vv = e.target.closest('[data-vver]'); if (vv) { LS.set('vver.' + V.open.it.id, +vv.dataset.vver); openVod(V.open.it); return; }
   const b = e.target.closest('[data-pm]'), v = e.target.closest('[data-vlc]');
   if (v) return openVlc({ name: V.open.it.name, url: v.dataset.vlc });
   if (!b) return;
   const it = V.open.it, url = b.dataset.pm;
   if (b.hasAttribute('data-zero')) LS.set('pos.' + url, 0);
   closeModals();
-  play({ name: b.dataset.ep || it.name, url, group: it.kind === 'series' ? 'Série' : 'Film' + (it.year ? ' · ' + it.year : ''), logo: V.open.cover || it.cover, n: 0, chno: '', vod: true, key: '' });
+  play({ name: b.dataset.ep || it.name, url, group: it.kind === 'series' ? 'Série' : 'Film' + (it.year ? ' · ' + it.year : ''), logo: V.open.cover || it.cover, n: 0, chno: '', vod: true, key: '', it: it.kind === 'movie' && !b.dataset.ep ? it : null });
 });
 // Reprise : position retenue toutes les 5 s, reprise à l'ouverture (sauf presque à la fin)
 /* ---------- Films convertis par ffmpeg (appli Windows) : le flux part de ss secondes ; avancer, reculer ou changer de langue
@@ -2505,6 +2520,22 @@ $('#vodSide').addEventListener('click', e => {
   document.body.classList.remove('drawer'); setHomeView(true, true, 'vod'); $('#vod').scrollTop = 0;
 });
 
+// Film qui saccade (tampon vide à répétition) alors qu'une version plus légère existe : on propose de basculer
+const SLOW = { n: 0, t0: 0, url: '' };
+video.addEventListener('waiting', () => {
+  const c = S.current; if (!c || !c.vod || !c.it || video.currentTime < 5) return;
+  if (SLOW.url !== c.url || Date.now() - SLOW.t0 > 120000) { SLOW.url = c.url; SLOW.n = 0; SLOW.t0 = Date.now(); }
+  if (++SLOW.n < 3 || $('#slowBox')) return;
+  const cur = vodVars(c.it).find(x => c.url.includes('/' + x.id + '.')), lighter = cur && vodVars(c.it).filter(x => x.q < cur.q).pop();
+  if (!lighter) return;
+  const box = document.createElement('div'); box.id = 'slowBox';
+  box.innerHTML = `<span>La connexion n'arrive pas à suivre la version ${QLBL[cur.q]}.</span><button class="btn primary">Passer en ${QLBL[lighter.q]}</button><button class="btn" aria-label="Fermer">✕</button>`;
+  $('#screen').appendChild(box);
+  const [go, x] = box.querySelectorAll('button');
+  x.onclick = () => box.remove();
+  go.onclick = () => { box.remove(); LS.set('vver.' + c.it.id, lighter.id); const url = vodUrl('movie', lighter.id, lighter.ext), pos = curPos();
+    if (pos > 10) LS.set('pos.' + url, pos); play(Object.assign({}, c, { url })); };
+});
 // Panneau de droite : score et statistiques du match en cours
 function toggleSide(on) {
   const el = $('#side'); on = on === undefined ? el.hidden : on;
