@@ -486,6 +486,7 @@ body.vodplay:not(.homeview) #channels{display:none}
 </style>
 </head>
 <body>
+<div id="qualMenu" hidden></div>
 <!-- Écran de chargement : masque la mise en place de la page (liste, accueil, guide) ; retiré en fondu une fois prête -->
 <div id="splash"><svg viewBox="0 0 512 512" aria-hidden="true"><defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a3a3c"/><stop offset="1" stop-color="#232325"/></linearGradient></defs><rect width="512" height="512" rx="112" fill="url(#sg)"/><rect x="104" y="148" width="304" height="216" rx="30" fill="none" stroke="#f2f2f2" stroke-width="14"/><path d="M236 218 L236 294 L298 256 Z" fill="#f2f2f2"/></svg></div>
 <header>
@@ -517,7 +518,6 @@ body.vodplay:not(.homeview) #channels{display:none}
       <div id="status"><div class="msg hint">Choisissez une chaîne dans la liste.</div></div>
       <div id="stats" hidden></div>
       <div id="trackMenu" hidden></div>
-      <div id="qualMenu" hidden></div>
       <input type="file" id="subFile" accept=".srt,.vtt,.ass,.ssa,text/vtt,application/x-subrip" hidden>
       <div id="vbar">
         <button class="vb" id="vbPlay" title="Lecture / pause (espace)"><svg viewBox="0 0 24 24"><path class="ip" d="M7 4v16l13-8z"/><path class="ipa" d="M7 4h3.5v16H7zM13.5 4H17v16h-3.5z"/></svg></button>
@@ -1141,8 +1141,12 @@ function variantsOf(c) {
   return l.sort((a, b) => chInfo(b).q - chInfo(a).q || chInfo(a).hevc - chInfo(b).hevc || a.n - b.n);
 }
 const qLabel = c => { const k = chInfo(c); return QLBL[k.q] + (k.hevc ? ' HEVC' : ''); };
+// Film du catalogue : ses versions (4K, HD…) ; chaîne : les autres qualités de la liste
+const filmCur = c => c && c.vod && c.it && vodVars(c.it).find(x => c.url.includes('/' + x.id + '.'));
 function qualBtnUpdate(c) {
   const b = $('#qualBtn'); $('#qualMenu').hidden = true;
+  const fc = filmCur(c);
+  if (fc) { const n = vodVars(c.it).length; b.hidden = false; $('#qualLbl').textContent = QLBL[fc.q] || 'HD'; b.classList.toggle('k4', fc.q === 4); b.classList.toggle('one', n < 2); return; }
   if (!c || c.vod) { b.hidden = true; return; }
   const v = variantsOf(c);
   b.hidden = false; $('#qualLbl').textContent = qLabel(c);
@@ -1150,15 +1154,32 @@ function qualBtnUpdate(c) {
 }
 $('#qualBtn').onclick = e => {
   e.stopPropagation();
-  const m = $('#qualMenu'), c = S.current, v = variantsOf(c);
+  const m = $('#qualMenu'), c = S.current, fc = filmCur(c);
+  if (fc) {                                             // film : choix de la version, reprise au même endroit
+    const fv = vodVars(c.it).slice().reverse();
+    if (!m.hidden || fv.length < 2) { m.hidden = true; return; }
+    m.innerHTML = fv.map((x, i) => `<button data-fv="${i}"><span class="ck">${x === fc ? '✓' : ''}</span><span class="q">${QLBL[x.q] || 'HD'}</span><span class="r"><b>${esc(x.cat || '')}</b></span></button>`).join('');
+    m._fv = fv; m.hidden = false;
+  } else {
+  const v = variantsOf(c);
   if (!m.hidden || v.length < 2) { m.hidden = true; return; }
   m.innerHTML = v.map((x, i) => `<button data-qv="${i}"><span class="ck">${x === c ? '✓' : ''}</span><span class="q">${esc(qLabel(x))}</span><span class="r"><b>${esc(x.group || 'Sans catégorie')}</b><br>${esc(x.name)}</span></button>`).join('');
   m._v = v; m.hidden = false;
+  }
   const r = $('#qualBtn').getBoundingClientRect(), w = m.offsetWidth, h = m.offsetHeight;
   m.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + 'px';
   m.style.top = (r.bottom + 6 + h < innerHeight ? r.bottom + 6 : Math.max(8, r.top - h - 6)) + 'px';
 };
 $('#qualMenu').addEventListener('click', e => {
+  const fb = e.target.closest('[data-fv]');
+  if (fb) {
+    const m = $('#qualMenu'), x = m._fv[+fb.dataset.fv], c = S.current; m.hidden = true;
+    if (!x || !c || !c.it || c.url.includes('/' + x.id + '.')) return;
+    LS.set('vver.' + c.it.id, x.id);
+    const url = vodUrl('movie', x.id, x.ext), pos = curPos(); if (pos > 10) LS.set('pos.' + url, Math.floor(pos));
+    play(Object.assign({}, c, { url }));
+    return;
+  }
   const b = e.target.closest('[data-qv]'), m = $('#qualMenu'); if (!b) return;
   const v = m._v, x = v[+b.dataset.qv]; m.hidden = true;
   if (x && x !== S.current) play(x, v.filter(y => y !== x && chInfo(y).q <= chInfo(x).q));   // si elle ne passe pas : qualités en dessous
