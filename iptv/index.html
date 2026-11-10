@@ -2078,7 +2078,16 @@ async function openVod(it) {
 }
 $('#vodDetail').addEventListener('change', e => { if (e.target.id === 'seasonSel') { LS.set('season.' + V.open.it.id, e.target.value); openVod(V.open.it); } });
 $('#vodDetail').addEventListener('click', e => {
-  const vv = e.target.closest('[data-vver]'); if (vv) { LS.set('vver.' + V.open.it.id, +vv.dataset.vver); openVod(V.open.it); return; }
+  // Changement de version : seulement les boutons de lecture mis à jour (la fiche et la bande-annonce restent)
+  const vv = e.target.closest('[data-vver]');
+  if (vv) {
+    const it = V.open.it; LS.set('vver.' + it.id, +vv.dataset.vver);
+    const pk = vodPick(it), url = vodUrl('movie', pk.id, pk.ext), pos = LS.get('pos.' + url, 0);
+    $('#vodDetail').querySelectorAll('.vvers .chip').forEach(c => c.classList.toggle('on', +c.dataset.vver === pk.id));
+    const row = $('#vodDetail').querySelector('[data-pm]').parentElement;
+    row.innerHTML = `<button class="btn primary" data-pm="${esc(url)}">▶ ${pos > 60 ? 'Reprendre à ' + fmtDur(pos) : 'Lecture'}</button>${pos > 60 ? `<button class="btn" data-pm="${esc(url)}" data-zero>Depuis le début</button>` : ''}<button class="btn" data-vlc="${esc(url)}">VLC</button>`;
+    return;
+  }
   const b = e.target.closest('[data-pm]'), v = e.target.closest('[data-vlc]');
   if (v) return openVlc({ name: V.open.it.name, url: v.dataset.vlc });
   if (!b) return;
