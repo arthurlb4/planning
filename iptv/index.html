@@ -379,7 +379,14 @@ body.playing #screen.idle #vbar{opacity:0;pointer-events:none}
 #vbFull .ifx{display:none}body.solo:not(.solowin) #vbFull .ifs{display:none}body.solo:not(.solowin) #vbFull .ifx{display:block}
 #vbar #vbWin svg{fill:none}#vbWin .iwx{display:none}body.solowin #vbWin .iwo{display:none}body.solowin #vbWin .iwx{display:block}
 #vbar .tm{min-width:40px;text-align:center;font-size:12px;color:#e8e6e1}
-#vbar input[type=range]{accent-color:#fff;height:4px;cursor:pointer}
+/* Curseurs dessinés par l'appli : barre plate sans contour, partie lue en blanc, rond qui grossit au survol */
+#vbar input[type=range]{-webkit-appearance:none;appearance:none;height:4px;border:0;border-radius:4px;margin:0;padding:0;outline:none;cursor:pointer;background:linear-gradient(90deg,#fff var(--p,0%),rgba(255,255,255,.25) var(--p,0%))}
+#vbar input[type=range]::-webkit-slider-runnable-track{background:transparent;border:0;height:4px}
+#vbar input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;margin-top:-4px;border-radius:50%;background:#fff;border:0;transition:transform .15s}
+#vbar input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.25)}
+#vbar input[type=range]::-moz-range-track{background:transparent;border:0;height:4px}
+#vbar input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:#fff;border:0}
+#vbar button:focus,#vbar input:focus{outline:none}
 #vbRange{flex:1;min-width:60px}
 #vbVol{width:80px;flex:none}
 #vbar .live{display:none;height:24px;padding:0 9px 0 20px;border-radius:999px;font-size:11px;font-weight:800;letter-spacing:.06em;color:#fff;background:rgba(255,255,255,.12);position:relative}
@@ -2138,6 +2145,7 @@ function vbarUpdate() {
     $('#vbCur').textContent = fmtT(video.currentTime); $('#vbDur').textContent = dur ? fmtT(dur) : '--:--';
     rg.min = 0; rg.max = Math.max(1, dur); if (!drag) rg.value = video.currentTime;
   }
+  [rg, $('#vbVol')].forEach(r => { const a = +r.min || 0, b = +r.max || 1; r.style.setProperty('--p', Math.max(0, Math.min(100, ((+r.value - a) / (b - a || 1)) * 100)) + '%'); });
   $('#vbPlay').classList.toggle('on', !video.paused);
   $('#vbMute').classList.toggle('off', video.muted || !video.volume);
   if (!$('#vbVol').matches(':active')) $('#vbVol').value = video.muted ? 0 : video.volume;
@@ -2162,6 +2170,9 @@ $('#vbRange').addEventListener('change', e => { if (S.engine === 'remux') remuxS
 $('#vbLive').onclick = () => { const w = liveWin(); if (w && !atLive(w)) video.currentTime = liveTarget(w); if (video.paused) video.play().catch(() => {}); vbarUpdate(); };
 $('#vbPlay').onclick = () => { video.paused ? video.play() : video.pause(); vbarUpdate(); };
 $('#vbMute').onclick = () => { if (video.muted || !video.volume) { video.muted = false; if (!video.volume) video.volume = 0.5; } else video.muted = true; vbarUpdate(); };
+$('#vbRange').addEventListener('input', vbarFill);
+function vbarFill() { [$('#vbRange'), $('#vbVol')].forEach(r => { const a = +r.min || 0, b = +r.max || 1; r.style.setProperty('--p', Math.max(0, Math.min(100, ((+r.value - a) / (b - a || 1)) * 100)) + '%'); }); }
+$('#vbVol').addEventListener('input', vbarFill);
 $('#vbVol').addEventListener('input', e => { video.volume = +e.target.value; video.muted = !video.volume; LS.set('dev.vol', video.volume); });
 $('#vbFull').onclick = () => setSolo(!isFull());
 $('#vbWin').onclick = () => isWin() ? setSolo(false) : setSolo(true, true);
