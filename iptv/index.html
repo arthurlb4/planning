@@ -1931,7 +1931,7 @@ async function renderVod() {
     const key = LS.get('pref.tmdb', '');
     const tbox = `<div class="tmdbbox"><b>Popularité réelle (TMDB)</b> ${key ? (POP ? '· activée' : '· ' + esc(TM.err || 'indisponible')) : ''}
       <p class="hint" style="margin:6px 0 10px">${key ? 'Tendances et classements par service mis à jour toutes les 12 h.' : 'Votre serveur ne donne aucune audience. Avec une clé gratuite TMDB (themoviedb.org › compte › Paramètres › API, « Clé d\'API » ou « Jeton d\'accès en lecture »), l\'accueil montre les vraies tendances de la semaine et ce qui est le plus regardé en France sur Netflix, Prime Video, Disney+, Apple TV+, Canal+…'}</p>
-      <div class="row"><input class="field" id="tmdbKey" type="password" placeholder="Clé d'API TMDB" value="${esc(key)}" autocomplete="off" spellcheck="false" style="flex:1;min-width:0;margin:0"><button class="chip" data-tmdb>Enregistrer</button>${key ? '<button class="chip" data-tmdbre>↻</button>' : ''}</div></div>`;
+      <div class="row"><input class="field" id="tmdbKey" type="password" placeholder="Clé d'API TMDB" value="${esc(key)}" autocomplete="off" spellcheck="false" style="flex:1;min-width:0;margin:0"><button class="chip" data-tmdb>Enregistrer</button>${key ? '<button class="chip" data-tmdbre>↻</button>' : '<button class="chip" data-tmdbin>Activer la clé intégrée</button>'}</div></div>`;
     if (key) h += tbox; else h = h.replace('<div class="vrow">', tbox + '<div class="vrow">');
   }
   box.innerHTML = h;
@@ -1957,6 +1957,11 @@ $('#vodInner').addEventListener('click', e => {
     toast(hc ? 'Catégorie masquée' : 'Catégorie réintégrée'); V.force = true; V.data = null; renderVod(); return;
   }
   if (e.target.closest('[data-tmdb]')) { LS.set('pref.tmdb', ($('#tmdbKey').value || '').trim()); TM.data = null; TM.err = ''; V.force2 = true; renderVod(); return; }
+  if (e.target.closest('[data-tmdbin]')) {
+    const pw = (prompt('Mot de passe de « Mon abonnement » :') || '').trim().toLowerCase(); if (!pw) return;
+    useBuiltinTmdb(pw).then(() => { toast('Clé TMDB activée'); renderVod(); }, () => toast('Mot de passe incorrect'));
+    return;
+  }
   if (e.target.closest('[data-tmdbre]')) { TM.data = null; V.force2 = true; renderVod(); return; }
   const t = e.target.closest('[data-tab]'), c = e.target.closest('[data-cat]'), p = e.target.closest('[data-v]');
   if (t) { V.tab = t.dataset.tab; V.q = ''; V.cat = null; renderVod(); $('#vod').scrollTop = 0; }
@@ -2795,6 +2800,19 @@ $('#demoBtn').onclick = async e => {
 const BUILTIN = { salt: 'ICM8NZYZdHDn21X1oKdVVQ==', iv: 'NYYZVYKCFXsb31rz',
   data: '4jCbRo8czPnqsiSETCELl8Z6lQczQlySU0guZsyY0VVaJBoufNKqGmQnMwyWehL0WQYZYHIrMigw08JzXK0ROSmZrLUeGcxpDHlunsCIWWoNLTRgYk665MCi47WY5n44WfqhgGNCWZeLN4jR' };
 const b64d = s => Uint8Array.from(atob(s), ch => ch.charCodeAt(0));
+// Clé TMDB intégrée, chiffrée avec le même mot de passe que l'abonnement : activée en déverrouillant la liste
+const TMDB_ENC = { salt: 'jyaqEiMiGbi+oYy5B5TZBw==', iv: '3xilUtIYCDBzCe4d', data: 'sVCliRusMkctrrqSzb1mUkZFIS+iTSB2wmyxP61Yik7Ejo7UIxISv+FfrvWCeyLJ' };
+async function unlockTmdb(pass) {
+  const C = crypto.subtle;
+  const base = await C.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
+  const key = await C.deriveKey({ name: 'PBKDF2', salt: b64d(TMDB_ENC.salt), iterations: 600000, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+  return new TextDecoder().decode(await C.decrypt({ name: 'AES-GCM', iv: b64d(TMDB_ENC.iv) }, key, b64d(TMDB_ENC.data)));
+}
+async function useBuiltinTmdb(pass) {
+  const k = (await unlockTmdb(pass)).trim(); if (!/^[0-9a-f]{32}$/i.test(k)) throw new Error('clé');
+  LS.set('pref.tmdb', k); TM.data = null; TM.err = ''; V.force2 = true;
+  return k;
+}
 async function unlockBuiltin(pass) {
   const C = crypto.subtle;
   const base = await C.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
@@ -2808,6 +2826,7 @@ $('#bBtn').onclick = async () => {
   try {
     let url;
     try { url = await unlockBuiltin(pass); } catch (e) { throw new Error('Mot de passe incorrect.'); }
+    if (!LS.get('pref.tmdb', '')) useBuiltinTmdb(pass).catch(() => {});      // popularité réelle (TMDB) activée du même coup
     b.textContent = 'Chargement de la liste…';
     const text = await fetchPlaylist(url);
     stopAll();
