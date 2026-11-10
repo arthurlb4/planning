@@ -474,9 +474,13 @@ async function iptvM3u(request, url) {
     try { r = await fetch(t.toString(), { redirect: 'follow', headers: ua ? { 'User-Agent': ua, 'Accept': '*/*' } : { 'Accept': '*/*' } }); }
     catch (e) { r = null; codes.push('injoignable'); continue; }
     if (r.ok) break;
-    codes.push(r.status); r = null;
+    codes.push(r.status);
+    // « trop de demandes » (429) ou adresse inconnue (404) : changer d'identité n'y changerait rien et aggraverait le blocage
+    if (r.status === 429 || r.status === 404) { r = null; break; }
+    r = null;
   }
   if (!r) return err(codes.every(function (c) { return c === 'injoignable'; }) ? 'Serveur de la liste injoignable'
+    : codes.indexOf(429) >= 0 ? 'Le serveur de la liste refuse pour l\'instant (trop de demandes, 429) : réessayer dans quelques heures'
     : 'Le serveur de la liste répond ' + codes.filter(function (c, i) { return c !== 'injoignable' && codes.indexOf(c) === i; }).join(', '), 502);
   var len = +(r.headers.get('Content-Length') || 0);
   if (len > IPTV_MAX) return err('Liste trop lourde', 413);
