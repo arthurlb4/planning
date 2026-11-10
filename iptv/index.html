@@ -194,7 +194,7 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 #slowBox .btn{height:32px;flex:none}
 .hovc{position:fixed;z-index:70;border-radius:14px;overflow:hidden;background:var(--bg2);border:.5px solid var(--border);box-shadow:0 18px 50px rgba(0,0,0,.7);animation:hovIn .22s ease;transform-origin:center}
 @keyframes hovIn{from{opacity:0;transform:scale(.92)}}
-.hovc .md{position:relative;aspect-ratio:16/9;background:#000 center/cover no-repeat}
+.hovc .md{position:relative;aspect-ratio:16/9;background:#000 center/cover no-repeat;overflow:hidden}
 .hovc .md iframe{position:absolute;inset:0;width:100%;height:100%;border:0;pointer-events:none;opacity:0;transition:opacity .4s}
 .hovc .md iframe.on{opacity:1}
 .hovc .snd{position:absolute;right:8px;bottom:8px;width:32px;height:32px;border-radius:50%;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:2}
@@ -268,6 +268,8 @@ body.hasmatch #nowScore{display:inline}
 #vodTrailer{position:relative;width:100%;padding-top:56.25%;border-radius:12px;overflow:hidden;background:#000;margin-bottom:16px}
 #vodTrailer iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:0}
 #vodTrailer iframe.bare{pointer-events:none}
+/* Titre (haut) et logo YouTube (bas) rejetés hors du cadre : lecteur plus haut que la zone visible, vidéo centrée dedans */
+#vodTrailer iframe.bare,.hovc .md iframe{top:-64px;height:calc(100% + 128px)}
 #vodTrailer .trmute{position:absolute;right:10px;bottom:10px;width:38px;height:38px;border-radius:50%;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:2}
 #vodTrailer .trmute svg{width:20px;height:20px;stroke:#fff;stroke-width:2;fill:#fff;stroke-linecap:round;stroke-linejoin:round}
 #vodTrailer .trmute .im{display:none}#vodTrailer .trmute.off .iv{display:none}#vodTrailer .trmute.off .im{display:block}
@@ -1827,7 +1829,7 @@ function hovOpen(poster) {
     if (!tr || HOV.it !== it || !HOV.el) return;
     const cc = tr.cc ? '&cc_load_policy=1&cc_lang_pref=fr&hl=fr' : '';
     const f = document.createElement('iframe');
-    f.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(tr.key)}?autoplay=1&mute=${LS.get('pref.hoverSound', false) ? 0 : 1}&controls=0&disablekb=1&fs=0&iv_load_policy=3&rel=0&modestbranding=1&playsinline=1&enablejsapi=1${cc}`;
+    f.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(tr.key)}?autoplay=1&mute=${LS.get('pref.hoverSound', false) ? 0 : 1}&controls=0&disablekb=1&fs=0&iv_load_policy=3&rel=0&modestbranding=1&playsinline=1&enablejsapi=1&loop=1&playlist=${encodeURIComponent(tr.key)}${cc}`;
     f.allow = 'autoplay; encrypted-media'; f.tabIndex = -1; f.title = 'Bande-annonce';
     f.onload = () => setTimeout(() => f.classList.add('on'), 600);
     el.querySelector('.md').prepend(f);
@@ -2102,7 +2104,7 @@ async function showTrailer(it) {
   // Ordinateur : avec le son, sans les boutons de YouTube (on ne peut que couper / remettre le son) ; téléphone : lecteur
   // YouTube normal et sans le son (le téléphone refuse la lecture automatique avec le son)
   const bare = !MOBILE, p = bare ? 'mute=0&controls=0&disablekb=1&fs=0&iv_load_policy=3' : 'mute=1';
-  box.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(tr.key)}?autoplay=1&${p}&rel=0&modestbranding=1&playsinline=1&enablejsapi=1${cc}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" title="Bande-annonce"${bare ? ' class="bare" tabindex="-1"' : ''}></iframe>${tr.tag ? `<span class="trtag">Bande-annonce ${tr.tag === 'VO' ? 'en VO (sous-titres français si YouTube en a)' : tr.tag}</span>` : ''}${bare ? '<button class="trmute" title="Couper / remettre le son"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="iv" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" fill="none"/><path class="im" d="M16 9l5 6M21 9l-5 6" fill="none"/></svg></button>' : ''}`;
+  box.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(tr.key)}?autoplay=1&${p}&rel=0&modestbranding=1&playsinline=1&enablejsapi=1${bare ? '&loop=1&playlist=' + encodeURIComponent(tr.key) : ''}${cc}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" title="Bande-annonce"${bare ? ' class="bare" tabindex="-1"' : ''}></iframe>${tr.tag ? `<span class="trtag">Bande-annonce ${tr.tag === 'VO' ? 'en VO (sous-titres français si YouTube en a)' : tr.tag}</span>` : ''}${bare ? '<button class="trmute" title="Couper / remettre le son"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="iv" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" fill="none"/><path class="im" d="M16 9l5 6M21 9l-5 6" fill="none"/></svg></button>' : ''}`;
   $('#vodDetail').prepend(box);
   const mb = box.querySelector('.trmute');
   if (mb) mb.onclick = () => { const off = !mb.classList.contains('off'); mb.classList.toggle('off', off);
