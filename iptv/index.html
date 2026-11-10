@@ -1175,7 +1175,9 @@ async function play(c, alts) {
   }
   // Film MKV hors télé : un seul essai direct (le navigateur ne lit le MKV qu'avec certains formats ; pas de variante HLS)
   const mkv = c.vod && /\.mkv$/i.test(c.url) && !window.PREFER_NATIVE;
-  if (mkv) { const keep = chain.filter(([e, u]) => e === 'native' && /\.mkv$/i.test(u)); chain.length = 0; keep.forEach(x => chain.push(x)); }
+  // MKV : lecture directe (Chrome / Edge lisent les MKV en H.264 + AAC), puis la version HLS que certains serveurs Xtream
+  // fabriquent à la demande (même film en .m3u8 : image et son convertis par le serveur)
+  if (mkv) { const keep = chain.filter(([e, u]) => (e === 'native' && /\.mkv$/i.test(u)) || /\.m3u8$/i.test(u)); chain.length = 0; keep.forEach(x => chain.push(x)); }
   let i = -1;
   const next = async () => {
     if (t !== token) return;
@@ -1263,9 +1265,12 @@ function fail(c) {
     S.retry = true; return play(n, S.alts.slice(1));
   }
   if (c.vod && /\.mkv$/i.test(c.url) && !window.PREFER_NATIVE) {
-    const why = !window.desktop ? (/Electron/.test(navigator.userAgent) ? 'Cette version de l\'appli Windows est ancienne : téléchargez la version 1.1 (lecture des MKV intégrée).' : 'Dans le navigateur, le MKV ne se lit pas ; l\'appli Windows (version 1.1) le lit.') : 'Le module de conversion de l\'appli n\'a pas démarré (ffmpeg introuvable).';
-    return setStatus('msg', '<b style="color:var(--text)">Format MKV non lu ici</b><br><span class="hint">Ce film est un fichier MKV (souvent avec du son Dolby). ' + why + ' La télé Samsung le lit, et VLC aussi.</span>',
-      '<button class="btn primary" onclick="openVlc(S.current)">Ouvrir dans VLC</button><button class="btn" onclick="play(S.current)">Réessayer</button>');
+    S.errText = 'MKV · ' + (S.tries || []).map(x => x.eng + ' · ' + x.u + ' → ' + x.why).join(' | ') + ' · ' + navigator.userAgent.slice(0, 120);
+    const app = !!window.desktop;
+    return setStatus('msg', '<b style="color:var(--text)">Ce film MKV ne se lit pas ' + (app ? 'ici' : 'dans le navigateur') + '</b><br><span class="hint">'
+      + (app ? 'Le module de conversion de l\'appli n\'a pas démarré.' : 'Son Dolby ou format que le navigateur ne sait pas lire, et le serveur ne propose pas de version convertie. L\'appli Windows le lit (conversion intégrée), la télé Samsung et VLC aussi.') + '</span>',
+      (app ? '' : '<a class="btn primary" href="https://github.com/arthurlb4/planning/releases/download/iptv-desktop/Lecteur-IPTV-Installation.exe" download>Télécharger l\'appli Windows</a>')
+      + '<button class="btn" onclick="openVlc(S.current)">Ouvrir dans VLC</button><button class="btn" onclick="copyErr()">Copier le code d\'erreur</button>');
   }
   const mixed = location.protocol === 'https:' && /^http:/i.test(c.url);
   const why = mixed
