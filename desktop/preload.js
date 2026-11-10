@@ -5,5 +5,6 @@ const base = typeof info === 'string' ? { remux: info } : info;
 contextBridge.exposeInMainWorld('desktop', Object.assign({}, base, {
   updState: () => ipcRenderer.sendSync('upd-state'),
   onUpdate: cb => ipcRenderer.on('upd', (e, st) => cb(st)),
-  checkUpdate: () => ipcRenderer.send('upd-check')
+  checkUpdate: () => ipcRenderer.send('upd-check'),
+  openVlc: (url, name) => ipcRenderer.invoke('open-vlc', url, name)
 }));

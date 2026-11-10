@@ -14,6 +14,23 @@ function ffmpegPath() {
 let remuxBase = '';
 ipcMain.on('remux-base', e => { e.returnValue = { remux: remuxBase, version: app.getVersion() }; });
 
+// « VLC » : ouvre la chaîne ou le film directement dans VLC s'il est installé (dossiers habituels, sinon le registre Windows)
+const { spawn, execFile } = require('child_process');
+function findVlc() {
+  const env = process.env, dirs = [env.ProgramFiles, env['ProgramFiles(x86)'], env.ProgramW6432, env.LOCALAPPDATA && path.join(env.LOCALAPPDATA, 'Programs')].filter(Boolean);
+  for (const d of dirs) { const f = path.join(d, 'VideoLAN', 'VLC', 'vlc.exe'); if (fs.existsSync(f)) return Promise.resolve(f); }
+  if (process.platform !== 'win32') return Promise.resolve('');
+  return new Promise(res => execFile('reg', ['query', 'HKLM\\SOFTWARE\\VideoLAN\\VLC', '/v', 'InstallDir'], { windowsHide: true }, (err, out) => {
+    const m = !err && String(out).match(/InstallDir\s+REG_SZ\s+(.+)/); const f = m && path.join(m[1].trim(), 'vlc.exe');
+    res(f && fs.existsSync(f) ? f : '');
+  }));
+}
+ipcMain.handle('open-vlc', async (e, url, name) => {
+  if (!/^https?:\/\//i.test(String(url || ''))) return false;
+  const exe = await findVlc(); if (!exe) return false;
+  try { spawn(exe, [url, ':meta-title=' + String(name || '').slice(0, 200)], { detached: true, stdio: 'ignore', windowsHide: false }).unref(); return true; } catch (err) { return false; }
+});
+
 const PAGE = 'https://franceinfoplanning.com/iptv/';
 // Sites dont les en-têtes Origin / Referer sont gardés (le site, ses bibliothèques, le relais, YouTube pour les bandes-annonces)
 const OWN = /^https?:\/\/(www\.)?franceinfoplanning\.com\/|^https:\/\/cdn\.jsdelivr\.net\/|^https:\/\/planning-gcal\.|^https:\/\/([a-z0-9-]+\.)*(youtube(-nocookie)?\.com|ytimg\.com|googlevideo\.com|google\.com|gstatic\.com)\//;

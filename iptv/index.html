@@ -2647,11 +2647,19 @@ function vlcUrl(u) { return /android/i.test(navigator.userAgent) ? 'vlc://' + u 
 function openVlc(c) {
   if (!c) return;
   if (MOBILE) { location.href = vlcUrl(c.url); return; }
+  // Appli Windows (1.15 et plus) : VLC lancé directement ; s'il n'est pas installé, fichier .m3u comme dans le navigateur
+  if (window.desktop && window.desktop.openVlc) {
+    window.desktop.openVlc(c.url, c.name).then(ok => { if (ok) toast('Ouverture dans VLC…'); else { toast('VLC introuvable sur ce PC : fichier .m3u téléchargé à la place'); vlcFile(c); } }, () => vlcFile(c));
+    return;
+  }
+  vlcFile(c);
+}
+function vlcFile(c) {
   const blob = new Blob(['#EXTM3U\n#EXTINF:-1,' + c.name.replace(/[\r\n]+/g, ' ') + '\n' + c.url + '\n'], { type: 'audio/x-mpegurl' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
   a.download = (c.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9 _.-]+/g, ' ').replace(/\s+/g, ' ').trim() || 'chaine') + '.m3u';
   document.body.appendChild(a); a.click(); setTimeout(() => a.remove(), 1000); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-  toast('Fichier téléchargé : ouvrez-le avec VLC');
+  if (!window.desktop) toast('Fichier téléchargé : ouvrez-le avec VLC');
 }
 
 function step(d) {
