@@ -206,6 +206,10 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 .ep .ept{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
 .ep .ept .d{font-size:12px;color:var(--text3)}
 .ep .ept .eppl{font-size:12px;color:var(--text2);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+#qtBox{position:fixed;left:50%;top:16px;transform:translateX(-50%);z-index:95;display:flex;align-items:center;gap:12px;padding:12px 12px 12px 16px;border-radius:16px;background:rgba(30,30,29,.97);border:.5px solid var(--border);box-shadow:0 14px 44px rgba(0,0,0,.55);max-width:calc(100vw - 32px)}
+#qtBox div{position:relative;display:flex;flex-direction:column;min-width:240px;padding-bottom:8px}
+#qtBox b{font-size:14px}#qtBox span{font-size:12px;color:var(--text3)}
+#qtBox i{position:absolute;left:0;bottom:0;height:3px;border-radius:3px;background:var(--blue);transition:width .4s}
 #nextBox{position:absolute;right:16px;bottom:78px;z-index:8;display:flex;align-items:center;gap:10px;padding:10px 10px 10px 14px;border-radius:14px;background:rgba(20,20,19,.95);border:.5px solid var(--border);box-shadow:0 10px 30px rgba(0,0,0,.5)}
 #nextBox span{display:flex;flex-direction:column}#nextBox small{font-size:11px;color:var(--text3)}#nextBox b{font-size:14px}
 #nextBox .btn{height:34px}
@@ -618,6 +622,8 @@ body.vodplay:not(.homeview) #channels{display:none}
       <button class="btn" id="addTextBtn">Ajouter le texte</button>
     </details>
     <div class="err" id="addErr"></div>
+    <h3>Qualité des chaînes</h3>
+    <div class="dl"><span><b>Tester les chaînes de l'accueil</b><small>Chaque version de chaque chaîne est lue une dizaine de secondes sans le son, pour mesurer sa vraie qualité ; les meilleures passent ensuite en premier.</small></span><button class="btn primary" onclick="qtHome()">Tester</button></div>
     <h3>Chaînes gratuites</h3>
     <p class="hint" style="margin:0 0 8px">Listes légales de chaînes diffusées gratuitement par leurs éditeurs, ajoutées à la suite de vos chaînes (recherche, ☰). Certaines chaînes peuvent ne plus marcher ou être bloquées hors de leur pays.</p>
     <div id="freeLists" class="dlbox"></div>
@@ -902,7 +908,7 @@ const qOfHeight = h => h >= 1440 ? 4 : h >= 900 ? 3 : h >= 650 ? 2 : 1;
 // Mesure d'une chaîne : { h: hauteur, f: images/s, c: canaux audio, a: format audio } (ancien format : la hauteur seule)
 const vrOf = url => { const v = VRES.get(url); return typeof v === 'number' ? { h: v } : v || {}; };
 // Classement des versions : résolution réelle, puis 50 images/s ou plus, puis son 5.1, puis HEVC en dernier, puis l'ordre de la liste
-const chScore = c => { const k = chInfo(c); return k.q * 100 + (k.fps >= 48 ? 20 : 0) + (k.ach >= 6 ? 10 : 0) + (/ec-3|ac-3|eac3|ac3/i.test(k.acod) ? 2 : 0); };
+const chScore = c => { const k = chInfo(c); return (k.ko ? -1000 : 0) + k.q * 100 + (k.fps >= 48 ? 20 : 0) + (k.ach >= 6 ? 10 : 0) + (/ec-3|ac-3|eac3|ac3/i.test(k.acod) ? 2 : 0); };
 function vresNote(c, h, x) {
   if (!c || c.vod || !(h >= 200)) return;
   const old = vrOf(c.url), nw = Object.assign({}, old, { h: Math.max(old.h || 0, h) }, x || {});
@@ -932,7 +938,7 @@ function chInfo(c) {
   const reg = REGIONAL.test(c.group || '') || REGIONAL.test(c.name || '');
   // Qualité : celle mesurée à la lecture si on la connaît (la 4K annoncée n'en est pas toujours), sinon celle du nom
   const ql = q || 2, m = vrOf(c.url), hm = m.h || 0;
-  return (c._ci = { canon: keep.join(' '), q: hm ? qOfHeight(hm) : ql, ql, hm, fps: m.f || 0, ach: m.c || 0, acod: m.a || '', hevc, fr: (!cc || cc === 'FR' || cc === 'FRA') && !reg });
+  return (c._ci = { canon: keep.join(' '), q: hm ? qOfHeight(hm) : ql, ql, hm, fps: m.f || 0, ach: m.c || 0, acod: m.a || '', ko: !!(m.ko && Date.now() - m.ko < 3 * 864e5), hevc, fr: (!cc || cc === 'FR' || cc === 'FRA') && !reg });
 }
 // Pour chaque bouquet : ses chaînes trouvées, chacune avec toutes ses versions, de la meilleure qualité à la moins bonne
 function homeIndex() {
@@ -1194,8 +1200,62 @@ function variantsOf(c) {
   return l.sort((a, b) => chScore(b) - chScore(a) || chInfo(a).hevc - chInfo(b).hevc || a.n - b.n);
 }
 const qLabel = c => { const k = chInfo(c); return QLBL[k.q] + (k.hevc ? ' HEVC' : ''); };
+/* Test des qualités : chaque version lue sans le son une dizaine de secondes (une seule lecture à la fois, comme le veut
+   l'abonnement), mesurée, puis retour à la meilleure. Pour une chaîne, ou pour toutes les chaînes de l'accueil. */
+const QT = { on: false, stop: false, ko: null };
+function qtBox(txt, n, total) {
+  let b = $('#qtBox');
+  if (!b) { b = document.createElement('div'); b.id = 'qtBox'; document.body.appendChild(b); }
+  b.innerHTML = `<div><b>Test des qualités</b><span>${esc(txt)}</span><i style="width:${total ? Math.round(n / total * 100) : 0}%"></i></div><button class="btn">Arrêter</button>`;
+  b.querySelector('button').onclick = () => { QT.stop = true; };
+}
+async function qtOne(c) {
+  QT.ko = null; c._mq = 0;
+  play(c, []); video.muted = true;
+  const t0 = Date.now();
+  while (Date.now() - t0 < 16000) {                    // attente du démarrage
+    await new Promise(r => setTimeout(r, 400));
+    if (QT.stop || QT.ko === c) break;
+    if (S.current === c && S.engine && !video.paused && video.videoHeight) break;
+  }
+  if (QT.stop) return;
+  if (QT.ko === c || !(S.current === c && video.videoHeight)) {    // ne marche pas : notée, classée en dernier
+    const o = vrOf(c.url); VRES.set(c.url, Object.assign({}, o, { ko: Date.now() }));
+    try { localStorage.setItem('iptv.dev.vres', JSON.stringify(Object.fromEntries(VRES))); } catch (e) {}
+    S.channels.forEach(x => { if (x.url === c.url) x._ci = null; }); return;
+  }
+  const o = vrOf(c.url); if (o.ko) { delete o.ko; VRES.set(c.url, o); }
+  for (let i = 0; i < 18 && !QT.stop; i++) await new Promise(r => setTimeout(r, 500));   // mesures (résolution, images/s, son)
+}
+async function qtRun(list, label, back) {
+  if (QT.on || !list.length) return;
+  QT.on = true; QT.stop = false;
+  const wasMuted = video.muted;
+  try {
+    for (let i = 0; i < list.length && !QT.stop; i++) { qtBox((label(list[i]) || list[i].name) + ' · ' + (i + 1) + ' / ' + list.length + ' · environ ' + Math.ceil((list.length - i) * 11 / 60) + ' min', i, list.length); await qtOne(list[i]); }
+  } finally {
+    QT.on = false; video.muted = wasMuted; const b = $('#qtBox'); if (b) b.remove();
+    S.home = null; S._varCh = null; S.channels.forEach(x => { x._ci = null; });
+    toast(QT.stop ? 'Test arrêté' : 'Test terminé : les meilleures versions passent en premier');
+    back();
+  }
+}
+// Chaîne en cours : toutes ses versions, puis la meilleure
+function qtChannel() {
+  const c = S.current; if (!c || c.vod) return;
+  const v = variantsOf(c); $('#qualMenu').hidden = true;
+  qtRun(v, x => qLabel(x) + ' · ' + (x.group || ''), () => { const best = variantsOf(c)[0]; if (best) play(best, variantsOf(c).slice(1)); });
+}
+// Accueil : les chaînes qui ont plusieurs versions (celles pas encore vérifiées d'abord)
+function qtHome() {
+  const all = []; homeIndex().forEach(f => f.subs.forEach(x => { if (x.list.length > 1) x.list.forEach(c => all.push(c)); }));
+  const list = all.filter(c => !chInfo(c).hm).concat(all.filter(c => chInfo(c).hm));
+  if (!list.length) { toast('Aucune chaîne de l\'accueil n\'a plusieurs versions'); return; }
+  closeModals();
+  qtRun(list, x => niceName(x) + ' ' + qLabel(x), () => { stopAll(); setHomeView(true); });
+}
 // Dans le menu des qualités : résolution mesurée, ou « annoncée » tant qu'on ne l'a pas lue
-const qNote = c => { const k = chInfo(c); if (!k.hm) return 'annoncée, pas encore vérifiée';
+const qNote = c => { const k = chInfo(c); if (k.ko) return 'ne marchait pas au dernier test'; if (!k.hm) return 'annoncée, pas encore vérifiée';
   const au = k.ach ? (k.ach >= 6 ? '5.1' : k.ach === 2 ? 'stéréo' : k.ach + ' canaux') + (k.acod ? ' ' + (/ec-3|eac3/i.test(k.acod) ? 'Dolby Digital+' : /ac-3|ac3/i.test(k.acod) ? 'Dolby Digital' : /mp4a|aac/i.test(k.acod) ? 'AAC' : /mp3|mpga/i.test(k.acod) ? 'MP3' : k.acod) : '') : '';
   return [k.hm + 'p' + (k.fps ? ' ' + k.fps + ' i/s' : ''), au, k.ql !== k.q ? 'annoncée ' + QLBL[k.ql] : ''].filter(Boolean).join(' · '); };
 // Film du catalogue : ses versions (4K, HD…) ; chaîne : les autres qualités de la liste
@@ -1221,6 +1281,7 @@ $('#qualBtn').onclick = e => {
   const v = variantsOf(c);
   if (!m.hidden || v.length < 2) { m.hidden = true; return; }
   m.innerHTML = v.map((x, i) => `<button data-qv="${i}"><span class="ck">${x === c ? '✓' : ''}</span><span class="q">${esc(qLabel(x))}</span><span class="r"><b>${esc(x.group || 'Sans catégorie')}</b> · ${esc(qNote(x))}<br>${esc(x.name)}</span></button>`).join('');
+  m.innerHTML += `<button data-qtest><span class="ck">⟳</span><span class="q" style="min-width:0">Tester les ${v.length} versions</span><span class="r">≈ ${v.length * 11} s, sans le son, puis la meilleure</span></button>`;
   m._v = v; m.hidden = false;
   }
   const r = $('#qualBtn').getBoundingClientRect(), w = m.offsetWidth, h = m.offsetHeight;
@@ -1237,6 +1298,7 @@ $('#qualMenu').addEventListener('click', e => {
     play(Object.assign({}, c, { url }));
     return;
   }
+  if (e.target.closest('[data-qtest]')) { qtChannel(); return; }
   const b = e.target.closest('[data-qv]'), m = $('#qualMenu'); if (!b) return;
   const v = m._v, x = v[+b.dataset.qv]; m.hidden = true;
   if (x && x !== S.current) play(x, v.filter(y => y !== x && chInfo(y).q <= chInfo(x).q));   // si elle ne passe pas : qualités en dessous
@@ -1403,6 +1465,7 @@ function streamVariants(url) {
 }
 
 function fail(c) {
+  if (QT.on) { QT.ko = c; return; }                   // test des qualités : échec noté, pas de message ni de version de secours
   if (S.alts && S.alts.length) {
     const n = S.alts[0]; toast('Ne passe pas : essai en ' + (QLBL[chInfo(n).q] || 'autre qualité'));
     S.retry = true; return play(n, S.alts.slice(1));
@@ -1418,7 +1481,7 @@ function fail(c) {
   const mixed = location.protocol === 'https:' && /^http:/i.test(c.url);
   // iPhone / iPad / Mac (Safari) sur la page https avec une chaîne en http : bascule toute seule vers la version http de la
   // page (une fois par chaîne), qui lit ces flux ; le message ci-dessous ne reste que si elle n'est pas disponible
-  if (mixed && APPLE_WEBKIT && !/[#&]fromhttps=1/.test(location.hash) && sessionStorage.getItem('iptv.httpTry') !== c.url) {
+  if (!QT.on && mixed && APPLE_WEBKIT && !/[#&]fromhttps=1/.test(location.hash) && sessionStorage.getItem('iptv.httpTry') !== c.url) {
     try { sessionStorage.setItem('iptv.httpTry', c.url); } catch (e) {}
     setStatus('load', '<span class="hint">Passage à la version iPhone de la page…</span>'); openHttpVersion(); return;
   }
