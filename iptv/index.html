@@ -3404,6 +3404,15 @@ function closeModals() { document.querySelectorAll('.modal.open').forEach(m => m
 document.querySelectorAll('.modal').forEach(m => m.addEventListener('click', e => { if (e.target === m || e.target.closest('[data-close]')) closeModals(); }));
 $('#managePl').onclick = () => { $('#addErr').textContent = ''; openModal('plModal'); };
 
+// Export d'une liste en fichier .m3u : pour l'ajouter ailleurs avec « Importer un fichier » (ex. iPhone quand le serveur
+// refuse le relais) ; le fichier contient les identifiants de l'abonnement, à garder pour soi
+function exportList(pl) {
+  const blob = new Blob([pl.text], { type: 'audio/x-mpegurl' }), a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (pl.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9 _.-]+/g, ' ').replace(/\s+/g, ' ').trim() || 'liste') + '.m3u';
+  document.body.appendChild(a); a.click(); setTimeout(() => a.remove(), 1000); setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  toast('Liste exportée : fichier ' + a.download + ' (il contient vos identifiants, gardez-le pour vous)');
+}
 function renderPlaylists() {
   $('#builtinBox').style.display = S.playlists.some(p => p.id === 'builtin') ? 'none' : '';
   if (window.renderSync) renderSync();
@@ -3412,11 +3421,14 @@ function renderPlaylists() {
     <div class="pl${S.pl && S.pl.id === p.id ? ' on' : ''}">
       <div class="meta" data-use="${p.id}"><div class="nm">${esc(p.name)}</div>
         <div class="sub">${p.count.toLocaleString('fr-FR')} chaînes · ${p.url ? 'adresse' : 'fichier'} · ${new Date(p.updated || p.added).toLocaleDateString('fr-FR')}</div></div>
+      <button class="btn icon" data-export="${p.id}" title="Exporter la liste (fichier .m3u, à importer sur un autre appareil)"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg></button>
       ${p.url ? `<button class="btn icon" data-refresh="${p.id}" title="Recharger depuis l'adresse"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg></button>` : ''}
       <button class="btn icon danger" data-del="${p.id}" title="Supprimer"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>
     </div>`).join('') : '<p class="hint">Aucune liste enregistrée.</p>';
 }
 $('#plList').addEventListener('click', async e => {
+  const ex = e.target.closest('[data-export]');
+  if (ex) { const pl = S.playlists.find(x => x.id === ex.dataset.export); if (pl) exportList(pl); return; }
   const u = e.target.closest('[data-use]'), d = e.target.closest('[data-del]'), r = e.target.closest('[data-refresh]');
   if (u) { if (!S.pl || S.pl.id !== u.dataset.use) { stopAll(); usePlaylist(u.dataset.use); } closeModals(); }
   else if (d) {
