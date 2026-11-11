@@ -306,6 +306,9 @@ body.hasmatch #nowScore{display:inline}
 #vodTrailer iframe.bare{pointer-events:none}
 /* Titre (haut) et logo YouTube (bas) rejetés hors du cadre : lecteur plus haut que la zone visible, vidéo centrée dedans */
 #vodTrailer iframe.bare,.hovc .md iframe{top:-64px;height:calc(100% + 128px)}
+#vodTrailer .trplay{position:absolute;right:56px;bottom:10px;width:38px;height:38px;border-radius:50%;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:2}
+#vodTrailer .trplay svg{width:18px;height:18px;fill:#fff}
+#vodTrailer .trplay .ip{display:none}#vodTrailer .trplay.off .ip{display:block}#vodTrailer .trplay.off .ipa{display:none}
 #vodTrailer .trmute{position:absolute;right:10px;bottom:10px;width:38px;height:38px;border-radius:50%;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:2}
 #vodTrailer .trmute svg{width:20px;height:20px;stroke:#fff;stroke-width:2;fill:#fff;stroke-linecap:round;stroke-linejoin:round}
 #vodTrailer .trmute .im{display:none}#vodTrailer .trmute.off .iv{display:none}#vodTrailer .trmute.off .im{display:block}
@@ -1976,7 +1979,7 @@ document.addEventListener('scroll', e => { if (HOV.el && !(e.target.closest && e
 function posterHtml(it, i, rank, prog) {
   const r = it.rating ? `<span class="rt">★ ${it.rating.toFixed(1)}</span>` : '';
   const pg = prog ? `<span class="pgb"><i style="width:${Math.max(3, Math.min(100, prog.pct || 0))}%"></i></span>${prog.lab ? `<span class="pgl">${esc(prog.lab)}</span>` : ''}` : '';
-  return `<button class="poster" data-v="${i}" title="${esc(it.name)}${it.year ? ' (' + it.year + ')' : ''}"><div class="im">${esc(it.name)}${it.cover ? `<img src="${esc(posterUrl(it.cover))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}${r}${it.kind === 'series' ? '<span class="kd">SÉRIE</span>' : ''}${vfOnly(it) ? '<span class="vfo" title="Film étranger proposé seulement en français (pas de VO)">VF seule</span>' : ''}${rank ? `<span class="rk">${rank}</span>` : ''}${pg}</div><div class="pt">${esc(it.name)}</div><div class="py">${it.year || ''}</div></button>`;
+  return `<button class="poster" data-v="${i}"><div class="im">${esc(it.name)}${it.cover ? `<img src="${esc(posterUrl(it.cover))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}${r}${it.kind === 'series' ? '<span class="kd">SÉRIE</span>' : ''}${vfOnly(it) ? '<span class="vfo" title="Film étranger proposé seulement en français (pas de VO)">VF seule</span>' : ''}${rank ? `<span class="rk">${rank}</span>` : ''}${pg}</div><div class="pt">${esc(it.name)}</div><div class="py">${it.year || ''}</div></button>`;
 }
 function vodRow(title, sub, list, ranked) { if (!list.length) return ''; return `<div class="vrow"><h3>${esc(title)}${sub ? `<small>${esc(sub)}</small>` : ''}</h3><div class="vwrap"><button class="varr l" data-arr="-1" aria-label="Précédents"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><div class="vscroll">${list.map((it, k) => posterHtml(it, V.shown.push(it) - 1, Array.isArray(ranked) ? ranked[k] : ranked && k < 20 ? k + 1 : 0)).join('')}</div><button class="varr r" data-arr="1" aria-label="Suivants"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button></div></div>`; }
 
@@ -2258,8 +2261,11 @@ async function showTrailer(it) {
   // Ordinateur : avec le son, sans les boutons de YouTube (on ne peut que couper / remettre le son) ; téléphone : lecteur
   // YouTube normal et sans le son (le téléphone refuse la lecture automatique avec le son)
   const bare = !MOBILE, p = bare ? 'mute=0&controls=0&disablekb=1&fs=0&iv_load_policy=3' : 'mute=1';
-  box.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(tr.key)}?autoplay=1&${p}&rel=0&modestbranding=1&playsinline=1&enablejsapi=1${bare ? '&loop=1&playlist=' + encodeURIComponent(tr.key) : ''}${cc}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" title="Bande-annonce"${bare ? ' class="bare" tabindex="-1"' : ''}></iframe>${tr.tag ? `<span class="trtag">Bande-annonce ${tr.tag === 'VO' ? 'en VO (sous-titres français si YouTube en a)' : tr.tag}</span>` : ''}${bare ? '<button class="trmute" title="Couper / remettre le son"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="iv" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" fill="none"/><path class="im" d="M16 9l5 6M21 9l-5 6" fill="none"/></svg></button>' : ''}`;
+  box.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(tr.key)}?autoplay=1&${p}&rel=0&modestbranding=1&playsinline=1&enablejsapi=1${bare ? '&loop=1&playlist=' + encodeURIComponent(tr.key) : ''}${cc}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" title="Bande-annonce"${bare ? ' class="bare" tabindex="-1"' : ''}></iframe>${tr.tag ? `<span class="trtag">Bande-annonce ${tr.tag === 'VO' ? 'en VO (sous-titres français si YouTube en a)' : tr.tag}</span>` : ''}${bare ? '<button class="trplay" title="Pause / lecture"><svg viewBox="0 0 24 24"><path class="ip" d="M7 4v16l13-8z"/><path class="ipa" d="M7 4h3.5v16H7zM13.5 4H17v16h-3.5z"/></svg></button>' : ''}${bare ? '<button class="trmute" title="Couper / remettre le son"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="iv" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" fill="none"/><path class="im" d="M16 9l5 6M21 9l-5 6" fill="none"/></svg></button>' : ''}`;
   $('#vodDetail').prepend(box);
+  const pb = box.querySelector('.trplay');
+  if (pb) pb.onclick = () => { const paused = !pb.classList.contains('off'); pb.classList.toggle('off', paused);
+    box.querySelector('iframe').contentWindow.postMessage(JSON.stringify({ event: 'command', func: paused ? 'pauseVideo' : 'playVideo', args: [] }), '*'); };
   const mb = box.querySelector('.trmute');
   if (mb) mb.onclick = () => { const off = !mb.classList.contains('off'); mb.classList.toggle('off', off);
     box.querySelector('iframe').contentWindow.postMessage(JSON.stringify({ event: 'command', func: off ? 'mute' : 'unMute', args: [] }), '*'); };
@@ -2415,7 +2421,10 @@ async function vodEnrich(it) {
   const recs = ((d.recommendations || {}).results || []).slice(0, 40), meta = {}, P = popIndex(V.data ? V.data.items : []);
   const ids = recs.map(r => { const k = ((r.media_type ? r.media_type === 'tv' : ti.kind === 'tv') ? 's' : 'm') + r.id; meta[k] = { k: k[0], t: r.title || r.name || '', o: r.original_title || r.original_name || '', y: +String(r.release_date || r.first_air_date || '').slice(0, 4) || 0, p: r.poster_path || '', l: r.original_language || '' }; return k; });
   const sim = popList(ids, P, meta, ['m', 's']).filter(x => x !== it).slice(0, 12);
-  if (sim.length && $('#vodSimilar')) $('#vodSimilar').innerHTML = '<h4 class="vdh">Titres similaires</h4><div class="vscroll">' + sim.map(x => posterHtml(x, V.shown.push(x) - 1)).join('') + '</div>';
+  if (sim.length && $('#vodSimilar')) {
+    $('#vodSimilar').innerHTML = '<h4 class="vdh">Titres similaires</h4><div class="vwrap"><button class="varr l" data-arr="-1" aria-label="Précédents"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><div class="vscroll">' + sim.map(x => posterHtml(x, V.shown.push(x) - 1)).join('') + '</div><button class="varr r" data-arr="1" aria-label="Suivants"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button></div>';
+    varrState($('#vodSimilar .vscroll'));
+  }
   // Épisodes : images et résumés de TMDB pour la saison affichée
   if (ti.kind === 'tv') {
     const sel = $('#seasonSel'), sn = sel ? +sel.value : 0; if (!sn) return;
