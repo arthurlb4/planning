@@ -2112,11 +2112,33 @@ document.addEventListener('mouseout', e => {
   if (HOV.src === p) HOV.close = setTimeout(hovClose, 120);
 });
 document.addEventListener('scroll', e => { if (HOV.el && !(e.target.closest && e.target.closest('.hovc')) && !(HOV.auto && Date.now() - HOV.auto < 900)) hovClose(true); }, true);
+/* Affiches manquantes (absentes ou cassées sur le serveur) : retrouvées sur TMDB quand l'affiche arrive à l'écran,
+   et retenues sur l'appareil */
+const COV = (() => { try { return JSON.parse(localStorage.getItem('iptv.dev.cov') || '{}') || {}; } catch (e) { return {}; } })();
+const coverOf = it => (it._covBad ? '' : it.cover) || (COV[itemKey(it)] ? 'https://image.tmdb.org/t/p/w342' + COV[itemKey(it)] : '');
+const COVQ = { io: null, busy: 0 };
+function coverWatch(i) {
+  const el = document.querySelector(`#vod .poster[data-v="${i}"], #vodDetail .poster[data-v="${i}"]`); if (!el || !LS.get('pref.tmdb', '')) return;
+  if (!COVQ.io) COVQ.io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { COVQ.io.unobserve(e.target); coverFetch(e.target); } }), { rootMargin: '300px' });
+  COVQ.io.observe(el);
+}
+async function coverFetch(el) {
+  const it = V.shown[+el.dataset.v]; if (!it || COV[itemKey(it)] === '') return;
+  const ti = await tmdbInfo(it).catch(() => null), pp = ti && ti.d && ti.d.poster_path;
+  COV[itemKey(it)] = pp || '';                         // '' : rien sur TMDB, on ne recherche plus
+  const keys = Object.keys(COV); if (keys.length > 4000) delete COV[keys[0]];
+  try { localStorage.setItem('iptv.dev.cov', JSON.stringify(COV)); } catch (e) {}
+  if (!pp) return;
+  document.querySelectorAll(`.poster[data-v]`).forEach(p => { if (V.shown[+p.dataset.v] === it && !p.querySelector('.im img')) p.querySelector('.im').insertAdjacentHTML('afterbegin', `<img src="${esc(posterUrl('https://image.tmdb.org/t/p/w342' + pp))}" alt="" decoding="async">`); });
+}
+// Affiche du serveur cassée : retirée, puis cherchée sur TMDB
+function coverMiss(img) { const p = img.closest('.poster'), it = p && V.shown[+p.dataset.v]; img.remove(); if (it && !it._covBad) { it._covBad = true; if (!COV[itemKey(it)]) coverWatch(+p.dataset.v); } }
 function posterHtml(it, i, rank, prog) {
   const r = it.rating ? `<span class="rt">★ ${it.rating.toFixed(1)}</span>` : '';
   const ls = langState(it), lb = ls === 'vo' ? '<span class="lgb vo">VO</span>' : ls === '?' ? '<span class="lgb">VO ?</span>' : '';
   const pg = prog ? `<span class="pgb"><i style="width:${Math.max(3, Math.min(100, prog.pct || 0))}%"></i></span>${prog.lab ? `<span class="pgl">${esc(prog.lab)}</span>` : ''}` : '';
-  return `<button class="poster" data-v="${i}"><div class="im">${esc(it.name)}${it.cover ? `<img src="${esc(posterUrl(it.cover))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}${r}${it.kind === 'series' ? '<span class="kd">SÉRIE</span>' : ''}${vfOnly(it) ? '<span class="vfo" title="Film étranger proposé seulement en français (pas de VO)">VF seule</span>' : ''}${rank ? `<span class="rk">${rank}</span>` : ''}${pg}${lb}</div><div class="pt">${esc(it.name)}</div><div class="py">${it.year || ''}</div></button>`;
+  if (!coverOf(it)) setTimeout(() => coverWatch(i), 0);
+  return `<button class="poster" data-v="${i}"><div class="im">${esc(it.name)}${coverOf(it) ? `<img src="${esc(posterUrl(coverOf(it)))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="coverMiss(this)">` : ''}${r}${it.kind === 'series' ? '<span class="kd">SÉRIE</span>' : ''}${vfOnly(it) ? '<span class="vfo" title="Film étranger proposé seulement en français (pas de VO)">VF seule</span>' : ''}${rank ? `<span class="rk">${rank}</span>` : ''}${pg}${lb}</div><div class="pt">${esc(it.name)}</div><div class="py">${it.year || ''}</div></button>`;
 }
 function vodRow(title, sub, list, ranked) { if (!list.length) return ''; return `<div class="vrow"><h3>${esc(title)}${sub ? `<small>${esc(sub)}</small>` : ''}</h3><div class="vwrap"><button class="varr l" data-arr="-1" aria-label="Précédents"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><div class="vscroll">${list.map((it, k) => posterHtml(it, V.shown.push(it) - 1, Array.isArray(ranked) ? ranked[k] : ranked && k < 20 ? k + 1 : 0)).join('')}</div><button class="varr r" data-arr="1" aria-label="Suivants"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button></div></div>`; }
 
@@ -2458,8 +2480,13 @@ function histTrack(c, ended) {
 const LANG = () => { const o = LS.get('vod.lang', {}); return o && typeof o === 'object' ? o : {}; };
 function langSet(it, v) { const o = LANG(); o[itemKey(it)] = v; LS.set('vod.lang', o); }
 // 'fr' film français · 'vo' version originale présente · 'vf' étranger en VF seule · '?' étranger pas encore vérifié · '' inconnu
+// Animation (genre TMDB ou catégorie du catalogue) : jamais masquée, la VF y est la norme
+const ANIM_CAT = /anim|enfant|kids|manga|dessin|cartoon|disney|pixar|famille/i;
+const isAnim = it => !!(it._anim || (V.data && (it.cats || []).some(k => V.data.cats[k] && ANIM_CAT.test(V.data.cats[k].raw || V.data.cats[k].name || ''))));
 function langState(it) {
+  if (isAnim(it)) return 'anim';
   const v = LANG()[itemKey(it)] || '';
+  if (v[0] === 'a') { it._anim = true; return 'anim'; }
   if (v[0] === 'o' || it.vo) return 'vo';
   if (v[0] === 'f') return 'vf';
   if (v[0] === 'n' || it.ol === 'fr') return 'fr';
@@ -2474,7 +2501,9 @@ const langVisible = it => { const st = langState(it); return !(hideVf() && (st =
 // Lecture des langues d'un film ou d'une série (premier épisode) ; renvoie false si le serveur refuse
 async function langProbe(it) {
   if (!window.desktop || !window.desktop.remux) return null;
-  if (!it.ol) { const ti = await tmdbInfo(it).catch(() => null); if (ti && ti.ol) it.ol = ti.ol; }
+  if (isAnim(it)) { langSet(it, 'a'); return 'a'; }
+  const ti = await tmdbInfo(it).catch(() => null); if (ti && ti.ol) it.ol = ti.ol;
+  if (ti && ti.d && (ti.d.genres || []).some(g => g.id === 16)) { it._anim = true; langSet(it, 'a'); return 'a'; }   // animation : pas besoin de lire le fichier
   if (!it.ol) { langSet(it, 'u'); return 'u'; }
   if (it.ol === 'fr') { langSet(it, 'n'); return 'n'; }
   if (it.vo) return 'o';
@@ -2498,7 +2527,7 @@ function lchkQueue() {
   histAll().forEach(e => add(itemByKey(e.k))); myList().forEach(k => add(itemByKey(k)));
   (V.shown || []).forEach(add);
   D.items.slice().sort((a, b) => b.added - a.added).forEach(add);
-  return pri.filter(it => { const v = LANG()[itemKey(it)]; return !v && !it.vo && it.ol !== 'fr' && !LCHK.skip.has(it); });
+  return pri.filter(it => { const v = LANG()[itemKey(it)]; return !v && !it.vo && it.ol !== 'fr' && !isAnim(it) && !LCHK.skip.has(it); });
 }
 async function lchkTick() {
   if (LCHK.busy || !window.desktop || !window.desktop.remux || LS.get('dev.lchkoff', false) || !hideVf() || !V.data) return;
