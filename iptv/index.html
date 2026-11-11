@@ -278,7 +278,8 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 .poster .py{font-size:12px;color:var(--text3)}
 .vgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:18px 14px;margin-top:14px}
 .vgrid .poster{width:auto}
-.vd{display:grid;grid-template-columns:170px 1fr;gap:18px}
+.vd{display:grid;grid-template-columns:170px minmax(0,1fr);gap:18px}
+.vd>div{min-width:0}
 .vd .cv{width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:12px;background:var(--bg3)}
 #vodDetail .vd h3{font-size:22px;margin:0 0 4px;text-transform:none;letter-spacing:0;color:var(--text)}
 .vd .mt{color:var(--text3);font-size:13px;margin-bottom:10px}
@@ -504,7 +505,7 @@ body.vodplay:not(.homeview) #channels{display:none}
   .ag-days{margin-left:-14px;margin-right:-14px;padding-left:14px;padding-right:14px}
   .poster{width:112px}
   .vgrid{grid-template-columns:repeat(auto-fill,minmax(104px,1fr))}
-  .vd{grid-template-columns:110px 1fr;gap:12px}
+  .vd{grid-template-columns:110px minmax(0,1fr);gap:12px}
   .brands{grid-template-columns:1fr 1fr;gap:10px}
   .sq{max-height:150px}
   .sq img{max-width:72%}
@@ -2481,7 +2482,9 @@ async function openVod(it) {
   const flat = it.kind === 'series' ? epFlat(eps) : [];
   if (it.kind === 'movie') {
     const vs = vodVars(it), pick = vodPick(it), url = vodUrl('movie', pick.id, pick.ext), pos = LS.get('pos.' + url, 0);
-    if (vs.length > 1) h += `<div class="vvers"><span class="hint">Version :</span>${vs.slice().reverse().map(x => `<button class="chip${x === pick ? ' on' : ''}" data-vver="${x.id}" title="${esc(x.cat)}">${QLBL[x.q] || 'HD'}</button>`).join('')}</div>`;
+    // même qualité en double (deux « HD ») : la catégorie d'origine les distingue
+    const vlab = x => { const q = QLBL[x.q] || 'HD'; return vs.filter(y => (QLBL[y.q] || 'HD') === q).length > 1 ? q + ' · ' + String(x.cat || '').replace(/^\W*[A-Z]{2,3}\s*[-:|]\s*/i, '').replace(/[ᴬ-ᵡ⁰-⁹ᴴᴰᴿᴮʸᵁᴵᴼᴾ]+/g, '').trim().slice(0, 18) : q; };
+    if (vs.length > 1) h += `<div class="vvers"><span class="hint">Version :</span>${vs.slice().reverse().map(x => `<button class="chip${x === pick ? ' on' : ''}" data-vver="${x.id}" title="${esc(x.cat)}">${esc(vlab(x))}</button>`).join('')}</div>`;
     h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-pm="${esc(url)}">▶ ${pos > 60 ? 'Reprendre à ' + fmtDur(pos) : 'Lecture'}</button>${pos > 60 ? `<button class="btn" data-pm="${esc(url)}" data-zero>Depuis le début</button>` : ''}${listBtn}<button class="btn" data-vlc="${esc(url)}">VLC</button></div>`;
   } else if (!flat.length) h += `<div class="row" style="margin-top:14px">${listBtn}</div><p class="hint" style="margin-top:14px">Aucun épisode trouvé.</p>`;
   else {
