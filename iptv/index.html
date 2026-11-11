@@ -191,6 +191,9 @@ textarea.field{height:110px;padding:10px 12px;resize:vertical;font-family:ui-mon
 body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.homeview.vod #vod{display:block}
 /* VOD façon Netflix : rangées d'affiches */
 .vtop{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:8px -24px 4px;padding:10px 24px;position:sticky;top:-6px;z-index:4;background:var(--bg0);border-bottom:.5px solid var(--border)}
+.poster .lgb{position:absolute;right:7px;bottom:7px;z-index:1;font-size:10px;font-weight:800;padding:2px 6px;border-radius:6px;background:rgba(0,0,0,.7);color:var(--text3);letter-spacing:.02em}
+.poster .lgb.vo{background:#2e7d4f;color:#fff}
+.lrow{display:flex;align-items:center;gap:8px;margin:4px 0;font-size:14px}
 .poster .pgb{position:absolute;left:8px;right:8px;bottom:8px;height:4px;border-radius:4px;background:rgba(255,255,255,.25);z-index:1;overflow:hidden}
 .poster .pgb i{display:block;height:100%;background:#e5322d}
 .poster .pgl{position:absolute;left:8px;bottom:16px;z-index:1;font-size:11px;font-weight:800;padding:2px 6px;border-radius:6px;background:rgba(0,0,0,.75);color:#fff}
@@ -626,6 +629,8 @@ body.vodplay:not(.homeview) #channels{display:none}
     <div class="err" id="addErr"></div>
     <h3>Qualité des chaînes</h3>
     <div class="dl"><span><b>Tester les chaînes de l'accueil</b><small>Chaque version de chaque chaîne est lue une dizaine de secondes sans le son, pour mesurer sa vraie qualité ; les meilleures passent ensuite en premier. Les versions déjà vérifiées il y a moins de 7 jours sont passées.</small></span><button class="btn primary" onclick="qtHome()">Tester</button></div>
+    <h3>Films étrangers en VF seule</h3>
+    <div id="langBox"></div>
     <h3>Chaînes gratuites</h3>
     <p class="hint" style="margin:0 0 8px">Listes légales de chaînes diffusées gratuitement par leurs éditeurs, ajoutées à la suite de vos chaînes (recherche, ☰). Certaines chaînes peuvent ne plus marcher ou être bloquées hors de leur pays.</p>
     <div id="freeLists" class="dlbox"></div>
@@ -781,6 +786,7 @@ function usePlaylist(id) {
   setHomeView(S.group === 'home' && !S.current);
   const lastUrl = LS.get('last.' + p.id);
   if (typeof renderFreeLists === 'function') renderFreeLists();
+  if (typeof renderLangBox === 'function') renderLangBox();
   const lastCh = lastUrl && S.channels.find(c => c.url === lastUrl);
   if (lastCh && !S.current) showNow(lastCh, true);
 }
@@ -2108,8 +2114,9 @@ document.addEventListener('mouseout', e => {
 document.addEventListener('scroll', e => { if (HOV.el && !(e.target.closest && e.target.closest('.hovc')) && !(HOV.auto && Date.now() - HOV.auto < 900)) hovClose(true); }, true);
 function posterHtml(it, i, rank, prog) {
   const r = it.rating ? `<span class="rt">★ ${it.rating.toFixed(1)}</span>` : '';
+  const ls = langState(it), lb = ls === 'vo' ? '<span class="lgb vo">VO</span>' : ls === '?' ? '<span class="lgb">VO ?</span>' : '';
   const pg = prog ? `<span class="pgb"><i style="width:${Math.max(3, Math.min(100, prog.pct || 0))}%"></i></span>${prog.lab ? `<span class="pgl">${esc(prog.lab)}</span>` : ''}` : '';
-  return `<button class="poster" data-v="${i}"><div class="im">${esc(it.name)}${it.cover ? `<img src="${esc(posterUrl(it.cover))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}${r}${it.kind === 'series' ? '<span class="kd">SÉRIE</span>' : ''}${vfOnly(it) ? '<span class="vfo" title="Film étranger proposé seulement en français (pas de VO)">VF seule</span>' : ''}${rank ? `<span class="rk">${rank}</span>` : ''}${pg}</div><div class="pt">${esc(it.name)}</div><div class="py">${it.year || ''}</div></button>`;
+  return `<button class="poster" data-v="${i}"><div class="im">${esc(it.name)}${it.cover ? `<img src="${esc(posterUrl(it.cover))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}${r}${it.kind === 'series' ? '<span class="kd">SÉRIE</span>' : ''}${vfOnly(it) ? '<span class="vfo" title="Film étranger proposé seulement en français (pas de VO)">VF seule</span>' : ''}${rank ? `<span class="rk">${rank}</span>` : ''}${pg}${lb}</div><div class="pt">${esc(it.name)}</div><div class="py">${it.year || ''}</div></button>`;
 }
 function vodRow(title, sub, list, ranked) { if (!list.length) return ''; return `<div class="vrow"><h3>${esc(title)}${sub ? `<small>${esc(sub)}</small>` : ''}</h3><div class="vwrap"><button class="varr l" data-arr="-1" aria-label="Précédents"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><div class="vscroll">${list.map((it, k) => posterHtml(it, V.shown.push(it) - 1, Array.isArray(ranked) ? ranked[k] : ranked && k < 20 ? k + 1 : 0)).join('')}</div><button class="varr r" data-arr="1" aria-label="Suivants"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button></div></div>`; }
 
@@ -2215,7 +2222,7 @@ async function renderVod() {
   const POP0 = LS.get('pref.tmdb', '') ? await loadPopular(false).catch(() => null) : null;
   if (POP0 && D._olFor !== POP0) { const P0 = popIndex(D.items); Object.keys(POP0.meta).forEach(id => popMatch(id, P0, POP0.meta)); D._olFor = POP0; V.pop = null; }
   if (!document.body.classList.contains('vod')) return;
-  const all = D.items, movies = all.filter(i => i.kind === 'movie'), series = all.filter(i => i.kind === 'series');
+  const all = D.items.filter(langVisible), movies = all.filter(i => i.kind === 'movie'), series = all.filter(i => i.kind === 'series');
   const yr = new Date().getFullYear(), byAdded = (a, b) => b.added - a.added, byRate = (a, b) => b.rating - a.rating || b.added - a.added;
   let h = `<div class="vtop">
     ${['home:Accueil', 'movie:Films', 'series:Séries', 'cats:Catégories'].map(t => { const [k, l] = t.split(':'); return `<button class="chip${V.tab === k && !V.q ? ' on' : ''}" data-tab="${k}">${l}</button>`; }).join('')}
@@ -2444,6 +2451,82 @@ function histTrack(c, ended) {
   if (pos < 30) return;
   histPut({ k, url: c.url, lab: c.ep ? 'S' + c.ep.s + 'E' + c.ep.n : '', pos, dur, nx: c.next || null });
 }
+/* ---------- Films étrangers en VF seule : langues des fichiers lues par l'appli Windows (en-tête du fichier, quelques
+   secondes, comme avant une lecture), d'abord pour ce qui est en vue. Résultats synchronisés (vod.lang) : les autres
+   appareils masquent aussi ces films. Prudence avec le fournisseur : un film à la fois, seulement quand rien n'est en
+   lecture, 8 s entre deux, 300 par jour au plus, arrêt de plusieurs heures au premier refus (403, 429). ---------- */
+const LANG = () => { const o = LS.get('vod.lang', {}); return o && typeof o === 'object' ? o : {}; };
+function langSet(it, v) { const o = LANG(); o[itemKey(it)] = v; LS.set('vod.lang', o); }
+// 'fr' film français · 'vo' version originale présente · 'vf' étranger en VF seule · '?' étranger pas encore vérifié · '' inconnu
+function langState(it) {
+  const v = LANG()[itemKey(it)] || '';
+  if (v[0] === 'o' || it.vo) return 'vo';
+  if (v[0] === 'f') return 'vf';
+  if (v[0] === 'n' || it.ol === 'fr') return 'fr';
+  return it.ol ? '?' : '';
+}
+const langLine = it => { const v = LANG()[itemKey(it)] || ''; if (!/^[of]:/.test(v)) return '';
+  const [a, sub] = v.slice(2).split('|'), nm = l => ({ fre: 'français', fra: 'français', fr: 'français', eng: 'anglais', en: 'anglais', spa: 'espagnol', ita: 'italien', ger: 'allemand', deu: 'allemand', jpn: 'japonais', kor: 'coréen', por: 'portugais', rus: 'russe', chi: 'chinois', zho: 'chinois', ara: 'arabe', hin: 'hindi', tur: 'turc', dut: 'néerlandais', nld: 'néerlandais', swe: 'suédois', dan: 'danois', nor: 'norvégien', pol: 'polonais' }[l] || l);
+  return 'Langues : ' + ([...new Set((a || '').split(',').filter(Boolean).map(nm))].join(', ') || 'non indiquées') + (sub ? ' · Sous-titres : ' + [...new Set(sub.split(',').filter(Boolean).map(nm))].join(', ') : ''); };
+const hideVf = () => LS.get('pref.hidevf', true) !== false;
+const hideUnk = () => LS.get('pref.hidevfq', false) === true;
+const langVisible = it => { const st = langState(it); return !(hideVf() && (st === 'vf' || (hideUnk() && st === '?'))); };
+// Lecture des langues d'un film ou d'une série (premier épisode) ; renvoie false si le serveur refuse
+async function langProbe(it) {
+  if (!window.desktop || !window.desktop.remux) return null;
+  if (!it.ol) { const ti = await tmdbInfo(it).catch(() => null); if (ti && ti.ol) it.ol = ti.ol; }
+  if (!it.ol) { langSet(it, 'u'); return 'u'; }
+  if (it.ol === 'fr') { langSet(it, 'n'); return 'n'; }
+  if (it.vo) return 'o';
+  let url = '';
+  if (it.kind === 'movie') { const pk = vodPick(it); url = vodUrl('movie', pk.id, pk.ext); }
+  else { try { const j = await xget('&action=get_series_info&series_id=' + it.id), f = epFlat(j.episodes || {})[0]; if (f) url = epUrl(f); } catch (e) {} }
+  if (!url) { langSet(it, 'u'); return 'u'; }
+  let j = null; try { j = await (await fetch(window.desktop.remux + '/probe?url=' + encodeURIComponent(url))).json(); } catch (e) { return null; }
+  if (!j || !j.ok) return /\b(403|429)\b|forbidden|too many/i.test(j && j.err || '') ? false : null;
+  const au = j.audio || [], langs = au.map(a => String(a.lang || '').toLowerCase()).filter(Boolean);
+  const other = langs.filter(l => !/^(fr|fre|fra|fr-\w+)$/.test(l) && !/^(und|unk|mul|zxx|mis|qaa)$/.test(l));
+  const v = other.length || (!langs.length && au.length > 1) ? 'o' : 'f';
+  langSet(it, v + ':' + langs.join(',') + '|' + (j.subs || []).map(x => String(x.lang || '').toLowerCase()).filter(Boolean).join(','));
+  return v;
+}
+const LCHK = { busy: false, skip: new Set(), dirty: false };
+function lchkDay() { const d = new Date().toISOString().slice(0, 10), o = LS.get('dev.lchk', {}); return o.d === d ? o : { d, n: 0, stop: o.stop || 0 }; }
+function lchkQueue() {
+  const D = V.data; if (!D) return [];
+  const pri = [], seen = new Set(), add = it => { if (it && !seen.has(it)) { seen.add(it); pri.push(it); } };
+  histAll().forEach(e => add(itemByKey(e.k))); myList().forEach(k => add(itemByKey(k)));
+  (V.shown || []).forEach(add);
+  D.items.slice().sort((a, b) => b.added - a.added).forEach(add);
+  return pri.filter(it => { const v = LANG()[itemKey(it)]; return !v && !it.vo && it.ol !== 'fr' && !LCHK.skip.has(it); });
+}
+async function lchkTick() {
+  if (LCHK.busy || !window.desktop || !window.desktop.remux || LS.get('dev.lchkoff', false) || !hideVf() || !V.data) return;
+  if (document.body.classList.contains('playing') || (typeof QT !== 'undefined' && QT.on)) return;
+  const day = lchkDay(); if (day.n >= 300 || Date.now() < (day.stop || 0)) return;
+  const it = lchkQueue()[0]; if (!it) return;
+  LCHK.busy = true;
+  try {
+    const r = await langProbe(it);
+    if (r === false) { day.stop = Date.now() + 6 * 3600e3; toast('Vérification des langues mise en pause 6 h : le serveur refuse pour l\'instant'); }
+    else if (r === null) LCHK.skip.add(it);
+    else { if (r === 'o' || r === 'f') day.n++; LCHK.dirty = true; }
+    LS.set('dev.lchk', day);
+  } finally { LCHK.busy = false; renderLangBox(); }
+}
+setInterval(lchkTick, 8000);
+// Affichage mis à jour au plus toutes les 30 s (jamais pendant un aperçu au survol)
+setInterval(() => { if (LCHK.dirty && !HOV.el && document.body.classList.contains('vod') && document.body.classList.contains('homeview') && !$('#vodModal').classList.contains('open')) { LCHK.dirty = false; const y = $('#vod').scrollTop; renderVod().then(() => { $('#vod').scrollTop = y; }); } }, 30000);
+function renderLangBox() {
+  const b = $('#langBox'); if (!b) return;
+  const o = LANG(), vals = Object.values(o), vo = vals.filter(v => v[0] === 'o').length, vf = vals.filter(v => v[0] === 'f').length, day = lchkDay(), app = !!(window.desktop && window.desktop.remux);
+  const st = !app ? 'La vérification se fait dans l\'appli Windows ; ses résultats arrivent ici par la synchronisation.' : LS.get('dev.lchkoff', false) ? 'Vérification arrêtée.' : Date.now() < (day.stop || 0) ? 'En pause jusqu\'à ' + new Date(day.stop).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) + ' (le serveur a refusé).' : day.n >= 300 ? 'Plafond du jour atteint (300), reprise demain.' : 'Vérification en arrière-plan quand rien n\'est en lecture · ' + day.n + ' aujourd\'hui.';
+  b.innerHTML = `<label class="lrow"><input type="checkbox" data-lpref="pref.hidevf"${hideVf() ? ' checked' : ''}> Masquer les films et séries étrangers en VF seule</label>
+    <label class="lrow"><input type="checkbox" data-lpref="pref.hidevfq"${hideUnk() ? ' checked' : ''}> Masquer aussi ceux pas encore vérifiés (« VO ? »)</label>
+    <p class="hint" style="margin:6px 0 0">${vo} avec VO · ${vf} en VF seule masqués · ${esc(st)}</p>${app ? `<button class="btn" data-lchk style="margin-top:8px">${LS.get('dev.lchkoff', false) ? 'Reprendre la vérification' : 'Arrêter la vérification'}</button>` : ''}`;
+}
+document.addEventListener('change', e => { const c = e.target.closest && e.target.closest('[data-lpref]'); if (!c) return; LS.set(c.dataset.lpref, c.checked); renderLangBox(); V.pop = null; if (document.body.classList.contains('vod')) renderVod(); });
+document.addEventListener('click', e => { if (!(e.target.closest && e.target.closest('[data-lchk]'))) return; LS.set('dev.lchkoff', !LS.get('dev.lchkoff', false)); renderLangBox(); });
 // Recherche tolérante aux fautes : un mot de 5 lettres ou plus peut différer d'une lettre
 function lev1(a, b) {
   if (Math.abs(a.length - b.length) > 1) return false;
@@ -2495,11 +2578,15 @@ async function openVod(it) {
       return `<button class="ep" data-epk="${k}" data-epn="${x.n}"><span class="epi" ${img ? `style="background-image:url('${esc(img)}')"` : ''}><span class="n">${esc(x.n)}</span>${pct ? `<i style="width:${pct}%"></i>` : ''}</span><span class="ept"><b>${esc(cleanTitle(x.e.title || 'Épisode ' + x.n).replace(/^.*?S\d+\s*E\d+\s*[-:·]?\s*/i, '') || 'Épisode ' + x.n)}</b><span class="d">${esc([fmtDur(d.duration_secs) || d.duration, pos > 60 ? 'vu jusqu\'à ' + fmtDur(pos) : ''].filter(Boolean).join(' · '))}</span><span class="eppl">${esc(d.plot || '')}</span></span></button>`; }).join('');
     h += '</div>';
   }
-  h += '<div id="vodCast"></div><div id="vodSimilar"></div>';
+  h += `<div class="cr" id="vodLangs">${esc(langLine(it))}</div><div id="vodCast"></div><div id="vodSimilar"></div>`;
   $('#vodDetail').innerHTML = h + '</div></div>';
   showTrailer(it);
   V.open = { it, eps, cover, flat };
   vodEnrich(it);
+  // appli Windows, rien en lecture : langues de ce film lues tout de suite si on ne les connaît pas
+  if (window.desktop && window.desktop.remux && !LANG()[itemKey(it)] && !document.body.classList.contains('playing') && !LCHK.busy) {
+    LCHK.busy = true; langProbe(it).then(() => { const l = $('#vodLangs'); if (l && V.open && V.open.it === it) l.textContent = langLine(it) || (langState(it) === 'fr' ? '' : 'Langues : non lues'); LCHK.dirty = true; }).finally(() => { LCHK.busy = false; });
+  }
 }
 // Recherche enrichie (clé TMDB) : films d'un acteur ou d'un réalisateur, titres connus sous un autre nom, genres
 async function vodSearchMore(q0, already) {
