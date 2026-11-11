@@ -625,7 +625,7 @@ body.vodplay:not(.homeview) #channels{display:none}
     </details>
     <div class="err" id="addErr"></div>
     <h3>Qualité des chaînes</h3>
-    <div class="dl"><span><b>Tester les chaînes de l'accueil</b><small>Chaque version de chaque chaîne est lue une dizaine de secondes sans le son, pour mesurer sa vraie qualité ; les meilleures passent ensuite en premier.</small></span><button class="btn primary" onclick="qtHome()">Tester</button></div>
+    <div class="dl"><span><b>Tester les chaînes de l'accueil</b><small>Chaque version de chaque chaîne est lue une dizaine de secondes sans le son, pour mesurer sa vraie qualité ; les meilleures passent ensuite en premier. Les versions déjà vérifiées il y a moins de 7 jours sont passées.</small></span><button class="btn primary" onclick="qtHome()">Tester</button></div>
     <h3>Chaînes gratuites</h3>
     <p class="hint" style="margin:0 0 8px">Listes légales de chaînes diffusées gratuitement par leurs éditeurs, ajoutées à la suite de vos chaînes (recherche, ☰). Certaines chaînes peuvent ne plus marcher ou être bloquées hors de leur pays.</p>
     <div id="freeLists" class="dlbox"></div>
@@ -914,7 +914,8 @@ const chScore = c => { const k = chInfo(c); return (k.ko ? -1000 : 0) + k.q * 10
 function vresNote(c, h, x) {
   if (!c || c.vod || !(h >= 200)) return;
   const old = vrOf(c.url), nw = Object.assign({}, old, { h: Math.max(old.h || 0, h) }, x || {});
-  if (JSON.stringify(old) === JSON.stringify(nw)) return;
+  if (JSON.stringify(old) === JSON.stringify(nw) && old.t && Date.now() - old.t < 864e5) return;
+  nw.t = Date.now();                                    // date de la mesure : le test de l'accueil ne refait que les anciennes
   VRES.set(c.url, nw);
   if (VRES.size > 3000) VRES.delete(VRES.keys().next().value);
   try { localStorage.setItem('iptv.dev.vres', JSON.stringify(Object.fromEntries(VRES))); } catch (e) {}
@@ -1222,7 +1223,7 @@ async function qtOne(c) {
   }
   if (QT.stop) return;
   if (QT.ko === c || !(S.current === c && video.videoHeight)) {    // ne marche pas : notée, classée en dernier
-    const o = vrOf(c.url); VRES.set(c.url, Object.assign({}, o, { ko: Date.now() }));
+    const o = vrOf(c.url); VRES.set(c.url, Object.assign({}, o, { ko: Date.now(), t: Date.now() }));
     try { localStorage.setItem('iptv.dev.vres', JSON.stringify(Object.fromEntries(VRES))); } catch (e) {}
     S.channels.forEach(x => { if (x.url === c.url) x._ci = null; }); return;
   }
@@ -1251,8 +1252,14 @@ function qtChannel() {
 // Accueil : les chaînes qui ont plusieurs versions (celles pas encore vérifiées d'abord)
 function qtHome() {
   const all = []; homeIndex().forEach(f => f.subs.forEach(x => { if (x.list.length > 1) x.list.forEach(c => all.push(c)); }));
-  const list = all.filter(c => !chInfo(c).hm).concat(all.filter(c => chInfo(c).hm));
-  if (!list.length) { toast('Aucune chaîne de l\'accueil n\'a plusieurs versions'); return; }
+  if (!all.length) { toast('Aucune chaîne de l\'accueil n\'a plusieurs versions'); return; }
+  // mesures gardées 7 jours : seules les versions jamais vérifiées (ou trop anciennes) sont testées
+  const fresh = c => { const m = vrOf(c.url); return (m.h || m.ko) && (!m.t || Date.now() - m.t < 7 * 864e5) && !(m.ko && !m.h && Date.now() - m.ko > 864e5); };
+  let list = all.filter(c => !fresh(c));
+  if (!list.length) {
+    if (!confirm('Toutes les versions des chaînes de l\'accueil ont été vérifiées il y a moins de 7 jours. Tout retester quand même (environ ' + Math.ceil(all.length * 11 / 60) + ' min) ?')) return;
+    list = all;
+  }
   closeModals();
   qtRun(list, x => niceName(x) + ' ' + qLabel(x), () => { stopAll(); setHomeView(true); });
 }
