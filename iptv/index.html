@@ -10,6 +10,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="IPTV">
 <title>Lecteur IPTV</title>
+<!-- Bandes-annonces : connexions à YouTube et TMDB préparées dès l'ouverture (premier aperçu plus rapide) -->
+<link rel="preconnect" href="https://www.youtube-nocookie.com"><link rel="preconnect" href="https://www.youtube.com"><link rel="preconnect" href="https://i.ytimg.com">
+<link rel="preconnect" href="https://www.google.com"><link rel="preconnect" href="https://api.themoviedb.org">
 <link rel="icon" type="image/svg+xml" href="icon.svg">
 <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
 <link rel="apple-touch-icon" href="icon-180.png">
@@ -1996,7 +1999,7 @@ function hovInline(poster, it) {
         <span class="ti">${esc(it.name)}</span><span class="mt">${esc([it.year, it.rating ? '★ ' + it.rating.toFixed(1) : '', it.kind === 'series' ? 'Série' : 'Film', (it.services || []).join(', ')].filter(Boolean).join(' · '))}</span></span>`);
       setTimeout(() => { const sc = poster.closest('.vscroll'); if (!sc || HOV.el !== poster) return; const a = poster.getBoundingClientRect(), bb = sc.getBoundingClientRect();
         if (a.right > bb.right - 8) { HOV.auto = Date.now(); sc.scrollBy({ left: a.right - bb.right + 16, behavior: 'smooth' }); } }, 320);
-    }, 700);
+    }, 500);
     v.prepend(f);
   }).catch(() => {});
 }
@@ -2021,7 +2024,8 @@ document.addEventListener('mouseover', e => {
   const p = e.target.closest && e.target.closest('#vod .poster');
   if (!p || !canHover() || document.querySelector('.vscroll.drag') || $('#vodModal').classList.contains('open')) return;
   if (HOV.src === p) { clearTimeout(HOV.close); return; }
-  clearTimeout(HOV.t); HOV.t = setTimeout(() => hovOpen(p), 700);
+  if (HOV.pre !== p) { HOV.pre = p; const it = V.shown[+p.dataset.v]; if (it && LS.get('pref.tmdb', '')) trailerFor(it).catch(() => {}); }   // recherche lancée tout de suite
+  clearTimeout(HOV.t); HOV.t = setTimeout(() => hovOpen(p), 450);
 });
 document.addEventListener('mouseout', e => {
   const p = e.target.closest && e.target.closest('#vod .poster'); if (!p) return;
@@ -2294,7 +2298,8 @@ async function tmdbInfo(it) {
   if (ol && !it.ol) it.ol = ol;
   return (it._ti = { id, ol, vids, d, kind });
 }
-async function trailerFor(it) {
+function trailerFor(it) { return it._trp || (it._trp = trailerFor0(it).catch(e => { it._trp = null; throw e; })); }
+async function trailerFor0(it) {
   const ti = await tmdbInfo(it); if (!ti) return null;
   const best = l => l.slice().sort((a, b) => (b.type === 'Trailer') - (a.type === 'Trailer') || (b.official === true) - (a.official === true))[0];
   const lang = l => ti.vids.filter(v => v.iso_639_1 === l);
