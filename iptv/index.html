@@ -193,6 +193,9 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 .vtop{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:8px -24px 4px;padding:10px 24px;position:sticky;top:-6px;z-index:4;background:var(--bg0);border-bottom:.5px solid var(--border)}
 .poster .lgb{position:absolute;right:7px;bottom:7px;z-index:1;font-size:10px;font-weight:800;padding:2px 6px;border-radius:6px;background:rgba(0,0,0,.7);color:var(--text3);letter-spacing:.02em}
 .poster .lgb.vo{background:#2e7d4f;color:#fff}
+.xtbox{margin:0 0 10px;padding:10px 12px;border-radius:12px;background:var(--bg);border:.5px solid var(--border)}
+.xtbox summary{cursor:pointer;font-size:13px;color:var(--text2)}
+.xtbox[open] summary{margin-bottom:10px}
 .lrow{display:flex;align-items:center;gap:8px;margin:4px 0;font-size:14px}
 .poster .pgb{position:absolute;left:8px;right:8px;bottom:8px;height:4px;border-radius:4px;background:rgba(255,255,255,.25);z-index:1;overflow:hidden}
 .poster .pgb i{display:block;height:100%;background:#e5322d}
@@ -615,6 +618,11 @@ body.vodplay:not(.homeview) #channels{display:none}
     </div>
     <h3>Ajouter une liste</h3>
     <input class="field" id="addName" placeholder="Nom (facultatif)">
+    <details class="xtbox" id="xtBox"><summary>Avec l'adresse du serveur, l'identifiant et le mot de passe (Xtream Codes)</summary>
+      <input class="field" id="xtUrl" type="url" placeholder="Adresse du serveur (http://exemple.com:8080)" autocomplete="off" spellcheck="false">
+      <div class="row" style="gap:8px"><input class="field" id="xtUser" placeholder="Identifiant" autocomplete="off" autocapitalize="off" spellcheck="false" style="flex:1;min-width:0"><input class="field" id="xtPass" type="password" placeholder="Mot de passe" autocomplete="off" autocapitalize="off" spellcheck="false" style="flex:1;min-width:0"></div>
+      <button class="btn primary" id="xtBtn">Se connecter</button>
+    </details>
     <input class="field" id="addUrl" type="url" placeholder="Adresse de la liste (http…/playlist.m3u)" autocomplete="off" spellcheck="false">
     <div class="row">
       <button class="btn primary" id="addUrlBtn">Charger l'adresse</button>
@@ -3488,6 +3496,19 @@ $('#addUrlBtn').onclick = async () => {
   try { await addPlaylist(await fetchPlaylist(url), url); }
   catch (e) { $('#addErr').textContent = e.message; }
   b.disabled = false; b.textContent = 'Charger l\'adresse';
+};
+// Connexion Xtream : serveur + identifiant + mot de passe → adresse de la liste (get.php), les films et séries suivent
+$('#xtBtn').onclick = async () => {
+  let base = $('#xtUrl').value.trim(); const user = $('#xtUser').value.trim(), pass = $('#xtPass').value.trim(), b = $('#xtBtn');
+  $('#addErr').textContent = '';
+  if (!base || !user || !pass) { $('#addErr').textContent = 'Entrez l\'adresse du serveur, l\'identifiant et le mot de passe.'; return; }
+  if (!/^https?:\/\//i.test(base)) base = 'http://' + base;
+  try { const u = new URL(base); base = u.origin; } catch (e) { $('#addErr').textContent = 'Adresse du serveur invalide.'; return; }
+  const url = base + '/get.php?username=' + encodeURIComponent(user) + '&password=' + encodeURIComponent(pass) + '&type=m3u_plus&output=ts';
+  b.disabled = true; b.textContent = 'Connexion…';
+  try { await addPlaylist(await fetchPlaylist(url), url, $('#addName').value.trim() || guessName(base)); $('#xtUrl').value = $('#xtUser').value = $('#xtPass').value = ''; }
+  catch (e) { $('#addErr').textContent = e.message; }
+  b.disabled = false; b.textContent = 'Se connecter';
 };
 $('#addFile').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
