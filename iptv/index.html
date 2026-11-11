@@ -314,6 +314,7 @@ body.hasmatch #nowScore{display:inline}
 #vodTrailer iframe.bare{pointer-events:none}
 /* Titre (haut) et logo YouTube (bas) rejetés hors du cadre : lecteur plus haut que la zone visible, vidéo centrée dedans */
 #vodTrailer iframe.bare,.hovc .md iframe{top:-64px;height:calc(100% + 128px)}
+#vodTrailer .trclick{position:absolute;inset:0;z-index:1;cursor:pointer}
 #vodTrailer .trplay{position:absolute;right:56px;bottom:10px;width:38px;height:38px;border-radius:50%;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:2}
 #vodTrailer .trplay svg{width:18px;height:18px;fill:#fff}
 #vodTrailer .trplay .ip{display:none}#vodTrailer .trplay.off .ip{display:block}#vodTrailer .trplay.off .ipa{display:none}
@@ -2038,7 +2039,7 @@ function hovOpen(poster) {
     f.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(tr.key)}?autoplay=1&mute=1&controls=0&disablekb=1&fs=0&iv_load_policy=3&rel=0&modestbranding=1&playsinline=1&enablejsapi=1${cc}`;
     f.allow = 'autoplay; encrypted-media'; f.tabIndex = -1; f.title = 'Bande-annonce';
     f.onload = () => setTimeout(() => { f.classList.add('on'); if (LS.get('pref.hoverSound', false)) try { f.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unMute', args: [] }), '*'); } catch (e) {} }, 600);
-    el.querySelector('.md').prepend(f);
+    ytListen(f); el.querySelector('.md').prepend(f);
   }).catch(() => {});
 }
 // Aperçu dans une rangée : l'affiche elle-même s'élargit (les voisines glissent), bande-annonce et boutons dedans
@@ -2064,7 +2065,7 @@ function hovInline(poster, it) {
       setTimeout(() => { const sc = poster.closest('.vscroll'); if (!sc || HOV.el !== poster) return; const a = poster.getBoundingClientRect(), bb = sc.getBoundingClientRect();
         if (a.right > bb.right - 8) { HOV.auto = Date.now(); sc.scrollBy({ left: a.right - bb.right + 16, behavior: 'smooth' }); } }, 320);
     }, 500);
-    v.prepend(f);
+    ytListen(f); v.prepend(f);
   }).catch(() => {});
 }
 // Clics dans l'aperçu d'une rangée (avant l'ouverture normale de la fiche)
@@ -2384,9 +2385,11 @@ async function showTrailer(it) {
   // Ordinateur : avec le son, sans les boutons de YouTube (on ne peut que couper / remettre le son) ; téléphone : lecteur
   // YouTube normal et sans le son (le téléphone refuse la lecture automatique avec le son)
   const bare = !MOBILE, p = bare ? 'mute=0&controls=0&disablekb=1&fs=0&iv_load_policy=3' : 'mute=1';
-  box.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(tr.key)}?autoplay=1&${p}&rel=0&modestbranding=1&playsinline=1&enablejsapi=1${bare ? '&loop=1&playlist=' + encodeURIComponent(tr.key) : ''}${cc}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" title="Bande-annonce"${bare ? ' class="bare" tabindex="-1"' : ''}></iframe>${tr.tag ? `<span class="trtag">Bande-annonce ${tr.tag === 'VO' ? 'en VO (sous-titres français si YouTube en a)' : tr.tag}</span>` : ''}${bare ? '<button class="trplay" title="Pause / lecture"><svg viewBox="0 0 24 24"><path class="ip" d="M7 4v16l13-8z"/><path class="ipa" d="M7 4h3.5v16H7zM13.5 4H17v16h-3.5z"/></svg></button>' : ''}${bare ? '<button class="trmute" title="Couper / remettre le son"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="iv" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" fill="none"/><path class="im" d="M16 9l5 6M21 9l-5 6" fill="none"/></svg></button>' : ''}`;
+  box.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(tr.key)}?autoplay=1&${p}&rel=0&modestbranding=1&playsinline=1&enablejsapi=1${cc}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" title="Bande-annonce"${bare ? ' class="bare" tabindex="-1"' : ''}></iframe>${tr.tag ? `<span class="trtag">Bande-annonce ${tr.tag === 'VO' ? 'en VO (sous-titres français si YouTube en a)' : tr.tag}</span>` : ''}${bare ? '<button class="trplay" title="Pause / lecture"><svg viewBox="0 0 24 24"><path class="ip" d="M7 4v16l13-8z"/><path class="ipa" d="M7 4h3.5v16H7zM13.5 4H17v16h-3.5z"/></svg></button>' : ''}${bare ? '<button class="trmute" title="Couper / remettre le son"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="iv" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" fill="none"/><path class="im" d="M16 9l5 6M21 9l-5 6" fill="none"/></svg></button>' : ''}`;
   $('#vodDetail').prepend(box);
+  ytListen(box.querySelector('iframe'));
   const pb = box.querySelector('.trplay');
+  if (bare) { const cl = document.createElement('div'); cl.className = 'trclick'; cl.title = 'Pause / lecture'; cl.onclick = () => pb && pb.click(); box.appendChild(cl); }
   if (pb) pb.onclick = () => { const paused = !pb.classList.contains('off'); pb.classList.toggle('off', paused);
     box.querySelector('iframe').contentWindow.postMessage(JSON.stringify({ event: 'command', func: paused ? 'pauseVideo' : 'playVideo', args: [] }), '*'); };
   const mb = box.querySelector('.trmute');
@@ -3065,6 +3068,17 @@ video.addEventListener('timeupdate', () => {
   const dur = (S.engine === 'remux' && S.remux && S.remux.info && S.remux.info.duration) || (isFinite(video.duration) ? video.duration : 0), pos = curPos();
   if (dur > 300 && dur - pos < 40 && dur - pos > 1) nextEpBox(false);
 });
+// Bandes-annonces en boucle sans l'écran de fin de YouTube : on écoute leur état et on repart du début à la fin
+window.addEventListener('message', e => {
+  if (!/youtube(-nocookie)?\.com$/.test((() => { try { return new URL(e.origin).hostname; } catch (er) { return ''; } })())) return;
+  let d; try { d = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch (er) { return; }
+  if (!d || !d.info || d.info.playerState !== 0) return;
+  document.querySelectorAll('#vodTrailer iframe, .hovc iframe, .poster .xpv iframe').forEach(f => { if (f.contentWindow === e.source) {
+    f.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'seekTo', args: [0, true] }), '*');
+    f.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*'); } });
+});
+// demande à YouTube de nous envoyer l'état de lecture (fin de la vidéo)
+function ytListen(f) { f.addEventListener('load', () => { try { f.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*'); } catch (e) {} }); }
 // Panneau de droite : score et statistiques du match en cours
 function toggleSide(on) {
   const el = $('#side'); on = on === undefined ? el.hidden : on;
