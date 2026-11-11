@@ -2045,7 +2045,7 @@ function hovOpen(poster) {
     const f = document.createElement('iframe');
     f.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(tr.key)}?autoplay=1&mute=1&controls=0&disablekb=1&fs=0&iv_load_policy=3&rel=0&modestbranding=1&playsinline=1&enablejsapi=1${cc}`;
     f.allow = 'autoplay; encrypted-media'; f.tabIndex = -1; f.title = 'Bande-annonce';
-    f.onload = () => setTimeout(() => { f.classList.add('on'); if (LS.get('pref.hoverSound', false)) try { f.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unMute', args: [] }), '*'); } catch (e) {} }, 600);
+    f.onload = () => ytOnPlay(f, () => { f.classList.add('on'); if (LS.get('pref.hoverSound', false)) try { f.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unMute', args: [] }), '*'); } catch (e) {} }, 4000);
     ytListen(f); el.querySelector('.md').prepend(f);
   }).catch(() => {});
 }
@@ -2062,7 +2062,7 @@ function hovInline(poster, it) {
     // toujours sans le son pendant le chargement en coulisse : le son (si choisi) ne vient qu'avec l'image, à l'ouverture
     f.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(tr.key)}?autoplay=1&mute=1&controls=0&disablekb=1&fs=0&iv_load_policy=3&rel=0&modestbranding=1&playsinline=1&enablejsapi=1${cc}`;
     f.allow = 'autoplay; encrypted-media'; f.tabIndex = -1; f.title = 'Bande-annonce';
-    f.onload = () => setTimeout(() => {                 // lecture lancée : on ouvre, puis le son
+    f.onload = () => ytOnPlay(f, () => {                 // la vidéo joue vraiment : on ouvre, puis le son
       if (HOV.el !== poster || !document.body.contains(poster)) return;
       const h = im.offsetHeight, w = Math.round(h * 16 / 9);
       poster.style.setProperty('--ph', h + 'px'); poster.style.width = w + 'px'; poster.classList.add('xp'); f.classList.add('on');
@@ -2071,7 +2071,7 @@ function hovInline(poster, it) {
         <span class="ti">${esc(it.name)}</span><span class="mt">${esc([it.year, it.rating ? '★ ' + it.rating.toFixed(1) : '', it.kind === 'series' ? 'Série' : 'Film', (it.services || []).join(', ')].filter(Boolean).join(' · '))}</span></span>`);
       setTimeout(() => { const sc = poster.closest('.vscroll'); if (!sc || HOV.el !== poster) return; const a = poster.getBoundingClientRect(), bb = sc.getBoundingClientRect();
         if (a.right > bb.right - 8) { HOV.auto = Date.now(); sc.scrollBy({ left: a.right - bb.right + 16, behavior: 'smooth' }); } }, 320);
-    }, 500);
+    }, 4000);
     ytListen(f); v.prepend(f);
   }).catch(() => {});
 }
@@ -3079,11 +3079,15 @@ video.addEventListener('timeupdate', () => {
 window.addEventListener('message', e => {
   if (!/youtube(-nocookie)?\.com$/.test((() => { try { return new URL(e.origin).hostname; } catch (er) { return ''; } })())) return;
   let d; try { d = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch (er) { return; }
+  if (d && d.info && d.info.playerState === 1) YT_PLAY.forEach((cb, f) => { if (f.contentWindow === e.source) { YT_PLAY.delete(f); cb(); } });
   if (!d || !d.info || d.info.playerState !== 0) return;
   document.querySelectorAll('#vodTrailer iframe, .hovc iframe, .poster .xpv iframe').forEach(f => { if (f.contentWindow === e.source) {
     f.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'seekTo', args: [0, true] }), '*');
     f.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'playVideo', args: [] }), '*'); } });
 });
+// Rappel quand la vidéo joue vraiment (le bouton de démarrage de YouTube a disparu) ; au plus tard après `max` ms
+const YT_PLAY = new Map();
+function ytOnPlay(f, cb, max) { let done = false; const go = () => { if (done) return; done = true; YT_PLAY.delete(f); setTimeout(cb, 250); }; YT_PLAY.set(f, go); setTimeout(go, max || 4000); }
 // demande à YouTube de nous envoyer l'état de lecture (fin de la vidéo)
 function ytListen(f) { f.addEventListener('load', () => { try { f.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*'); } catch (e) {} }); }
 // Panneau de droite : score et statistiques du match en cours
