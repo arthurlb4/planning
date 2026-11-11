@@ -615,7 +615,10 @@ body.vodplay:not(.homeview) #channels{display:none}
       <button class="btn" id="addTextBtn">Ajouter le texte</button>
     </details>
     <div class="err" id="addErr"></div>
-    <p class="hint" style="margin-top:16px">Pour essayer : <a href="#" id="demoBtn">chaînes françaises gratuites (iptv-org)</a>. Les listes restent dans ce navigateur, rien n'est envoyé ailleurs.</p>
+    <h3>Chaînes gratuites</h3>
+    <p class="hint" style="margin:0 0 8px">Listes légales de chaînes diffusées gratuitement par leurs éditeurs, ajoutées à la suite de vos chaînes (recherche, ☰). Certaines chaînes peuvent ne plus marcher ou être bloquées hors de leur pays.</p>
+    <div id="freeLists" class="dlbox"></div>
+    <p class="hint" style="margin-top:16px"><a href="#" id="demoBtn" hidden></a>Les listes restent sur cet appareil, rien n'est envoyé ailleurs.</p>
   </div>
 </div>
 
@@ -748,10 +751,13 @@ async function loadPlaylists() {
   syncNow();
 }
 function usePlaylist(id) {
-  const p = S.playlists.find(x => x.id === id); if (!p) return;
-  S.pl = p; LS.set('pl', id);
+  let p = S.playlists.find(x => x.id === id); if (!p) return;
+  if (p.extra) { const main = S.playlists.find(x => !x.extra && x.id === LS.get('pl')) || S.playlists.find(x => !x.extra); if (main) p = main; }   // liste gratuite : ajoutée à la liste principale
+  S.pl = p; LS.set('pl', p.id);
   const r = parseM3U(p.text);
   S.channels = r.channels;
+  // Chaînes gratuites ajoutées (Free-TV, iptv-org, Pluto TV…) : à la suite des chaînes de la liste principale
+  S.playlists.filter(x => x.extra && x.id !== p.id).forEach(x => { try { parseM3U(x.text).channels.forEach(c => { c.n = S.channels.length + 1; c.extra = x.name; S.channels.push(c); }); } catch (e) {} });
   S.fav = new Set(LS.get(favKey(), []));
   S.recent = LS.get(recKey(), []);
   const g = new Map();
@@ -763,6 +769,7 @@ function usePlaylist(id) {
   renderGroups(); applyFilter(true); renderPlaylists();
   setHomeView(S.group === 'home' && !S.current);
   const lastUrl = LS.get('last.' + p.id);
+  if (typeof renderFreeLists === 'function') renderFreeLists();
   const lastCh = lastUrl && S.channels.find(c => c.url === lastUrl);
   if (lastCh && !S.current) showNow(lastCh, true);
 }
@@ -3119,7 +3126,8 @@ $('#managePl').onclick = () => { $('#addErr').textContent = ''; openModal('plMod
 function renderPlaylists() {
   $('#builtinBox').style.display = S.playlists.some(p => p.id === 'builtin') ? 'none' : '';
   if (window.renderSync) renderSync();
-  $('#plList').innerHTML = S.playlists.length ? S.playlists.map(p => `
+  const own = S.playlists.filter(p => !p.extra);       // les listes gratuites sont gérées dans « Chaînes gratuites »
+  $('#plList').innerHTML = own.length ? own.map(p => `
     <div class="pl${S.pl && S.pl.id === p.id ? ' on' : ''}">
       <div class="meta" data-use="${p.id}"><div class="nm">${esc(p.name)}</div>
         <div class="sub">${p.count.toLocaleString('fr-FR')} chaînes · ${p.url ? 'adresse' : 'fichier'} · ${new Date(p.updated || p.added).toLocaleDateString('fr-FR')}</div></div>
@@ -3237,6 +3245,37 @@ $('#pasteBtn').onclick = async () => {
   if (/^https?:\/\/\S+$/i.test(t.trim())) { $('#addUrl').value = t.trim(); $('#addErr').textContent = 'C\'est une adresse : touchez « Charger l\'adresse ».'; return; }
   addPlaylist(t, '');
 };
+// Listes gratuites proposées : ajout ou retrait d'un toucher
+const FREE_LISTS = [
+  { id: 'free-freetv', name: 'Free-TV', sub: 'chaînes en clair du monde entier, triées à la main', url: 'https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8' },
+  { id: 'free-iptvfr', name: 'iptv-org · France', sub: 'chaînes françaises en accès libre', url: 'https://iptv-org.github.io/iptv/countries/fr.m3u' },
+  { id: 'free-iptvfra', name: 'iptv-org · en français', sub: 'France, Belgique, Suisse, Québec, Afrique', url: 'https://iptv-org.github.io/iptv/languages/fra.m3u' },
+  { id: 'free-pluto', name: 'Pluto TV France', sub: 'chaînes thématiques gratuites avec pub (films, séries, docs)', url: 'https://i.mjh.nz/PlutoTV/fr.m3u8' },
+  { id: 'free-samsung', name: 'Samsung TV Plus France', sub: 'chaînes thématiques gratuites avec pub', url: 'https://i.mjh.nz/SamsungTVPlus/fr.m3u8' }
+];
+function renderFreeLists() {
+  const box = $('#freeLists'); if (!box) return;
+  box.innerHTML = FREE_LISTS.map(f => { const on = S.playlists.find(x => x.id === f.id);
+    return `<div class="dl"><span><b>${esc(f.name)}</b><small>${esc(f.sub)}${on ? ' · ' + on.count.toLocaleString('fr-FR') + ' chaînes' : ''}</small></span><button class="btn${on ? '' : ' primary'}" data-free="${f.id}">${on ? 'Retirer' : 'Ajouter'}</button></div>`; }).join('');
+}
+$('#freeLists').addEventListener('click', async e => {
+  const b = e.target.closest('[data-free]'); if (!b) return;
+  const f = FREE_LISTS.find(x => x.id === b.dataset.free), on = S.playlists.find(x => x.id === f.id);
+  b.disabled = true;
+  try {
+    if (on) { await DB.del(f.id); S.playlists = S.playlists.filter(x => x.id !== f.id); toast(f.name + ' retirée'); }
+    else {
+      b.textContent = 'Chargement…';
+      const text = await fetchPlaylist(f.url), n = parseM3U(text).channels.length;
+      if (!n) throw new Error('liste vide');
+      const pl = { id: f.id, name: f.name, url: f.url, text, added: Date.now(), extra: true, count: n, updated: Date.now() };
+      await DB.put(pl); S.playlists.push(pl); toast(f.name + ' ajoutée : ' + n.toLocaleString('fr-FR') + ' chaînes');
+    }
+    const main = S.playlists.find(x => !x.extra && S.pl && x.id === S.pl.id) || S.playlists.find(x => !x.extra) || S.playlists[0];
+    if (main) usePlaylist(main.id); else { S.pl = null; renderPlaylists(); renderEmpty(); }
+  } catch (er) { toast(f.name + ' : chargement impossible (' + (er.message || er) + ')'); }
+  renderFreeLists();
+});
 $('#demoBtn').onclick = async e => {
   e.preventDefault();
   const url = 'https://iptv-org.github.io/iptv/countries/fr.m3u';
@@ -3347,7 +3386,7 @@ function localItems() {
     const sk = toShared(k); if (!sk) continue;
     try { items[sk] = [JSON.parse(localStorage.getItem(full)), st[sk] || 0]; } catch (e) {}
   }
-  S.playlists.forEach(p => { const sk = 'list@' + listKey(p); items[sk] = [{ name: p.name, url: p.url || '' }, st[sk] || 1]; });
+  S.playlists.filter(p => !p.extra).forEach(p => { const sk = 'list@' + listKey(p); items[sk] = [{ name: p.name, url: p.url || '' }, st[sk] || 1]; });
   Object.keys(tomb).forEach(sk => { if (!items[sk]) items[sk] = [null, st[sk] || 1]; });
   // reprises des films : seulement les 300 plus récentes
   const pos = Object.keys(items).filter(k => k.startsWith('pos.')).sort((a, b) => items[b][1] - items[a][1]);
