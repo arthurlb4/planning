@@ -3,6 +3,8 @@
 // le son (souvent Dolby) est converti en AAC stéréo, le tout envoyé en MP4 fragmenté que l'appli lit directement.
 //   /probe?url=…                       durée, pistes audio, codec vidéo
 //   /remux?url=…&ss=…&a=…&v=copy|enc   film à partir de ss secondes, piste audio a
+//   /live?url=…                        chaîne en direct, son converti en AAC (Dolby non lu par Chromium)
+//   …&via=vlc                          le flux arrive par VLC (serveurs qui refusent ffmpeg)
 const http = require('http');
 const fs = require('fs');
 const os = require('os');
@@ -108,10 +110,12 @@ module.exports = function startRemux(ffmpeg, findVlc) {
           if (!p) { res.statusCode = 501; return res.end('vlc absent'); }
           if (u.pathname === '/probe') return probe(ffmpeg, src, p).then(j => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(j)); });
           if (u.pathname === '/remux') return remux(u, src, req, res, p);
+          if (u.pathname === '/live') return live(src, req, res, p);
           res.statusCode = 404; res.end();
         });
         return;
       }
+      if (u.pathname === '/live') return live(src, req, res, '');
       if (u.pathname === '/probe') {
         probe(ffmpeg, src).then(j => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(j)); });
         return;
@@ -152,6 +156,27 @@ module.exports = function startRemux(ffmpeg, findVlc) {
       const kill = () => { try { ff.kill('SIGKILL'); } catch (e) {} if (subFile) setTimeout(() => { fs.unlink(subFile, () => {}); SUBS.delete(sid); }, 60000); };
       req.on('close', kill); res.on('close', kill);
       ff.on('exit', () => { try { res.end(); } catch (e) {} });
+    }
+    // Chaîne en direct dont le son (Dolby Digital AC-3 / E-AC-3) n'est pas lu par Chromium : image gardée telle quelle,
+    // son converti en AAC stéréo, flux MPEG-TS lu par la page (mpegts.js)
+    function live(src, req, res, vlcPath) {
+      const args = ['-hide_banner', '-loglevel', 'error', '-fflags', '+genpts+discardcorrupt'];
+      if (vlcPath) args.push('-f', 'mpegts', '-i', 'pipe:0');
+      else {
+        args.push('-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_on_network_error', '1', '-reconnect_delay_max', '5');
+        // flux .ts (ou chaîne Xtream sans extension) : format imposé, certains serveurs l'annoncent mal
+        if (!/\.m3u8(\?|$)/i.test(src)) args.push('-f', 'mpegts');
+        args.push('-i', src);
+      }
+      args.push('-map', '0:v:0', '-map', '0:a:0?', '-sn', '-dn', '-c:v', 'copy', '-c:a', 'aac', '-ac', '2', '-b:a', '192k', '-f', 'mpegts', 'pipe:1');
+      const ff = spawn(ffmpeg, args, { windowsHide: true });
+      if (vlcPath) viaVlc(ff, vlcSource(vlcPath, src, 0));
+      ff.stderr.on('data', () => {});
+      ff.stdout.once('data', b => { if (res.writableEnded) return; res.writeHead(200, { 'Content-Type': 'video/mp2t', 'Cache-Control': 'no-store' }); res.write(b); ff.stdout.pipe(res); });
+      const kill = () => { try { ff.kill('SIGKILL'); } catch (e) {} };
+      req.on('close', kill); res.on('close', kill);
+      ff.on('exit', () => { if (!res.headersSent) { res.statusCode = 502; res.end(); } else try { res.end(); } catch (e) {} });
+      ff.on('error', () => { if (!res.headersSent) { res.statusCode = 500; res.end(); } });
     }
     srv.listen(0, '127.0.0.1', () => resolve(srv.address().port));
   });

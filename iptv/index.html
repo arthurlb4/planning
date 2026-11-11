@@ -1359,6 +1359,52 @@ function updateNowFav() { const on = S.current && S.fav.has(S.current.url); $('#
 // Navigateurs Apple (Safari, appli sur l'écran d'accueil, Chrome ou Firefox sur iPhone/iPad, Safari sur Mac) : tous lisent le HLS
 // eux-mêmes, sans autorisation du serveur ; c'est le seul lecteur qui passe avec la plupart des fournisseurs
 const APPLE_WEBKIT = /AppleWebKit/i.test(navigator.userAgent) && !/(Chrome|Chromium|Edg|Android|Electron|OPR)\//i.test(navigator.userAgent) && !/Tizen|SMART-TV|Web0S/i.test(navigator.userAgent);
+/* Son absent (appli Windows) : Chromium ne lit pas le Dolby Digital (AC-3 / E-AC-3) de certaines chaînes, que l'iPhone lit.
+   6 s après le début, si aucun son n'a été décodé, la chaîne est relancée par le convertisseur de l'appli (image telle quelle,
+   son en AAC stéréo), d'abord ffmpeg, puis VLC si le serveur refuse ffmpeg. Chaîne retenue pour la fois suivante. */
+const ACONV = (() => { let o = {}; try { o = JSON.parse(localStorage.getItem('iptv.dev.aconv') || '{}') || {}; } catch (e) {} return new Map(Object.entries(o)); })();
+const aconvSave = () => { while (ACONV.size > 300) ACONV.delete(ACONV.keys().next().value); try { localStorage.setItem('iptv.dev.aconv', JSON.stringify(Object.fromEntries(ACONV))); } catch (e) {} };
+function audioWatch(c, t, url) {
+  if (c.vod || c._noconv || !window.desktop || !window.desktop.remux || S.conv) return;
+  setTimeout(() => {
+    if (t !== token || video.paused || !video.videoHeight || typeof video.webkitAudioDecodedByteCount !== 'number') return;
+    if (video.webkitAudioDecodedByteCount > 0) return;
+    toast('Son Dolby non lu par l\'appli : conversion du son…');
+    liveConv(c, t, url, false);
+  }, 6000);
+}
+async function liveConv(c, t, url, via) {
+  if (t !== token) return;
+  stopEngines(); S.engine = ''; setStatus('load'); video.controls = false;
+  try { await loadLib('mpegts'); } catch (e) { return convFail(c, t); }
+  if (t !== token) return;
+  let done = false;
+  const timer = setTimeout(() => ko(), 25000);
+  const ok = () => {
+    if (done || t !== token) return; done = true; clearTimeout(timer);
+    setStatus(null); video.controls = !window.PREFER_NATIVE && NATIVE_CTRL(); document.body.classList.toggle('cbar', !NATIVE_CTRL());
+    S.engine = 'mpegts'; S.conv = true; S.playUrl = url; S.master = null; S.found = null; vbarUpdate(); if (!$('#stats').hidden) refreshStats();
+    ACONV.set(c.url, via ? { u: url, v: 1 } : { u: url }); aconvSave();
+  };
+  const ko = async () => {
+    if (done || t !== token) return; done = true; clearTimeout(timer);
+    if (!via) { const v = await fetch(window.desktop.remux + '/vlcinfo').then(r => r.json()).catch(() => null); if (t !== token) return; if (v && v.ok) return liveConv(c, t, url, true); }
+    convFail(c, t);
+  };
+  attempt = { ok, ko };
+  mts = mpegts.createPlayer({ type: 'mpegts', isLive: true, url: window.desktop.remux + '/live?url=' + encodeURIComponent(url) + (via ? '&via=vlc' : '') },
+    { enableWorker: true, lazyLoad: false, liveBufferLatencyChasing: false, enableStashBuffer: true, stashInitialSize: 1024 * 1024, autoCleanupSourceBuffer: true, autoCleanupMaxBackwardDuration: 120, autoCleanupMinBackwardDuration: 60 });
+  mts.on(mpegts.Events.ERROR, () => ko());
+  mts.attachMediaElement(video); mts.load();
+  const p = video.play(); if (p && p.catch) p.catch(() => {});
+}
+// conversion impossible (appli trop ancienne, serveur qui refuse) : chaîne relancée normalement, sans le son
+function convFail(c, t) {
+  if (t !== token) return;
+  c._noconv = true; ACONV.delete(c.url); aconvSave();
+  toast('Conversion du son impossible : chaîne lue sans le son');
+  S.retry = true; play(c, S.alts);
+}
 async function play(c, alts) {
   if (!c) return;
   const t = ++token;
@@ -1367,7 +1413,7 @@ async function play(c, alts) {
   S.retry = false;
   setHomeView(false); document.body.classList.remove('drawer');
   if (typeof NXT !== 'undefined') { clearInterval(NXT.t); const nb = $('#nextBox'); if (nb) nb.remove(); }
-  stopEngines(); showNow(c); S.found = null;
+  stopEngines(); showNow(c); S.found = null; S.conv = false;
   normSetup(); normReset(c);
   if (S.extFor !== c.url) { S.extCues = null; S.extFor = c.url; clearCues(subT('f')); subT('f').mode = 'disabled'; subT('r').mode = 'disabled'; }
   document.body.classList.add('playing');
@@ -1385,6 +1431,9 @@ async function play(c, alts) {
 
   // Appli Windows : film MKV (ou autre format que Chromium ne lit pas) converti à la volée par ffmpeg
   if (c.vod && window.desktop && window.desktop.remux && /\.(mkv|avi|wmv|flv|mov|m2ts|vob|divx|xvid)$/i.test(c.url)) return playRemux(c, t);
+  // Appli Windows : chaîne dont le son (Dolby) n'est pas lu par Chromium, repérée avant → son converti tout de suite
+  const ac = ACONV.get(c.url);
+  if (!c.vod && ac && !c._noconv && window.desktop && window.desktop.remux) return liveConv(c, t, ac.u, !!ac.v);
   // Chaque adresse possible (variantes https et .m3u8, voir streamVariants) × chaque façon de lire selon son format
   // HLS : lecteur de Safari d'abord sur iPhone / Mac (il passe sans autorisation du serveur) ; ailleurs hls.js d'abord
   // (plus fiable, et donne codec, débit, images/s), le lecteur du navigateur ensuite
@@ -1409,7 +1458,7 @@ async function play(c, alts) {
     if (++i >= chain.length) return fail(c);
     const [eng, url] = chain[i];
     let done = false, timer;
-    const ok = () => { if (done || t !== token) return; done = true; clearTimeout(timer); setStatus(null); video.controls = !window.PREFER_NATIVE && NATIVE_CTRL(); document.body.classList.toggle('cbar', !NATIVE_CTRL()); S.engine = eng; vbarUpdate(); S.playUrl = url; S.master = null; vodResume(); setTimeout(applyTrackPrefs, 300); if (eng !== 'hls') S.found = null; if (!$('#stats').hidden) refreshStats(); };
+    const ok = () => { if (done || t !== token) return; done = true; clearTimeout(timer); setStatus(null); video.controls = !window.PREFER_NATIVE && NATIVE_CTRL(); document.body.classList.toggle('cbar', !NATIVE_CTRL()); S.engine = eng; vbarUpdate(); S.playUrl = url; S.master = null; vodResume(); setTimeout(applyTrackPrefs, 300); if (eng !== 'hls') S.found = null; if (!$('#stats').hidden) refreshStats(); audioWatch(c, t, url); };
     const ko = why => {
       if (done || t !== token) return; done = true; clearTimeout(timer);
       if (typeof why !== 'string') why = eng === 'native' && video.error ? 'erreur ' + video.error.code + (video.error.message ? ' · ' + video.error.message : '') : 'erreur';
