@@ -892,6 +892,19 @@ HOME.forEach(sec => sec.fams.forEach(f => f.ch.forEach(([label, al]) => al.split
 function chLogo(c) { const ci = chInfo(c); return (ci.fr && logoUrl(LABEL_BY_CANON[ci.canon])) || c.logo; }
 function canonText(s) { return s.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\+/g, ' plus ').replace(/[^a-z0-9]+/g, ' ').trim(); }
 // Nom ramené à l'essentiel, qualité, codec, et si la chaîne est française (préfixe « FR: », « |FR| » ou catégorie France)
+/* Résolution réelle des chaînes, mesurée pendant la lecture (la plus haute vue) et retenue sur l'appareil : sert à
+   classer les versions d'une chaîne (la meilleure image réelle d'abord) et à afficher la vraie qualité */
+const VRES = (() => { let o = {}; try { o = JSON.parse(localStorage.getItem('iptv.dev.vres') || '{}') || {}; } catch (e) {} return new Map(Object.entries(o)); })();
+const qOfHeight = h => h >= 1440 ? 4 : h >= 900 ? 3 : h >= 650 ? 2 : 1;
+function vresNote(c, h) {
+  if (!c || c.vod || !(h >= 200)) return;
+  const old = VRES.get(c.url) || 0; if (h <= old) return;
+  VRES.set(c.url, h);
+  if (VRES.size > 3000) VRES.delete(VRES.keys().next().value);
+  try { localStorage.setItem('iptv.dev.vres', JSON.stringify(Object.fromEntries(VRES))); } catch (e) {}
+  const was = c._ci && c._ci.q; S.channels.forEach(x => { if (x.url === c.url) x._ci = null; });
+  if (was !== chInfo(c).q) { S.home = null; S._varCh = null; qualBtnUpdate(S.current); if (document.body.classList.contains('homelist')) renderHomeList(false); }
+}
 const REGIONAL = /cara[iïí]b|caribbean|antill|martiniq|guadeloup|guyan|r[ée]union|outre[- ]?mer|dom[- ]?tom|\bafri|oc[ée]an indien|polyn[ée]s|cal[ée]doni|mayotte|tahiti/i;
 function chInfo(c) {
   if (c._ci) return c._ci;
@@ -909,7 +922,9 @@ function chInfo(c) {
   // Version outre-mer ou étrangère d'une chaîne française (catégorie « FR| CARIBBEAN », « Réunion »…) : même nom, autres
   // programmes → pas mélangée avec la chaîne de métropole (accueil, qualités de rechange, guide)
   const reg = REGIONAL.test(c.group || '') || REGIONAL.test(c.name || '');
-  return (c._ci = { canon: keep.join(' '), q: q || 2, hevc, fr: (!cc || cc === 'FR' || cc === 'FRA') && !reg });
+  // Qualité : celle mesurée à la lecture si on la connaît (la 4K annoncée n'en est pas toujours), sinon celle du nom
+  const ql = q || 2, hm = VRES.get(c.url);
+  return (c._ci = { canon: keep.join(' '), q: hm ? qOfHeight(hm) : ql, ql, hm: hm || 0, hevc, fr: (!cc || cc === 'FR' || cc === 'FRA') && !reg });
 }
 // Pour chaque bouquet : ses chaînes trouvées, chacune avec toutes ses versions, de la meilleure qualité à la moins bonne
 function homeIndex() {
@@ -1171,6 +1186,8 @@ function variantsOf(c) {
   return l.sort((a, b) => chInfo(b).q - chInfo(a).q || chInfo(a).hevc - chInfo(b).hevc || a.n - b.n);
 }
 const qLabel = c => { const k = chInfo(c); return QLBL[k.q] + (k.hevc ? ' HEVC' : ''); };
+// Dans le menu des qualités : résolution mesurée, ou « annoncée » tant qu'on ne l'a pas lue
+const qNote = c => { const k = chInfo(c); return k.hm ? k.hm + 'p mesurés' + (k.ql !== k.q ? ' (annoncée ' + QLBL[k.ql] + ')' : '') : 'annoncée, pas encore vérifiée'; };
 // Film du catalogue : ses versions (4K, HD…) ; chaîne : les autres qualités de la liste
 const filmCur = c => c && c.vod && c.it && vodVars(c.it).find(x => c.url.includes('/' + x.id + '.'));
 function qualBtnUpdate(c) {
@@ -1193,7 +1210,7 @@ $('#qualBtn').onclick = e => {
   } else {
   const v = variantsOf(c);
   if (!m.hidden || v.length < 2) { m.hidden = true; return; }
-  m.innerHTML = v.map((x, i) => `<button data-qv="${i}"><span class="ck">${x === c ? '✓' : ''}</span><span class="q">${esc(qLabel(x))}</span><span class="r"><b>${esc(x.group || 'Sans catégorie')}</b><br>${esc(x.name)}</span></button>`).join('');
+  m.innerHTML = v.map((x, i) => `<button data-qv="${i}"><span class="ck">${x === c ? '✓' : ''}</span><span class="q">${esc(qLabel(x))}</span><span class="r"><b>${esc(x.group || 'Sans catégorie')}</b> · ${esc(qNote(x))}<br>${esc(x.name)}</span></button>`).join('');
   m._v = v; m.hidden = false;
   }
   const r = $('#qualBtn').getBoundingClientRect(), w = m.offsetWidth, h = m.offsetHeight;
@@ -1304,6 +1321,7 @@ async function play(c, alts) {
           else ko((d.details || d.type || 'erreur') + (d.response && d.response.code ? ' (HTTP ' + d.response.code + ')' : '') + (d.error && d.error.message ? ' · ' + d.error.message : ''));
         });
         // codecs trouvés dans le flux lui-même (quand la liste HLS ne les annonce pas)
+        hls.on(Hls.Events.MANIFEST_PARSED, (ev, d) => { const hm = Math.max(0, ...(d.levels || []).map(l => l.height || 0)); if (hm) vresNote(c, hm); });
         hls.on(Hls.Events.BUFFER_CODECS, (ev, d) => { S.found = { v: d.video && d.video.codec, a: d.audio && d.audio.codec, ch: d.audio && d.audio.metadata && d.audio.metadata.channelCount }; });
         hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => setTimeout(applyTrackPrefs, 0));
         hls.on(Hls.Events.SUBTITLE_TRACKS_UPDATED, () => setTimeout(applyTrackPrefs, 0));
@@ -1326,6 +1344,8 @@ async function play(c, alts) {
   next();
 }
 video.addEventListener('playing', () => attempt && attempt.ok());
+// Mesure de la vraie résolution : la plus haute vue sur la chaîne (et, en HLS, la meilleure version proposée par le flux)
+['resize', 'playing'].forEach(ev => video.addEventListener(ev, () => { const c = S.current; if (c && !c.vod && video.videoHeight) setTimeout(() => { if (S.current === c && video.videoHeight) vresNote(c, video.videoHeight); }, 4000); }));
 video.addEventListener('loadeddata', () => attempt && attempt.ok());
 video.addEventListener('error', () => { if (video.getAttribute('src') && attempt) attempt.ko(); });
 
