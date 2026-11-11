@@ -638,6 +638,7 @@ body.vodplay:not(.homeview) #channels{display:none}
     <h3>Chaînes gratuites</h3>
     <p class="hint" style="margin:0 0 8px">Listes légales de chaînes diffusées gratuitement par leurs éditeurs, ajoutées à la suite de vos chaînes (recherche, ☰). Certaines chaînes peuvent ne plus marcher ou être bloquées hors de leur pays.</p>
     <div id="freeLists" class="dlbox"></div>
+    <div class="dl" style="margin-top:12px"><span><b>Exemples de noms pour diagnostic</b><small>Copie des noms de chaînes et de films de la liste en cours (sans adresse ni identifiants), à coller dans la conversation pour régler la reconnaissance des chaînes et des titres</small></span><button class="btn" onclick="copyNames()">Copier</button></div>
     <p class="hint" style="margin-top:16px"><a href="#" id="demoBtn" hidden></a>Les listes restent sur cet appareil, rien n'est envoyé ailleurs.</p>
     </section>
     <section class="ptab" data-ptabc="lecture">
@@ -1424,7 +1425,10 @@ async function play(c, alts) {
         await loadLib('hls'); if (t !== token || done) return;
         if (!window.Hls || !Hls.isSupported()) return ko('hls.js non pris en charge ici');
         let recovered = false;
-        hls = new Hls({ enableWorker: true, backBufferLength: 90, manifestLoadingMaxRetry: 1 });   // 90 s gardées : retour en arrière possible en direct
+        hls = new Hls({ enableWorker: true, backBufferLength: 90, manifestLoadingMaxRetry: 1,   // 90 s gardées : retour en arrière possible en direct
+          // réserve plus grande et plus de patience : moins de saccades quand le serveur envoie juste ce qu'il faut
+          maxBufferLength: 45, maxMaxBufferLength: 120, liveSyncDurationCount: 4, liveMaxLatencyDurationCount: 14, maxBufferHole: 1,
+          fragLoadingMaxRetry: 6, fragLoadingRetryDelay: 800, levelLoadingMaxRetry: 4 });
         hls.on(Hls.Events.ERROR, (ev, d) => {
           if (!d.fatal) return;
           if (d.type === Hls.ErrorTypes.MEDIA_ERROR && !recovered) { recovered = true; hls.recoverMediaError(); }
@@ -1440,7 +1444,9 @@ async function play(c, alts) {
       } else if (eng === 'mpegts') {
         await loadLib('mpegts'); if (t !== token || done) return;
         if (!window.mpegts || !mpegts.getFeatureList().mseLivePlayback) return ko('mpegts.js non pris en charge ici');
-        mts = mpegts.createPlayer({ type: 'mpegts', isLive: true, url }, { enableWorker: true, liveBufferLatencyChasing: true, lazyLoad: false });
+        mts = mpegts.createPlayer({ type: 'mpegts', isLive: true, url }, { enableWorker: true, lazyLoad: false,
+          // pas de course au direct (elle saute des images et vide la réserve) ; 1 Mo mis de côté avant de commencer
+          liveBufferLatencyChasing: false, enableStashBuffer: true, stashInitialSize: 1024 * 1024, autoCleanupSourceBuffer: true, autoCleanupMaxBackwardDuration: 120, autoCleanupMinBackwardDuration: 60 });
         mts.on(mpegts.Events.ERROR, (type, detail, info) => ko([type, detail, info && (info.code || info.msg)].filter(Boolean).join(' · ')));
         mts.attachMediaElement(video); mts.load();
       }
@@ -3412,6 +3418,14 @@ function exportList(pl) {
   a.download = (pl.name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9 _.-]+/g, ' ').replace(/\s+/g, ' ').trim() || 'liste') + '.m3u';
   document.body.appendChild(a); a.click(); setTimeout(() => a.remove(), 1000); setTimeout(() => URL.revokeObjectURL(a.href), 10000);
   toast('Liste exportée : fichier ' + a.download + ' (il contient vos identifiants, gardez-le pour vous)');
+}
+// Échantillon de noms (chaînes principales, catégories, films) sans adresses ni identifiants
+function copyNames() {
+  const want = /tf1|tmc|france ?[2345]|france info|arte|m6|w9|canal|bein|eurosport|rmc|dazn|ligue|equipe|bfm|cnews|lci/i;
+  const ch = S.channels.filter(c => want.test(c.name)).slice(0, 120).map(c => c.name + '  [' + c.group + ']  → ' + (chInfo(c).fr ? 'FR' : 'étrangère') + ' · ' + chInfo(c).canon + ' · ' + QLBL[chInfo(c).ql]);
+  const D = V.data, films = D ? D.items.slice(0, 60).map(i => i.raw + '  → ' + i.name) : [], cats = D ? Object.values(D.cats).slice(0, 40).map(c => c.raw) : [];
+  const txt = ['CHAÎNES (' + S.channels.length + ')', ...ch, '', 'CATÉGORIES FILMS/SÉRIES', ...cats, '', 'FILMS ET SÉRIES (nom brut → nom affiché)', ...films].join('\n');
+  (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => toast('Exemples copiés : collez-les dans la conversation'), () => prompt('Copiez ce texte :', txt));
 }
 function renderPlaylists() {
   $('#builtinBox').style.display = S.playlists.some(p => p.id === 'builtin') ? 'none' : '';
