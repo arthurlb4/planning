@@ -906,7 +906,11 @@ const HOME = [
 ];
 const QMAP = { '8k': 4, '4k': 4, 'uhd': 4, '2160p': 4, '2160': 4, 'fhd': 3, '1080p': 3, '1080': 3, '1080i': 3, 'hd': 2, '720p': 2, '720': 2, 'sd': 1, '576p': 1, 'lq': 1 };
 const HEVC = new Set(['hevc', 'h265', 'x265', '265']);
-const DROP = new Set(['h264', '264', 'h', '50fps', '60fps', 'fps', '50', '60', 'hdr', 'raw', 'vip', 'backup', 'bk', 'multi', 'audio', 'dolby', 'fr', 'fra', 'ᴴᴰ']);
+const DROP = new Set(['h264', '264', 'h', '50fps', '60fps', 'fps', '50', '60', 'hdr', 'hdr10', 'raw', 'vip', 'backup', 'bk', 'bkp', 'multi', 'audio', 'double', 'dual', 'dolby', 'fr', 'fra', 'ᴴᴰ']);
+// Nom sans les mentions qui ne font pas partie du nom : « FHD+ », « (DOUBLE AUDIO) », « (Résolution Exclusive) »
+const chBare = n => String(n || '').replace(/\b(fhd|uhd|hd|sd|4k)\+/gi, '$1').replace(/\([^)]{4,}\)/g, ' ');
+// Qualité annoncée par la catégorie quand le nom n'en dit rien (« FR TV SD », « FR TV FULL HD|4K »)
+const groupQ = g => /full\s*hd|fhd|1080/i.test(g) ? 3 : /\b(4k|uhd|2160p?)\b/i.test(g) ? 4 : /\bhd\b|720/i.test(g) ? 2 : /\bsd\b|576/i.test(g) ? 1 : 0;
 const QLBL = { 4: '4K', 3: 'FHD', 2: 'HD', 1: 'SD' };
 /* Logos à jour (dépôt public tv-logo/tv-logos, figé sur une version) : ceux des listes IPTV sont souvent anciens */
 const LOGO_BASE = 'https://cdn.jsdelivr.net/gh/tv-logo/tv-logos@d32e347bb7c4c640dceec23957802ad9182f58a6/countries/';
@@ -960,17 +964,14 @@ function chInfo(c) {
   if (!cc && /\bfrance\b|\bfr\b/i.test(c.group || '')) cc = 'FR';
   let q = 0, hevc = false;
   const keep = [];
-  for (const t of canonText(c.name).split(' ')) {
-    if (QMAP[t]) q = Math.max(q, QMAP[t]);
-    else if (HEVC.has(t)) hevc = true;
-    else if (!DROP.has(t) && t) keep.push(t);
-  }
+  for (const t of canonText(c.name).split(' ')) { if (QMAP[t]) q = Math.max(q, QMAP[t]); else if (HEVC.has(t)) hevc = true; }
+  for (const t of canonText(chBare(c.name)).split(' ')) if (t && !QMAP[t] && !HEVC.has(t) && !DROP.has(t)) keep.push(t);
   if (keep.length > 1 && cc && keep[0] === cc.toLowerCase()) keep.shift();
   // Version outre-mer ou étrangère d'une chaîne française (catégorie « FR| CARIBBEAN », « Réunion »…) : même nom, autres
   // programmes → pas mélangée avec la chaîne de métropole (accueil, qualités de rechange, guide)
   const reg = REGIONAL.test(c.group || '') || REGIONAL.test(c.name || '');
   // Qualité : celle mesurée à la lecture si on la connaît (la 4K annoncée n'en est pas toujours), sinon celle du nom
-  const ql = q || 2, m = vrOf(c.url), hm = m.h || 0;
+  const ql = q || groupQ(c.group || '') || 2, m = vrOf(c.url), hm = m.h || 0;
   return (c._ci = { canon: keep.join(' '), q: hm ? qOfHeight(hm) : ql, ql, hm, fps: m.f || 0, ach: m.c || 0, acod: m.a || '', ko: !!(m.ko && Date.now() - m.ko < 3 * 864e5), hevc, fr: (!cc || cc === 'FR' || cc === 'FRA') && !reg });
 }
 // Pour chaque bouquet : ses chaînes trouvées, chacune avec toutes ses versions, de la meilleure qualité à la moins bonne
@@ -1217,12 +1218,12 @@ function setStatus(kind, msg, actions) {
   el.innerHTML = (kind === 'load' ? '<div class="spin"></div>' : '') + (msg ? `<div class="msg">${msg}</div>` : '') + (actions ? `<div class="actions">${actions}</div>` : '');
 }
 /* Nom de chaîne simplifié pour le lecteur : « FR: Canal+ FHD ᴿᴬᵂ » → « Canal+ » */
-const Q_TOKEN = /^(8k|4k|uhd|2160p?|fhd|1080[pi]?|hd|720p?|sd|576p|lq|hevc|h\.?26[45]|x26[45]|\d+\s?fps|raw|vip|backup|multi|hdr|dolby|[ᴬ-ᵡ⁰-⁹ᴴᴰᴿᴬᵂᶠᵖˢ]+)$/i;
+const Q_TOKEN = /^(8k|4k|uhd|2160p?|fhd|1080[pi]?|hd|720p?|sd|576p|lq|hevc|h\.?26[45]|x26[45]|\d+\s?fps|raw|vip|backup|bkp?|multi|hdr|hdr10|dolby|[ᴬ-ᵡ⁰-⁹ᴴᴰᴿᴬᵂᶠᵖˢ]+)$/i;
 function niceName(c) {
   const ci = chInfo(c), lab = ci.fr && LABEL_BY_CANON[ci.canon];
   if (lab) return lab;
-  const t = String(c.name || '').replace(/^\W*[A-Za-z]{2,3}\s*[:|\]]\s*/, '').replace(/[\[(|][^\])|]*[\])|]/g, ' ').split(/\s+/).filter(w => w && !Q_TOKEN.test(w.replace(/[^\wᴬ-ᵡ⁰-⁹]/g, '')));
-  return t.join(' ').replace(/\s*[-|:·]+\s*$/, '').trim() || c.name;
+  const t = chBare(c.name).replace(/^\W*[A-Za-z]{2,3}\s*[:|\]]\s*/, '').replace(/[\[(|][^\])|]*[\])|]/g, ' ').split(/\s+/).filter(w => w && !Q_TOKEN.test(w.replace(/[^\wᴬ-ᵡ⁰-⁹]/g, '')));
+  return t.join(' ').replace(/[\s.]*[-|:·]*\s*$/, '').trim() || c.name;
 }
 // Autres qualités de la même chaîne dans la liste (même nom simplifié), de la meilleure à la moins bonne
 function variantsOf(c) {
@@ -1913,6 +1914,7 @@ function cleanTitle(n) {
   while ((TAG_RE.test(t) || BR.test(t)) && k++ < 8) t = t.replace(TAG_RE, '').replace(BR, '');
   t = t.replace(/\s*[\[(][^\])]*(?:4k|uhd|fhd|hdr|multi|vostfr|vff?|french|hevc|x26[45]|1080p?|2160p?|720p?)[^\])]*[\])]/gi, '')   // [MULTI 4K], (VOSTFR)
        .replace(/\s*[\[(](19|20)\d\d[\])]/g, '')                                                                                       // (2023)
+       .replace(/((\s*[\[(][a-z]{2,3}[\])])|(\s+\b(4k|uhd|fhd|hd|sd|hdr|hdr10|hevc|x265|h265|1080p|2160p|720p|multi|vostfr|vff|vf|truefrench|french|fr)\b))+\s+(19|20)\d\d\s*$/gi, '')  // « Hope FHD 2026 », « … (FR) 2018 »
        .replace(/\s+-\s*(19|20)\d\d$/, '')                                                                                            // … - 2023
        .replace(/(\s*[-|·]?\s*\b(4k|uhd|fhd|hdr|hdr10|dv|hevc|x265|h265|x264|1080p|2160p|720p|multi|vostfr|vost|vff|vf|truefrench|french|fr)\b)+\s*$/gi, '')
        .replace(scene ? /\s+(19|20)\d\d$/ : /\s+-\s*(19|20)\d\d$/, '')                                                               // année restée (fichier, ou « - 2023 »)
