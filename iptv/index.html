@@ -188,6 +188,24 @@ textarea.field{height:110px;padding:10px 12px;resize:vertical;font-family:ui-mon
 body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.homeview.vod #vod{display:block}
 /* VOD façon Netflix : rangées d'affiches */
 .vtop{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:8px -24px 4px;padding:10px 24px;position:sticky;top:-6px;z-index:4;background:var(--bg0);border-bottom:.5px solid var(--border)}
+.poster .pgb{position:absolute;left:8px;right:8px;bottom:8px;height:4px;border-radius:4px;background:rgba(255,255,255,.25);z-index:1;overflow:hidden}
+.poster .pgb i{display:block;height:100%;background:#e5322d}
+.poster .pgl{position:absolute;left:8px;bottom:16px;z-index:1;font-size:11px;font-weight:800;padding:2px 6px;border-radius:6px;background:rgba(0,0,0,.75);color:#fff}
+.vdh{margin:18px 0 10px;font-size:15px}
+.cast{display:flex;gap:12px;overflow-x:auto;padding-bottom:8px}
+.cast .ca{flex:none;width:84px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:3px}
+.cast .ph{width:72px;height:72px;border-radius:50%;background:var(--bg3) center/cover no-repeat;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:var(--text3)}
+.cast b{font-size:12px;line-height:1.2}.cast small{font-size:11px;color:var(--text3);line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+#vodSimilar .poster{width:120px}
+.ep .epi{position:relative;flex:none;width:150px;aspect-ratio:16/9;border-radius:8px;background:var(--bg3) center/cover no-repeat;overflow:hidden}
+.ep .epi .n{position:absolute;left:6px;top:6px;width:auto;font-size:12px;font-weight:800;padding:1px 6px;border-radius:5px;background:rgba(0,0,0,.65);color:#fff}
+.ep .epi i{position:absolute;left:0;bottom:0;height:3px;background:#e5322d}
+.ep .ept{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.ep .ept .d{font-size:12px;color:var(--text3)}
+.ep .ept .eppl{font-size:12px;color:var(--text2);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+#nextBox{position:absolute;right:16px;bottom:78px;z-index:8;display:flex;align-items:center;gap:10px;padding:10px 10px 10px 14px;border-radius:14px;background:rgba(20,20,19,.95);border:.5px solid var(--border);box-shadow:0 10px 30px rgba(0,0,0,.5)}
+#nextBox span{display:flex;flex-direction:column}#nextBox small{font-size:11px;color:var(--text3)}#nextBox b{font-size:14px}
+#nextBox .btn{height:34px}
 .vvers{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}
 .vvers .chip{height:30px;padding:0 12px}
 #slowBox{position:absolute;left:50%;top:16px;transform:translateX(-50%);z-index:8;display:flex;align-items:center;gap:10px;padding:10px 10px 10px 14px;border-radius:14px;background:rgba(20,20,19,.95);border:.5px solid var(--border);box-shadow:0 10px 30px rgba(0,0,0,.5);font-size:13px;max-width:calc(100% - 24px)}
@@ -1209,6 +1227,7 @@ async function play(c, alts) {
   if (!S.retry) S.tries = [];                           // journal des essais (montré si rien ne passe)
   S.retry = false;
   setHomeView(false); document.body.classList.remove('drawer');
+  if (typeof NXT !== 'undefined') { clearInterval(NXT.t); const nb = $('#nextBox'); if (nb) nb.remove(); }
   stopEngines(); showNow(c); S.found = null;
   normSetup(); normReset(c);
   if (S.extFor !== c.url) { S.extCues = null; S.extFor = c.url; clearCues(subT('f')); subT('f').mode = 'disabled'; subT('r').mode = 'disabled'; }
@@ -1892,9 +1911,9 @@ function hovOpen(poster) {
     if (!tr || HOV.it !== it || !HOV.el) return;
     const cc = tr.cc ? '&cc_load_policy=1&cc_lang_pref=fr&hl=fr' : '';
     const f = document.createElement('iframe');
-    f.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(tr.key)}?autoplay=1&mute=${LS.get('pref.hoverSound', false) ? 0 : 1}&controls=0&disablekb=1&fs=0&iv_load_policy=3&rel=0&modestbranding=1&playsinline=1&enablejsapi=1${cc}`;
+    f.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(tr.key)}?autoplay=1&mute=1&controls=0&disablekb=1&fs=0&iv_load_policy=3&rel=0&modestbranding=1&playsinline=1&enablejsapi=1${cc}`;
     f.allow = 'autoplay; encrypted-media'; f.tabIndex = -1; f.title = 'Bande-annonce';
-    f.onload = () => setTimeout(() => f.classList.add('on'), 600);
+    f.onload = () => setTimeout(() => { f.classList.add('on'); if (LS.get('pref.hoverSound', false)) try { f.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unMute', args: [] }), '*'); } catch (e) {} }, 600);
     el.querySelector('.md').prepend(f);
   }).catch(() => {});
 }
@@ -1908,17 +1927,19 @@ function hovInline(poster, it) {
     im.insertAdjacentHTML('beforeend', `<span class="xpv" style="background-image:url('${esc(posterUrl(it.cover || ''))}')"><span class="snd${snd ? ' on' : ''}" data-hsnd title="Son"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="iv" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" fill="none"/><path class="im" d="M16 9l5 6M21 9l-5 6" fill="none"/></svg></span></span>`);
     const v = poster.querySelector('.xpv'), cc = tr.cc ? '&cc_load_policy=1&cc_lang_pref=fr&hl=fr' : '';
     const f = document.createElement('iframe');
-    f.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(tr.key)}?autoplay=1&mute=${snd ? 0 : 1}&controls=0&disablekb=1&fs=0&iv_load_policy=3&rel=0&modestbranding=1&playsinline=1&enablejsapi=1${cc}`;
+    // toujours sans le son pendant le chargement en coulisse : le son (si choisi) ne vient qu'avec l'image, à l'ouverture
+    f.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(tr.key)}?autoplay=1&mute=1&controls=0&disablekb=1&fs=0&iv_load_policy=3&rel=0&modestbranding=1&playsinline=1&enablejsapi=1${cc}`;
     f.allow = 'autoplay; encrypted-media'; f.tabIndex = -1; f.title = 'Bande-annonce';
-    f.onload = () => setTimeout(() => {                 // lecture lancée (et boutons de démarrage de YouTube partis) : on ouvre
+    f.onload = () => setTimeout(() => {                 // lecture lancée : on ouvre, puis le son
       if (HOV.el !== poster || !document.body.contains(poster)) return;
       const h = im.offsetHeight, w = Math.round(h * 16 / 9);
       poster.style.setProperty('--ph', h + 'px'); poster.style.width = w + 'px'; poster.classList.add('xp'); f.classList.add('on');
+      if (LS.get('pref.hoverSound', false)) setTimeout(() => { try { f.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unMute', args: [] }), '*'); } catch (e) {} }, 250);
       poster.insertAdjacentHTML('beforeend', `<span class="xpb"><span class="bt"><span class="btn primary" data-hplay>▶ ${it.kind === 'series' ? 'Épisodes' : 'Lecture'}</span><span class="btn" data-hinfo>Plus d'infos</span></span>
         <span class="ti">${esc(it.name)}</span><span class="mt">${esc([it.year, it.rating ? '★ ' + it.rating.toFixed(1) : '', it.kind === 'series' ? 'Série' : 'Film', (it.services || []).join(', ')].filter(Boolean).join(' · '))}</span></span>`);
       setTimeout(() => { const sc = poster.closest('.vscroll'); if (!sc || HOV.el !== poster) return; const a = poster.getBoundingClientRect(), bb = sc.getBoundingClientRect();
         if (a.right > bb.right - 8) { HOV.auto = Date.now(); sc.scrollBy({ left: a.right - bb.right + 16, behavior: 'smooth' }); } }, 320);
-    }, 1200);
+    }, 700);
     v.prepend(f);
   }).catch(() => {});
 }
@@ -1934,8 +1955,7 @@ document.addEventListener('click', e => {
   }
   if (e.target.closest('[data-hplay]') && it.kind === 'movie') {
     e.stopPropagation(); e.preventDefault(); hovClose(true);
-    const pk = vodPick(it), url = vodUrl('movie', pk.id, pk.ext);
-    play({ name: it.name, url, group: 'Film' + (it.year ? ' · ' + it.year : ''), logo: it.cover, n: 0, chno: '', vod: true, key: '', it });
+    const pk = vodPick(it); playVod(it, vodUrl('movie', pk.id, pk.ext), null, null);
     return;
   }
   hovClose(true);                                        // Plus d'infos, ou clic ailleurs : la fiche s'ouvre normalement
@@ -1953,9 +1973,10 @@ document.addEventListener('mouseout', e => {
   if (HOV.src === p) HOV.close = setTimeout(hovClose, 120);
 });
 document.addEventListener('scroll', e => { if (HOV.el && !(e.target.closest && e.target.closest('.hovc')) && !(HOV.auto && Date.now() - HOV.auto < 900)) hovClose(true); }, true);
-function posterHtml(it, i, rank) {
+function posterHtml(it, i, rank, prog) {
   const r = it.rating ? `<span class="rt">★ ${it.rating.toFixed(1)}</span>` : '';
-  return `<button class="poster" data-v="${i}" title="${esc(it.name)}${it.year ? ' (' + it.year + ')' : ''}"><div class="im">${esc(it.name)}${it.cover ? `<img src="${esc(posterUrl(it.cover))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}${r}${it.kind === 'series' ? '<span class="kd">SÉRIE</span>' : ''}${vfOnly(it) ? '<span class="vfo" title="Film étranger proposé seulement en français (pas de VO)">VF seule</span>' : ''}${rank ? `<span class="rk">${rank}</span>` : ''}</div><div class="pt">${esc(it.name)}</div><div class="py">${it.year || ''}</div></button>`;
+  const pg = prog ? `<span class="pgb"><i style="width:${Math.max(3, Math.min(100, prog.pct || 0))}%"></i></span>${prog.lab ? `<span class="pgl">${esc(prog.lab)}</span>` : ''}` : '';
+  return `<button class="poster" data-v="${i}" title="${esc(it.name)}${it.year ? ' (' + it.year + ')' : ''}"><div class="im">${esc(it.name)}${it.cover ? `<img src="${esc(posterUrl(it.cover))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}${r}${it.kind === 'series' ? '<span class="kd">SÉRIE</span>' : ''}${vfOnly(it) ? '<span class="vfo" title="Film étranger proposé seulement en français (pas de VO)">VF seule</span>' : ''}${rank ? `<span class="rk">${rank}</span>` : ''}${pg}</div><div class="pt">${esc(it.name)}</div><div class="py">${it.year || ''}</div></button>`;
 }
 function vodRow(title, sub, list, ranked) { if (!list.length) return ''; return `<div class="vrow"><h3>${esc(title)}${sub ? `<small>${esc(sub)}</small>` : ''}</h3><div class="vwrap"><button class="varr l" data-arr="-1" aria-label="Précédents"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><div class="vscroll">${list.map((it, k) => posterHtml(it, V.shown.push(it) - 1, Array.isArray(ranked) ? ranked[k] : ranked && k < 20 ? k + 1 : 0)).join('')}</div><button class="varr r" data-arr="1" aria-label="Suivants"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button></div></div>`; }
 
@@ -1987,17 +2008,25 @@ async function nfxResolve() {
   if (list.length) DB.cachePut({ id, at: Date.now(), data });
   return data;
 }
+// Genres des rangées : [titre, genre films TMDB, genre séries TMDB]
+const VGENRES = [['Action et aventure', 28, 10759], ['Comédies', 35, 35], ['Thrillers et polars', 53, 80], ['Drames', 18, 18], ['Science-fiction et fantastique', 878, 10765],
+  ['Horreur', 27, 0], ['Animation', 16, 16], ['En famille', 10751, 10751], ['Documentaires', 99, 99], ['Romance', 10749, 0]];
 async function loadPopular(force) {
   if (!LS.get('pref.tmdb', '')) return null;
   if (!force && TM.data) return TM.data;
   if (TM.loading) return TM.loading;
   TM.loading = (async () => {
-    if (!force) { const c = await DB.cacheGet('tmdb4:fr'); if (c && Date.now() - c.at < 12 * 3600e3) return (TM.data = c.data); }
+    if (!force) { const c = await DB.cacheGet('tmdb5:fr'); if (c && Date.now() - c.at < 12 * 3600e3) return (TM.data = c.data); }
     const meta = {}, ids = (res, kind) => (res.results || []).map(r => { const id = kind + r.id; meta[id] = { k: kind, t: r.title || r.name || '', o: r.original_title || r.original_name || '', y: +String(r.release_date || r.first_air_date || '').slice(0, 4) || 0, p: r.poster_path || '', l: r.original_language || '' }; return id; });
     const pages = async (path, kind, params, n) => { let out = []; for (let pg = 1; pg <= n; pg++) { try { out = out.concat(ids(await tmdb(path, Object.assign({ page: pg }, params)), kind)); } catch (e) { if (pg === 1) throw e; break; } } return out; };
     const data = { trend: [], svc: {}, svcNew: {}, meta, cinema: [] };
     // Films à l'affiche dans les salles françaises (sorties en France, les plus suivis d'abord)
     data.cinema = await pages('/movie/now_playing', 'm', { region: 'FR' }, 3).catch(() => []);
+    data.genres = {};
+    await Promise.all(VGENRES.flatMap(([, gm, gs]) => [
+      gm && pages('/discover/movie', 'm', { with_genres: gm, sort_by: 'popularity.desc', 'vote_count.gte': 80, watch_region: 'FR' }, 2).then(l => { data.genres['m' + gm] = l; }).catch(() => {}),
+      gs && pages('/discover/tv', 's', { with_genres: gs, sort_by: 'popularity.desc', 'vote_count.gte': 40, watch_region: 'FR' }, 2).then(l => { data.genres['s' + gs] = l; }).catch(() => {})
+    ].filter(Boolean)));
     const [tm, tt] = await Promise.all([pages('/trending/movie/week', 'm', {}, 3), pages('/trending/tv/week', 's', {}, 3)]);
     data.trend = tm.map((x, i) => [x, i]).concat(tt.map((x, i) => [x, i])).sort((a, b) => a[1] - b[1]).map(x => x[0]);
     let provs = [];
@@ -2014,7 +2043,7 @@ async function loadPopular(force) {
         pages('/discover/tv', 's', Object.assign({ 'first_air_date.gte': d0, 'first_air_date.lte': d1 }, nm), 2).catch(() => [])]);
       data.svcNew[name] = { m: m2, s: t2 };
     }));
-    DB.cachePut({ id: 'tmdb4:fr', at: Date.now(), data });
+    DB.cachePut({ id: 'tmdb5:fr', at: Date.now(), data });
     return (TM.data = data);
   })();
   try { return await TM.loading; } catch (e) { TM.err = e.message; return null; } finally { TM.loading = null; }
@@ -2062,8 +2091,11 @@ async function renderVod() {
   if (!all.length) { box.innerHTML = h + '<div class="empty">Aucun film ni série en français trouvé sur ce serveur.</div>'; return; }
   const q = norm(V.q).trim();
   if (q) {
-    const w = q.split(/\s+/), res = all.filter(i => w.every(x => norm(i.name).includes(x))).sort(byAdded).slice(0, 120);
-    h += `<div class="vgrid">${res.map(it => posterHtml(it, V.shown.push(it) - 1)).join('')}</div>` + (res.length ? '' : '<div class="empty">Aucun résultat.</div>');
+    // Titres (tolérant aux fautes de frappe), puis via TMDB : acteurs, titres originaux ou étrangers, genres
+    const w = q.split(/\s+/).filter(Boolean), exact = all.filter(i => w.every(x => norm(i.name).includes(x)));
+    const res = exact.concat(all.filter(i => !exact.includes(i) && fuzzyHit(i.name, w))).slice(0, 120);
+    h += `<div class="vgrid">${res.map(it => posterHtml(it, V.shown.push(it) - 1)).join('')}</div>` + (res.length ? '' : '<div class="empty" id="vodNone">Aucun titre de ce nom dans le catalogue.</div>') + '<div id="vodTm"></div>';
+    setTimeout(() => vodSearchMore(V.q, res), 0);
   } else if (V.tab === 'cats') {
     if (V.cat) {
       const c = D.cats[V.cat], res = all.filter(i => i.cats.includes(V.cat)).sort(byAdded);
@@ -2085,6 +2117,11 @@ async function renderVod() {
     const POP = await loadPopular(V.force2); V.force2 = false;
     if (!document.body.classList.contains('vod')) return;
     const kinds = V.tab === 'movie' ? ['m'] : V.tab === 'series' ? ['s'] : ['m', 's'];
+    // Reprendre (films commencés, épisode en cours ou suivant de chaque série) et Ma liste
+    const hist = histAll().map(e => ({ e, it: itemByKey(e.k) })).filter(x => x.it && kinds.includes(x.e.k[0]));
+    if (hist.length) h += `<div class="vrow"><h3>Reprendre</h3><div class="vwrap"><div class="vscroll">${hist.slice(0, 20).map(({ e, it }) => posterHtml(it, V.shown.push(it) - 1, 0, { pct: e.dur ? e.pos / e.dur * 100 : 0, lab: e.lab || (e.dur ? 'reste ' + fmtDur(e.dur - e.pos) : '') }).replace('<button class="poster"', `<button class="poster" data-hist="${esc(e.k)}"`)).join('')}</div></div></div>`;
+    const ml = myList().map(itemByKey).filter(x => x && kinds.includes(itemKey(x)[0]));
+    if (ml.length) h += vodRow('Ma liste', '', ml);
     if (POP) {
       const P = popIndex(all);
       // En tête : les plus vus en France (classement officiel publié par Netflix, seule mesure française ouverte)
@@ -2100,6 +2137,12 @@ async function renderVod() {
       if (kinds.includes('m') && POP.cinema && POP.cinema.length) {
         const cin = popList(POP.cinema, P, POP.meta, ['m']);
         if (cin.length) h += vodRow('À l\'affiche au cinéma en France', 'films en salles en ce moment · déjà dans votre catalogue', cin.slice(0, 30));
+      }
+      // Rangées par genre (genres TMDB, titres les plus suivis présents dans le catalogue)
+      if (POP.genres) for (const [label, gm, gs] of VGENRES) {
+        const ids = [].concat(kinds.includes('m') && POP.genres['m' + gm] || [], kinds.includes('s') && gs && POP.genres['s' + gs] || []);
+        const l = popList(ids.map((x, k) => [x, k % 40]).sort((a, b) => a[1] - b[1]).map(x => x[0]), P, POP.meta, kinds);
+        if (l.length >= 4) h += vodRow(label, '', l.slice(0, 30));
       }
       h += vodRow('Tendances mondiales de la semaine', 'popularité dans le monde · TMDB', popList(POP.trend, P, POP.meta, kinds).slice(0, 30), true);
       for (const [svc] of TMDB_SVC) {
@@ -2160,6 +2203,7 @@ $('#vodInner').addEventListener('click', e => {
     return;
   }
   if (e.target.closest('[data-tmdbre]')) { TM.data = null; V.force2 = true; renderVod(); return; }
+  const hs = e.target.closest('[data-hist]'); if (hs) { resumeHist(hs.dataset.hist); return; }
   const t = e.target.closest('[data-tab]'), c = e.target.closest('[data-cat]'), p = e.target.closest('[data-v]');
   if (t) { V.tab = t.dataset.tab; V.q = ''; V.cat = null; renderVod(); $('#vod').scrollTop = 0; }
   else if (c) { V.tab = 'cats'; V.cat = c.dataset.cat || null; renderVod(); $('#vod').scrollTop = 0; }
@@ -2182,7 +2226,7 @@ async function tmdbInfo(it) {
     id = r && r.results && r.results[0] && r.results[0].id;
   }
   if (!id) return null;
-  const d = await tmdb('/' + kind + '/' + id, { append_to_response: 'videos', include_video_language: 'fr,en,null' }).catch(() => null);
+  const d = await tmdb('/' + kind + '/' + id, { append_to_response: 'videos,credits,recommendations,' + (kind === 'tv' ? 'content_ratings' : 'release_dates'), include_video_language: 'fr,en,null' }).catch(() => null);
   if (!d) return null;
   const ol = d.original_language || '';
   let vids = (d.videos && d.videos.results || []).filter(v => v.site === 'YouTube');
@@ -2191,7 +2235,7 @@ async function tmdbInfo(it) {
     vids = vids.concat((o && o.results || []).filter(v => v.site === 'YouTube'));
   }
   if (ol && !it.ol) it.ol = ol;
-  return (it._ti = { id, ol, vids });
+  return (it._ti = { id, ol, vids, d, kind });
 }
 async function trailerFor(it) {
   const ti = await tmdbInfo(it); if (!ti) return null;
@@ -2220,8 +2264,62 @@ async function showTrailer(it) {
   if (mb) mb.onclick = () => { const off = !mb.classList.contains('off'); mb.classList.toggle('off', off);
     box.querySelector('iframe').contentWindow.postMessage(JSON.stringify({ event: 'command', func: off ? 'mute' : 'unMute', args: [] }), '*'); };
 }
+/* ---------- Comme les grandes plateformes : « Reprendre », « Ma liste », épisode suivant, fiche enrichie ----------
+   Historique (vod.hist, synchronisé entre appareils) : un élément par film ou série, avec l'épisode en cours, sa
+   position, sa durée et l'épisode suivant. Ma liste (vod.mylist) : les titres gardés pour plus tard. */
+const itemKey = it => (it.kind === 'series' ? 's' : 'm') + it.id;
+function itemByKey(k) {
+  const D = V.data; if (!D) return null;
+  if (D._byKey !== D.items) { D._map = new Map(D.items.map(i => [itemKey(i), i])); D._byKey = D.items; }
+  return D._map.get(k) || null;
+}
+const histAll = () => { const h = LS.get('vod.hist', []); return Array.isArray(h) ? h : []; };
+function histPut(e) { const h = histAll().filter(x => x.k !== e.k); h.unshift(Object.assign({ at: Date.now() }, e)); LS.set('vod.hist', h.slice(0, 40)); }
+function histDrop(k) { LS.set('vod.hist', histAll().filter(x => x.k !== k)); }
+const myList = () => { const l = LS.get('vod.mylist', []); return Array.isArray(l) ? l : []; };
+const inMyList = it => myList().includes(itemKey(it));
+function toggleMyList(it) { const k = itemKey(it), l = myList(); LS.set('vod.mylist', l.includes(k) ? l.filter(x => x !== k) : [k].concat(l)); toast(l.includes(k) ? 'Retiré de Ma liste' : 'Ajouté à Ma liste'); }
+// Épisodes d'une série dans l'ordre (saisons puis numéros) : pour trouver le suivant
+function epFlat(eps) {
+  const out = []; Object.keys(eps || {}).sort((a, b) => a - b).forEach(sn => (eps[sn] || []).slice().sort((a, b) => (+a.episode_num || 0) - (+b.episode_num || 0)).forEach(e => out.push({ s: +sn, n: +e.episode_num || 0, e })));
+  return out;
+}
+const epLabel = (it, x) => it.name + ' · S' + x.s + 'E' + x.n;
+const epUrl = x => vodUrl('series', x.e.id, x.e.container_extension);
+// Lecture d'un film ou d'un épisode, avec ce qu'il faut pour l'historique et l'épisode suivant
+function playVod(it, url, ep, next) {
+  play({ name: ep ? epLabel(it, ep) : it.name, url, group: it.kind === 'series' ? 'Série' : 'Film' + (it.year ? ' · ' + it.year : ''), logo: it.cover, n: 0, chno: '', vod: true, key: '', it,
+    ep: ep ? { s: ep.s, n: ep.n } : null, next: next ? { url: epUrl(next), name: epLabel(it, next), s: next.s, n: next.n } : null });
+}
+// Position et fin de lecture → historique
+function histTrack(c, ended) {
+  if (!c || !c.vod || !c.it) return;
+  const pos = Math.floor(curPos() || 0), dur = Math.floor((S.engine === 'remux' && S.remux && S.remux.info && S.remux.info.duration) || (isFinite(video.duration) ? video.duration : 0));
+  const done = ended || (dur > 300 && pos > dur * 0.95);
+  const k = itemKey(c.it);
+  if (done) {
+    if (c.next) histPut({ k, url: c.next.url, lab: 'S' + c.next.s + 'E' + c.next.n, pos: 0, dur: 0, nx: null });   // série : prochain épisode à voir
+    else histDrop(k);
+    return;
+  }
+  if (pos < 30) return;
+  histPut({ k, url: c.url, lab: c.ep ? 'S' + c.ep.s + 'E' + c.ep.n : '', pos, dur, nx: c.next || null });
+}
+// Recherche tolérante aux fautes : un mot de 5 lettres ou plus peut différer d'une lettre
+function lev1(a, b) {
+  if (Math.abs(a.length - b.length) > 1) return false;
+  if (a.length === b.length) { const d = []; for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) d.push(i); if (d.length === 2 && d[1] === d[0] + 1 && a[d[0]] === b[d[1]] && a[d[1]] === b[d[0]]) return true; }   // lettres inversées
+  let i = 0, j = 0, d = 0;
+  while (i < a.length && j < b.length) { if (a[i] === b[j]) { i++; j++; continue; } if (++d > 1) return false; if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++; } }
+  return d + (a.length - i) + (b.length - j) <= 1;
+}
+function fuzzyHit(name, words) {
+  const toks = norm(name).split(/[^a-z0-9]+/).filter(Boolean), full = norm(name);
+  return words.every(w => full.includes(w) || (w.length >= 5 && toks.some(t => lev1(t, w))));
+}
 async function openVod(it) {
   if (!it) return;
+  hovClose(true);
   $('#vodModal h2 span').textContent = it.kind === 'series' ? 'Série' : 'Film';
   $('#vodDetail').innerHTML = '<div class="spin" style="margin:30px auto"></div>'; openModal('vodModal');
   let info = {}, eps = null;
@@ -2231,33 +2329,112 @@ async function openVod(it) {
   } catch (e) {}
   const cover = info.movie_image || info.cover_big || info.cover || it.cover;
   const meta = [it.year || (info.releasedate || info.releaseDate || '').slice(0, 4), info.genre || it.genre, fmtDur(info.duration_secs) || info.duration, it.rating ? '★ ' + it.rating.toFixed(1) : '', it.services.join(', ')].filter(Boolean).join(' · ');
+  const mine = inMyList(it), hist = histAll().find(x => x.k === itemKey(it));
   let h = `<div class="vd"><div>${cover ? `<img class="cv" src="${esc(cover)}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">` : '<div class="cv"></div>'}</div><div>
-    <h3>${esc(it.name)}</h3><div class="mt">${esc(meta)}</div><div class="cr" id="vodLang"></div>
+    <h3>${esc(it.name)}</h3><div class="mt" id="vodMeta">${esc(meta)}</div>
     <div class="plot">${esc(info.plot || info.description || it.plot || '')}</div>
-    ${info.director ? `<div class="cr">Réalisation : ${esc(info.director)}</div>` : ''}${info.cast || info.actors ? `<div class="cr">Avec : ${esc(info.cast || info.actors)}</div>` : ''}`;
+    <div id="vodCrew">${info.director ? `<div class="cr">Réalisation : ${esc(info.director)}</div>` : ''}${info.cast || info.actors ? `<div class="cr">Avec : ${esc(info.cast || info.actors)}</div>` : ''}</div>`;
+  const listBtn = `<button class="btn" data-mylist>${mine ? '✓ Ma liste' : '＋ Ma liste'}</button>`;
+  const flat = it.kind === 'series' ? epFlat(eps) : [];
   if (it.kind === 'movie') {
     const vs = vodVars(it), pick = vodPick(it), url = vodUrl('movie', pick.id, pick.ext), pos = LS.get('pos.' + url, 0);
-    // Plusieurs versions (4K et HD…) : choix ; la plus légère passe mieux sur une connexion lente
-    if (vs.length > 1) h += `<div class="vvers"><span class="hint">Version :</span>${vs.slice().reverse().map(x => `<button class="chip${x === pick ? ' on' : ''}" data-vver="${x.id}" title="${esc(x.cat)}">${QLBL[x.q] || 'HD'}${x.q === 4 ? '' : ''}</button>`).join('')}</div>`;
-    h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-pm="${esc(url)}">▶ ${pos > 60 ? 'Reprendre à ' + fmtDur(pos) : 'Lecture'}</button>${pos > 60 ? `<button class="btn" data-pm="${esc(url)}" data-zero>Depuis le début</button>` : ''}<button class="btn" data-vlc="${esc(url)}">VLC</button></div>`;
-  } else {
-    const seasons = Object.keys(eps || {}).sort((a, b) => a - b);
-    if (!seasons.length) h += '<p class="hint" style="margin-top:14px">Aucun épisode trouvé.</p>';
-    else {
-      const cur = LS.get('season.' + it.id, seasons[0]), sel = seasons.includes(String(cur)) ? String(cur) : seasons[0];
-      h += `<div class="row" style="margin-top:14px"><select class="field" id="seasonSel" style="width:auto;margin:0">${seasons.map(n => `<option value="${n}"${n === sel ? ' selected' : ''}>Saison ${n}</option>`).join('')}</select></div><div class="eps">`;
-      h += (eps[sel] || []).map(e => { const url = vodUrl('series', e.id, e.container_extension), pos = LS.get('pos.' + url, 0), d = e.info || {};
-        return `<button class="ep" data-pm="${esc(url)}" data-ep="${esc(it.name + ' · S' + sel + 'E' + (e.episode_num || ''))}"><span class="n">${esc(e.episode_num || '')}</span><span style="flex:1;min-width:0"><b>${esc(cleanTitle(e.title || 'Épisode ' + e.episode_num))}</b><div class="d">${esc([fmtDur(d.duration_secs) || d.duration, pos > 60 ? 'vu jusqu\'à ' + fmtDur(pos) : ''].filter(Boolean).join(' · '))}</div></span>▶</button>`; }).join('');
-      h += '</div>';
-    }
+    if (vs.length > 1) h += `<div class="vvers"><span class="hint">Version :</span>${vs.slice().reverse().map(x => `<button class="chip${x === pick ? ' on' : ''}" data-vver="${x.id}" title="${esc(x.cat)}">${QLBL[x.q] || 'HD'}</button>`).join('')}</div>`;
+    h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-pm="${esc(url)}">▶ ${pos > 60 ? 'Reprendre à ' + fmtDur(pos) : 'Lecture'}</button>${pos > 60 ? `<button class="btn" data-pm="${esc(url)}" data-zero>Depuis le début</button>` : ''}${listBtn}<button class="btn" data-vlc="${esc(url)}">VLC</button></div>`;
+  } else if (!flat.length) h += `<div class="row" style="margin-top:14px">${listBtn}</div><p class="hint" style="margin-top:14px">Aucun épisode trouvé.</p>`;
+  else {
+    // Reprendre l'épisode en cours (ou le suivant à voir), sinon le premier
+    let k0 = hist ? flat.findIndex(x => epUrl(x) === hist.url) : -1; if (k0 < 0) k0 = 0;
+    const x0 = flat[k0], u0 = epUrl(x0), p0 = LS.get('pos.' + u0, 0) || (hist && hist.url === u0 ? hist.pos : 0);
+    h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-epk="${k0}">▶ ${hist ? (p0 > 60 ? 'Reprendre ' : 'Regarder ') + 'S' + x0.s + 'E' + x0.n : 'Regarder S' + x0.s + 'E' + x0.n}</button>${listBtn}</div>`;
+    const seasons = [...new Set(flat.map(x => x.s))];
+    const cur = LS.get('season.' + it.id, x0.s), sel = seasons.includes(+cur) ? +cur : seasons[0];
+    h += `<div class="row" style="margin-top:14px"><select class="field" id="seasonSel" style="width:auto;margin:0">${seasons.map(n => `<option value="${n}"${n === sel ? ' selected' : ''}>Saison ${n}</option>`).join('')}</select></div><div class="eps">`;
+    h += flat.map((x, k) => [x, k]).filter(([x]) => x.s === sel).map(([x, k]) => { const url = epUrl(x), pos = LS.get('pos.' + url, 0), d = x.e.info || {}, dur = +d.duration_secs || 0;
+      const img = d.movie_image || d.cover_big || '', pct = dur && pos ? Math.min(100, pos / dur * 100) : 0;
+      return `<button class="ep" data-epk="${k}" data-epn="${x.n}"><span class="epi" ${img ? `style="background-image:url('${esc(img)}')"` : ''}><span class="n">${esc(x.n)}</span>${pct ? `<i style="width:${pct}%"></i>` : ''}</span><span class="ept"><b>${esc(cleanTitle(x.e.title || 'Épisode ' + x.n).replace(/^.*?S\d+\s*E\d+\s*[-:·]?\s*/i, '') || 'Épisode ' + x.n)}</b><span class="d">${esc([fmtDur(d.duration_secs) || d.duration, pos > 60 ? 'vu jusqu\'à ' + fmtDur(pos) : ''].filter(Boolean).join(' · '))}</span><span class="eppl">${esc(d.plot || '')}</span></span></button>`; }).join('');
+    h += '</div>';
   }
+  h += '<div id="vodCast"></div><div id="vodSimilar"></div>';
   $('#vodDetail').innerHTML = h + '</div></div>';
   showTrailer(it);
-  V.open = { it, eps, cover };
+  V.open = { it, eps, cover, flat };
+  vodEnrich(it);
+}
+// Recherche enrichie (clé TMDB) : films d'un acteur ou d'un réalisateur, titres connus sous un autre nom, genres
+async function vodSearchMore(q0, already) {
+  const box = $('#vodTm'); if (!box || !LS.get('pref.tmdb', '') || norm(q0).trim().length < 3) return;
+  const P = popIndex(V.data ? V.data.items : []), seen = new Set(already), rows = [];
+  const row = (title, list) => { const l = list.filter(x => !seen.has(x)); l.forEach(x => seen.add(x)); if (l.length) rows.push(vodRow(title, '', l.slice(0, 30))); };
+  // genre tapé (« comédie », « horreur »…)
+  const POP = TM.data, qn = norm(q0).trim();
+  if (POP && POP.genres) VGENRES.forEach(([label, gm, gs]) => { if (norm(label).split(/\W+/).some(x => x.length > 3 && (x.startsWith(qn) || qn.startsWith(x.slice(0, 5))))) row(label, popList([].concat(POP.genres['m' + gm] || [], gs && POP.genres['s' + gs] || []), P, POP.meta, ['m', 's'])); });
+  const r = await tmdb('/search/multi', { query: q0 }).catch(() => null);
+  if (!r || V.q !== q0 || !$('#vodTm')) return;
+  const meta = {}, put = (x, kind) => { const k = (kind || (x.media_type === 'tv' ? 's' : 'm')) + x.id; meta[k] = { k: k[0], t: x.title || x.name || '', o: x.original_title || x.original_name || '', y: +String(x.release_date || x.first_air_date || '').slice(0, 4) || 0, p: x.poster_path || '', l: x.original_language || '' }; return k; };
+  const titles = (r.results || []).filter(x => x.media_type === 'movie' || x.media_type === 'tv').map(x => put(x));
+  row('Titres correspondants', popList(titles, P, meta, ['m', 's']));
+  const person = (r.results || []).find(x => x.media_type === 'person');
+  if (person) {
+    const cc = await tmdb('/person/' + person.id + '/combined_credits').catch(() => null);
+    if (cc && V.q === q0) {
+      const all = (cc.cast || []).concat((cc.crew || []).filter(c => c.job === 'Director')).sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+      row((person.known_for_department === 'Directing' ? 'Réalisés par ' : 'Avec ') + person.name, popList(all.map(x => put(x)), P, meta, ['m', 's']));
+    }
+  }
+  const b2 = $('#vodTm'); if (!b2 || V.q !== q0) return;
+  b2.innerHTML = rows.join('');
+  const none = $('#vodNone'); if (none && rows.length) none.remove();
+}
+// « Reprendre » : relance directement le film ou l'épisode à la position retenue (série : épisodes relus pour le suivant)
+async function resumeHist(k) {
+  const e = histAll().find(x => x.k === k), it = itemByKey(k); if (!e || !it) return;
+  if (it.kind === 'movie') return playVod(it, e.url, null, null);
+  let fl = [];
+  try { const j = await xget('&action=get_series_info&series_id=' + it.id); fl = epFlat(j.episodes || {}); } catch (err) {}
+  const i = fl.findIndex(x => epUrl(x) === e.url);
+  if (i >= 0) { V.open = { it, eps: null, cover: it.cover, flat: fl }; return playVod(it, e.url, fl[i], fl[i + 1]); }
+  const m = /S(\d+)E(\d+)/.exec(e.lab || '');
+  playVod(it, e.url, m ? { s: +m[1], n: +m[2] } : null, null);
+}
+// Fiche enrichie avec TMDB : genres, durée, âge conseillé, réalisation, distribution avec photos, titres similaires du
+// catalogue, images et résumés des épisodes quand le serveur n'en donne pas
+async function vodEnrich(it) {
+  const ti = await tmdbInfo(it).catch(() => null); if (!ti || !ti.d || !V.open || V.open.it !== it) return;
+  const d = ti.d, img = (p, w) => p ? 'https://image.tmdb.org/t/p/' + w + p : '';
+  let cert = '';
+  if (ti.kind === 'movie') { const fr = ((d.release_dates || {}).results || []).find(r => r.iso_3166_1 === 'FR'); cert = fr && (fr.release_dates || []).map(x => x.certification).find(Boolean) || ''; }
+  else { const fr = ((d.content_ratings || {}).results || []).find(r => r.iso_3166_1 === 'FR'); cert = fr && fr.rating || ''; }
+  const genres = (d.genres || []).map(g => g.name).slice(0, 3).join(', '), run = ti.kind === 'movie' ? (d.runtime ? fmtDur(d.runtime * 60) : '') : (d.number_of_seasons ? d.number_of_seasons + ' saison' + (d.number_of_seasons > 1 ? 's' : '') : '');
+  const certTxt = cert && cert !== 'U' && cert !== 'TP' && cert !== 'Tous publics' ? '-' + String(cert).replace(/^-/, '') : cert ? 'Tous publics' : '';
+  const m = $('#vodMeta'); if (m) m.textContent = [it.year || (d.release_date || d.first_air_date || '').slice(0, 4), genres || it.genre, run, it.rating ? '★ ' + it.rating.toFixed(1) : (d.vote_average ? '★ ' + d.vote_average.toFixed(1) : ''), certTxt, it.services.join(', ')].filter(Boolean).join(' · ');
+  const cr = d.credits || {}, dir = (cr.crew || []).filter(c => c.job === 'Director').map(c => c.name).slice(0, 2).join(', ') || (d.created_by || []).map(c => c.name).slice(0, 2).join(', ');
+  const crew = $('#vodCrew'); if (crew && dir) crew.innerHTML = `<div class="cr">${ti.kind === 'movie' ? 'Réalisation' : 'Création'} : ${esc(dir)}</div>`;
+  const cast = (cr.cast || []).slice(0, 12);
+  if (cast.length && $('#vodCast')) $('#vodCast').innerHTML = '<h4 class="vdh">Distribution</h4><div class="cast">' + cast.map(c => `<div class="ca"><span class="ph" ${c.profile_path ? `style="background-image:url('${img(c.profile_path, 'w185')}')"` : ''}>${c.profile_path ? '' : esc(initials(c.name))}</span><b>${esc(c.name)}</b><small>${esc(c.character || '')}</small></div>`).join('') + '</div>';
+  // Titres similaires présents dans le catalogue
+  const recs = ((d.recommendations || {}).results || []).slice(0, 40), meta = {}, P = popIndex(V.data ? V.data.items : []);
+  const ids = recs.map(r => { const k = ((r.media_type ? r.media_type === 'tv' : ti.kind === 'tv') ? 's' : 'm') + r.id; meta[k] = { k: k[0], t: r.title || r.name || '', o: r.original_title || r.original_name || '', y: +String(r.release_date || r.first_air_date || '').slice(0, 4) || 0, p: r.poster_path || '', l: r.original_language || '' }; return k; });
+  const sim = popList(ids, P, meta, ['m', 's']).filter(x => x !== it).slice(0, 12);
+  if (sim.length && $('#vodSimilar')) $('#vodSimilar').innerHTML = '<h4 class="vdh">Titres similaires</h4><div class="vscroll">' + sim.map(x => posterHtml(x, V.shown.push(x) - 1)).join('') + '</div>';
+  // Épisodes : images et résumés de TMDB pour la saison affichée
+  if (ti.kind === 'tv') {
+    const sel = $('#seasonSel'), sn = sel ? +sel.value : 0; if (!sn) return;
+    const se = await tmdb('/tv/' + ti.id + '/season/' + sn).catch(() => null); if (!se || !V.open || V.open.it !== it) return;
+    (se.episodes || []).forEach(e => {
+      const b = $('#vodDetail').querySelector(`.ep[data-epn="${e.episode_number}"]`); if (!b) return;
+      const im = b.querySelector('.epi'); if (im && !im.style.backgroundImage && e.still_path) im.style.backgroundImage = `url('${img(e.still_path, 'w300')}')`;
+      const pl = b.querySelector('.eppl'); if (pl && !pl.textContent && e.overview) pl.textContent = e.overview;
+      const t = b.querySelector('.ept b'); if (t && /^[ÉE]pisode\s*\d+$/i.test(t.textContent.trim()) && e.name) t.textContent = e.name;
+    });
+  }
 }
 $('#vodDetail').addEventListener('change', e => { if (e.target.id === 'seasonSel') { LS.set('season.' + V.open.it.id, e.target.value); openVod(V.open.it); } });
 $('#vodDetail').addEventListener('click', e => {
   // Changement de version : seulement les boutons de lecture mis à jour (la fiche et la bande-annonce restent)
+  if (e.target.closest('[data-mylist]')) { const it = V.open.it; toggleMyList(it); e.target.closest('[data-mylist]').textContent = inMyList(it) ? '✓ Ma liste' : '＋ Ma liste'; return; }
+  const ek = e.target.closest('[data-epk]');
+  if (ek) { const it = V.open.it, fl = V.open.flat || [], k = +ek.dataset.epk, x = fl[k]; if (!x) return; closeModals(); playVod(it, epUrl(x), x, fl[k + 1]); return; }
+  const sp = e.target.closest('#vodSimilar [data-v]'); if (sp) { openVod(V.shown[+sp.dataset.v]); return; }
   const vv = e.target.closest('[data-vver]');
   if (vv) {
     const it = V.open.it; LS.set('vver.' + it.id, +vv.dataset.vver);
@@ -2273,7 +2450,7 @@ $('#vodDetail').addEventListener('click', e => {
   const it = V.open.it, url = b.dataset.pm;
   if (b.hasAttribute('data-zero')) LS.set('pos.' + url, 0);
   closeModals();
-  play({ name: b.dataset.ep || it.name, url, group: it.kind === 'series' ? 'Série' : 'Film' + (it.year ? ' · ' + it.year : ''), logo: V.open.cover || it.cover, n: 0, chno: '', vod: true, key: '', it: it.kind === 'movie' && !b.dataset.ep ? it : null });
+  playVod(it, url, null, null);
 });
 // Reprise : position retenue toutes les 5 s, reprise à l'ouverture (sauf presque à la fin)
 /* ---------- Films convertis par ffmpeg (appli Windows) : le flux part de ss secondes ; avancer, reculer ou changer de langue
@@ -2391,7 +2568,7 @@ $('#vbVol').addEventListener('input', e => { video.volume = +e.target.value; vid
 $('#vbFull').onclick = () => setSolo(!isFull());
 $('#vbWin').onclick = () => isWin() ? setSolo(false) : setSolo(true, true);
 try { const v0 = LS.get('dev.vol', 1); if (v0 >= 0 && v0 <= 1) video.volume = v0; } catch (e) {}
-video.addEventListener('ended', () => { if (S.engine === 'remux' && S.current) LS.set('pos.' + S.current.url, 0); });
+video.addEventListener('ended', () => { if (S.current && S.current.vod) { LS.set('pos.' + S.current.url, 0); histTrack(S.current, true); nextEpEnd(); } });
 
 function vodResume() {
   const c = S.current; if (!c || !c.vod || S.engine === 'remux') return;
@@ -2399,7 +2576,7 @@ function vodResume() {
   const go = () => { if (pos > 60 && (!video.duration || pos < video.duration - Math.min(120, video.duration * 0.1))) { video.currentTime = pos; toast('Reprise à ' + fmtDur(pos)); } };
   video.readyState >= 1 ? go() : video.addEventListener('loadedmetadata', go, { once: true });
 }
-setInterval(() => { const c = S.current; if (c && c.vod && !video.paused && curPos() > 30) LS.set('pos.' + c.url, Math.floor(curPos())); }, 5000);
+setInterval(() => { const c = S.current; if (c && c.vod && !video.paused && curPos() > 30) { LS.set('pos.' + c.url, Math.floor(curPos())); histTrack(c); } }, 5000);
 
 /* ---------- Pistes audio et sous-titres : choix dans un menu, langue préférée retenue (français et sans sous-titres au départ) ---------- */
 const LANGS = { fr: 'Français', fra: 'Français', fre: 'Français', en: 'Anglais', eng: 'Anglais', de: 'Allemand', deu: 'Allemand', ger: 'Allemand', es: 'Espagnol', spa: 'Espagnol',
@@ -2732,6 +2909,29 @@ video.addEventListener('waiting', () => {
   x.onclick = () => box.remove();
   go.onclick = () => { box.remove(); LS.set('vver.' + c.it.id, lighter.id); const url = vodUrl('movie', lighter.id, lighter.ext), pos = curPos();
     if (pos > 10) LS.set('pos.' + url, pos); play(Object.assign({}, c, { url })); };
+});
+// Épisode suivant : bouton pendant le générique de fin (40 dernières secondes), puis lancement automatique après 8 s
+const NXT = { t: 0, url: '' };
+function nextEpBox(auto) {
+  const c = S.current; if (!c || !c.next || !c.it) return;
+  let b = $('#nextBox');
+  if (!b) { b = document.createElement('div'); b.id = 'nextBox'; $('#screen').appendChild(b); }
+  b.innerHTML = `<span><small>Épisode suivant</small><b>${esc('S' + c.next.s + 'E' + c.next.n)}</b></span><button class="btn primary" data-nx>▶ ${auto ? 'Lecture dans <i>8</i> s' : 'Épisode suivant'}</button><button class="btn" data-nxx aria-label="Fermer">✕</button>`;
+  b.querySelector('[data-nx]').onclick = () => nextEpGo();
+  b.querySelector('[data-nxx]').onclick = () => { clearInterval(NXT.t); NXT.url = c.url; b.remove(); };
+  if (auto) { let n = 8; clearInterval(NXT.t); NXT.t = setInterval(() => { const i = b.querySelector('i'); if (--n <= 0) { clearInterval(NXT.t); nextEpGo(); } else if (i) i.textContent = n; }, 1000); }
+}
+function nextEpGo() {
+  clearInterval(NXT.t); const c = S.current, b = $('#nextBox'); if (b) b.remove(); if (!c || !c.next || !c.it) return;
+  const fl = V.open && V.open.it === c.it ? V.open.flat : null, k = fl ? fl.findIndex(x => epUrl(x) === c.next.url) : -1;
+  if (k >= 0) return playVod(c.it, c.next.url, fl[k], fl[k + 1]);
+  play(Object.assign({}, c, { url: c.next.url, name: c.next.name, ep: { s: c.next.s, n: c.next.n }, next: null }));
+}
+function nextEpEnd() { const c = S.current; if (c && c.next && NXT.url !== c.url) nextEpBox(true); }
+video.addEventListener('timeupdate', () => {
+  const c = S.current; if (!c || !c.next || $('#nextBox') || NXT.url === c.url) return;
+  const dur = (S.engine === 'remux' && S.remux && S.remux.info && S.remux.info.duration) || (isFinite(video.duration) ? video.duration : 0), pos = curPos();
+  if (dur > 300 && dur - pos < 40 && dur - pos > 1) nextEpBox(false);
 });
 // Panneau de droite : score et statistiques du match en cours
 function toggleSide(on) {
