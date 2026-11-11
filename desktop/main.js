@@ -144,7 +144,7 @@ function setupUpdates(win) {
 ipcMain.on('upd-state', e => { e.returnValue = updState; });
 
 app.whenReady().then(async () => {
-  try { remuxBase = 'http://127.0.0.1:' + await startRemux(ffmpegPath()); } catch (e) {}
+  try { remuxBase = 'http://127.0.0.1:' + await startRemux(ffmpegPath(), findVlc); } catch (e) {}
   createWindow();
   if (app.isPackaged) setupUpdates(BrowserWindow.getAllWindows()[0]); else updState = { state: 'error', msg: 'version de développement' };
 });

@@ -60,7 +60,29 @@ function probeOnce(ffmpeg, src) {
   });
 }
 
-module.exports = function startRemux(ffmpeg) {
+/* VLC en coulisse, pour les serveurs qui refusent ffmpeg mais acceptent VLC. VLC est arrêté dès que la page
+   ferme la connexion, et ceux encore ouverts le sont quand l'appli se ferme. */
+const VLCS = new Set();
+process.on('exit', () => VLCS.forEach(v => { try { v.kill('SIGKILL'); } catch (e) {} }));
+// VLC lit la source (il passe là où ffmpeg est refusé) et écrit un flux MPEG-TS sur sa sortie standard :
+// vidéo copiée telle quelle, son converti en AAC stéréo pour le navigateur.
+function vlcStream(vlcPath, src, ss, a, req, res) {
+  const sout = '#transcode{acodec=mp4a,ab=192,channels=2,samplerate=48000}:std{access=file,mux=ts,dst=-}';
+  const args = ['-I', 'dummy', '--quiet', '--no-video-title-show', '--network-caching=3000', '--play-and-exit',
+    src, ':start-time=' + Math.max(0, ss), ':audio-track=' + Math.max(0, a), ':sout=' + sout, ':no-sout-all'];
+  const vlc = spawn(vlcPath, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+  VLCS.add(vlc); vlc.on('exit', () => VLCS.delete(vlc));
+  let done = false;
+  const kill = () => { if (done) return; done = true; try { vlc.kill('SIGKILL'); } catch (e) {} };
+  req.on('close', kill); res.on('close', kill);
+  vlc.on('error', () => { if (!res.headersSent) { res.statusCode = 502; res.end('vlc'); } kill(); });
+  // en-tête envoyé au premier octet reçu : si VLC n'arrive pas à lire, la page reçoit une erreur
+  vlc.stdout.once('data', b => { if (done) return; res.writeHead(200, { 'Content-Type': 'video/mp2t', 'Cache-Control': 'no-store' }); res.write(b); vlc.stdout.pipe(res); });
+  vlc.on('exit', () => { if (!res.headersSent) { res.statusCode = 502; res.end('vlc'); } else try { res.end(); } catch (e) {} done = true; });
+  return Promise.resolve();
+}
+
+module.exports = function startRemux(ffmpeg, findVlc) {
   return new Promise(resolve => {
     const srv = http.createServer((req, res) => {
       const u = new URL(req.url, 'http://127.0.0.1');
@@ -75,8 +97,14 @@ module.exports = function startRemux(ffmpeg) {
         res.setHeader('Content-Type', 'text/vtt; charset=utf-8'); res.setHeader('Cache-Control', 'no-store');
         return fs.readFile(f || '', (e, b) => res.end(e ? 'WEBVTT\n' : b));
       }
+      if (u.pathname === '/vlcinfo') { Promise.resolve(findVlc ? findVlc() : '').then(p => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ ok: !!p })); }); return; }
       const src = u.searchParams.get('url') || '';
       if (!/^https?:\/\//i.test(src)) { res.statusCode = 400; return res.end(); }
+      if (u.pathname === '/vlc') {
+        Promise.resolve(findVlc ? findVlc() : '').then(p => { if (!p) { res.statusCode = 501; return res.end('vlc absent'); }
+          vlcStream(p, src, +u.searchParams.get('ss') || 0, +u.searchParams.get('a') || 0, req, res).catch(() => { try { res.statusCode = 500; res.end(); } catch (e) {} }); });
+        return;
+      }
       if (u.pathname === '/probe') {
         probe(ffmpeg, src).then(j => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(j)); });
         return;

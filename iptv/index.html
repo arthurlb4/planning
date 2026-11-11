@@ -2757,7 +2757,13 @@ async function playRemux(c, t) {
   if (!info) return failRemux(c, 'le module de conversion de l\'appli est injoignable (' + local + ' · ' + ver + ')');
   R.info = info;
   if (!info.ok && (info.denied || /\b403\b|forbidden/i.test(info.err || ''))) return failRemux(c, 'le serveur refuse l\'accès au film (erreur 403). Le plus souvent, une autre lecture est en cours avec ce compte (autre appareil, autre appli, VLC) et l\'abonnement n\'en autorise qu\'une ; sinon le film n\'est plus disponible sur le serveur. Fermez l\'autre lecture puis Réessayer · ' + ver);
-  if (!info.ok) return failRemux(c, (info.err ? 'réponse de ffmpeg : ' + info.err : 'ffmpeg n\'a rien reçu du serveur en 25 s') + ' · ' + ver);
+  if (!info.ok) {
+    // serveur qui refuse ffmpeg mais accepte VLC (ex. erreur 461) : lecture par VLC en coulisse (appli 1.16 et plus)
+    const v = await fetch(base + '/vlcinfo').then(r => r.json()).catch(() => null);
+    if (t !== token) return;
+    if (v && v.ok) return playVlc(c, t);
+    return failRemux(c, (info.err ? 'réponse de ffmpeg : ' + info.err : 'ffmpeg n\'a rien reçu du serveur en 25 s') + (v ? ' · VLC n\'est pas installé sur ce PC (videolan.org) : il prend le relais quand le serveur refuse ffmpeg' : '') + ' · ' + ver);
+  }
   const pa = LS.get('pref.audio', 'fr'), au = info.audio || [];
   const pick = au.find(x => lang2(x.lang) === pa) || au.find(x => x.def) || au[0];
   R.a = pick ? pick.i : 0;
@@ -2768,8 +2774,36 @@ async function playRemux(c, t) {
   remuxStart(pos > 60 && (!dur || pos < dur - Math.min(120, dur * 0.1)) ? pos : 0, t);
   if (pos > 60) toast('Reprise à ' + fmtDur(pos));
 }
+// Lecture par VLC (en coulisse) : durée prise sur le serveur IPTV ; avancer, reculer, changer de langue relancent VLC
+async function playVlc(c, t) {
+  const R = S.remux; R.vlc = true; R.info = { duration: 0, audio: [], subs: [] };
+  const m = /\/movie\/[^/]+\/[^/]+\/(\d+)\./.exec(c.url);
+  if (m) { try { const j = await xget('&action=get_vod_info&vod_id=' + m[1]); R.info.duration = +(j.info && j.info.duration_secs) || 0; } catch (e) {} }
+  if (t !== token) return;
+  const pos = LS.get('pos.' + c.url, 0), dur = R.info.duration;
+  toast('Lecture par VLC (le serveur refuse le convertisseur habituel)');
+  vlcStart(pos > 60 && (!dur || pos < dur - Math.min(120, dur * 0.1)) ? pos : 0, t);
+}
+async function vlcStart(ss, t) {
+  const R = S.remux; if (!R) return;
+  t = t || token; R.ss = Math.max(0, Math.floor(ss));
+  stopEngines(); S.engine = ''; setStatus('load'); video.controls = false;
+  try { await loadLib('mpegts'); } catch (e) { return failRemux(S.current, 'lecteur mpegts.js indisponible'); }
+  if (t !== token) return;
+  let done = false;
+  const timer = setTimeout(() => ko('rien reçu de VLC en 40 s'), 40000);
+  const ok = () => { if (done || t !== token) return; done = true; clearTimeout(timer); setStatus(null); S.engine = 'remux'; S.playUrl = R.url; document.body.classList.add('remux'); vbarUpdate(); };
+  const ko = why => { if (done || t !== token) return; done = true; clearTimeout(timer); failRemux(S.current, 'VLC : ' + (why || 'lecture impossible')); };
+  attempt = { ok, ko };
+  mts = mpegts.createPlayer({ type: 'mpegts', isLive: true, url: R.base + '/vlc?url=' + encodeURIComponent(R.url) + '&ss=' + R.ss + '&a=' + R.a },
+    { enableWorker: true, lazyLoad: false, liveBufferLatencyChasing: false, enableStashBuffer: true, stashInitialSize: 1024 * 1024 });
+  mts.on(mpegts.Events.ERROR, (type, detail, info) => ko([type, detail, info && (info.code || info.msg)].filter(Boolean).join(' · ')));
+  mts.attachMediaElement(video); mts.load();
+  const p = video.play(); if (p && p.catch) p.catch(() => {});
+}
 function remuxStart(ss, t) {
   const R = S.remux; if (!R) return;
+  if (R.vlc) return vlcStart(ss, t);
   t = t || token;
   R.ss = Math.max(0, Math.floor(ss));
   R.sid = R.s >= 0 ? Math.random().toString(36).slice(2, 12) : ''; R.ncues = 0; clearCues(subT('r'));
