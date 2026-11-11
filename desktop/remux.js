@@ -16,7 +16,11 @@ const SUBS = new Map();                                        // jeton → fich
 // 403 : souvent la connexion précédente (chaîne ou film d'avant) que le serveur n'a pas encore libérée, alors qu'il
 // n'autorise qu'une lecture à la fois par compte → on réessaie deux fois, 3 s plus tard.
 async function probe(ffmpeg, src, vlcPath) {
-  if (vlcPath) return probeOnce(ffmpeg, src, vlcPath);
+  if (vlcPath) {                                     // par VLC : un second essai 3 s plus tard (connexion précédente pas encore libérée)
+    const a = await probeOnce(ffmpeg, src, vlcPath); if (a.ok) return a;
+    await new Promise(r => setTimeout(r, 3000));
+    return probeOnce(ffmpeg, src, vlcPath);
+  }
   let j;
   for (let k = 0; k < 3; k++) {
     if (k) await new Promise(r => setTimeout(r, 3000));
@@ -28,7 +32,8 @@ async function probe(ffmpeg, src, vlcPath) {
 }
 function probeOnce(ffmpeg, src, vlcPath) {
   return new Promise(resolve => {
-    const vlc = vlcPath ? vlcSource(vlcPath, src, 0) : null;
+    const log = vlcPath ? path.join(os.tmpdir(), 'lecteur-iptv-vlc-' + Date.now().toString(36) + '.log') : '';
+    const vlc = vlcPath ? vlcSource(vlcPath, src, 0, log) : null;
     const ff = spawn(ffmpeg, vlc ? ['-hide_banner', '-f', 'mpegts', '-i', 'pipe:0'] : ['-hide_banner', '-rw_timeout', '20000000', '-i', src], { windowsHide: true });
     if (vlc) viaVlc(ff, vlc);
     let txt = '';
@@ -57,11 +62,16 @@ function probeOnce(ffmpeg, src, vlcPath) {
       });
       // En cas d'échec : la cause donnée par ffmpeg (erreur HTTP du serveur, délai, format…)
       const err = lines.filter(l => /error|failed|denied|forbidden|refused|timed out|invalid|not found|\b[45]\d\d\b/i.test(l) && !/^\s*(Stream|Duration|Input|Metadata)/.test(l)).slice(-3).join(' · ').slice(0, 300);
-      resolve({ duration, vcodec, vprofile, audio, subs, ok: !!(duration || vcodec), err: vlc && !vcodec ? 'VLC n\'a rien pu lire' : err, vlc: !!vlc });
+      let verr = '';
+      if (vlc && !vcodec) {                          // cause donnée par VLC (journal) : erreurs de connexion, format non pris en charge…
+        try { verr = fs.readFileSync(log, 'utf8').split(/\r?\n/).filter(l => /error|warning.*(http|access|mux)/i.test(l)).map(l => l.replace(/^.*?(error|warning)\s*:\s*/i, '')).filter((l, i, a) => a.indexOf(l) === i).slice(-4).join(' · ').slice(0, 300); } catch (e) {}
+      }
+      if (log) setTimeout(() => fs.unlink(log, () => {}), 2000);
+      resolve({ duration, vcodec, vprofile, audio, subs, ok: !!(duration || vcodec), err: vlc && !vcodec ? 'VLC n\'a rien pu lire' + (verr ? ' : ' + verr : '') : err, vlc: !!vlc });
     };
     ff.stderr.on('data', b => { txt += b; });
     ff.on('exit', done); ff.on('error', e => resolve({ ok: false, audio: [], err: 'ffmpeg ne démarre pas : ' + (e && e.message || e) }));
-    setTimeout(() => { try { ff.kill('SIGKILL'); } catch (e) {} }, 25000);
+    setTimeout(() => { try { ff.kill('SIGKILL'); } catch (e) {} }, vlcPath ? 40000 : 25000);
   });
 }
 
@@ -71,8 +81,9 @@ const VLCS = new Set();
 process.on('exit', () => VLCS.forEach(v => { try { v.kill('SIGKILL'); } catch (e) {} }));
 // VLC lit la source (il passe là où ffmpeg est refusé) à partir de ss secondes et écrit le film tel quel (image et
 // toutes les pistes audio, sans sous-titres) en MPEG-TS sur sa sortie standard, que ffmpeg reprend ensuite en local.
-function vlcSource(vlcPath, src, ss) {
-  const args = ['-I', 'dummy', '--quiet', '--no-video-title-show', '--network-caching=3000', '--play-and-exit', '--no-spu',
+function vlcSource(vlcPath, src, ss, log) {
+  const lg = log ? ['--file-logging', '--logfile=' + log, '--log-verbose=1'] : ['--quiet'];
+  const args = ['-I', 'dummy', ...lg, '--no-video-title-show', '--network-caching=3000', '--play-and-exit', '--no-spu',
     src, ':start-time=' + Math.max(0, ss || 0), ':sout=#std{access=file,mux=ts,dst=-}', ':sout-all'];
   const vlc = spawn(vlcPath, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
   VLCS.add(vlc); vlc.on('exit', () => VLCS.delete(vlc)); vlc.on('error', () => {});
