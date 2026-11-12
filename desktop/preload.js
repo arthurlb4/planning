@@ -6,5 +6,6 @@ contextBridge.exposeInMainWorld('desktop', Object.assign({}, base, {
   updState: () => ipcRenderer.sendSync('upd-state'),
   onUpdate: cb => ipcRenderer.on('upd', (e, st) => cb(st)),
   checkUpdate: () => ipcRenderer.send('upd-check'),
-  openVlc: (url, name) => ipcRenderer.invoke('open-vlc', url, name)
+  openVlc: (url, name) => ipcRenderer.invoke('open-vlc', url, name),
+  win: { act: a => ipcRenderer.send('win', a), isMax: () => ipcRenderer.sendSync('win-max'), onState: cb => ipcRenderer.on('win-state', (e, st) => cb(st)) }
 }));

@@ -73,6 +73,8 @@ function createWindow() {
   const st = loadState();
   const win = new BrowserWindow({
     width: 1400, height: 860, ...(st ? st.bounds : {}), minWidth: 360, minHeight: 500,
+    // sans la barre de Windows : boutons réduire / agrandir / fermer dessinés par la page, en haut à droite
+    frame: false,
     show: false, backgroundColor: '#1c1c1e', title: 'Lecteur IPTV', autoHideMenuBar: true, icon: path.join(__dirname, 'icon.ico'),
     webPreferences: {
       webSecurity: false,                 // pas de blocage CORS : les serveurs IPTV n'autorisent pas les navigateurs
@@ -97,6 +99,7 @@ function createWindow() {
     }, 180);
   };
   win.once('ready-to-show', show);
+  ['maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen'].forEach(ev => win.on(ev, () => { try { win.webContents.send('win-state', { max: win.isMaximized(), full: win.isFullScreen() }); } catch (e) {} }));
   setTimeout(show, 4000);                       // site lent ou injoignable : on montre quand même
   keepState(win);
 
@@ -142,6 +145,14 @@ function setupUpdates(win) {
   setInterval(check, 6 * 3600e3);
 }
 ipcMain.on('upd-state', e => { e.returnValue = updState; });
+// Boutons de fenêtre de la page (fenêtre sans barre de Windows)
+ipcMain.on('win', (e, act) => {
+  const w = BrowserWindow.fromWebContents(e.sender); if (!w) return;
+  if (act === 'min') w.minimize();
+  else if (act === 'max') { if (w.isMaximized()) w.unmaximize(); else w.maximize(); }
+  else if (act === 'close') w.close();
+});
+ipcMain.on('win-max', e => { const w = BrowserWindow.fromWebContents(e.sender); e.returnValue = !!(w && w.isMaximized()); });
 
 app.whenReady().then(async () => {
   try { remuxBase = 'http://127.0.0.1:' + await startRemux(ffmpegPath(), findVlc); } catch (e) {}
