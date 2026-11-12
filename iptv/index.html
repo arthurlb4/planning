@@ -426,11 +426,13 @@ body.homeview #channels,body.homeview #player{display:none}
 #nowEpg b{color:var(--text);font-weight:600}
 /* Infos de qualité (codec, résolution, images/s…) par-dessus l'image */
 /* Qualité de l'image et du son : bulle sur l'image (sous le titre en plein écran) */
-#stats{position:absolute;top:10px;left:10px;z-index:4;background:rgba(10,10,10,.85);border:.5px solid var(--border);border-radius:12px;padding:10px 26px 10px 12px;font:12px/1.55 ui-monospace,Menlo,Consolas,monospace;color:#e8e6e1;max-width:calc(100% - 20px);max-height:calc(100% - 80px);overflow:auto}
+/* Image et son : même allure que le menu Audio et sous-titres, ouvert au-dessus de son bouton */
+#stats{position:absolute;right:12px;bottom:56px;z-index:7;min-width:260px;max-width:calc(100% - 24px);max-height:calc(100% - 80px);overflow:auto;background:rgba(22,22,21,.96);border:.5px solid var(--border);border-radius:14px;padding:8px 12px 10px;box-shadow:0 10px 30px rgba(0,0,0,.5);font-size:13px;line-height:1.5;color:var(--text)}
+#stats h4{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin:4px 0 6px;font-weight:700}
 #stats[hidden]{display:none}
-body.solo #stats{top:84px}
-#stats table{border-collapse:collapse}#stats td{padding:0 10px 0 0;vertical-align:top}#stats td:first-child{color:#9d9b95;white-space:nowrap}
-#stats .x{position:absolute;top:4px;right:6px;color:#9d9b95;font-size:14px;padding:2px 4px}
+
+#stats table{border-collapse:collapse}#stats td{padding:2px 12px 2px 0;vertical-align:top}#stats td:first-child{color:var(--text3);white-space:nowrap}
+
 /* Score et statistiques du match : panneau à droite du lecteur (glisse avec la colonne) */
 #side{grid-column:3;grid-row:1;min-width:0;overflow:auto;background:var(--bg0);border-left:.5px solid var(--border);padding:0 16px 40px}
 #side[hidden]{display:none}
@@ -483,6 +485,12 @@ body.solo #miniBar,body.solo #soloBtn{display:none!important}
 #vbar{position:absolute;left:0;right:0;bottom:0;z-index:5;display:none;align-items:center;gap:6px;padding:28px 14px 10px;background:linear-gradient(transparent,rgba(0,0,0,.82));color:#fff;font-size:13px;font-variant-numeric:tabular-nums;transition:opacity .3s}
 body.cbar.playing #vbar,body.remux #vbar{display:flex}
 body.playing #screen.idle #vbar{opacity:0;pointer-events:none}
+#vodBack{display:none;position:absolute;top:14px;left:14px;z-index:6;align-items:center;gap:6px;height:36px;padding:0 14px 0 8px;border-radius:999px;background:rgba(0,0,0,.55);color:#fff;font-size:14px;font-weight:600;transition:opacity .3s,background .15s}
+#vodBack:hover{background:rgba(0,0,0,.8)}
+#vodBack svg{width:20px;height:20px;fill:none;stroke:#fff;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+body.vodplay.hasback #vodBack{display:inline-flex}
+body.playing #screen.idle #vodBack{opacity:0;pointer-events:none}
+body.mini #vodBack,body.solo #vodBack{display:none!important}
 #vbar .vb{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;flex:none}
 #vbar .vb:hover{background:rgba(255,255,255,.14)}
 /* Outils de la chaîne rangés dans la barre du lecteur (favori, programme, audio et sous-titres, match, qualité) */
@@ -610,6 +618,7 @@ body.solo #guide .dy{background:rgba(14,14,13,.95)}
     <div id="screen">
       <video id="video" controls playsinline autoplay></video>
       <canvas id="vfreeze" hidden></canvas>
+      <button id="vodBack" title="Revenir aux films et séries, là où vous étiez"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg><span>Films et séries</span></button>
       <div id="status"><div class="msg hint">Choisissez une chaîne dans la liste.</div></div>
       <div id="stats" hidden></div>
       <div id="trackMenu" hidden></div>
@@ -1341,6 +1350,33 @@ if (window.desktop && window.desktop.win) {
   W.onState(x => st(x && x.max));
   document.querySelectorAll('[data-win]').forEach(b => b.addEventListener('click', () => W.act(b.dataset.win)));
 }
+// Retour aux films et séries, là où on était : le film continue dans le mini lecteur (fermez-le avec ✕)
+$('#vodBack').onclick = async e => {
+  e.stopPropagation(); const B = V.back; if (!B) return;
+  V.tab = B.tab; V.cat = B.cat; V.q = B.q || '';
+  document.body.classList.remove('drawer'); setSolo(false); setHomeView(true, true, 'vod');
+  for (let i = 0; i < 40; i++) { await new Promise(r => setTimeout(r, 100)); if ($('#vodInner .vrow, #vodInner .vgrid') && !$('#vodInner > .spin')) break; }
+  await new Promise(r => setTimeout(r, 150));
+  $('#vod').scrollTop = B.top || 0;
+  document.querySelectorAll('#vod .vscroll').forEach((x, i) => { if (B.rows[i]) { x.scrollLeft = B.rows[i]; if (typeof varrState === 'function') varrState(x); } });
+  if (B.fiche) openVod(B.fiche);
+};
+/* Saisie d'un texte dans le style de l'appli : la fenêtre prompt() du navigateur n'existe pas dans l'appli Windows
+   (elle n'affiche rien et ne renvoie rien) */
+function askText(msg, opt) {
+  opt = opt || {};
+  return new Promise(res => {
+    const m = document.createElement('div'); m.className = 'modal open'; m.style.zIndex = 90;
+    m.innerHTML = `<div class="sheet" style="max-width:420px"><h2 style="font-size:16px">${esc(msg)}</h2><div class="row" style="gap:8px;margin-top:6px"><input class="field" type="${opt.password ? 'password' : 'text'}" placeholder="${esc(opt.placeholder || '')}" autocomplete="off" autocapitalize="off" spellcheck="false" style="flex:1;min-width:0;margin:0"><button class="btn primary">OK</button><button class="btn" data-x>Annuler</button></div></div>`;
+    document.body.appendChild(m);
+    const i = m.querySelector('input'), done = v => { m.remove(); res(v); };
+    m.querySelector('.btn.primary').onclick = () => done(i.value.trim());
+    m.querySelector('[data-x]').onclick = () => done('');
+    m.addEventListener('click', e => { if (e.target === m) done(''); });
+    i.addEventListener('keydown', e => { if (e.key === 'Enter') done(i.value.trim()); else if (e.key === 'Escape') done(''); e.stopPropagation(); });
+    setTimeout(() => i.focus(), 30);
+  });
+}
 // Dernière image figée par-dessus la vidéo pendant une relance (dessin seul : rien n'est relu, pas de souci d'origine)
 function freezeFrame() {
   const cv = $('#vfreeze'); if (!video.videoWidth) return;
@@ -1557,6 +1593,11 @@ function convFail(c, t) {
 }
 async function play(c, alts) {
   if (!c) return;
+  // Film lancé depuis Films & séries : on retient l'endroit (onglet, recherche, défilement, fiche ouverte) pour y revenir
+  if (c.vod) { const fromVod = document.body.classList.contains('homeview') && document.body.classList.contains('vod'), fiche = $('#vodModal').classList.contains('open') || !!(V.open && c.it && V.open.it === c.it);
+    if (fromVod || fiche) V.back = { tab: V.tab, cat: V.cat, q: V.q, top: $('#vod').scrollTop, rows: [...document.querySelectorAll('#vod .vscroll')].map(x => x.scrollLeft), fiche: fiche && V.open ? V.open.it : null }; }
+  else V.back = null;
+  document.body.classList.toggle('hasback', !!(c.vod && V.back));
   unfreeze();
   const t = ++token;
   S.alts = alts || [];                                  // autres qualités de la même chaîne, essayées si celle-ci ne passe pas
@@ -1911,7 +1952,7 @@ function refreshStats() {
   }
   const buf = video.buffered.length ? (video.buffered.end(video.buffered.length - 1) - video.currentTime) : 0;
   const lost = q && q.totalVideoFrames ? `${q.droppedVideoFrames} / ${q.totalVideoFrames} (${(q.droppedVideoFrames / q.totalVideoFrames * 100).toFixed(1)} %)` : '';
-  el.innerHTML = `<button class="x" onclick="toggleStats(false)">✕</button><table>
+  el.innerHTML = `<h4>Image et son</h4><table>
     ${row('Chaîne', esc(S.current ? S.current.name : ''))}
     ${row('Résolution', video.videoWidth ? `${video.videoWidth}×${video.videoHeight}${video.videoHeight >= 2000 ? ' (4K)' : video.videoHeight >= 1000 ? ' (Full HD)' : video.videoHeight >= 700 ? ' (HD)' : ' (SD)'}` : '')}
     ${row('Images/s', (fps ? fps.toFixed(1) + ' mesurées' : '') + (declFps ? (fps ? ' · ' : '') + declFps + ' annoncées' : ''))}
@@ -1930,8 +1971,17 @@ function refreshStats() {
 }
 function toggleStats(on) {
   const el = $('#stats'); el.hidden = on === undefined ? !el.hidden : !on;
-  if (!el.hidden) { fpsLoop(); refreshStats(); } else { fps = 0; }
+  if (!el.hidden) { $('#trackMenu').hidden = true; fpsLoop(); refreshStats(); popAnchor(el, $('#statsBtn')); } else { fps = 0; }
 }
+// Menu ouvert juste au-dessus de son bouton (barre du lecteur) ; bouton sous la vidéo : en bas à droite de l'image
+function popAnchor(el, btn) {
+  const sc = $('#screen').getBoundingClientRect(), b = btn && btn.getBoundingClientRect();
+  if (!b || !b.width || b.top > sc.bottom || !$('#vbar').contains(btn)) { el.style.right = ''; el.style.bottom = ''; return; }
+  el.style.bottom = Math.max(8, sc.bottom - b.top + 8) + 'px';
+  el.style.right = Math.max(8, sc.right - b.right - 6) + 'px';
+}
+// clic ailleurs : fermé
+document.addEventListener('click', e => { if (!$('#stats').hidden && !e.target.closest('#stats,#statsBtn')) toggleStats(false); });
 $('#statsBtn').onclick = () => toggleStats();
 
 // Films et séries : flèches (défilement d'une page, comme Netflix) et rangées qu'on peut tirer à la souris
@@ -2121,7 +2171,7 @@ async function renderAgenda(force) {
 $('#agendaInner').addEventListener('click', e => {
   const d = e.target.closest('[data-day]'), sp = e.target.closest('[data-sport]'), ev = e.target.closest('[data-ev]');
   if (e.target.closest('#agRefresh')) return renderAgenda(true);
-  if (e.target.closest('[data-tadd]')) { const t = (prompt('Nom de l\'équipe (comme dans les programmes, ex. PSG, Marseille, Stade Toulousain) :') || '').trim(); if (t) { LS.set('ag.teams', [...new Set(myTeams().concat(t))]); renderAgenda(); } return; }
+  if (e.target.closest('[data-tadd]')) { askText('Nom de l\'équipe, comme dans les programmes', { placeholder: 'PSG, Marseille, Stade Toulousain…' }).then(t => { if (t) { LS.set('ag.teams', [...new Set(myTeams().concat(t))]); renderAgenda(); } }); return; }
   const td = e.target.closest('[data-tdel]'); if (td) { const l = myTeams(); l.splice(+td.dataset.tdel, 1); LS.set('ag.teams', l); renderAgenda(); return; }
   const go = e.target.closest('[data-evgo]');
   if (go) { const v = go.dataset.evgo, x = (v[0] === 'm' ? AGENDA.mine[+v.slice(1)] : AGENDA.shown[+v]).tv[0]; play(x.list[0], x.list.slice(1)); return; }
@@ -2722,8 +2772,8 @@ $('#vodInner').addEventListener('click', e => {
   }
   if (e.target.closest('[data-tmdb]')) { LS.set('pref.tmdb', ($('#tmdbKey').value || '').trim()); TM.data = null; TM.err = ''; V.force2 = true; renderVod(); return; }
   if (e.target.closest('[data-tmdbin]')) {
-    const pw = (prompt('Mot de passe de « Mon abonnement » :') || '').trim().toLowerCase(); if (!pw) return;
-    useBuiltinTmdb(pw).then(() => { toast('Clé TMDB activée'); renderVod(); }, () => toast('Mot de passe incorrect'));
+    askText('Mot de passe de « Mon abonnement »', { password: true }).then(p => { const pw = (p || '').toLowerCase(); if (!pw) return;
+    useBuiltinTmdb(pw).then(() => { toast('Clé TMDB activée'); renderVod(); }, () => toast('Mot de passe incorrect')); });
     return;
   }
   if (e.target.closest('[data-seenclr]')) { if (confirm('Effacer l\'historique des films et séries vus (sur tous vos appareils) ?')) { LS.set('vod.seen', []); renderVod(); } return; }
@@ -3309,7 +3359,7 @@ function renderTrackMenu() {
     + (S.extCues ? `<div class="no subofs">Décalage <button data-subofs="-0.5">−0,5 s</button><b>${(S.extOfs || 0) > 0 ? '+' : ''}${(S.extOfs || 0).toFixed(1).replace('.', ',')} s</b><button data-subofs="0.5">+0,5 s</button></div>` : '');
   m.innerHTML = h;
 }
-$('#trackBtn').onclick = e => { e.stopPropagation(); const m = $('#trackMenu'); m.hidden = !m.hidden; renderTrackMenu(); };
+$('#trackBtn').onclick = e => { e.stopPropagation(); const m = $('#trackMenu'); m.hidden = !m.hidden; if (!m.hidden) { toggleStats(false); popAnchor(m, $('#trackBtn')); } renderTrackMenu(); };
 $('#trackMenu').addEventListener('click', e => {
   e.stopPropagation();
   const en = e.target.closest('[data-eng]');
@@ -3382,7 +3432,7 @@ async function ostCall(path, body) {
 async function ostFind() {
   const c = S.current; if (!c || !c.vod || !c.it) return;
   if (!LS.get('pref.ost', '')) {
-    const pw = (prompt('Mot de passe de « Mon abonnement » (active la recherche de sous-titres) :') || '').trim().toLowerCase(); if (!pw) return;
+    const pw = ((await askText('Mot de passe de « Mon abonnement » (active la recherche de sous-titres)', { password: true })) || '').toLowerCase(); if (!pw) return;
     try { await useBuiltinOst(pw); } catch (e) { toast('Mot de passe incorrect'); return; }
   }
   const k = itemKey(c.it) + (c.ep ? 'e' + c.ep.s + 'x' + c.ep.n : ''), t = token;
@@ -4167,6 +4217,7 @@ $('#bBtn').onclick = async () => {
     const text = await fetchPlaylist(url);
     stopAll();
     await savePlaylist({ id: 'builtin', name: 'Mon abonnement', url, text, added: 0 });
+    if (!LS.get('pref.ost', '')) useBuiltinOst(pass).catch(() => {});        // sous-titres OpenSubtitles activés du même coup
     $('#bPass').value = ''; closeModals(); toast('Liste déverrouillée');
     S.group = 'home'; renderGroups(); applyFilter(true); setHomeView(true);
   } catch (e) { err.textContent = e.message; }
