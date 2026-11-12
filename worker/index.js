@@ -456,6 +456,27 @@ async function iptvSync(request, env, url) {
   return out({ error: 'méthode' }, 405);
 }
 
+// Sous-titres OpenSubtitles pour la page web et l'iPhone : OpenSubtitles refuse la vérification préalable (CORS) que le
+// navigateur envoie avant une requête avec clé. La page envoie ici une requête simple (clé dans l'adresse ou le corps) ;
+// seules la recherche (/subtitles) et la demande de téléchargement (/download) sont relayées, et pour nos sites seulement.
+async function iptvOst(request, url) {
+  var o = request.headers.get('Origin') || '';
+  var h = { 'Access-Control-Allow-Origin': ALLOWED_ORIGINS.indexOf(o) >= 0 ? o : ALLOWED_ORIGIN, 'Vary': 'Origin', 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
+  var err = function (m, s) { return new Response(JSON.stringify({ message: m }), { status: s, headers: h }); };
+  if (ALLOWED_ORIGINS.indexOf(o) < 0) return err('Origine non autorisée', 403);
+  var p = url.searchParams.get('p') || '', key = url.searchParams.get('k') || '';
+  if (!/^[A-Za-z0-9]{20,64}$/.test(key)) return err('Clé invalide', 400);
+  var init = { headers: { 'Api-Key': key, 'User-Agent': 'LecteurIPTV v1.0', 'Accept': 'application/json' } };
+  if (request.method === 'GET' && /^\/subtitles\?[\w=&%.-]{1,300}$/.test(p)) init.method = 'GET';
+  else if (request.method === 'POST' && p === '/download') {
+    var b = await request.json().catch(function () { return null; });
+    if (!b || !/^\d{1,12}$/.test(String(b.file_id))) return err('Fichier invalide', 400);
+    init.method = 'POST'; init.headers['Content-Type'] = 'application/json'; init.body = JSON.stringify({ file_id: +b.file_id });
+  } else return err('Requête non autorisée', 400);
+  var r = await fetch('https://api.opensubtitles.com/api/v1' + p, init);
+  return new Response(r.body, { status: r.status, headers: h });
+}
+
 async function iptvM3u(request, url) {
   var o = request.headers.get('Origin') || '';
   var h = { 'Access-Control-Allow-Origin': ALLOWED_ORIGINS.indexOf(o) >= 0 ? o : ALLOWED_ORIGIN, 'Vary': 'Origin', 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' };
@@ -504,6 +525,7 @@ async function handle(request, env, ctx) {
     var url = new URL(request.url);
     var path = url.pathname;
     if (path === '/iptv/m3u') return iptvM3u(request, url);
+    if (path === '/iptv/ost') return iptvOst(request, url);
     if (path === '/iptv/sync') return iptvSync(request, env, url);
     if (path === '/iptv/agenda') {                    // agenda sport préparé par GitHub (scripts/build-agenda.py) à partir de xmltvfr.fr
       var ag = await env.PLANNING_DB.get('iptv:agenda');

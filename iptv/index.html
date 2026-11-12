@@ -503,6 +503,9 @@ body.vodplay:not(.homeview) #channels{display:none}
 #trackMenu button:hover{background:var(--bg3)}
 #trackMenu button .ck{width:16px;color:var(--blue);font-weight:800}
 #trackMenu .no{padding:6px 10px;color:var(--text3);font-size:13px}
+#trackMenu .subofs{display:flex;align-items:center;gap:6px}
+#trackMenu .subofs button{width:auto;padding:4px 10px;background:var(--bg3,rgba(255,255,255,.08));font-size:13px}
+#trackMenu .subofs b{min-width:48px;text-align:center;color:var(--text);font-weight:600}
 #guide .pg{padding:10px 0;border-bottom:.5px solid var(--border)}
 #guide .pg .tm{color:var(--text3);font-size:12px}
 #guide .pg .ti{font-weight:600;margin:2px 0}
@@ -1491,7 +1494,7 @@ async function play(c, alts) {
   if (typeof NXT !== 'undefined') { clearInterval(NXT.t); const nb = $('#nextBox'); if (nb) nb.remove(); }
   stopEngines(); S.engine = ''; showNow(c); S.found = null; S.conv = false;
   normSetup(); normReset(c);
-  if (S.extFor !== c.url) { S.extCues = null; S.extFor = c.url; clearCues(subT('f')); subT('f').mode = 'disabled'; subT('r').mode = 'disabled'; }
+  if (S.extFor !== c.url) { S.extCues = null; S.extOfs = 0; S.extFor = c.url; clearCues(subT('f')); subT('f').mode = 'disabled'; subT('r').mode = 'disabled'; }
   document.body.classList.add('playing');
   document.body.classList.toggle('vodplay', !!c.vod);
   document.body.classList.toggle('live', !c.vod);
@@ -3183,7 +3186,9 @@ function renderTrackMenu() {
   const eng = LS.get('dev.engine', 'tv');
   h += `<h4>Lecteur vidéo</h4><button data-eng="tv">${ck(eng !== 'js')}${window.PREFER_NATIVE ? 'Lecteur de la télé (4K, Dolby)' : 'Automatique'}</button><button data-eng="js">${ck(eng === 'js')}Lecteur web (hls.js / mpegts.js)</button>`;
   h += '<h4>Sous-titres</h4>' + `<button data-sub="-1">${ck(!T.some(t => t.on))}Désactivés</button>` + (T.length ? T.map((t, n) => `<button data-sub="${t.i}">${ck(t.on)}${trackLabel(t, n + 1)}</button>`).join('') : '<div class="no">Aucun sous-titre fourni</div>')
-    + '<button data-subfile><span class="ck">＋</span>Ajouter un fichier de sous-titres (.srt, .vtt)…</button>';
+    + (S.current && S.current.vod && S.current.it ? `<button data-ost><span class="ck">⌕</span>${S.ost && S.ost.k === itemKey(S.current.it) + (S.current.ep ? 'e' + S.current.ep.s + 'x' + S.current.ep.n : '') && S.extName === 'OpenSubtitles' ? 'Autres sous-titres français (OpenSubtitles)' : 'Chercher des sous-titres français (OpenSubtitles)'}</button>` : '')
+    + '<button data-subfile><span class="ck">＋</span>Ajouter un fichier de sous-titres (.srt, .vtt)…</button>'
+    + (S.extCues ? `<div class="no subofs">Décalage <button data-subofs="-0.5">−0,5 s</button><b>${(S.extOfs || 0) > 0 ? '+' : ''}${(S.extOfs || 0).toFixed(1).replace('.', ',')} s</b><button data-subofs="0.5">+0,5 s</button></div>` : '');
   m.innerHTML = h;
 }
 $('#trackBtn').onclick = e => { e.stopPropagation(); const m = $('#trackMenu'); m.hidden = !m.hidden; renderTrackMenu(); };
@@ -3192,6 +3197,9 @@ $('#trackMenu').addEventListener('click', e => {
   const en = e.target.closest('[data-eng]');
   if (en) { LS.set('dev.engine', en.dataset.eng); $('#trackMenu').hidden = true; toast(en.dataset.eng === 'js' ? 'Lecteur web' : 'Lecteur par défaut'); if (S.current) play(S.current, S.alts); return; }
   if (e.target.closest('[data-subfile]')) { $('#subFile').click(); return; }
+  if (e.target.closest('[data-ost]')) { $('#trackMenu').hidden = true; ostFind(); return; }
+  const so = e.target.closest('[data-subofs]');
+  if (so) { S.extOfs = Math.round(((S.extOfs || 0) + +so.dataset.subofs) * 10) / 10; loadFileCues(); renderTrackMenu(); return; }
   const a = e.target.closest('[data-aud]'), t = e.target.closest('[data-sub]');
   if (a) setAudio(+a.dataset.aud, true); else if (t) { const v = t.dataset.sub; setSub(isNaN(+v) ? v : +v, v !== 'f'); }
 });
@@ -3221,7 +3229,7 @@ function parseSubs(text) {
 }
 function loadFileCues() {
   if (!S.extCues) return;
-  const t = subT('f'), off = S.engine === 'remux' && S.remux ? S.remux.ss : 0;
+  const t = subT('f'), off = (S.engine === 'remux' && S.remux ? S.remux.ss : 0) - (S.extOfs || 0);   // + décalage choisi
   clearCues(t);
   S.extCues.forEach(c => { if (c.end - off > 0) try { t.addCue(new VTTCue(Math.max(0, c.start - off), c.end - off, c.text)); } catch (e) {} });
 }
@@ -3231,9 +3239,66 @@ $('#subFile').addEventListener('change', async e => {
   let txt; try { txt = new TextDecoder('utf-8', { fatal: true }).decode(buf); } catch (er) { txt = new TextDecoder('windows-1252').decode(buf); }   // anciens .srt en Windows-1252
   const cues = parseSubs(txt.replace(/^﻿/, ''));
   if (!cues.length) { toast('Fichier de sous-titres illisible'); return; }
-  S.extCues = cues; S.extName = f.name.replace(/\.[^.]+$/, '');
+  S.extCues = cues; S.extName = f.name.replace(/\.[^.]+$/, ''); S.extOfs = 0;
   loadFileCues(); setSub('f'); $('#trackMenu').hidden = true; toast(cues.length + ' sous-titres chargés');
 });
+/* Sous-titres français trouvés sur OpenSubtitles (film ou épisode, retrouvé par son identifiant TMDB). Seulement à la
+   demande (menu Sous-titres) ; chargés comme un fichier .srt ajouté à la main. Les traductions automatiques sont écartées,
+   les plus téléchargés d'abord ; « Autres sous-titres » passe au suivant (utile si le texte est décalé). Fichiers gardés
+   sur l'appareil (pas de nouveau téléchargement) ; 100 téléchargements par jour avec la clé de l'appli. */
+const OST_API = 'https://api.opensubtitles.com/api/v1';
+// Appli Windows : appel direct (pas de vérification CORS) ; page web et iPhone : par le relais (OpenSubtitles refuse la
+// vérification préalable que le navigateur ferait), en requête simple sans en-tête particulier
+const OST_RELAY = 'https://planning-gcal.arthur-lebreton94.workers.dev/iptv/ost';
+async function ostCall(path, body) {
+  const key = LS.get('pref.ost', ''), direct = !!window.desktop;
+  const r = direct
+    ? await fetch(OST_API + path, { method: body ? 'POST' : 'GET', headers: Object.assign({ 'Api-Key': key, 'X-User-Agent': 'LecteurIPTV v1.0' }, body ? { 'Content-Type': 'application/json' } : {}), body: body ? JSON.stringify(body) : undefined })
+    : await fetch(OST_RELAY + '?p=' + encodeURIComponent(path) + '&k=' + encodeURIComponent(key), { method: body ? 'POST' : 'GET', body: body ? JSON.stringify(body) : undefined });
+  const j = await r.json().catch(() => ({}));
+  if (r.status === 406 || (j.message && /quota|download limit/i.test(j.message) && !j.link)) throw new Error('quota du jour atteint' + (j.reset_time ? ', de nouveau dans ' + j.reset_time : ''));
+  if (r.status === 401 || r.status === 403) throw new Error('clé OpenSubtitles refusée');
+  if (!r.ok) throw new Error('OpenSubtitles répond ' + r.status);
+  return j;
+}
+async function ostFind() {
+  const c = S.current; if (!c || !c.vod || !c.it) return;
+  if (!LS.get('pref.ost', '')) {
+    const pw = (prompt('Mot de passe de « Mon abonnement » (active la recherche de sous-titres) :') || '').trim().toLowerCase(); if (!pw) return;
+    try { await useBuiltinOst(pw); } catch (e) { toast('Mot de passe incorrect'); return; }
+  }
+  const k = itemKey(c.it) + (c.ep ? 'e' + c.ep.s + 'x' + c.ep.n : ''), t = token;
+  try {
+    let O = S.ost && S.ost.k === k ? S.ost : null;
+    if (!O) {
+      toast('Recherche de sous-titres français…');
+      const ti = await tmdbInfo(c.it); if (!ti || !ti.id) throw new Error('film introuvable sur TMDB');
+      // paramètres dans l'ordre alphabétique (sinon OpenSubtitles redirige)
+      const q = ti.kind === 'tv' ? (c.ep ? `episode_number=${c.ep.n}&languages=fr&parent_tmdb_id=${ti.id}&season_number=${c.ep.s}` : null) : `languages=fr&tmdb_id=${ti.id}&type=movie`;
+      if (!q) throw new Error('épisode inconnu');
+      const j = await ostCall('/subtitles?' + q);
+      const l = (j.data || []).map(x => x.attributes).filter(a => a && a.language === 'fr' && !a.ai_translated && !a.machine_translated && a.files && a.files[0])
+        .sort((a, b) => (a.hearing_impaired - b.hearing_impaired) || (b.download_count - a.download_count));
+      O = S.ost = { k, l, i: -1 };
+    }
+    if (!O.l.length) throw new Error('aucun sous-titre français trouvé');
+    O.i = (O.i + 1) % O.l.length;
+    const a = O.l[O.i], fid = a.files[0].file_id, ck = 'ost:' + fid;
+    let txt = ((await DB.cacheGet(ck)) || {}).data;
+    if (!txt) {
+      const d = await ostCall('/download', { file_id: fid }); if (!d.link) throw new Error('lien de téléchargement absent');
+      const buf = await (await fetch(d.link)).arrayBuffer();
+      try { txt = new TextDecoder('utf-8', { fatal: true }).decode(buf); } catch (er) { txt = new TextDecoder('windows-1252').decode(buf); }
+      DB.cachePut({ id: ck, at: Date.now(), data: txt });
+    }
+    if (t !== token || S.current !== c) return;
+    const cues = parseSubs(txt.replace(/^\uFEFF/, ''));
+    if (!cues.length) throw new Error('fichier illisible');
+    S.extCues = cues; S.extName = 'OpenSubtitles'; S.extOfs = 0;
+    loadFileCues(); setSub('f');
+    toast(`Sous-titres français chargés (${O.i + 1}/${O.l.length}${a.release ? ' · ' + a.release.slice(0, 40) : ''})${O.l.length > 1 ? ' · décalés ? menu › Autres sous-titres' : ''}`);
+  } catch (e) { toast('Sous-titres : ' + (e.message || e)); }
+}
 // Sous-titres du film converti : lus au fil de la conversion
 setInterval(async () => {
   const R = S.remux; if (S.engine !== 'remux' || !R || R.s < 0 || !R.sid) return;
@@ -3871,6 +3936,15 @@ const BUILTIN = { salt: 'ICM8NZYZdHDn21X1oKdVVQ==', iv: 'NYYZVYKCFXsb31rz',
 const b64d = s => Uint8Array.from(atob(s), ch => ch.charCodeAt(0));
 // Clé TMDB intégrée, chiffrée avec le même mot de passe que l'abonnement : activée en déverrouillant la liste
 const TMDB_ENC = { salt: 'jyaqEiMiGbi+oYy5B5TZBw==', iv: '3xilUtIYCDBzCe4d', data: 'sVCliRusMkctrrqSzb1mUkZFIS+iTSB2wmyxP61Yik7Ejo7UIxISv+FfrvWCeyLJ' };
+// Clé OpenSubtitles (sous-titres à télécharger), chiffrée de la même façon
+const OST_ENC = {"salt": "T0iBGBOOxgcNnuRfo1rgfg==", "iv": "ex8kKVNAyT97lG5g", "data": "/yVyqpKS1pG9RdJA9dA3XfYOTVZiI+9Le7t2uVdsSSBPCSuDx1yjO01GIdWPjxvN"};
+async function decEnc(E, pass) {
+  const C = crypto.subtle;
+  const base = await C.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
+  const key = await C.deriveKey({ name: 'PBKDF2', salt: b64d(E.salt), iterations: 600000, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+  return new TextDecoder().decode(await C.decrypt({ name: 'AES-GCM', iv: b64d(E.iv) }, key, b64d(E.data)));
+}
+async function useBuiltinOst(pass) { const k = (await decEnc(OST_ENC, pass)).trim(); if (!/^[A-Za-z0-9]{20,64}$/.test(k)) throw new Error('clé'); LS.set('pref.ost', k); return k; }
 async function unlockTmdb(pass) {
   const C = crypto.subtle;
   const base = await C.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
@@ -3880,6 +3954,7 @@ async function unlockTmdb(pass) {
 async function useBuiltinTmdb(pass) {
   const k = (await unlockTmdb(pass)).trim(); if (!/^[0-9a-f]{32}$/i.test(k)) throw new Error('clé');
   LS.set('pref.tmdb', k); TM.data = null; TM.err = ''; V.force2 = true;
+  if (!LS.get('pref.ost', '')) useBuiltinOst(pass).catch(() => {});        // sous-titres OpenSubtitles activés du même coup
   return k;
 }
 async function unlockBuiltin(pass) {
