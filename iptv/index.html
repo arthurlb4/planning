@@ -468,6 +468,14 @@ body.cbar.playing #vbar,body.remux #vbar{display:flex}
 body.playing #screen.idle #vbar{opacity:0;pointer-events:none}
 #vbar .vb{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;flex:none}
 #vbar .vb:hover{background:rgba(255,255,255,.14)}
+/* Outils de la chaîne rangés dans la barre du lecteur (favori, programme, audio et sous-titres, match, qualité) */
+#vbar .vt svg{fill:none;width:20px;height:20px;stroke-width:1.8}
+#vbar .vt.star.on svg{fill:var(--gold);stroke:var(--gold)}
+#vbar .vsep{width:1px;height:18px;background:rgba(255,255,255,.22);margin:0 4px;flex:none}
+body:not(.hasmatch) #vbar #matchBtn,body.vodplay #vbar #guideBtn{display:none}
+body.hasmatch #vbar #matchBtn svg{stroke:var(--blue)}
+body.vtools #prevBtn,body.vtools #nextBtn,body.vtools #soloBtn,body.vtools #soloExit{display:none!important}
+
 #vbar svg{width:22px;height:22px;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;fill:#fff}
 #vbar #vbBack svg,#vbar #vbFwd svg{fill:none}
 #vbar svg text{font:700 7.5px system-ui,sans-serif;fill:#fff;stroke:none}
@@ -507,6 +515,9 @@ body.vodplay:not(.homeview) #channels{display:none}
 #trackMenu .subofs button{width:auto;padding:4px 10px;background:var(--bg3,rgba(255,255,255,.08));font-size:13px}
 #trackMenu .subofs b{min-width:48px;text-align:center;color:var(--text);font-weight:600}
 #guide .pg{padding:10px 0;border-bottom:.5px solid var(--border)}
+#guide .pg.past{opacity:.45}
+#guide .dy{position:sticky;top:54px;background:var(--bg0);font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);font-weight:700;padding:12px 0 4px;z-index:1}
+body.solo #guide .dy{background:rgba(14,14,13,.95)}
 #guide .pg .tm{color:var(--text3);font-size:12px}
 #guide .pg .ti{font-weight:600;margin:2px 0}
 #guide .pg.on .ti{color:var(--blue)}
@@ -622,7 +633,7 @@ body.vodplay:not(.homeview) #channels{display:none}
       </div>
     </div>
   </section>
-  <aside id="side" hidden><div class="sdh"><b id="matchTitle">Match</b><button class="btn icon" id="sideClose" aria-label="Fermer"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div><div id="matchBox"></div></aside>
+  <aside id="side" hidden><div class="sdh"><b id="matchTitle">Match</b><button class="btn icon" id="sideClose" aria-label="Fermer"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div><div id="matchBox"></div><div id="guide" hidden></div></aside>
 </main>
 <div id="overlay"></div>
 
@@ -685,13 +696,6 @@ body.vodplay:not(.homeview) #channels{display:none}
   </div>
 </div>
 
-<!-- Programme de la chaîne (EPG) -->
-<div class="modal" id="guideModal">
-  <div class="sheet">
-    <h2><span id="guideTitle">Programme</span> <button class="btn icon" data-close aria-label="Fermer"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></h2>
-    <div id="guide"></div>
-  </div>
-</div>
 
 <!-- Score et statistiques du match en cours (ESPN) -->
 
@@ -1493,6 +1497,7 @@ async function play(c, alts) {
   setHomeView(false); document.body.classList.remove('drawer');
   if (typeof NXT !== 'undefined') { clearInterval(NXT.t); const nb = $('#nextBox'); if (nb) nb.remove(); }
   stopEngines(); S.engine = ''; showNow(c); S.found = null; S.conv = false;
+  if (SIDE.mode === 'guide' && !$('#side').hidden) { if (c.vod) toggleSide(false); else renderGuideSide(true); }   // programme : suit la chaîne
   normSetup(); normReset(c);
   if (S.extFor !== c.url) { S.extCues = null; S.extOfs = 0; S.extFor = c.url; clearCues(subT('f')); subT('f').mode = 'disabled'; subT('r').mode = 'disabled'; }
   document.body.classList.add('playing');
@@ -1756,15 +1761,27 @@ async function nowEpg(c) {
   el.innerHTML = `<b>${esc(list[0].title)}</b> · ${hm(list[0].start)}–${hm(list[0].end)}<span id="nowScore"></span>${list[1] ? ' · ensuite ' + esc(list[1].title) + ' (' + hm(list[1].start) + ')' : ''}`;
   findMatch(c);
 }
-setInterval(() => { if (S.current) nowEpg(S.current); const b = document.body.classList; if (b.contains('homeview') && !b.contains('agenda') && !b.contains('vod')) fillTileEpg(); }, window.PREFER_NATIVE ? 300000 : 60000);
-$('#guideBtn').onclick = async () => {
-  const c = S.current; if (!c) return;
-  $('#guideTitle').textContent = 'Programme · ' + c.name;
-  $('#guide').innerHTML = '<div class="spin" style="margin:20px auto"></div>'; openModal('guideModal');
+setInterval(() => { if (S.current) { nowEpg(S.current); renderGuideSide(false); } const b = document.body.classList; if (b.contains('homeview') && !b.contains('agenda') && !b.contains('vod')) fillTileEpg(); }, window.PREFER_NATIVE ? 300000 : 60000);
+// Programme de la chaîne dans le panneau de droite (comme les stats de match) : suit la chaîne en cours, regroupé par jour,
+// programme en cours mis en avant et amené en vue
+$('#guideBtn').onclick = () => { if (!$('#side').hidden && SIDE.mode === 'guide') toggleSide(false); else toggleSide(true, 'guide'); };
+async function renderGuideSide(scroll) {
+  const c = S.current, box = $('#guide'); if (!c || c.vod || SIDE.mode !== 'guide' || $('#side').hidden) return;
+  $('#matchTitle').textContent = 'Programme · ' + niceName(c);
+  if (scroll) box.innerHTML = '<div class="spin" style="margin:30px auto"></div>';
   const list = await getEpg(c, 40);
-  $('#guide').innerHTML = list && list.length ? list.map(p => `<div class="pg${p.start <= Date.now() ? ' on' : ''}"><div class="tm">${new Date(p.start).toLocaleDateString('fr-FR', { weekday: 'short' })} ${hm(p.start)} – ${hm(p.end)}</div><div class="ti">${esc(p.title)}</div>${p.desc ? `<div class="ds">${esc(p.desc)}</div>` : ''}${p.start <= Date.now() ? `<div class="bar"><i style="width:${pct(p)}%"></i></div>` : ''}</div>`).join('')
-    : '<p class="hint">Pas de programme trouvé pour cette chaîne.</p>';
-};
+  if (S.current !== c || SIDE.mode !== 'guide') return;
+  const now = Date.now(); let day = '', h = '';
+  (list || []).forEach(p => {
+    const d = new Date(p.start).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+    if (d !== day) { day = d; h += `<div class="dy">${esc(d)}</div>`; }
+    const on = p.start <= now && p.end > now;
+    h += `<div class="pg${on ? ' on' : p.end <= now ? ' past' : ''}"><div class="tm">${hm(p.start)} – ${hm(p.end)}</div><div class="ti">${esc(p.title)}</div>${p.desc ? `<div class="ds">${esc(p.desc)}</div>` : ''}${on ? `<div class="bar"><i style="width:${pct(p)}%"></i></div>` : ''}</div>`;
+  });
+  box.innerHTML = h || '<p class="hint">Pas de programme trouvé pour cette chaîne.</p>';
+  const cur = box.querySelector('.pg.on');
+  if (scroll && cur) { const sd = $('#side'); sd.scrollTop += cur.getBoundingClientRect().top - sd.getBoundingClientRect().top - 110; }
+}
 
 /* ---------- Qualité de l'image et du son : codec, résolution, images/s, débit, son, images perdues, tampon ---------- */
 function codecName(c) {
@@ -3390,7 +3407,7 @@ async function findMatch(c) {
   if (key !== MATCH.key || Date.now() - MATCH.t > 10 * 60000) { MATCH.key = key; MATCH.t = Date.now(); MATCH.ev = cur ? await espnFind(cur.text, cur.sport).catch(() => null) : null; MATCH.sport = cur ? cur.sport : ''; }
   if (S.current !== c) return;
   document.body.classList.toggle('hasmatch', !!MATCH.ev);
-  if (MATCH.ev) refreshMatch(false); else if (!$('#side').hidden) toggleSide(false);
+  if (MATCH.ev) refreshMatch(false); else if (!$('#side').hidden && SIDE.mode === 'match') toggleSide(false);
 }
 const STAT_FR = { possessionPct: 'Possession', totalShots: 'Tirs', shotsOnTarget: 'Tirs cadrés', wonCorners: 'Corners', foulsCommitted: 'Fautes', yellowCards: 'Cartons jaunes',
   redCards: 'Cartons rouges', offsides: 'Hors-jeu', saves: 'Arrêts', totalPasses: 'Passes', accuratePasses: 'Passes réussies', fieldGoalPct: 'Réussite aux tirs (%)',
@@ -3411,7 +3428,8 @@ async function refreshMatch(render) {
   const state = st.state === 'pre' ? 'À venir' : st.completed ? 'Terminé' : st.state === 'in' ? (st.shortDetail || clock || 'En cours') : (st.shortDetail || '');
   const sc = cs.map(x => x.score == null ? '–' : x.score).join(' – ');
   const ns = $('#nowScore'); if (ns) ns.textContent = ' · ' + sc + (st.state === 'in' ? ' (' + (clock || st.shortDetail || '') + ')' : st.completed ? ' (terminé)' : '');
-  if (!render && $('#side').hidden) return;
+  if (!render && ($('#side').hidden || SIDE.mode !== 'match')) return;
+  if (SIDE.mode !== 'match') return;
   const box = j.boxscore && j.boxscore.teams || [];
   const statsOf = id => ((box.find(b => b.team.id === id) || {}).statistics || []);
   const S0 = statsOf(cs[0].team.id), S1 = statsOf(cs[1].team.id);
@@ -3556,13 +3574,20 @@ function ytOnPlay(f, cb, max) { let done = false; const go = () => { if (done) r
 // demande à YouTube de nous envoyer l'état de lecture (fin de la vidéo)
 function ytListen(f) { f.addEventListener('load', () => { try { f.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*'); } catch (e) {} }); }
 // Panneau de droite : score et statistiques du match en cours
-function toggleSide(on) {
-  const el = $('#side'); on = on === undefined ? el.hidden : on;
-  if (on && !MATCH.ev) return;
+// Panneau de droite : stats du match ou programme de la chaîne (un seul à la fois)
+const SIDE = { mode: 'match' };
+function toggleSide(on, mode) {
+  const el = $('#side'); mode = mode || 'match'; on = on === undefined ? (el.hidden || SIDE.mode !== mode) : on;
+  if (on && mode === 'match' && !MATCH.ev) return;
+  if (on) SIDE.mode = mode;
   el.hidden = !on; document.body.classList.toggle('sideopen', on);
-  if (on) { $('#matchBox').innerHTML = '<div class="spin" style="margin:30px auto"></div>'; MATCH.next = Date.now() + 30000; refreshMatch(true); }
+  $('#matchBox').hidden = SIDE.mode !== 'match'; $('#guide').hidden = SIDE.mode !== 'guide';
+  if (!on) return;
+  el.scrollTop = 0;
+  if (mode === 'match') { $('#matchBox').innerHTML = '<div class="spin" style="margin:30px auto"></div>'; MATCH.next = Date.now() + 30000; refreshMatch(true); }
+  else renderGuideSide(true);
 }
-$('#matchBtn').onclick = () => toggleSide();
+$('#matchBtn').onclick = () => toggleSide(undefined, 'match');
 $('#sideClose').onclick = () => toggleSide(false);
 // Actualisation toutes les 30 s (score dans la barre du lecteur, panneau s'il est ouvert), compte à rebours affiché
 MATCH.next = 0;
@@ -3681,6 +3706,15 @@ function scrollToSel() {
 $('#prevBtn').onclick = () => step(-1);
 $('#nextBtn').onclick = () => step(1);
 $('#nowFav').onclick = () => toggleFav(S.current);
+// Barre du lecteur de l'appli (ordinateur) : les outils de la chaîne y sont rangés, à droite, avant le volume ; sous la vidéo
+// ne restent que le logo, le nom, la qualité et le programme. Chaîne précédente / suivante : touches ↑ ↓.
+// Lecteur d'Apple (iPhone, iPad) et télé : outils laissés sous la vidéo (leur barre de lecture n'est pas la nôtre)
+if (!NATIVE_CTRL()) {
+  const vb = $('#vbar'), at = $('#vbMute'), sep = document.createElement('span'); sep.className = 'vsep'; vb.insertBefore(sep, at);
+  ['nowFav', 'guideBtn', 'trackBtn', 'matchBtn', 'statsBtn'].forEach(id => { const b = $('#' + id); b.classList.remove('btn', 'icon'); b.classList.add('vb', 'vt'); vb.insertBefore(b, sep); });
+  const sep2 = document.createElement('span'); sep2.className = 'vsep'; vb.insertBefore(sep2, at); vb.insertBefore(sep2, $('#nowFav'));
+  document.body.classList.add('vtools');
+}
 $('#vlcLink').onclick = () => openVlc(S.current);
 $('#copyLink').onclick = async () => {
   try { await navigator.clipboard.writeText($('#linkField').value); toast('Lien copié'); }
