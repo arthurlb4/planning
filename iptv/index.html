@@ -141,6 +141,7 @@ body.homelist #homeList{display:block}
 #player{display:flex;flex-direction:column;min-height:0;min-width:0;background:#000}
 #screen{position:relative;flex:1;min-height:0;display:flex;align-items:center;justify-content:center;background:#000}
 video{width:100%;height:100%;object-fit:contain;background:#000;outline:none}
+#vfreeze{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none}
 #status{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;pointer-events:none;color:var(--text2);line-height:1.45}
 #status.hide{display:none}
 #status .msg{max-width:440px}
@@ -559,6 +560,7 @@ body.vodplay:not(.homeview) #channels{display:none}
   <section id="player">
     <div id="screen">
       <video id="video" controls playsinline autoplay></video>
+      <canvas id="vfreeze" hidden></canvas>
       <div id="status"><div class="msg hint">Choisissez une chaîne dans la liste.</div></div>
       <div id="stats" hidden></div>
       <div id="trackMenu" hidden></div>
@@ -1198,6 +1200,12 @@ function loadLib(k) {
   }));
 }
 let hls = null, mts = null, token = 0, attempt = null;
+// Dernière image figée par-dessus la vidéo pendant une relance (dessin seul : rien n'est relu, pas de souci d'origine)
+function freezeFrame() {
+  const cv = $('#vfreeze'); if (!video.videoWidth) return;
+  try { cv.width = video.videoWidth; cv.height = video.videoHeight; cv.getContext('2d').drawImage(video, 0, 0, cv.width, cv.height); cv.hidden = false; } catch (e) { cv.hidden = true; }
+}
+function unfreeze() { const cv = $('#vfreeze'); if (cv) cv.hidden = true; }
 function stopEngines() {
   attempt = null;
   document.body.classList.remove('remux');
@@ -1407,13 +1415,14 @@ function convFail(c, t) {
 }
 async function play(c, alts) {
   if (!c) return;
+  unfreeze();
   const t = ++token;
   S.alts = alts || [];                                  // autres qualités de la même chaîne, essayées si celle-ci ne passe pas
   if (!S.retry) S.tries = [];                           // journal des essais (montré si rien ne passe)
   S.retry = false;
   setHomeView(false); document.body.classList.remove('drawer');
   if (typeof NXT !== 'undefined') { clearInterval(NXT.t); const nb = $('#nextBox'); if (nb) nb.remove(); }
-  stopEngines(); showNow(c); S.found = null; S.conv = false;
+  stopEngines(); S.engine = ''; showNow(c); S.found = null; S.conv = false;
   normSetup(); normReset(c);
   if (S.extFor !== c.url) { S.extCues = null; S.extFor = c.url; clearCues(subT('f')); subT('f').mode = 'disabled'; subT('r').mode = 'disabled'; }
   document.body.classList.add('playing');
@@ -2942,11 +2951,15 @@ function remuxStart(ss, t) {
   R.sid = R.s >= 0 ? Math.random().toString(36).slice(2, 12) : ''; R.ncues = 0; clearCues(subT('r'));
   subT('r').mode = R.s >= 0 ? 'showing' : 'disabled';
   const hevc = /hevc|h265/i.test(R.info.vcodec || '') ? '1' : '0';
-  stopEngines(); S.engine = '';
+  // relance (avancer, langue, sous-titres) : on reste en « film converti » (menus, temps écoulé) et la dernière image reste
+  // à l'écran pendant les quelques secondes de reprise, au lieu d'un écran noir
+  const again = S.engine === 'remux';
+  if (again) freezeFrame();
+  stopEngines(); S.engine = again ? 'remux' : '';
   setStatus('load'); video.controls = false;
   let done = false;
   const timer = setTimeout(() => ko(), 30000);
-  const ok = () => { if (done || t !== token) return; done = true; clearTimeout(timer); setStatus(null); S.engine = 'remux'; S.playUrl = R.url; document.body.classList.add('remux'); vbarUpdate(); setTimeout(applyTrackPrefs, 300); };
+  const ok = () => { if (done || t !== token) return; done = true; clearTimeout(timer); setStatus(null); unfreeze(); S.engine = 'remux'; S.playUrl = R.url; document.body.classList.add('remux'); vbarUpdate(); setTimeout(applyTrackPrefs, 300); renderTrackMenu(); };
   const ko = () => {
     if (done || t !== token) return; done = true; clearTimeout(timer);
     if (!R.enc) { R.enc = true; toast('Image convertie (format non lu par la carte graphique)'); return remuxStart(R.ss, t); }
@@ -2958,6 +2971,7 @@ function remuxStart(ss, t) {
   const p = video.play(); if (p && p.catch) p.catch(() => {});
 }
 function failRemux(c, why) {
+  unfreeze();
   S.tries.push({ eng: 'ffmpeg', u: 'conversion', why });
   failMsg('Conversion du film (ffmpeg) : ' + why, '<button class="btn primary" onclick="openVlc(S.current)">Ouvrir dans VLC</button>');
 }
@@ -3627,7 +3641,7 @@ $('#plList').addEventListener('click', async e => {
     catch (err) { toast(err.message); r.disabled = false; }
   }
 });
-function stopAll() { token++; stopEngines(); S.current = null; document.body.classList.remove('playing', 'mini', 'hasmatch', 'vodplay', 'live'); MATCH.ev = null; MATCH.key = ''; toggleStats(false); toggleSide(false); $('#nowEpg').textContent = ''; setStatus('msg', '<span class="hint">Choisissez une chaîne dans la liste.</span>'); $('#nowName').textContent = '—'; $('#nowSub').textContent = ''; qualBtnUpdate(null); document.title = 'Lecteur IPTV'; }
+function stopAll() { token++; stopEngines(); unfreeze(); S.engine = ''; S.current = null; document.body.classList.remove('playing', 'mini', 'hasmatch', 'vodplay', 'live'); MATCH.ev = null; MATCH.key = ''; toggleStats(false); toggleSide(false); $('#nowEpg').textContent = ''; setStatus('msg', '<span class="hint">Choisissez une chaîne dans la liste.</span>'); $('#nowName').textContent = '—'; $('#nowSub').textContent = ''; qualBtnUpdate(null); document.title = 'Lecteur IPTV'; }
 
 /* Liste par adresse : directement si le serveur l'accepte, sinon via le serveur de l'app (CORS, adresse en http, blocage) */
 const RELAY = 'https://planning-gcal.arthur-lebreton94.workers.dev/iptv/m3u?url=';
