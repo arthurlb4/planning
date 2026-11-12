@@ -357,6 +357,11 @@ body.hasmatch #nowScore{display:inline}
 body.homeview #channels,body.homeview #player{display:none}
 .hsec h2,#agenda h2{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--text3);margin:22px 2px 12px;font-weight:700}
 .brands{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;align-items:start}
+.ag-teams{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:12px 2px 4px}
+.ag-teams .chip button{margin-left:6px;color:inherit;opacity:.7}
+.ag-h{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--text3);margin:18px 2px 6px;font-weight:700}
+.ev.mine{box-shadow:inset 3px 0 0 var(--gold)}
+.ev .evgo{margin:8px 0 2px;height:34px}
 .brand.fy .chs{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:2px}
 .brand{border-radius:18px;background:var(--bg2);border:.5px solid var(--border);overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.22)}
 .sq{position:relative;width:100%;aspect-ratio:1/1;max-height:240px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;border:0;cursor:pointer;background:radial-gradient(120% 120% at 30% 15%,#3d3c39,#1a1a19);color:var(--text)}
@@ -983,7 +988,11 @@ const qOfHeight = h => h >= 1440 ? 4 : h >= 900 ? 3 : h >= 650 ? 2 : 1;
 // Mesure d'une chaîne : { h: hauteur, f: images/s, c: canaux audio, a: format audio } (ancien format : la hauteur seule)
 const vrOf = url => { const v = VRES.get(url); return typeof v === 'number' ? { h: v } : v || {}; };
 // Classement des versions : résolution réelle, puis 50 images/s ou plus, puis son 5.1, puis HEVC en dernier, puis l'ordre de la liste
-const chScore = c => { const k = chInfo(c); return (k.ko ? -1000 : 0) + k.q * 100 + (k.fps >= 48 ? 20 : 0) + (k.ach >= 6 ? 10 : 0) + (/ec-3|ac-3|eac3|ac3/i.test(k.acod) ? 2 : 0); };
+// Coupures par heure mesurées chez vous (au moins 10 min regardées) : jusqu'à 3 par heure rien ne change ; au-delà la version
+// recule, mais une meilleure qualité qui coupe un peu reste devant (il faut ~15 coupures/h pour passer derrière la qualité inférieure)
+const cutRate = k => k.pt >= 600 ? k.st / (k.pt / 3600) : 0;
+const cutPen = k => { const r = cutRate(k); return r > 3 ? Math.min(150, (r - 3) * 12) : 0; };
+const chScore = c => { const k = chInfo(c); return (k.ko ? -1000 : 0) - cutPen(k) + k.q * 100 + (k.fps >= 48 ? 20 : 0) + (k.ach >= 6 ? 10 : 0) + (/ec-3|ac-3|eac3|ac3/i.test(k.acod) ? 2 : 0); };
 function vresNote(c, h, x) {
   if (!c || c.vod || !(h >= 200)) return;
   const old = vrOf(c.url), nw = Object.assign({}, old, { h: Math.max(old.h || 0, h) }, x || {});
@@ -1011,7 +1020,7 @@ function chInfo(c) {
   const reg = REGIONAL.test(c.group || '') || REGIONAL.test(c.name || '');
   // Qualité : celle mesurée à la lecture si on la connaît (la 4K annoncée n'en est pas toujours), sinon celle du nom
   const ql = q || groupQ(c.group || '') || 2, m = vrOf(c.url), hm = m.h || 0;
-  return (c._ci = { canon: keep.join(' '), q: hm ? qOfHeight(hm) : ql, ql, hm, fps: m.f || 0, ach: m.c || 0, acod: m.a || '', ko: !!(m.ko && Date.now() - m.ko < 3 * 864e5), hevc, fr: (!cc || cc === 'FR' || cc === 'FRA') && !reg });
+  return (c._ci = { canon: keep.join(' '), q: hm ? qOfHeight(hm) : ql, ql, hm, fps: m.f || 0, ach: m.c || 0, acod: m.a || '', st: m.st || 0, pt: m.pt || 0, ko: !!(m.ko && Date.now() - m.ko < 3 * 864e5), hevc, fr: (!cc || cc === 'FR' || cc === 'FRA') && !reg });
 }
 // Pour chaque bouquet : ses chaînes trouvées, chacune avec toutes ses versions, de la meilleure qualité à la moins bonne
 function homeIndex() {
@@ -1095,6 +1104,12 @@ function renderHome() {
   if (!S.pl) { $('#homeInner').innerHTML = '<div class="empty">Ajoutez ou déverrouillez une liste pour voir l\'accueil.<br><br><button class="btn primary" onclick="openModal(\'plModal\')">Listes</button></div>'; return; }
   if (!fams.length) { $('#homeInner').innerHTML = '<div class="empty">Aucune des principales chaînes françaises n\'a été trouvée dans cette liste.<br>Toutes ses chaînes restent dans le menu ☰.</div>'; return; }
   let h = '', sec = '';
+  // Mes équipes : leurs matchs des prochaines 24 h (agenda chargé en coulisse si besoin)
+  if (myTeams().length) {
+    if (!AGENDA.events && !AGENDA._ld) { AGENDA._ld = 1; loadAgenda().then(() => { AGENDA._ld = 0; const b = document.body.classList; if (b.contains('homeview') && !b.contains('agenda') && !b.contains('vod')) renderHome(); }).catch(() => { AGENDA._ld = 0; }); }
+    const te = teamEvents(24); S.teamEv = te;
+    if (te.length) h += `<div class="hsec"><h2>Vos équipes</h2><div class="brand fy"><div class="chs">${te.map((e, k) => `<button class="chr" data-tev="${k}" title="${esc(e.title)}"><span class="lg">${imgOr(logoUrl(e.tv[0].label) || e.tv[0].list[0].logo, initials(e.tv[0].label), '')}</span><span class="m"><span class="l">${esc(e.title)}</span><span class="e">${evLine(e)}</span></span></button>`).join('')}</div></div></div>`;
+  }
   // Pour vous en ce moment : mêmes lignes que dans les cases (même lancement, même programme en cours)
   const fy = tvForYou().map(lab => { for (let i = 0; i < fams.length; i++) { const j = fams[i].subs.findIndex(x => x.label === lab); if (j >= 0) return [i, j]; } return null; }).filter(Boolean);
   if (fy.length) h += `<div class="hsec"><h2>Pour vous en ce moment</h2><div class="brand fy"><div class="chs">${fy.map(([i, j]) => { const x = fams[i].subs[j], c = x.list[0], q = chInfo(c).q, cur = S.current && x.list.includes(S.current);
@@ -1134,6 +1149,7 @@ function setHomeView(on, mini, page) {
   if (on && page === 'agenda') renderAgenda(); else if (on && page === 'vod') renderVod(); else if (on) renderHome();
 }
 $('#homeInner').addEventListener('click', e => {
+  const tv = e.target.closest('[data-tev]'); if (tv) { const ev = S.teamEv[+tv.dataset.tev]; if (ev) play(ev.tv[0].list[0], ev.tv[0].list.slice(1)); return; }
   const b = e.target.closest('[data-play]'); if (!b) return;
   const [i, j] = b.dataset.play.split(':').map(Number), s = S.tiles[i].subs[j];
   play(s.list[0], s.list.slice(1));
@@ -1430,7 +1446,8 @@ function qtHome() {
 // Dans le menu des qualités : résolution mesurée, ou « annoncée » tant qu'on ne l'a pas lue
 const qNote = c => { const k = chInfo(c); if (k.ko) return 'ne marchait pas au dernier test'; if (!k.hm) return 'annoncée, pas encore vérifiée';
   const au = k.ach ? (k.ach >= 6 ? '5.1' : k.ach === 2 ? 'stéréo' : k.ach + ' canaux') + (k.acod ? ' ' + (/ec-3|eac3/i.test(k.acod) ? 'Dolby Digital+' : /ac-3|ac3/i.test(k.acod) ? 'Dolby Digital' : /mp4a|aac/i.test(k.acod) ? 'AAC' : /mp3|mpga/i.test(k.acod) ? 'MP3' : k.acod) : '') : '';
-  return [k.hm + 'p' + (k.fps ? ' ' + k.fps + ' i/s' : ''), au, k.ql !== k.q ? 'annoncée ' + QLBL[k.ql] : ''].filter(Boolean).join(' · '); };
+  const r = cutRate(k), cut = k.pt >= 600 ? (r < 0.5 ? 'stable' : '≈ ' + (r < 10 ? r.toFixed(1).replace('.', ',') : Math.round(r)) + ' coupure' + (r >= 1.5 ? 's' : '') + '/h') : '';
+  return [k.hm + 'p' + (k.fps ? ' ' + k.fps + ' i/s' : ''), au, cut, k.ql !== k.q ? 'annoncée ' + QLBL[k.ql] : ''].filter(Boolean).join(' · '); };
 // Film du catalogue : ses versions (4K, HD…) ; chaîne : les autres qualités de la liste
 const filmCur = c => c && c.vod && c.it && vodVars(c.it).find(x => c.url.includes('/' + x.id + '.'));
 function qualBtnUpdate(c) {
@@ -2043,6 +2060,11 @@ function dayLabel(t) {
   const n = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - today) / 864e5);
   return n === 0 ? "Aujourd'hui" : n === 1 ? 'Demain' : d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'short' });
 }
+/* Mes équipes (ag.teams, synchronisé) : leurs matchs en tête de l'agenda et de l'accueil TV, mis en avant */
+const myTeams = () => { const t = LS.get('ag.teams', []); return Array.isArray(t) ? t : []; };
+const teamRe = t => new RegExp('(^|[^a-z0-9])' + norm(t).replace(/[^a-z0-9 ]/g, '').trim().replace(/\s+/g, '\\s+') + '($|[^a-z0-9])');
+function isMine(e) { const n = norm(e.title || ''); return myTeams().some(t => norm(t).trim() && teamRe(t).test(n)); }
+function teamEvents(hours) { const now = Date.now(); return (AGENDA.events || []).filter(e => e.end > now && e.start < now + hours * 3600e3 && e.tv && e.tv.length && isMine(e)); }
 async function renderAgenda(force) {
   const box = $('#agendaInner');
   if (!S.pl) { box.innerHTML = '<div class="empty">Ajoutez ou déverrouillez une liste pour voir l\'agenda.</div>'; return; }
@@ -2065,9 +2087,26 @@ async function renderAgenda(force) {
   if (!upcoming.length) { box.innerHTML = h + '<div class="empty">Aucun match ou course trouvé dans les programmes de vos chaînes sport.<br>Le programme fourni par l\'abonnement est peut-être incomplet.</div>'; return; }
   h += `<div class="ag-days">${days.map(d => { const e = upcoming.find(x => dayKey(x.start) === d); return `<button class="chip${d === AGENDA.day ? ' on' : ''}" data-day="${d}">${dayLabel(e.start)}</button>`; }).join('')}</div>`;
   h += `<div class="ag-sports">${sports.map(n => `<button class="chip${n === AGENDA.sport ? ' on' : ''}" data-sport="${esc(n)}"${has(n) ? '' : ' disabled title="Rien ce jour-là"'}>${esc(n)}</button>`).join('')}</div>`;
+  // Mes équipes : réglage, puis leurs prochains matchs (7 jours) en tête, tous jours confondus
+  const T = myTeams();
+  h += `<div class="ag-teams"><span class="hint">Mes équipes</span>${T.map((t, i) => `<span class="chip on">${esc(t)}<button data-tdel="${i}" aria-label="Retirer">✕</button></span>`).join('')}<button class="chip" data-tadd>＋ Ajouter une équipe</button></div>`;
+  const mine = T.length ? teamEvents(24 * 7) : [];
+  const evHtml = (e, k, pre) => {
+    const live = e.start <= now, my = isMine(e);
+    return `<div class="ev${my ? ' mine' : ''}">
+      <div class="h">${pre ? `<small style="margin:0 0 2px">${esc(dayLabel(e.start))}</small>` : ''}${hm(e.start)}<small>${hm(e.end)}</small></div>
+      <div><div class="sp">${my ? '★ ' : ''}${esc(e.sport)}${e.comp ? ' · ' + esc(e.comp) : ''}${live ? '<span class="live">EN DIRECT</span>' : ''}</div>
+        <div class="t">${esc(e.title)}</div>${e.desc && !pre ? `<div class="d">${esc(e.desc)}</div>` : ''}
+        ${live ? `<div class="bar" style="max-width:320px"><i style="width:${pct(e)}%"></i></div><button class="btn primary evgo" data-evgo="${pre ? 'm' : ''}${k}">▶ Regarder sur ${esc(e.tv[0].label)}</button>` : ''}
+        <div class="tv">${e.tv.map((x, j) => { const q = chInfo(x.list[0]).q; return `<button data-ev="${pre ? 'm' : ''}${k}:${j}" title="${live ? 'Regarder' : 'Ouvrir la chaîne (commence à ' + hm(e.start) + ')'}"><span class="lg">${imgOr(logoUrl(x.label) || x.list[0].logo, '', '')}</span>${esc(x.label)} <span class="qb${q === 4 ? ' k4' : ''}">${QLBL[q]}</span></button>`; }).join('')}</div>
+      </div></div>`;
+  };
+  if (mine.length) h += `<h3 class="ag-h">Vos équipes</h3>` + mine.map((e, k) => evHtml(e, k, true)).join('') + `<h3 class="ag-h">Tous les matchs</h3>`;
+  AGENDA.mine = mine;
   if (liveNow.length && AGENDA.day === days[0]) h += `<p class="hint" style="margin:8px 2px 0">${liveNow.length} en direct en ce moment</p>`;
   h += list.map((e, k) => {
     const live = e.start <= now;
+    if (!(e.missing || []).length) return evHtml(e, k, false);
     return `<div class="ev">
       <div class="h">${hm(e.start)}<small>${hm(e.end)}</small></div>
       <div><div class="sp">${esc(e.sport)}${e.comp ? ' · ' + esc(e.comp) : ''}${live ? '<span class="live">EN DIRECT</span>' : ''}</div>
@@ -2082,6 +2121,11 @@ async function renderAgenda(force) {
 $('#agendaInner').addEventListener('click', e => {
   const d = e.target.closest('[data-day]'), sp = e.target.closest('[data-sport]'), ev = e.target.closest('[data-ev]');
   if (e.target.closest('#agRefresh')) return renderAgenda(true);
+  if (e.target.closest('[data-tadd]')) { const t = (prompt('Nom de l\'équipe (comme dans les programmes, ex. PSG, Marseille, Stade Toulousain) :') || '').trim(); if (t) { LS.set('ag.teams', [...new Set(myTeams().concat(t))]); renderAgenda(); } return; }
+  const td = e.target.closest('[data-tdel]'); if (td) { const l = myTeams(); l.splice(+td.dataset.tdel, 1); LS.set('ag.teams', l); renderAgenda(); return; }
+  const go = e.target.closest('[data-evgo]');
+  if (go) { const v = go.dataset.evgo, x = (v[0] === 'm' ? AGENDA.mine[+v.slice(1)] : AGENDA.shown[+v]).tv[0]; play(x.list[0], x.list.slice(1)); return; }
+  if (ev && ev.dataset.ev[0] === 'm') { const [k, j] = ev.dataset.ev.slice(1).split(':').map(Number), x = AGENDA.mine[k].tv[j]; play(x.list[0], x.list.slice(1)); return; }
   if (d) { AGENDA.day = d.dataset.day; renderAgenda(); }
   else if (sp && !sp.disabled) { AGENDA.sport = sp.dataset.sport; LS.set('ag.sport', AGENDA.sport); renderAgenda(); }
   else if (ev) { const [k, j] = ev.dataset.ev.split(':').map(Number), x = AGENDA.shown[k].tv[j]; play(x.list[0], x.list.slice(1)); }
@@ -3573,6 +3617,63 @@ $('#vodSide').addEventListener('click', e => {
   document.body.classList.remove('drawer'); setHomeView(true, true, 'vod'); $('#vod').scrollTop = 0;
 });
 
+/* ---------- Coupures en direct : comptées par version de chaîne (classement des versions), et changement de version
+   automatique quand la chaîne reste bloquée ----------
+   Coupure : l'image attend des données plus de 1,5 s en pleine lecture (pas au démarrage, ni après un déplacement).
+   Temps regardé et coupures gardés sur l'appareil avec les autres mesures (iptv.dev.vres), divisés par deux après une
+   semaine (les vieilles coupures comptent moins). Blocage de plus de 10 s, ou 4 coupures en 2 minutes : passage à la
+   version suivante de la chaîne (sans revenir sur une version déjà quittée pendant ce visionnage). À la prochaine
+   ouverture de la chaîne, la meilleure version est de nouveau essayée. */
+const CUT = { okAt: 0, seekAt: 0, wait: 0, cuts: [], acc: {}, last: 0, tried: new Set(), triedKey: '' };
+video.addEventListener('playing', () => {
+  if (!CUT.okAt) CUT.okAt = Date.now();
+  if (CUT.wait) { const d = Date.now() - CUT.wait; CUT.wait = 0; if (d > 1500) cutNote(S.current, 1); }
+});
+video.addEventListener('seeking', () => { CUT.seekAt = Date.now(); });
+video.addEventListener('waiting', () => {
+  const c = S.current; if (!c || c.vod || !CUT.okAt || Date.now() - CUT.okAt < 6000 || Date.now() - CUT.seekAt < 4000 || video.seeking) return;
+  CUT.wait = Date.now();
+});
+video.addEventListener('emptied', () => { CUT.okAt = 0; CUT.wait = 0; });
+function cutNote(c, st, pt) {
+  if (!c || c.vod) return;
+  const a = CUT.acc[c.url] || (CUT.acc[c.url] = { st: 0, pt: 0 }); a.st += st || 0; a.pt += pt || 0;
+  if (st) { CUT.cuts.push(Date.now()); CUT.cuts = CUT.cuts.filter(t => Date.now() - t < 120000); }
+  if (st || Date.now() - CUT.last > 60000) cutFlush();
+}
+function cutFlush() {
+  CUT.last = Date.now();
+  for (const [url, a] of Object.entries(CUT.acc)) {
+    const o = Object.assign({}, vrOf(url)); if (typeof VRES.get(url) === 'number') o.h = VRES.get(url);
+    if (o.ct && Date.now() - o.ct > 7 * 864e5) { o.st = (o.st || 0) / 2; o.pt = (o.pt || 0) / 2; o.ct = Date.now(); }
+    o.st = Math.round(((o.st || 0) + a.st) * 10) / 10; o.pt = Math.round((o.pt || 0) + a.pt); o.ct = o.ct || Date.now(); o.t = o.t || Date.now();
+    VRES.set(url, o); S.channels.forEach(x => { if (x.url === url) x._ci = null; });
+  }
+  CUT.acc = {};
+  try { localStorage.setItem('iptv.dev.vres', JSON.stringify(Object.fromEntries(VRES))); } catch (e) {}
+}
+addEventListener('pagehide', cutFlush);
+setInterval(() => {
+  const c = S.current; if (!c || c.vod || !CUT.okAt) return;
+  if (!video.paused && !CUT.wait && document.body.classList.contains('playing')) cutNote(c, 0, 1);
+  // changement de version : bloqué plus de 10 s, ou 4 coupures en 2 minutes
+  const stuck = CUT.wait && Date.now() - CUT.wait > 10000, often = CUT.cuts.filter(t => Date.now() - t < 120000).length >= 4;
+  if (stuck || often) cutSwitch(c, stuck);
+}, 1000);
+function cutSwitch(c, stuck) {
+  const key = chInfo(c).canon + '|' + (chInfo(c).fr ? 'fr' : '');
+  if (CUT.triedKey !== key) { CUT.triedKey = key; CUT.tried = new Set(); }
+  CUT.tried.add(c.url);
+  if (stuck) cutNote(c, 1);
+  const next = variantsOf(c).find(x => x !== c && !CUT.tried.has(x.url) && !chInfo(x).ko);
+  CUT.cuts = []; CUT.wait = 0;
+  if (!next) { if (stuck) toast('La chaîne coupe, aucune autre version disponible'); CUT.okAt = Date.now(); return; }
+  CUT.okAt = 0;
+  toast('Coupure : passage en ' + qLabel(next) + (next.group ? ' (' + next.group + ')' : ''));
+  play(next, variantsOf(next).filter(x => x !== next && !CUT.tried.has(x.url)));
+}
+// une chaîne choisie par vous (et non par le changement automatique) repart avec toutes ses versions
+document.addEventListener('click', e => { if (e.target.closest && e.target.closest('[data-hs],[data-hp],[data-hf],[data-play],[data-qv],[data-xch],[data-xev],[data-ev],.row')) CUT.triedKey = ''; }, true);
 // Film qui saccade (tampon vide à répétition) alors qu'une version plus légère existe : on propose de basculer
 const SLOW = { n: 0, t0: 0, url: '' };
 video.addEventListener('waiting', () => {
