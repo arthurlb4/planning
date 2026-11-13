@@ -48,7 +48,7 @@ Dossiers créés : `Médiathèque\Films`, `Médiathèque\Séries`, `Médiathèqu
 - Le script affiche une ligne jaune « ! » quand une étape n'a pas pu se faire. Relancez-le ; si ça persiste, faites
   l'étape à la main :
   - **Radarr / Sonarr › Paramètres › Gestion des médias › Dossiers racines** : `Médiathèque\Films` / `Médiathèque\Séries`
-  - **Radarr / Sonarr › Paramètres › Clients de téléchargement › + › qBittorrent** : hôte `localhost`, port `8085`,
+  - **Radarr / Sonarr › Paramètres › Clients de téléchargement › + › qBittorrent** : hôte `127.0.0.1`, port `8085`,
     catégorie `films` / `series`, sans identifiant.
 - **Désinstaller** : Paramètres Windows › Applications, ou `winget uninstall TeamSonarr.Sonarr` (même chose avec
   `TeamRadarr.Radarr`, `TeamProwlarr.Prowlarr`, `qBittorrent.qBittorrent`, `Jellyfin.Server`). Vos fichiers ne sont

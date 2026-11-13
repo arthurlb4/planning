@@ -68,13 +68,24 @@ if (Test-Path $qexe) { Start-Process $qexe; Ok 'qBittorrent lancé' } else { Att
 
 # 4. Sonarr et Radarr : dossier racine et client de téléchargement, par leur API locale
 function CleApi($nom) {
-  $cfg = Join-Path $env:ProgramData "$nom\config.xml"
-  for ($k = 0; $k -lt 60 -and -not (Test-Path $cfg); $k++) { Start-Sleep 2 }
-  if (-not (Test-Path $cfg)) { return $null }
-  return ([xml](Get-Content $cfg)).Config.ApiKey
+  # service Windows (ProgramData), sinon lancé comme application (AppData) ; premier démarrage parfois long (5 min au plus)
+  $cfgs = @((Join-Path $env:ProgramData "$nom\config.xml"), (Join-Path $env:LOCALAPPDATA "$nom\config.xml"), (Join-Path $env:APPDATA "$nom\config.xml"))
+  if (-not (Get-Service $nom -ErrorAction SilentlyContinue)) {
+    $exe = @((Join-Path $env:ProgramData "$nom\bin\$nom.exe"), (Join-Path $env:ProgramFiles "$nom\$nom.exe")) | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($exe) { Start-Process $exe; Ok "$nom lancé (pas de service Windows trouvé)" }
+  }
+  for ($k = 0; $k -lt 150; $k++) { $c = $cfgs | Where-Object { Test-Path $_ } | Select-Object -First 1; if ($c) { break }; Start-Sleep 2 }
+  if (-not $c) { return $null }
+  return ([xml](Get-Content $c)).Config.ApiKey
 }
+# Envoi en UTF-8 (sinon PowerShell 5 abîme les accents des chemins) ; en cas de refus, le message exact du logiciel
+function Poster($url, $h, $objet) {
+  $octets = [Text.Encoding]::UTF8.GetBytes(($objet | ConvertTo-Json -Depth 6))
+  Invoke-RestMethod $url -Method Post -Headers $h -ContentType 'application/json; charset=utf-8' -Body $octets | Out-Null
+}
+function Motif($e) { $m = $e.ErrorDetails.Message; if ($m) { try { $j = $m | ConvertFrom-Json; $m = (@($j) | ForEach-Object { if ($_.errorMessage) { $_.errorMessage } elseif ($_.message) { $_.message } else { $_ } }) -join ' ; ' } catch {} }; if ($m) { $m } else { $e.Exception.Message } }
 function Attendre($url, $cle) {
-  for ($k = 0; $k -lt 60; $k++) { try { Invoke-RestMethod "$url/system/status" -Headers @{ 'X-Api-Key' = $cle } -TimeoutSec 5 | Out-Null; return $true } catch { Start-Sleep 3 } }
+  for ($k = 0; $k -lt 100; $k++) { try { Invoke-RestMethod "$url/system/status" -Headers @{ 'X-Api-Key' = $cle } -TimeoutSec 5 | Out-Null; return $true } catch { Start-Sleep 3 } }
   return $false
 }
 function Relier($nom, $port, $dossier, $champCat, $cat) {
@@ -86,18 +97,18 @@ function Relier($nom, $port, $dossier, $champCat, $cat) {
   if (-not (Attendre $api $cle)) { Attention "$nom ne répond pas sur le port $port. Réglage à faire à la main, voir le guide."; return }
   try {
     $racines = Invoke-RestMethod "$api/rootfolder" -Headers $h
-    if (-not ($racines | Where-Object { $_.path -eq $dossier })) { Invoke-RestMethod "$api/rootfolder" -Method Post -Headers $h -ContentType 'application/json' -Body (@{ path = $dossier } | ConvertTo-Json) | Out-Null }
+    if (-not ($racines | Where-Object { $_.path.TrimEnd('\') -eq $dossier.TrimEnd('\') })) { Poster "$api/rootfolder" $h @{ path = $dossier } }
     Ok "dossier : $dossier"
-  } catch { Attention "dossier non ajouté : $($_.Exception.Message)" }
+  } catch { Attention "dossier non ajouté : $(Motif $_)" }
   try {
     $clients = Invoke-RestMethod "$api/downloadclient" -Headers $h
     if (-not ($clients | Where-Object { $_.implementation -eq 'QBittorrent' })) {
-      $corps = @{ name = 'qBittorrent'; implementation = 'QBittorrent'; configContract = 'QBittorrentSettings'; protocol = 'torrent'; enable = $true; priority = 1
-        fields = @(@{ name = 'host'; value = 'localhost' }, @{ name = 'port'; value = 8085 }, @{ name = 'useSsl'; value = $false }, @{ name = $champCat; value = $cat }) } | ConvertTo-Json -Depth 5
-      Invoke-RestMethod "$api/downloadclient" -Method Post -Headers $h -ContentType 'application/json' -Body $corps | Out-Null
+      # 127.0.0.1 et non « localhost » (que Windows peut traduire en ::1, où qBittorrent n'écoute pas)
+      Poster "$api/downloadclient" $h @{ name = 'qBittorrent'; implementation = 'QBittorrent'; configContract = 'QBittorrentSettings'; protocol = 'torrent'; enable = $true; priority = 1
+        fields = @(@{ name = 'host'; value = '127.0.0.1' }, @{ name = 'port'; value = 8085 }, @{ name = 'useSsl'; value = $false }, @{ name = $champCat; value = $cat }) }
     }
     Ok 'client de téléchargement : qBittorrent'
-  } catch { Attention "qBittorrent non relié : $($_.Exception.Message)" }
+  } catch { Attention "qBittorrent non relié : $(Motif $_)" }
   Ok "interface : http://localhost:$port"
 }
 Relier 'Sonarr' 8989 $series 'tvCategory' 'series'
