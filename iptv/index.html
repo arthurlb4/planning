@@ -1603,7 +1603,7 @@ async function jfLink(it) {
   const x = (j.Items || []).find(y => (tm && (y.ProviderIds || {}).Tmdb === tm) || (tnorm(y.Name) === tnorm(it.name) && (!it.year || !y.ProductionYear || Math.abs(y.ProductionYear - it.year) <= 1)));
   if (!x) return;
   const v = (((x.MediaSources || [])[0] || {}).MediaStreams || []).find(m0 => m0.Type === 'Video'), hJ = v && v.Height || 0;
-  const qJ = hJ ? qOfHeight(hJ) : 2.5, qI = Math.max(...vodVars(it).map(vodVq));
+  const qJ = hJ ? qOfHeight(hJ) : 2.5, qI = vodVq(vodPick(it));          // version de l'abonnement choisie sur la fiche
   const lab = hJ ? QLBL[qOfHeight(hJ)] + ' · ' + hJ + 'p' : 'qualité inconnue';
   let row = null; for (let k = 0; k < 20 && !row; k++) { row = $('#vodDetail [data-pm]') && $('#vodDetail [data-pm]').parentElement; if (!row) await new Promise(r => setTimeout(r, 150)); }
   if (!row || !V.open || V.open.it !== it || row.querySelector('[data-jfplay]')) return;
@@ -1612,7 +1612,8 @@ async function jfLink(it) {
   const btn = `<button class="btn${better ? ' primary' : ''}" data-jfplay>▶ Ma médiathèque (${esc(lab)})</button>`;
   if (better) { const p0 = row.querySelector('.btn.primary'); if (p0) { p0.classList.remove('primary'); p0.insertAdjacentHTML('beforeend', ' · abonnement'); } row.insertAdjacentHTML('afterbegin', btn); }
   else row.insertAdjacentHTML('beforeend', btn);
-  row.insertAdjacentHTML('afterend', `<p class="hint" style="margin:6px 0 0">Aussi dans votre médiathèque (${esc(lab)}) · ${better ? 'meilleure que l\'abonnement : lancée par défaut' : 'l\'abonnement est ' + (qI > qJ ? 'meilleur' : 'équivalent') + ' : lancé par défaut'}</p>`);
+  document.querySelectorAll('#vodDetail .jfnote').forEach(n => n.remove());
+  row.insertAdjacentHTML('afterend', `<p class="hint jfnote" style="margin:6px 0 0">Aussi dans votre médiathèque (${esc(lab)}) · ${better ? 'meilleure que l\'abonnement : lancée par défaut' : 'l\'abonnement est ' + (qI > qJ ? 'meilleur' : 'équivalent') + ' : lancé par défaut'}</p>`);
 }
 document.addEventListener('click', e => { if (!(e.target.closest && e.target.closest('[data-jfplay]')) || !JF.link) return; e.stopPropagation(); closeModals(); jfPlay(JF.link); }, true);
 // Dernière image figée par-dessus la vidéo pendant une relance (dessin seul : rien n'est relu, pas de souci d'origine)
@@ -3627,6 +3628,7 @@ $('#vodDetail').addEventListener('click', e => {
     $('#vodDetail').querySelectorAll('.vvers .chip').forEach(c => c.classList.toggle('on', +c.dataset.vver === pk.id));
     const row = $('#vodDetail').querySelector('[data-pm]').parentElement;
     row.innerHTML = `<button class="btn primary" data-pm="${esc(url)}">▶ ${pos > 60 ? 'Reprendre à ' + fmtDur(pos) : 'Lecture'}</button>${pos > 60 ? `<button class="btn" data-pm="${esc(url)}" data-zero>Depuis le début</button>` : ''}<button class="btn" data-vlc="${esc(url)}">VLC</button>`;
+    if (V.open && V.open.it) jfLink(V.open.it).catch(() => {});   // la version de Ma médiathèque, comparée à la nouvelle version choisie
     return;
   }
   const b = e.target.closest('[data-pm]'), v = e.target.closest('[data-vlc]');
