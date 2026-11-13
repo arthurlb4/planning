@@ -2830,6 +2830,8 @@ async function renderVod() {
       <p class="hint" style="margin:6px 0 10px">${key ? 'Tendances et classements par service mis à jour toutes les 12 h.' : 'Votre serveur ne donne aucune audience. Avec une clé gratuite TMDB (themoviedb.org › compte › Paramètres › API, « Clé d\'API » ou « Jeton d\'accès en lecture »), l\'accueil montre les vraies tendances de la semaine et ce qui est le plus regardé en France sur Netflix, Prime Video, Disney+, Apple TV+, Canal+…'}</p>
       <div class="row"><input class="field" id="tmdbKey" type="password" placeholder="Clé d'API TMDB" value="${esc(key)}" autocomplete="off" spellcheck="false" style="flex:1;min-width:0;margin:0"><button class="chip" data-tmdb>Enregistrer</button>${key ? '<button class="chip" data-tmdbre>↻</button>' : '<button class="chip" data-tmdbin>Activer la clé intégrée</button>'}</div></div>`;
     if (key) h += tbox; else h = h.replace('<div class="vrow">', tbox + '<div class="vrow">');
+    // Clés BetaSeries et OpenSubtitles pas encore déverrouillées sur ce compte : un bouton, une fois (synchronisé ensuite)
+    if (key && (!LS.get('pref.bs', '') || !LS.get('pref.ost', ''))) h = h.replace('<div class="vrow">', `<div class="tmdbbox"><b>Nouvelles sources</b><p class="hint" style="margin:6px 0 10px">BetaSeries (films et séries les plus suivis en France) et OpenSubtitles (sous-titres français) : à activer une fois avec le mot de passe de « Mon abonnement ».</p><button class="chip" data-keysin>Activer</button></div><div class="vrow">`);
   }
   box.innerHTML = h;
   const qi = $('#vodQ'); if (V.q) { qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); }
@@ -2860,6 +2862,11 @@ $('#vodInner').addEventListener('click', e => {
     return;
   }
   if (e.target.closest('[data-seenclr]')) { if (confirm('Effacer l\'historique des films et séries vus (sur tous vos appareils) ?')) { LS.set('vod.seen', []); renderVod(); } return; }
+  if (e.target.closest('[data-keysin]')) {
+    askText('Mot de passe de « Mon abonnement »', { password: true }).then(async p => { const pw = (p || '').toLowerCase(); if (!pw) return;
+      try { if (!LS.get('pref.bs', '')) await useBuiltinBs(pw); if (!LS.get('pref.ost', '')) await useBuiltinOst(pw); toast('BetaSeries et sous-titres activés'); renderVod(); } catch (er) { toast('Mot de passe incorrect'); } });
+    return;
+  }
   if (e.target.closest('[data-tmdbre]')) { TM.data = null; V.force2 = true; renderVod(); return; }
   if (V.q && extrasClick(e, V.x)) return;
   // Reprendre : ✓ marquer comme vu, ✕ retirer de la rangée
