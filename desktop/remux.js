@@ -42,10 +42,10 @@ function probeOnce(ffmpeg, src, vlcPath) {
       const duration = d ? +d[1] * 3600 + +d[2] * 60 + +d[3] : 0;
       const lines = txt.split(/\r?\n/), audio = [], subs = [];
       let si = 0;
-      let vcodec = '', vprofile = '';
+      let vcodec = '', vprofile = '', vh = 0;
       lines.forEach((l, i) => {
         const v = l.match(/Stream #\d+:\d+(?:\[[^\]]*\])?(?:\(([a-z]{2,3}|\?\?\?)\))?: Video: (\w+)(?: \(([^)]*)\))?/);
-        if (v && !vcodec) { vcodec = v[2]; vprofile = v[3] || ''; }
+        if (v && !vcodec) { vcodec = v[2]; vprofile = v[3] || ''; const r = l.match(/,\s*(\d{3,5})x(\d{3,5})/); if (r) vh = +r[2]; }   // hauteur de l'image
         const a = l.match(/Stream #\d+:\d+(?:\[[^\]]*\])?(?:\(([a-z]{2,3}|\?\?\?)\))?: Audio: (\w+)[^,]*,\s*\d+ Hz,\s*([^,]+)/);
         if (a) {
           let title = '';
@@ -67,7 +67,7 @@ function probeOnce(ffmpeg, src, vlcPath) {
         try { verr = fs.readFileSync(log, 'utf8').split(/\r?\n/).filter(l => /error|warning.*(http|access|mux)/i.test(l)).map(l => l.replace(/^.*?(error|warning)\s*:\s*/i, '')).filter((l, i, a) => a.indexOf(l) === i).slice(-4).join(' · ').slice(0, 300); } catch (e) {}
       }
       if (log) setTimeout(() => fs.unlink(log, () => {}), 2000);
-      resolve({ duration, vcodec, vprofile, audio, subs, ok: !!(duration || vcodec), err: vlc && !vcodec ? 'VLC n\'a rien pu lire' + (verr ? ' : ' + verr : '') : err, vlc: !!vlc });
+      resolve({ duration, vcodec, vprofile, vh, audio, subs, ok: !!(duration || vcodec), err: vlc && !vcodec ? 'VLC n\'a rien pu lire' + (verr ? ' : ' + verr : '') : err, vlc: !!vlc });
     };
     ff.stderr.on('data', b => { txt += b; });
     ff.on('exit', done); ff.on('error', e => resolve({ ok: false, audio: [], err: 'ffmpeg ne démarre pas : ' + (e && e.message || e) }));

@@ -1492,7 +1492,7 @@ const filmCur = c => c && c.vod && c.it && vodVars(c.it).find(x => c.url.include
 function qualBtnUpdate(c) {
   const b = $('#qualBtn'); $('#qualMenu').hidden = true;
   const fc = filmCur(c);
-  if (fc) { const n = vodVars(c.it).length; b.hidden = false; $('#qualLbl').textContent = QLBL[fc.q] || 'HD'; b.classList.toggle('k4', fc.q === 4); b.classList.toggle('one', n < 2); return; }
+  if (fc) { const n = vodVars(c.it).length; b.hidden = false; $('#qualLbl').textContent = vodLbl(fc); b.classList.toggle('k4', vodVq(fc) === 4); b.classList.toggle('one', n < 2); return; }
   if (!c || c.vod) { b.hidden = true; return; }
   const v = variantsOf(c);
   b.hidden = false; $('#qualLbl').textContent = qLabel(c);
@@ -1504,7 +1504,7 @@ $('#qualBtn').onclick = e => {
   if (fc) {                                             // film : choix de la version, reprise au même endroit
     const fv = vodVars(c.it).slice().reverse();
     if (!m.hidden || fv.length < 2) { m.hidden = true; return; }
-    m.innerHTML = fv.map((x, i) => `<button data-fv="${i}"><span class="ck">${x === fc ? '✓' : ''}</span><span class="q">${QLBL[x.q] || 'HD'}</span><span class="r"><b>${esc(x.cat || '')}</b></span></button>`).join('');
+    m.innerHTML = fv.map((x, i) => `<button data-fv="${i}"><span class="ck">${x === fc ? '✓' : ''}</span><span class="q">${vodLbl(x)}</span><span class="r"><b>${esc(x.cat || '')}</b></span></button>`).join('');
     m._fv = fv; m.hidden = false;
   } else {
   const v = variantsOf(c);
@@ -1708,6 +1708,8 @@ async function play(c, alts) {
 video.addEventListener('playing', () => attempt && attempt.ok());
 // Mesure de la vraie résolution : la plus haute vue sur la chaîne (et, en HLS, la meilleure version proposée par le flux)
 ['resize', 'playing'].forEach(ev => video.addEventListener(ev, () => { const c = S.current; if (c && !c.vod && video.videoHeight) setTimeout(() => { if (S.current === c && video.videoHeight) vresNote(c, video.videoHeight); }, 4000); }));
+// Films : vraie résolution de la version lue, retenue (écarte ensuite les films sous 1080p)
+['resize', 'playing'].forEach(ev => video.addEventListener(ev, () => { const c = S.current; if (c && c.vod && c.it && c.it.kind === 'movie' && video.videoHeight) setTimeout(() => { const fc = S.current === c && video.videoHeight && filmCur(c); if (fc) vodResSet(fc.id, video.videoHeight); }, 4000); }));
 // Images par seconde (images affichées sur 4 s) et son (canaux, format) relevés une fois la lecture installée
 video.addEventListener('playing', () => {
   const c = S.current; if (!c || c.vod || c._mq) return; c._mq = 1;
@@ -2219,9 +2221,23 @@ function cleanTitle(n) {
   return t || String(n || '').trim();
 }
 // Qualité d'une version de film d'après son titre et sa catégorie (« FR - FILM ⁴ᴷ ᴴᴰᴿ », « … 2160p », « … 1080p »)
-const vodQ = t => /4k|uhd|2160|⁴ᴷ|³⁸⁴⁰|ᵁᴴᴰ|ᴴᴰᴿ|\bhdr\b/i.test(t) ? 4 : /1080|fhd|ᶠᴴᴰ/i.test(t) ? 3 : 2;
+// 0 : rien d'indiqué ; 1 : SD annoncé ; 2 : 720p / « HD » annoncé (sans FHD) ; 3 : 1080p ; 4 : 4K
+const vodQ = t => /4k|uhd|2160|⁴ᴷ|³⁸⁴⁰|ᵁᴴᴰ|ᴴᴰᴿ|\bhdr\b/i.test(t) ? 4 : /1080|fhd|ᶠᴴᴰ/i.test(t) ? 3
+  : /\b(sd|480p?|576p?|dvdrip|xvid|lq)\b/i.test(t) ? 1 : /\b(720p?|hd|hdtv|ᴴᴰ)\b/i.test(t) || /ᴴᴰ/.test(t) ? 2 : 0;
+/* Vraie résolution des films (hauteur de l'image), mesurée à la lecture ou en lisant l'en-tête du fichier (appli Windows),
+   par version ; synchronisée (vod.res) : un film mesuré sous 1080p est écarté partout */
+const VRESF = () => { const o = LS.get('vod.res', {}); return o && typeof o === 'object' ? o : {}; };
+function vodResSet(id, h) { if (!id || !(h >= 200)) return; const o = VRESF(); if (o[id] === h) return; o[id] = h; const k = Object.keys(o); if (k.length > 5000) delete o[k[0]]; LS.set('vod.res', o); }
+// qualité d'une version : mesurée si on la connaît, sinon celle annoncée ; rien d'annoncé : supposée HD (2,5)
+const vodVq = x => { const h = VRESF()[x.id]; return h ? qOfHeight(h) : x.q || 2.5; };
+// Films sous 1080p écartés (réglage, activé par défaut) : seulement si toutes les versions sont annoncées ou mesurées
+// sous 1080p ; un film sans indication et pas encore mesuré reste
+// libellé d'une version : mesuré si on le connaît
+const vodLbl = x => QLBL[Math.floor(vodVq(x))] || 'HD';
+const hideSd = () => LS.get('pref.hidesd', true) !== false;
+const qualVisible = it => !hideSd() || it.kind !== 'movie' || vodVars(it).some(x => vodVq(x) >= 2.5);
 // Versions d'un film, de la plus légère à la plus lourde ; celle choisie (retenue par film, sinon la meilleure)
-const vodVars = it => (it.vars && it.vars.length ? it.vars : [{ id: it.id, ext: it.ext, q: 2, cat: '' }]).slice().sort((a, b) => a.q - b.q);
+const vodVars = it => (it.vars && it.vars.length ? it.vars : [{ id: it.id, ext: it.ext, q: 0, cat: '' }]).slice().sort((a, b) => vodVq(a) - vodVq(b));
 function vodPick(it) { const v = vodVars(it), want = LS.get('vver.' + it.id, null); return v.find(x => x.id === want) || v[v.length - 1]; }
 // Version originale disponible : titre ou catégorie marqués MULTI, VOSTFR, VO…
 const VO_RE = /(^|[^a-z])(multi|vostfr|vost|vosta|vo|subfrench|dual|vf\s*\+\s*vo)([^a-z]|$)/i;
@@ -2699,7 +2715,7 @@ async function renderVod() {
   const POP0 = LS.get('pref.tmdb', '') ? await loadPopular(false).catch(() => null) : null;
   if (POP0 && D._olFor !== POP0) { const P0 = popIndex(D.items); Object.keys(POP0.meta).forEach(id => popMatch(id, P0, POP0.meta)); D._olFor = POP0; V.pop = null; }
   if (!document.body.classList.contains('vod')) return;
-  const all = D.items.filter(langVisible), movies = all.filter(i => i.kind === 'movie'), series = all.filter(i => i.kind === 'series');
+  const all = D.items.filter(it => langVisible(it) && qualVisible(it)), movies = all.filter(i => i.kind === 'movie'), series = all.filter(i => i.kind === 'series');
   const yr = new Date().getFullYear(), byAdded = (a, b) => b.added - a.added, byRate = (a, b) => b.rating - a.rating || b.added - a.added;
   let h = `<div class="vtop">
     ${['home:Accueil', 'movie:Films', 'series:Séries', 'cats:Catégories', 'hist:Historique'].map(t => { const [k, l] = t.split(':'); return `<button class="chip${V.tab === k && !V.q ? ' on' : ''}" data-tab="${k}">${l}</button>`; }).join('')}
@@ -3053,6 +3069,7 @@ async function langProbe(it) {
   if (!url) { langSet(it, 'u'); return 'u'; }
   let j = null; try { j = await (await fetch(window.desktop.remux + '/probe?url=' + encodeURIComponent(url))).json(); } catch (e) { return null; }
   if (!j || !j.ok) return /\b(403|429)\b|forbidden|too many/i.test(j && j.err || '') ? false : null;
+  if (j.vh && it.kind === 'movie') vodResSet(vodPick(it).id, j.vh);
   const au = j.audio || [], langs = au.map(a => String(a.lang || '').toLowerCase()).filter(Boolean);
   const other = langs.filter(l => !/^(fr|fre|fra|fr-\w+)$/.test(l) && !/^(und|unk|mul|zxx|mis|qaa)$/.test(l));
   const v = other.length || (!langs.length && au.length > 1) ? 'o' : 'f';
@@ -3092,6 +3109,7 @@ function renderLangBox() {
   const st = !app ? 'La vérification se fait dans l\'appli Windows ; ses résultats arrivent ici par la synchronisation.' : LS.get('dev.lchkoff', false) ? 'Vérification arrêtée.' : Date.now() < (day.stop || 0) ? 'En pause jusqu\'à ' + new Date(day.stop).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) + ' (le serveur a refusé).' : day.n >= 300 ? 'Plafond du jour atteint (300), reprise demain.' : 'Vérification en arrière-plan quand rien n\'est en lecture · ' + day.n + ' aujourd\'hui.';
   b.innerHTML = `<label class="lrow"><input type="checkbox" data-lpref="pref.hidevf"${hideVf() ? ' checked' : ''}> Masquer les films et séries étrangers en VF seule</label>
     <label class="lrow"><input type="checkbox" data-lpref="pref.hidevfq"${hideUnk() ? ' checked' : ''}> Masquer aussi ceux pas encore vérifiés (« VO ? »)</label>
+    <label class="lrow"><input type="checkbox" data-lpref="pref.hidesd"${hideSd() ? ' checked' : ''}> Masquer les films en qualité inférieure à 1080p (annoncée ou mesurée)</label>
     <p class="hint" style="margin:6px 0 0">${vo} avec VO · ${vf} en VF seule masqués · ${esc(st)}</p>${app ? `<button class="btn" data-lchk style="margin-top:8px">${LS.get('dev.lchkoff', false) ? 'Reprendre la vérification' : 'Arrêter la vérification'}</button>` : ''}`;
 }
 document.addEventListener('change', e => { const c = e.target.closest && e.target.closest('[data-lpref]'); if (!c) return; LS.set(c.dataset.lpref, c.checked); renderLangBox(); V.pop = null; if (document.body.classList.contains('vod')) renderVod(); });
@@ -3130,7 +3148,7 @@ async function openVod(it) {
   if (it.kind === 'movie') {
     const vs = vodVars(it), pick = vodPick(it), url = vodUrl('movie', pick.id, pick.ext), pos = LS.get('pos.' + url, 0);
     // même qualité en double (deux « HD ») : la catégorie d'origine les distingue
-    const vlab = x => { const q = QLBL[x.q] || 'HD'; return vs.filter(y => (QLBL[y.q] || 'HD') === q).length > 1 ? q + ' · ' + String(x.cat || '').replace(/^\W*[A-Z]{2,3}\s*[-:|]\s*/i, '').replace(/[ᴬ-ᵡ⁰-⁹ᴴᴰᴿᴮʸᵁᴵᴼᴾ]+/g, '').trim().slice(0, 18) : q; };
+    const vlab = x => { const q = vodLbl(x); return vs.filter(y => vodLbl(y) === q).length > 1 ? q + ' · ' + String(x.cat || '').replace(/^\W*[A-Z]{2,3}\s*[-:|]\s*/i, '').replace(/[ᴬ-ᵡ⁰-⁹ᴴᴰᴿᴮʸᵁᴵᴼᴾ]+/g, '').trim().slice(0, 18) : q; };
     if (vs.length > 1) h += `<div class="vvers"><span class="hint">Version :</span>${vs.slice().reverse().map(x => `<button class="chip${x === pick ? ' on' : ''}" data-vver="${x.id}" title="${esc(x.cat)}">${esc(vlab(x))}</button>`).join('')}</div>`;
     h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-pm="${esc(url)}">▶ ${pos > 60 ? 'Reprendre à ' + fmtDur(pos) : 'Lecture'}</button>${pos > 60 ? `<button class="btn" data-pm="${esc(url)}" data-zero>Depuis le début</button>` : ''}${listBtn}<button class="btn" data-vlc="${esc(url)}">VLC</button></div>`;
   } else if (!flat.length) h += `<div class="row" style="margin-top:14px">${listBtn}</div><p class="hint" style="margin-top:14px">Aucun épisode trouvé.</p>`;
@@ -3842,10 +3860,10 @@ video.addEventListener('waiting', () => {
   const c = S.current; if (!c || !c.vod || !c.it || video.currentTime < 5) return;
   if (SLOW.url !== c.url || Date.now() - SLOW.t0 > 120000) { SLOW.url = c.url; SLOW.n = 0; SLOW.t0 = Date.now(); }
   if (++SLOW.n < 3 || $('#slowBox')) return;
-  const cur = vodVars(c.it).find(x => c.url.includes('/' + x.id + '.')), lighter = cur && vodVars(c.it).filter(x => x.q < cur.q).pop();
+  const cur = vodVars(c.it).find(x => c.url.includes('/' + x.id + '.')), lighter = cur && vodVars(c.it).filter(x => vodVq(x) < vodVq(cur)).pop();
   if (!lighter) return;
   const box = document.createElement('div'); box.id = 'slowBox';
-  box.innerHTML = `<span>La connexion n'arrive pas à suivre la version ${QLBL[cur.q]}.</span><button class="btn primary">Passer en ${QLBL[lighter.q]}</button><button class="btn" aria-label="Fermer">✕</button>`;
+  box.innerHTML = `<span>La connexion n'arrive pas à suivre la version ${vodLbl(cur)}.</span><button class="btn primary">Passer en ${vodLbl(lighter)}</button><button class="btn" aria-label="Fermer">✕</button>`;
   $('#screen').appendChild(box);
   const [go, x] = box.querySelectorAll('button');
   x.onclick = () => box.remove();
