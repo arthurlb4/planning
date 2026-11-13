@@ -3110,10 +3110,17 @@ function renderLangBox() {
   b.innerHTML = `<label class="lrow"><input type="checkbox" data-lpref="pref.hidevf"${hideVf() ? ' checked' : ''}> Masquer les films et séries étrangers en VF seule</label>
     <label class="lrow"><input type="checkbox" data-lpref="pref.hidevfq"${hideUnk() ? ' checked' : ''}> Masquer aussi ceux pas encore vérifiés (« VO ? »)</label>
     <label class="lrow"><input type="checkbox" data-lpref="pref.hidesd"${hideSd() ? ' checked' : ''}> Masquer les films en qualité inférieure à 1080p (annoncée ou mesurée)</label>
-    <p class="hint" style="margin:6px 0 0">${vo} avec VO · ${vf} en VF seule masqués · ${esc(st)}</p>${app ? `<button class="btn" data-lchk style="margin-top:8px">${LS.get('dev.lchkoff', false) ? 'Reprendre la vérification' : 'Arrêter la vérification'}</button>` : ''}`;
+    <p class="hint" style="margin:6px 0 0">${vo} avec VO · ${vf} en VF seule masqués · ${esc(st)}</p>${app ? `<button class="btn" data-lchk style="margin-top:8px">${LS.get('dev.lchkoff', false) || Date.now() < (lchkDay().stop || 0) ? 'Reprendre la vérification' : 'Arrêter la vérification'}</button>` : ''}`;
 }
 document.addEventListener('change', e => { const c = e.target.closest && e.target.closest('[data-lpref]'); if (!c) return; LS.set(c.dataset.lpref, c.checked); renderLangBox(); V.pop = null; if (document.body.classList.contains('vod')) renderVod(); });
-document.addEventListener('click', e => { if (!(e.target.closest && e.target.closest('[data-lchk]'))) return; LS.set('dev.lchkoff', !LS.get('dev.lchkoff', false)); renderLangBox(); });
+// Arrêter / reprendre ; reprendre lève aussi la pause de quelques heures posée après un refus du serveur (souvent dû à un VPN)
+document.addEventListener('click', e => {
+  if (!(e.target.closest && e.target.closest('[data-lchk]'))) return;
+  const off = LS.get('dev.lchkoff', false), d = lchkDay(), paused = Date.now() < (d.stop || 0);
+  if (off || paused) { LS.set('dev.lchkoff', false); d.stop = 0; LS.set('dev.lchk', d); toast('Vérification reprise'); setTimeout(() => { try { lchkTick(); } catch (er) {} }, 500); }
+  else LS.set('dev.lchkoff', true);
+  renderLangBox();
+});
 // Recherche tolérante aux fautes : un mot de 5 lettres ou plus peut différer d'une lettre
 function lev1(a, b) {
   if (Math.abs(a.length - b.length) > 1) return false;
