@@ -66,6 +66,9 @@ foreach ($k in $voulu.Keys) {
   $i = -1; for ($j = 0; $j -lt $lignes.Count; $j++) { if ($lignes[$j] -like "$k=*") { $i = $j; break } }
   if ($i -ge 0) { $lignes[$i] = "$k=$($voulu[$k])" } else { $lignes.Insert($pref + 1, "$k=$($voulu[$k])") }
 }
+# notice légale du premier lancement acceptée (sinon qBittorrent attend un clic et n'ouvre pas son interface web)
+if (-not ($lignes -contains '[LegalNotice]')) { [void]$lignes.Add('[LegalNotice]'); [void]$lignes.Add('Accepted=true') }
+else { $g = $lignes.IndexOf('[LegalNotice]'); $f = -1; for ($j = $g + 1; $j -lt $lignes.Count -and $lignes[$j] -notlike '[[]*'; $j++) { if ($lignes[$j] -like 'Accepted=*') { $f = $j } }; if ($f -ge 0) { $lignes[$f] = 'Accepted=true' } else { $lignes.Insert($g + 1, 'Accepted=true') } }
 [IO.File]::WriteAllLines($ini, [string[]]$lignes, (New-Object Text.UTF8Encoding $false))   # sans marque UTF-8 (qBittorrent)
 Ok 'interface web : http://127.0.0.1:8085 (sans mot de passe depuis ce PC)'
 $qexe = Join-Path $env:ProgramFiles 'qBittorrent\qbittorrent.exe'
