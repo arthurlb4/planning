@@ -2226,8 +2226,11 @@ const vodQ = t => /4k|uhd|2160|⁴ᴷ|³⁸⁴⁰|ᵁᴴᴰ|ᴴᴰᴿ|\bhdr\b/i.
   : /\b(sd|480p?|576p?|dvdrip|xvid|lq)\b/i.test(t) ? 1 : /\b(720p?|hd|hdtv|ᴴᴰ)\b/i.test(t) || /ᴴᴰ/.test(t) ? 2 : 0;
 /* Vraie résolution des films (hauteur de l'image), mesurée à la lecture ou en lisant l'en-tête du fichier (appli Windows),
    par version ; synchronisée (vod.res) : un film mesuré sous 1080p est écarté partout */
-const VRESF = () => { const o = LS.get('vod.res', {}); return o && typeof o === 'object' ? o : {}; };
-function vodResSet(id, h) { if (!id || !(h >= 200)) return; const o = VRESF(); if (o[id] === h) return; o[id] = h; const k = Object.keys(o); if (k.length > 5000) delete o[k[0]]; LS.set('vod.res', o); }
+// serveur de la liste en cours (les résultats de films sont rangés par serveur)
+const srvKey = () => { try { const x = epgCtx(); return x ? new URL(x.base).host : ''; } catch (e) { return ''; } };
+const bySrv = k => { const o = LS.get(k, {}); return o && typeof o === 'object' ? o : {}; };
+const VRESF = () => { const a = bySrv('vod.ress')[srvKey()]; return a && typeof a === 'object' ? a : {}; };
+function vodResSet(id, h) { if (!id || !(h >= 200)) return; const all = bySrv('vod.ress'), s0 = srvKey(), o = all[s0] || (all[s0] = {}); if (o[id] === h) return; o[id] = h; const k = Object.keys(o); if (k.length > 5000) delete o[k[0]]; LS.set('vod.ress', all); }
 // qualité d'une version : mesurée si on la connaît, sinon celle annoncée ; rien d'annoncé : supposée HD (2,5)
 const vodVq = x => { const h = VRESF()[x.id]; return h ? qOfHeight(h) : x.q || 2.5; };
 // Films sous 1080p écartés (réglage, activé par défaut) : seulement si toutes les versions sont annoncées ou mesurées
@@ -3054,8 +3057,10 @@ function histTrack(c, ended) {
    secondes, comme avant une lecture), d'abord pour ce qui est en vue. Résultats synchronisés (vod.lang) : les autres
    appareils masquent aussi ces films. Prudence avec le fournisseur : un film à la fois, seulement quand rien n'est en
    lecture, 8 s entre deux, 300 par jour au plus, arrêt de plusieurs heures au premier refus (403, 429). ---------- */
-const LANG = () => { const o = LS.get('vod.lang', {}); return o && typeof o === 'object' ? o : {}; };
-function langSet(it, v) { const o = LANG(); o[itemKey(it)] = v; LS.set('vod.lang', o); }
+/* Résultats rangés par serveur : chaque fournisseur numérote ses films à sa façon, le n° 1234 d'un nouvel abonnement n'est
+   pas celui de l'ancien (les anciens résultats, non rangés, sont abandonnés : tout est revérifié pour le serveur actuel) */
+const LANG = () => { const a = bySrv('vod.langs')[srvKey()]; return a && typeof a === 'object' ? a : {}; };
+function langSet(it, v) { const all = bySrv('vod.langs'), h = srvKey(), o = all[h] || (all[h] = {}); o[itemKey(it)] = v; LS.set('vod.langs', all); }
 // 'fr' film français · 'vo' version originale présente · 'vf' étranger en VF seule · '?' étranger pas encore vérifié · '' inconnu
 // Animation (genre TMDB ou catégorie du catalogue) : jamais masquée, la VF y est la norme
 const ANIM_CAT = /anim|enfant|kids|manga|dessin|cartoon|disney|pixar|famille/i;
@@ -3115,12 +3120,35 @@ function lchkQueue() {
   const D = V.data; if (!D) return [];
   const pri = [], seen = new Set(), add = it => { if (it && !seen.has(it)) { seen.add(it); pri.push(it); } };
   histAll().forEach(e => add(itemByKey(e.k))); myList().forEach(k => add(itemByKey(k)));
+  (V.homePrio || []).forEach(add);                     // l'accueil de Films & séries, même sans l'avoir ouvert
   (V.shown || []).forEach(add);
   D.items.slice().sort((a, b) => b.added - a.added).forEach(add);
   return pri.filter(it => !LCHK.skip.has(it) && (needLang(it) || needRes(it)));
 }
 // À vérifier : la langue (film ou série étranger pas encore lu), ou la résolution (film sans qualité annoncée ni mesurée,
 // français compris)
+/* Contenu de l'accueil de Films & séries calculé en coulisse (mêmes sources que ses rangées, dans le même ordre), pour
+   le vérifier en premier sans avoir à ouvrir la page ; recalculé toutes les 30 minutes */
+async function homePrioBuild() {
+  V.homePrioAt = Date.now() - 25 * 60e3;               // en cas d'échec : nouvel essai dans 5 min
+  const D = V.data; if (!D || !LS.get('pref.tmdb', '')) return;
+  const all = D.items.filter(it => langVisible(it) && qualVisible(it)), P = popIndex(all), kinds = ['m', 's'];
+  const POP = await loadPopular().catch(() => null); if (!POP) return;
+  const out = [], add = l => (l || []).forEach(it => { if (it && !out.includes(it)) out.push(it); });
+  const ids = (l, kk) => popList(l || [], P, POP.meta, kk || kinds);
+  const FY = await forYou(kinds).catch(() => null); add(FY && FY.all);
+  const NF = await nfxResolve().catch(() => null); if (NF) add(NF.list.slice().sort((a, b) => a.r - b.r).map(e => { POP.meta[e.id] = POP.meta[e.id] || e.m; return popMatch(e.id, P, POP.meta); }));
+  const G = await loadGuide().catch(() => null), WK = G && G.wiki, wl = l => ids((l || []).map(x => { POP.meta[x.id] = POP.meta[x.id] || x.m; return x.id; }));
+  if (WK) add(wl(WK.top).slice(0, 30));
+  add(ids(POP.vodNew, ['m']).slice(0, 30)); add(ids(POP.cinema, ['m']).slice(0, 30));
+  const BSP = await bsPopular().catch(() => null); if (BSP) { Object.entries(BSP.meta).forEach(([k, m]) => { POP.meta[k] = POP.meta[k] || m; }); add(ids(BSP.ids).slice(0, 30)); }
+  const TK = await traktLists().catch(() => null); if (TK) { Object.entries(TK.meta).forEach(([k, m]) => { POP.meta[k] = POP.meta[k] || m; }); add(ids(TK.trend).slice(0, 30)); add(ids(TK.week).slice(0, 30)); }
+  if (POP.genres) VGENRES.forEach(([, gm, gs]) => { add(ids([].concat((POP.genresNew || {})['m' + gm] || [], gs && (POP.genresNew || {})['s' + gs] || [])).slice(0, 15)); add(ids([].concat(POP.genres['m' + gm] || [], gs && POP.genres['s' + gs] || [])).slice(0, 15)); });
+  if (WK) (WK.prix || []).forEach(p => add(wl(p.l).slice(0, 30)));
+  add(ids(POP.trend).slice(0, 30));
+  V.homePrio = out; V.homePrioAt = Date.now();
+}
+setInterval(() => { if (V.data && (!V.homePrioAt || Date.now() - V.homePrioAt > 30 * 60e3) && !V.homePrioBusy) { V.homePrioBusy = true; homePrioBuild().catch(() => {}).finally(() => { V.homePrioBusy = false; }); } }, 20000);
 const needLang = it => hideVf() && !LANG()[itemKey(it)] && !it.vo && it.ol !== 'fr' && !isAnim(it);
 const needRes = it => hideSd() && it.kind === 'movie' && !vodVars(it).some(x => VRESF()[x.id] || x.q >= 3) && vodVars(it).some(x => !x.q);
 // Résolution d'un film : en-tête de la meilleure version lue par l'appli Windows (1.19 et plus)
