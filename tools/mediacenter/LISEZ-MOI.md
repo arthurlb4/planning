@@ -12,7 +12,8 @@ présente la bibliothèque.
    (les gestionnaires s'installent comme services Windows, démarrés avec le PC).
 3. Laissez faire (quelques minutes). Le script peut être relancé sans risque : ce qui est déjà fait est sauté.
 
-Dossiers créés : `Médiathèque\Films`, `Médiathèque\Séries`, `Médiathèque\Téléchargements` dans votre dossier utilisateur.
+Dossiers créés : `C:\Mediatheque\Films`, `C:\Mediatheque\Series`, `C:\Mediatheque\Telechargements` (hors du dossier
+utilisateur : Sonarr, Radarr et Jellyfin tournent comme services Windows et ne voient pas `C:\Users\<nom>`).
 
 ## Adresses (dans le navigateur du PC)
 
@@ -29,8 +30,8 @@ Dossiers créés : `Médiathèque\Films`, `Médiathèque\Séries`, `Médiathèqu
 1. **Sonarr, Radarr, Prowlarr** : à la première ouverture, ils demandent de créer un identifiant et un mot de passe
    (choisissez « Formulaire » et « Désactivé pour les adresses locales » si vous ne les ouvrez que depuis ce PC).
 2. **Jellyfin** : l'assistant de première configuration s'ouvre. Créez votre compte, puis ajoutez deux bibliothèques :
-   - type **Films** → dossier `Médiathèque\Films`
-   - type **Séries** → dossier `Médiathèque\Séries`
+   - type **Films** → dossier `C:\Mediatheque\Films`
+   - type **Séries** → dossier `C:\Mediatheque\Series`
    Langue des métadonnées : Français, pays : France.
 3. **Vos fichiers existants** : dans Radarr (Films › Importer une bibliothèque) et Sonarr (Séries › Importer), indiquez
    les dossiers où sont déjà vos vidéos ; ils les reconnaissent et peuvent les renommer et les déplacer proprement.
@@ -47,7 +48,7 @@ Dossiers créés : `Médiathèque\Films`, `Médiathèque\Séries`, `Médiathèqu
 
 - Le script affiche une ligne jaune « ! » quand une étape n'a pas pu se faire. Relancez-le ; si ça persiste, faites
   l'étape à la main :
-  - **Radarr / Sonarr › Paramètres › Gestion des médias › Dossiers racines** : `Médiathèque\Films` / `Médiathèque\Séries`
+  - **Radarr / Sonarr › Paramètres › Gestion des médias › Dossiers racines** : `C:\Mediatheque\Films` / `C:\Mediatheque\Series`
   - **Radarr / Sonarr › Paramètres › Clients de téléchargement › + › qBittorrent** : hôte `127.0.0.1`, port `8085`,
     catégorie `films` / `series`, sans identifiant.
 - **Désinstaller** : Paramètres Windows › Applications, ou `winget uninstall TeamSonarr.Sonarr` (même chose avec

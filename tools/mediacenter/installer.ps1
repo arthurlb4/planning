@@ -11,7 +11,9 @@
 #
 # Lancement : double-clic sur « Installer.cmd » (demande les droits d'administrateur).
 
-param([string]$Racine = (Join-Path $env:USERPROFILE 'Médiathèque'))
+# Médiathèque hors du dossier personnel : Sonarr, Radarr et Jellyfin tournent comme services Windows (compte système),
+# qui ne parcourent pas C:\Users\<nom> ; noms sans accents (plus sûr pour tous les logiciels)
+param([string]$Racine = 'C:\Mediatheque')
 
 $ErrorActionPreference = 'Continue'
 function Etape($t) { Write-Host ''; Write-Host "== $t" -ForegroundColor Cyan }
@@ -42,8 +44,11 @@ foreach ($id in $paquets.Keys) {
 
 # 2. Dossiers
 Etape "Dossiers de la médiathèque : $Racine"
-$films = Join-Path $Racine 'Films'; $series = Join-Path $Racine 'Séries'; $dl = Join-Path $Racine 'Téléchargements'
+$films = Join-Path $Racine 'Films'; $series = Join-Path $Racine 'Series'; $dl = Join-Path $Racine 'Telechargements'
 foreach ($d in @($films, $series, $dl)) { New-Item -ItemType Directory -Force -Path $d | Out-Null; Ok $d }
+# lecture et écriture pour les utilisateurs du PC et les services (compte système)
+icacls $Racine /grant '*S-1-5-32-545:(OI)(CI)M' /grant '*S-1-5-18:(OI)(CI)F' /T /Q | Out-Null
+Ok 'droits : utilisateurs et services Windows'
 
 # 3. qBittorrent : interface web (pour Sonarr / Radarr), seulement depuis ce PC, sans mot de passe en local
 Etape 'Réglage de qBittorrent'
