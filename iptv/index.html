@@ -1421,6 +1421,107 @@ function openTorrent() {
   m.querySelector('#torFile').onchange = async e => { const f = e.target.files[0]; if (!f) return; const b = new Uint8Array(await f.arrayBuffer()); let bin = ''; for (let i = 0; i < b.length; i += 8192) bin += String.fromCharCode.apply(null, b.subarray(i, i + 8192)); send(btoa(bin)); };
   setTimeout(() => m.querySelector('#torMag').focus(), 30);
 }
+/* ---------- Ma médiathèque : serveur Jellyfin (bibliothèque personnelle) ----------
+   Connexion par identifiant et mot de passe (jeton gardé sur l'appareil, dev.jf). Appli Windows : fichier lu tel quel par
+   le convertisseur habituel ; navigateur : flux HLS préparé par Jellyfin. Position de lecture envoyée à Jellyfin (reprise
+   partagée avec ses autres applications). Page web en https : seul « localhost » (le PC du serveur) est joignable. */
+const JF = { shown: [], cur: null, t: 0 };
+// position de lecture retenue sous l'adresse sans la clé d'accès (les positions sont synchronisées entre appareils)
+const posK = u => 'pos.' + String(u || '').replace(/[?&]api_key=[^&]*/, '');
+const jfConf = () => { const c = LS.get('dev.jf', null); return c && c.url && c.token ? c : null; };
+const jfDev = () => { let d = LS.get('dev.jfdev', ''); if (!d) { d = 'iptv-' + Math.random().toString(36).slice(2, 12); LS.set('dev.jfdev', d); } return d; };
+const jfAuth = () => 'MediaBrowser Client="Lecteur IPTV", Device="' + (window.desktop ? 'Appli Windows' : 'Navigateur') + '", DeviceId="' + jfDev() + '", Version="1.0"';
+async function jfLogin(url, user, pw) {
+  url = url.trim().replace(/\/+$/, ''); if (!/^https?:\/\//i.test(url)) url = 'http://' + url;
+  const r = await fetch(url + '/Users/AuthenticateByName', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Emby-Authorization': jfAuth() }, body: JSON.stringify({ Username: user, Pw: pw }) });
+  if (r.status === 401) throw new Error('identifiant ou mot de passe refusé');
+  if (!r.ok) throw new Error('Jellyfin répond ' + r.status);
+  const j = await r.json(); LS.set('dev.jf', { url, token: j.AccessToken, uid: j.User.Id, user });
+}
+async function jfGet(path) {
+  const c = jfConf(), r = await fetch(c.url + path, { headers: { 'X-Emby-Token': c.token } });
+  if (r.status === 401) { LS.set('dev.jf', null); throw new Error('session Jellyfin expirée : reconnectez-vous'); }
+  if (!r.ok) throw new Error('Jellyfin répond ' + r.status);
+  return r.json();
+}
+function jfPost(path, body) { const c = jfConf(); if (!c) return; fetch(c.url + path, { method: 'POST', headers: { 'X-Emby-Token': c.token, 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) }).catch(() => {}); }
+const jfImg = (x, id) => { const c = jfConf(), tag = x.ImageTags && x.ImageTags.Primary; return tag || id ? c.url + '/Items/' + (id || x.Id) + '/Images/Primary?maxHeight=450&quality=90' + (tag ? '&tag=' + tag : '') : ''; };
+const JF_FIELDS = 'ProductionYear,ProviderIds,DateCreated,CommunityRating,Overview,Container,UserData';
+// élément Jellyfin → forme des affiches de l'appli
+function jfItem(x) {
+  const ep = x.Type === 'Episode';
+  return { kind: x.Type === 'Series' ? 'series' : 'movie', id: 'jf' + x.Id, jf: x, name: ep ? (x.SeriesName || '') + ' · S' + (x.ParentIndexNumber || 0) + 'E' + (x.IndexNumber || 0) : x.Name,
+    year: x.ProductionYear || 0, rating: x.CommunityRating || 0, cover: ep ? jfImg({}, x.SeriesId) : jfImg(x), cats: [], services: [], added: (Date.parse(x.DateCreated) || 0) / 1000, tmdb: (x.ProviderIds || {}).Tmdb || '' };
+}
+function jfRow(title, list, prog) {
+  if (!list.length) return '';
+  return `<div class="vrow"><h3>${esc(title)}</h3><div class="vwrap"><div class="vscroll">${list.map(x => { const it = jfItem(x), k = JF.shown.push(x) - 1, ud = x.UserData || {};
+    const pr = prog && ud.PlaybackPositionTicks && x.RunTimeTicks ? { pct: ud.PlaybackPositionTicks / x.RunTimeTicks * 100, lab: 'reste ' + fmtDur((x.RunTimeTicks - ud.PlaybackPositionTicks) / 1e7) } : null;
+    return posterHtml(it, -1, 0, pr).replace('data-v="-1"', 'data-jfv="' + k + '"'); }).join('')}</div></div></div>`;
+}
+async function jfRender() {
+  JF.shown = [];
+  const c = jfConf(), https = location.protocol === 'https:' && !window.desktop;
+  if (!c) return `<div class="tmdbbox" style="max-width:560px"><b>Ma médiathèque (Jellyfin)</b>
+    <p class="hint" style="margin:6px 0 10px">Vos films et séries de Jellyfin, ici à côté de l'abonnement.${https ? ' Depuis cette page web, seul le PC où tourne Jellyfin peut s\'y connecter (adresse « localhost ») ; ailleurs, utilisez l\'appli Windows.' : ''}</p>
+    <input class="field" id="jfUrl" placeholder="Adresse du serveur" value="${esc(LS.get('dev.jfurl', 'http://localhost:8096'))}" autocomplete="off" spellcheck="false">
+    <div class="row" style="gap:8px"><input class="field" id="jfUser" placeholder="Identifiant Jellyfin" autocomplete="off" autocapitalize="off" spellcheck="false" style="flex:1;min-width:0"><input class="field" id="jfPw" type="password" placeholder="Mot de passe" autocomplete="off" style="flex:1;min-width:0"></div>
+    <button class="btn primary" data-jflogin>Se connecter</button><p class="err" id="jfErr"></p></div>`;
+  try {
+    const u = '/Users/' + c.uid + '/Items?Recursive=true&Fields=' + JF_FIELDS + '&IncludeItemTypes=';
+    const [res, late, mov, ser] = await Promise.all([jfGet('/Users/' + c.uid + '/Items/Resume?Limit=20&MediaTypes=Video&Fields=' + JF_FIELDS), jfGet(u + 'Movie,Series&SortBy=DateCreated&SortOrder=Descending&Limit=30'),
+      jfGet(u + 'Movie&SortBy=SortName'), jfGet(u + 'Series&SortBy=SortName')]);
+    let h = jfRow('Reprendre', res.Items || [], true) + jfRow('Ajoutés récemment', late.Items || []) + jfRow('Films', mov.Items || []) + jfRow('Séries', ser.Items || []);
+    if (!h) h = '<div class="empty">Votre médiathèque est vide pour l\'instant : les films et séries rangés dans les dossiers de Jellyfin apparaîtront ici.</div>';
+    return h + `<div class="vrow"><small class="hint">Jellyfin · ${esc(c.user)} · ${esc(c.url)}</small> <button class="chip" data-jfout>Se déconnecter</button></div>`;
+  } catch (e) {
+    return `<div class="empty">Jellyfin injoignable (${esc(e.message || String(e))}).${https ? '<br>Depuis cette page web, seul « localhost » est joignable : utilisez l\'appli Windows.' : '<br>Jellyfin est-il démarré sur le PC ?'}<br><br><button class="btn" data-jfout>Changer de serveur</button></div>`;
+  }
+}
+// Lecture : fichier tel quel dans l'appli Windows (convertisseur habituel), flux HLS de Jellyfin ailleurs ; reprise de Jellyfin
+function jfPlay(x) {
+  const c = jfConf(), ext = String(x.Container || 'mkv').split(',')[0];
+  const url = window.desktop && window.desktop.remux ? c.url + '/Videos/' + x.Id + '/stream.' + ext + '?static=true&api_key=' + c.token
+    : c.url + '/Videos/' + x.Id + '/master.m3u8?MediaSourceId=' + x.Id + '&VideoCodec=h264&AudioCodec=aac&TranscodingMaxAudioChannels=2&SegmentContainer=ts&api_key=' + c.token;
+  const pos = ((x.UserData || {}).PlaybackPositionTicks || 0) / 1e7; if (pos > 60) LS.set(posK(url), pos);
+  const it = jfItem(x);
+  play({ name: it.name, url, group: 'Ma médiathèque', logo: it.cover, n: 0, chno: '', vod: true, key: '', jfId: x.Id });
+  jfPost('/Sessions/Playing', { ItemId: x.Id, PositionTicks: Math.round(pos * 1e7) });
+}
+// position envoyée à Jellyfin toutes les 15 s, et à l'arrêt
+setInterval(() => {
+  const c = S.current;
+  if (JF.cur && (!c || c.jfId !== JF.cur)) { jfPost('/Sessions/Playing/Stopped', { ItemId: JF.cur, PositionTicks: Math.round((JF.pos || 0) * 1e7) }); JF.cur = null; }
+  if (c && c.jfId) { JF.cur = c.jfId; JF.pos = curPos() || 0; jfPost('/Sessions/Playing/Progress', { ItemId: c.jfId, PositionTicks: Math.round(JF.pos * 1e7), IsPaused: video.paused }); }
+}, 15000);
+async function jfSeries(x) {
+  const c = jfConf(), m = document.createElement('div'); m.className = 'modal open'; m.style.zIndex = 60;
+  m.innerHTML = `<div class="sheet" style="max-width:640px"><h2>${esc(x.Name)} <button class="btn icon" data-x aria-label="Fermer"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></h2><div id="jfEps"><div class="spin" style="margin:20px auto"></div></div></div>`;
+  document.body.appendChild(m);
+  const close = () => m.remove(); m.querySelector('[data-x]').onclick = close; m.addEventListener('click', e => { if (e.target === m) close(); });
+  try {
+    const j = await jfGet('/Shows/' + x.Id + '/Episodes?UserId=' + c.uid + '&Fields=Overview,Container,UserData'), eps = j.Items || [];
+    let h = '', sn = null;
+    eps.forEach((e, i) => { if (e.ParentIndexNumber !== sn) { sn = e.ParentIndexNumber; h += `<h4 class="vdh">Saison ${sn || 0}</h4>`; }
+      const ud = e.UserData || {}, st = ud.Played ? ' · vu' : ud.PlaybackPositionTicks ? ' · commencé' : '';
+      h += `<button class="chr" data-jfe="${i}"><span class="lg">${e.IndexNumber || ''}</span><span class="m"><span class="l">${esc(e.Name || '')}</span><span class="e">${esc((e.Overview || '').slice(0, 140))}${st}</span></span></button>`; });
+    m.querySelector('#jfEps').innerHTML = h || '<p class="hint">Aucun épisode.</p>';
+    m.querySelectorAll('[data-jfe]').forEach(b => b.onclick = () => { close(); jfPlay(eps[+b.dataset.jfe]); });
+  } catch (e) { m.querySelector('#jfEps').innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+}
+function jfClick(e) {
+  if (e.target.closest('[data-jflogin]')) {
+    const url = $('#jfUrl').value, user = $('#jfUser').value.trim(), pw = $('#jfPw').value; LS.set('dev.jfurl', url);
+    $('#jfErr').textContent = 'Connexion…';
+    jfLogin(url, user, pw).then(() => renderVod(), er => { $('#jfErr').textContent = 'Connexion impossible : ' + (er.message === 'Failed to fetch' ? 'serveur injoignable (adresse ? Jellyfin démarré ?)' : er.message); });
+    return true;
+  }
+  if (e.target.closest('[data-jfout]')) { LS.set('dev.jf', null); renderVod(); return true; }
+  const p = e.target.closest('[data-jfv]'); if (!p) return false;
+  const x = JF.shown[+p.dataset.jfv]; if (!x) return true;
+  if (x.Type === 'Series') jfSeries(x); else jfPlay(x);
+  return true;
+}
 // Dernière image figée par-dessus la vidéo pendant une relance (dessin seul : rien n'est relu, pas de souci d'origine)
 function freezeFrame() {
   const cv = $('#vfreeze'); if (!video.videoWidth) return;
@@ -1667,7 +1768,7 @@ async function play(c, alts) {
 
 
   // Appli Windows : film MKV (ou autre format que Chromium ne lit pas) converti à la volée par ffmpeg
-  if (c.vod && window.desktop && window.desktop.remux && /\.(mkv|avi|wmv|flv|mov|m2ts|vob|divx|xvid)$/i.test(c.url)) return playRemux(c, t);
+  if (c.vod && window.desktop && window.desktop.remux && /\.(mkv|avi|wmv|flv|mov|m2ts|vob|divx|xvid)$/i.test(c.url.split('?')[0])) return playRemux(c, t);
   // Appli Windows : chaîne dont le son (Dolby) n'est pas lu par Chromium, repérée avant → son converti tout de suite
   const ac = ACONV.get(c.url);
   if (!c.vod && ac && !c._noconv && window.desktop && window.desktop.remux) return liveConv(c, t, ac.u, !!ac.v);
@@ -2772,7 +2873,7 @@ async function renderVod() {
   const all = D.items.filter(it => langVisible(it) && qualVisible(it)), movies = all.filter(i => i.kind === 'movie'), series = all.filter(i => i.kind === 'series');
   const yr = new Date().getFullYear(), byAdded = (a, b) => b.added - a.added, byRate = (a, b) => b.rating - a.rating || b.added - a.added;
   let h = `<div class="vtop">
-    ${['home:Accueil', 'movie:Films', 'series:Séries', 'cats:Catégories', 'hist:Historique'].map(t => { const [k, l] = t.split(':'); return `<button class="chip${V.tab === k && !V.q ? ' on' : ''}" data-tab="${k}">${l}</button>`; }).join('')}${window.desktop && window.desktop.remux ? '<button class="chip" data-torrent title="Lire une vidéo depuis un lien magnet ou un fichier .torrent">Torrent</button>' : ''}
+    ${['home:Accueil', 'movie:Films', 'series:Séries', 'cats:Catégories', 'hist:Historique', 'jf:Ma médiathèque'].map(t => { const [k, l] = t.split(':'); return `<button class="chip${V.tab === k && !V.q ? ' on' : ''}" data-tab="${k}">${l}</button>`; }).join('')}${window.desktop && window.desktop.remux ? '<button class="chip" data-torrent title="Lire une vidéo depuis un lien magnet ou un fichier .torrent">Torrent</button>' : ''}
     <button class="chip" data-reload title="Recharger les catalogues depuis le serveur">↻</button>
     <label class="searchbar"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input id="vodQ" type="search" placeholder="Titre d'un film ou d'une série" value="${esc(V.q)}" autocomplete="off"></label></div>`;
   if (!all.length) { box.innerHTML = h + '<div class="empty">Aucun film ni série en français trouvé sur ce serveur.</div>'; return; }
@@ -2785,6 +2886,8 @@ async function renderVod() {
     if (X.ch.length || X.ev.length) h += `<div class="vxs">${extrasHtml(X)}</div>`;
     h += `<div class="vgrid">${res.map(it => posterHtml(it, V.shown.push(it) - 1)).join('')}</div>` + (res.length ? '' : '<div class="empty" id="vodNone">Aucun titre de ce nom dans le catalogue.</div>') + '<div id="vodTm"></div>';
     setTimeout(() => vodSearchMore(V.q, res), 0);
+  } else if (V.tab === 'jf') {
+    h += await jfRender();
   } else if (V.tab === 'hist') {
     // Historique : regroupé par jour, le plus récent d'abord
     const l = seenAll().map(e => ({ e, it: itemByKey(e.k) })).filter(x => x.it);
@@ -2941,6 +3044,7 @@ async function renderVod() {
 let vodQT;
 $('#vodInner').addEventListener('input', e => { if (e.target.id !== 'vodQ') return; clearTimeout(vodQT); vodQT = setTimeout(() => { V.q = e.target.value; renderVod(); }, 250); });
 $('#vodInner').addEventListener('click', e => {
+  if (jfClick(e)) return;
   if (e.target.closest('[data-reload]')) { V.force = true; V.data = null; renderVod(); return; }
   if (e.target.closest('[data-vdiag]')) {
     const D = V.data || {}, cats = Object.values(D.cats || {}), ex = D.excluded || [];
@@ -3476,7 +3580,7 @@ async function playRemux(c, t) {
   const ps = LS.get('pref.sub', 'off'), sb = info.subs || [];
   const sp = ps === 'off' ? sb.find(x => x.forced && lang2(x.lang) === lang2(au[R.a] && au[R.a].lang)) : sb.find(x => lang2(x.lang) === ps && !x.forced) || sb.find(x => lang2(x.lang) === ps);
   R.s = sp ? sp.i : -1;
-  const pos = LS.get('pos.' + c.url, 0), dur = info.duration || 0;
+  const pos = LS.get(posK(c.url), 0), dur = info.duration || 0;
   remuxStart(pos > 60 && (!dur || pos < dur - Math.min(120, dur * 0.1)) ? pos : 0, t);
   if (pos > 60) toast('Reprise à ' + fmtDur(pos));
 }
@@ -3574,15 +3678,15 @@ $('#vbVol').addEventListener('input', e => { video.volume = +e.target.value; vid
 $('#vbFull').onclick = () => setSolo(!isFull());
 $('#vbWin').onclick = () => isWin() ? setSolo(false) : setSolo(true, true);
 try { const v0 = LS.get('dev.vol', 1); if (v0 >= 0 && v0 <= 1) video.volume = v0; } catch (e) {}
-video.addEventListener('ended', () => { if (S.current && S.current.vod) { LS.set('pos.' + S.current.url, 0); histTrack(S.current, true); nextEpEnd(); } });
+video.addEventListener('ended', () => { if (S.current && S.current.vod) { LS.set(posK(S.current.url), 0); histTrack(S.current, true); nextEpEnd(); } });
 
 function vodResume() {
   const c = S.current; if (!c || !c.vod || S.engine === 'remux') return;
-  const pos = LS.get('pos.' + c.url, 0);
+  const pos = LS.get(posK(c.url), 0);
   const go = () => { if (pos > 60 && (!video.duration || pos < video.duration - Math.min(120, video.duration * 0.1))) { video.currentTime = pos; toast('Reprise à ' + fmtDur(pos)); } };
   video.readyState >= 1 ? go() : video.addEventListener('loadedmetadata', go, { once: true });
 }
-setInterval(() => { const c = S.current; if (c && c.vod && !video.paused && curPos() > 30) { LS.set('pos.' + c.url, Math.floor(curPos())); histTrack(c); } }, 5000);
+setInterval(() => { const c = S.current; if (c && c.vod && !video.paused && curPos() > 30) { LS.set(posK(c.url), Math.floor(curPos())); histTrack(c); } }, 5000);
 
 /* ---------- Pistes audio et sous-titres : choix dans un menu, langue préférée retenue (français et sans sous-titres au départ) ---------- */
 const LANGS = { fr: 'Français', fra: 'Français', fre: 'Français', en: 'Anglais', eng: 'Anglais', de: 'Allemand', deu: 'Allemand', ger: 'Allemand', es: 'Espagnol', spa: 'Espagnol',
