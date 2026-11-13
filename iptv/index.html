@@ -3088,8 +3088,8 @@ async function langProbe(it) {
   if (it.kind === 'movie') { const pk = vodPick(it); url = vodUrl('movie', pk.id, pk.ext); }
   else { try { const j = await xget('&action=get_series_info&series_id=' + it.id), f = epFlat(j.episodes || {})[0]; if (f) url = epUrl(f); } catch (e) {} }
   if (!url) { langSet(it, 'u'); return 'u'; }
-  let j = null; try { j = await (await fetch(window.desktop.remux + '/probe?url=' + encodeURIComponent(url))).json(); } catch (e) { return null; }
-  if (!j || !j.ok) return /\b(403|429)\b|forbidden|too many/i.test(j && j.err || '') ? false : null;
+  const j = await probeFile(url);
+  if (!j || !j.ok) { LCHK.err = (j && j.err || 'module de lecture injoignable').slice(0, 160); return /\b(403|429)\b|forbidden|too many/i.test(j && j.err || '') ? false : null; }
   if (j.vh && it.kind === 'movie') vodResSet(vodPick(it).id, j.vh);
   const au = j.audio || [], langs = au.map(a => String(a.lang || '').toLowerCase()).filter(Boolean);
   const other = langs.filter(l => !/^(fr|fre|fra|fr-\w+)$/.test(l) && !/^(und|unk|mul|zxx|mis|qaa)$/.test(l));
@@ -3097,7 +3097,19 @@ async function langProbe(it) {
   langSet(it, v + ':' + langs.join(',') + '|' + (j.subs || []).map(x => String(x.lang || '').toLowerCase()).filter(Boolean).join(','));
   return v;
 }
-const LCHK = { busy: false, skip: new Set(), dirty: false };
+const LCHK = { busy: false, skip: new Set(), dirty: false, vlc: false, err: '' };
+/* En-tête d'un fichier lu par l'appli Windows : par ffmpeg, ou par VLC quand le serveur refuse ffmpeg (erreur 461 du
+   fournisseur, par ex.) ; une fois ffmpeg refusé, VLC directement pour le reste de la session */
+async function probeFile(url) {
+  const base = window.desktop.remux, get = async q => { try { return await (await fetch(base + '/probe?' + q + 'url=' + encodeURIComponent(url))).json(); } catch (e) { return null; } };
+  let j = LCHK.vlc ? null : await get('');
+  if (!LCHK.vlc && (!j || j.ok || /\b(403|429)\b|forbidden|too many/i.test(j.err || ''))) return j;
+  const v = await fetch(base + '/vlcinfo').then(r => r.json()).catch(() => null);
+  if (!v || !v.ok) { LCHK.err = 'ffmpeg refusé par le serveur et VLC absent de ce PC'; return j; }
+  const jv = await get('via=vlc&');
+  if (jv && jv.ok) LCHK.vlc = true;
+  return jv && jv.ok ? jv : (j || jv);
+}
 function lchkDay() { const d = new Date().toISOString().slice(0, 10), o = LS.get('dev.lchk', {}); return o.d === d ? o : { d, n: 0, stop: o.stop || 0 }; }
 function lchkQueue() {
   const D = V.data; if (!D) return [];
@@ -3114,9 +3126,9 @@ const needRes = it => hideSd() && it.kind === 'movie' && !vodVars(it).some(x => 
 // Résolution d'un film : en-tête de la meilleure version lue par l'appli Windows (1.19 et plus)
 async function resProbe(it) {
   const pk = vodPick(it), url = vodUrl('movie', pk.id, pk.ext);
-  let j = null; try { j = await (await fetch(window.desktop.remux + '/probe?url=' + encodeURIComponent(url))).json(); } catch (e) { return null; }
-  if (!j || !j.ok) return /\b(403|429)\b|forbidden|too many/i.test(j && j.err || '') ? false : null;
-  if (!j.vh) return null;                                // appli trop ancienne : pas de hauteur renvoyée
+  const j = await probeFile(url);
+  if (!j || !j.ok) { LCHK.err = (j && j.err || 'module de lecture injoignable').slice(0, 160); return /\b(403|429)\b|forbidden|too many/i.test(j && j.err || '') ? false : null; }
+  if (!j.vh) { LCHK.err = 'résolution non renvoyée : mettez à jour l\'appli Windows (1.19 et plus)'; return null; }                                // appli trop ancienne : pas de hauteur renvoyée
   vodResSet(pk.id, j.vh); return 'r';
 }
 async function lchkTick() {
@@ -3131,7 +3143,7 @@ async function lchkTick() {
     if (r !== false && r !== null && needRes(it)) { await new Promise(x => setTimeout(x, 1500)); const r2 = await resProbe(it); r = r2 === 'r' ? 'o' : r2; }
     if (r === false) { day.stop = Date.now() + 6 * 3600e3; toast('Vérification des langues mise en pause 6 h : le serveur refuse pour l\'instant'); }
     else if (r === null) LCHK.skip.add(it);
-    else { if (r === 'o' || r === 'f') day.n++; LCHK.dirty = true; }
+    else { if (r === 'o' || r === 'f') day.n++; LCHK.dirty = true; LCHK.err = ''; }
     LS.set('dev.lchk', day);
   } finally { LCHK.busy = false; renderLangBox(); }
 }
@@ -3146,7 +3158,7 @@ function renderLangBox() {
   b.innerHTML = `<label class="lrow"><input type="checkbox" data-lpref="pref.hidevf"${hideVf() ? ' checked' : ''}> Masquer les films et séries étrangers en VF seule</label>
     <label class="lrow"><input type="checkbox" data-lpref="pref.hidevfq"${hideUnk() ? ' checked' : ''}> Masquer aussi ceux pas encore vérifiés (« VO ? »)</label>
     <label class="lrow"><input type="checkbox" data-lpref="pref.hidesd"${hideSd() ? ' checked' : ''}> Masquer les films en qualité inférieure à 1080p (annoncée ou mesurée)</label>
-    <p class="hint" style="margin:6px 0 0">${vo} avec VO · ${vf} en VF seule masqués · ${rs.length} versions de films mesurées, dont ${sd} sous 1080p · ${esc(st)}</p>${app ? `<button class="btn" data-lchk style="margin-top:8px">${LS.get('dev.lchkoff', false) || Date.now() < (lchkDay().stop || 0) ? 'Reprendre la vérification' : 'Arrêter la vérification'}</button>` : ''}`;
+    <p class="hint" style="margin:6px 0 0">${vo} avec VO · ${vf} en VF seule masqués · ${rs.length} versions de films mesurées, dont ${sd} sous 1080p · ${esc(st)}${LCHK.vlc ? ' · lecture par VLC (le serveur refuse ffmpeg)' : ''}${app && LCHK.err ? '<br>Dernier échec : ' + esc(LCHK.err) : ''}${app && document.body.classList.contains('playing') ? '<br>En attente : une lecture est en cours (même dans le mini lecteur).' : ''}</p>${app ? `<button class="btn" data-lchk style="margin-top:8px">${LS.get('dev.lchkoff', false) || Date.now() < (lchkDay().stop || 0) ? 'Reprendre la vérification' : 'Arrêter la vérification'}</button>` : ''}`;
 }
 document.addEventListener('change', e => { const c = e.target.closest && e.target.closest('[data-lpref]'); if (!c) return; LS.set(c.dataset.lpref, c.checked); renderLangBox(); V.pop = null; if (document.body.classList.contains('vod')) renderVod(); });
 // Arrêter / reprendre ; reprendre lève aussi la pause de quelques heures posée après un refus du serveur (souvent dû à un VPN)
