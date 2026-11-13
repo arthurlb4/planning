@@ -12,6 +12,7 @@ on:
       - 'scripts/build-agenda.py'
       - 'scripts/build-epg.py'
       - 'scripts/build-netflix.py'
+      - 'scripts/build-wiki.py'
       - '.github/workflows/agenda.yml'
   workflow_dispatch:
 
@@ -22,12 +23,18 @@ concurrency:
 jobs:
   agenda:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Listes Wikipédia de la veille
+        uses: actions/cache@v4
+        with:
+          path: wiki-cache
+          key: wiki-${{ github.run_id }}
+          restore-keys: wiki-
       - name: Agenda et guide des programmes
         run: |
           curl -fsSL --retry 3 -A 'lecteur-iptv-agenda (franceinfoplanning.com)' -o guide.xml.gz https://xmltvfr.fr/xmltv/xmltv_fr.xml.gz
@@ -38,8 +45,13 @@ jobs:
           # Top 10 Netflix en France (classements publiés par Netflix) ; en cas d'échec, l'appli garde les listes TMDB
           if curl -fsSL --retry 2 -A 'Mozilla/5.0 (lecteur-iptv)' -o netflix.tsv https://www.netflix.com/tudum/top10/data/all-weeks-countries.tsv \
              && python3 scripts/build-netflix.py netflix.tsv > netflix.json; then python3 -c "import json; d=json.load(open('netflix.json')); print('Netflix', d['week'], len(d['films']), 'films', len(d['tv']), 'séries')"; else echo '{}' > netflix.json; echo 'Top 10 Netflix indisponible'; fi
+          # Films et séries les plus consultés sur Wikipédia en français et films primés (Wikidata), une fois par jour
+          # (gardés dans le cache GitHub entre deux passages) ; en cas d'échec, la dernière liste est gardée
+          if [ -f wiki-cache/wiki.json ] && [ $(( $(date +%s) - $(stat -c %Y wiki-cache/wiki.json) )) -lt 72000 ]; then cp wiki-cache/wiki.json wiki.json; echo 'Wikipédia : liste du jour déjà prête';
+          elif timeout 900 python3 scripts/build-wiki.py > wiki.new && python3 -c "import json; d=json.load(open('wiki.new')); print('Wikipédia', len(d['top']), 'titres', len(d['prix']), 'prix'); assert d['top'] or d['prix']"; then mv wiki.new wiki.json; mkdir -p wiki-cache; cp wiki.json wiki-cache/;
+          elif [ -f wiki-cache/wiki.json ]; then cp wiki-cache/wiki.json wiki.json; echo 'Wikipédia indisponible : ancienne liste'; else echo '{}' > wiki.json; fi
           # Guide joint au fichier de l'agenda (même adresse, déjà servie par le serveur)
-          python3 -c "import json; a=json.load(open('agenda.json')); g=json.load(open('epg.json')); a['guide']={'at': g['at'], 'ch': g['ch'], 'k': g['k']}; n=json.load(open('netflix.json')); a['nfx']=n if n.get('week') else None; json.dump(a, open('agenda.json','w'), ensure_ascii=False, separators=(',',':'))"
+          python3 -c "import json; a=json.load(open('agenda.json')); g=json.load(open('epg.json')); a['guide']={'at': g['at'], 'ch': g['ch'], 'k': g['k']}; n=json.load(open('netflix.json')); a['nfx']=n if n.get('week') else None; w=json.load(open('wiki.json')); a['wiki']=w if w.get('top') or w.get('prix') else None; json.dump(a, open('agenda.json','w'), ensure_ascii=False, separators=(',',':'))"
       - name: Rangement sur le serveur Cloudflare
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

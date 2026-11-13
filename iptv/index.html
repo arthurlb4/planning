@@ -381,6 +381,9 @@ body.homeview #channels,body.homeview #player{display:none}
 .chr .lg img{max-width:100%;max-height:90%;object-fit:contain}
 .chr .lg:not(:has(img)){background:#141413}
 .chr .m{min-width:0;flex:1}
+.frn{display:flex;flex-wrap:wrap;gap:6px 14px;margin:8px 0 2px;font-size:13px;color:var(--text2)}
+.frn b{color:var(--text);font-weight:600;margin-right:3px}.frn small{color:var(--text3);margin-left:2px}
+.poster .why{position:absolute;left:6px;bottom:6px;z-index:2;max-width:calc(100% - 12px);padding:2px 7px;border-radius:999px;background:rgba(0,0,0,.72);color:#fff;font-size:10.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .chr .lg.xpo{width:30px;height:44px;border-radius:5px;background:#141413}
 .chr .lg.xpo img{width:100%;height:100%;max-height:none;object-fit:cover}
 .vxs{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:0 16px;margin-bottom:10px}
@@ -1811,6 +1814,7 @@ function loadGuide() {
       const r = await fetch(GUIDE_URL, { cache: 'no-cache' }); if (!r.ok) throw new Error('guide ' + r.status);
       const j = await r.json(), d = j && (j.guide || j); if (!d || !d.ch || !Object.keys(d.ch).length) throw new Error('guide vide');
       d.nfx = (j && j.nfx) || null;          // top 10 Netflix en France, joint au même fichier
+      d.wiki = (j && j.wiki) || null;        // films et séries les plus consultés sur Wikipédia, films primés (Wikidata)
       GUIDE.data = d; GUIDE.at = Date.now(); DB.cachePut({ id: 'guide1', at: GUIDE.at, data: d });
       return d;
     } catch (e) { GUIDE.at = Date.now() - 50 * 60000; return GUIDE.data; }   // réessai dans 10 min, ancien guide gardé
@@ -2501,12 +2505,15 @@ async function loadPopular(force) {
   if (!force && TM.data) return TM.data;
   if (TM.loading) return TM.loading;
   TM.loading = (async () => {
-    if (!force) { const c = await DB.cacheGet('tmdb5:fr'); if (c && Date.now() - c.at < 12 * 3600e3) return (TM.data = c.data); }
+    if (!force) { const c = await DB.cacheGet('tmdb6:fr'); if (c && Date.now() - c.at < 12 * 3600e3) return (TM.data = c.data); }
     const meta = {}, ids = (res, kind) => (res.results || []).map(r => { const id = kind + r.id; meta[id] = { k: kind, t: r.title || r.name || '', o: r.original_title || r.original_name || '', y: +String(r.release_date || r.first_air_date || '').slice(0, 4) || 0, p: r.poster_path || '', l: r.original_language || '' }; return id; });
     const pages = async (path, kind, params, n) => { let out = []; for (let pg = 1; pg <= n; pg++) { try { out = out.concat(ids(await tmdb(path, Object.assign({ page: pg }, params)), kind)); } catch (e) { if (pg === 1) throw e; break; } } return out; };
     const data = { trend: [], svc: {}, svcNew: {}, meta, cinema: [] };
     // Films à l'affiche dans les salles françaises (sorties en France, les plus suivis d'abord)
     data.cinema = await pages('/movie/now_playing', 'm', { region: 'FR' }, 3).catch(() => []);
+    // Nouveautés en VOD en France : sortie en location / achat (numérique) en France ces 90 derniers jours
+    { const d0 = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10), d1 = new Date().toISOString().slice(0, 10);
+      data.vodNew = await pages('/discover/movie', 'm', { region: 'FR', with_release_type: '4', 'release_date.gte': d0, 'release_date.lte': d1, sort_by: 'popularity.desc' }, 3).catch(() => []); }
     data.genres = {};
     await Promise.all(VGENRES.flatMap(([, gm, gs]) => [
       gm && pages('/discover/movie', 'm', { with_genres: gm, sort_by: 'popularity.desc', 'vote_count.gte': 80, watch_region: 'FR' }, 2).then(l => { data.genres['m' + gm] = l; }).catch(() => {}),
@@ -2528,10 +2535,51 @@ async function loadPopular(force) {
         pages('/discover/tv', 's', Object.assign({ 'first_air_date.gte': d0, 'first_air_date.lte': d1 }, nm), 2).catch(() => [])]);
       data.svcNew[name] = { m: m2, s: t2 };
     }));
-    DB.cachePut({ id: 'tmdb5:fr', at: Date.now(), data });
+    DB.cachePut({ id: 'tmdb6:fr', at: Date.now(), data });
     return (TM.data = data);
   })();
   try { return await TM.loading; } catch (e) { TM.err = e.message; return null; } finally { TM.loading = null; }
+}
+/* BetaSeries (site français, API officielle) : films et séries les plus suivis par ses membres, avec leur identifiant TMDB.
+   Clé chiffrée (déverrouillée avec « Mon abonnement »), liste gardée 12 h. */
+const BS_ENC = {"salt":"0cMLFcctzhONyJudE2rBnA==","iv":"9hWwAv28mEwo33u8","data":"jUVElVXNehE4sUn9Z4cNXbKjMac22eOgjS1amQ=="};
+async function bsPopular() {
+  const key = LS.get('pref.bs', ''); if (!key) return null;
+  const c = await DB.cacheGet('bs1').catch(() => null); if (c && Date.now() - c.at < 12 * 3600e3) return c.data;
+  const meta = {}, ids = [];
+  const one = path => fetch('https://api.betaseries.com/' + path, { headers: { 'X-BetaSeries-Key': key, 'X-BetaSeries-Version': '3.0' } }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
+  const [m1, m2, s1] = await Promise.all([one('movies/list?order=popularity&limit=100&start=0'), one('movies/list?order=popularity&limit=100&start=100'), one('shows/list?order=popularity&limit=100')]);
+  [].concat(m1.movies || [], m2.movies || []).forEach(x => { if (!x.tmdb_id) return; const k = 'm' + x.tmdb_id; meta[k] = { k: 'm', t: x.title || '', o: '', y: +x.production_year || 0 }; ids.push(k); });
+  (s1.shows || []).forEach(x => { if (!x.themoviedb_id) return; const k = 's' + x.themoviedb_id; meta[k] = { k: 's', t: x.title || '', o: x.original_title || '', y: +x.creation || 0 }; ids.push(k); });
+  const data = { ids, meta };
+  if (ids.length) DB.cachePut({ id: 'bs1', at: Date.now(), data });
+  return data;
+}
+/* Notes françaises d'une fiche (AlloCiné spectateurs et presse, SensCritique, BetaSeries…) via « What's on? API »
+   (projet libre, usage non commercial, 200 requêtes par jour sans clé) ; gardées 14 jours par titre */
+async function frNotes(tmdbId, kind) {
+  const id = 'wo1:' + kind + tmdbId, c = await DB.cacheGet(id).catch(() => null); if (c && Date.now() - c.at < 14 * 864e5) return c.data;
+  const r = await fetch('https://whatson-api.onrender.com/?tmdbId=' + tmdbId + '&item_type=' + (kind === 'tv' ? 'tvshow' : 'movie')).catch(() => null);
+  if (!r || !r.ok) return null;
+  const j = await r.json().catch(() => null), it = j && j.results && j.results[0]; if (!it) { DB.cachePut({ id, at: Date.now(), data: {} }); return {}; }
+  const g = (o, f) => o && o[f] != null ? +o[f] : 0;
+  const data = { ac: g(it.allocine, 'users_rating'), acn: g(it.allocine, 'users_rating_count'), ap: g(it.allocine, 'critics_rating'), apn: g(it.allocine, 'critics_rating_count'),
+    sc: g(it.senscritique, 'users_rating'), scn: g(it.senscritique, 'users_rating_count'), bs: g(it.betaseries, 'users_rating'), bsn: g(it.betaseries, 'users_rating_count'),
+    im: g(it.imdb, 'users_rating'), lb: g(it.letterboxd, 'users_rating') };
+  DB.cachePut({ id, at: Date.now(), data });
+  return data;
+}
+function frNotesHtml(n) {
+  if (!n) return '';
+  const f = (v, d) => v.toFixed(d).replace('.', ','), k = v => v >= 1000 ? Math.round(v / 1000) + ' k' : String(v);
+  const l = [];
+  if (n.ac) l.push(`<span><b>AlloCiné</b> ${f(n.ac, 1)}/5 <small>spectateurs${n.acn ? ' · ' + k(n.acn) : ''}</small></span>`);
+  if (n.ap) l.push(`<span><b>Presse</b> ${f(n.ap, 1)}/5 <small>AlloCiné${n.apn ? ' · ' + n.apn + ' critiques' : ''}</small></span>`);
+  if (n.sc) l.push(`<span><b>SensCritique</b> ${f(n.sc, 1)}/10${n.scn ? ' <small>' + k(n.scn) + '</small>' : ''}</span>`);
+  if (n.bs) l.push(`<span><b>BetaSeries</b> ${f(n.bs, 1)}/5${n.bsn ? ' <small>' + k(n.bsn) + '</small>' : ''}</span>`);
+  if (n.im) l.push(`<span><b>IMDb</b> ${f(n.im, 1)}/10</span>`);
+  if (n.lb) l.push(`<span><b>Letterboxd</b> ${f(n.lb, 1)}/5</span>`);
+  return l.length ? '<div class="frn">' + l.join('') + '</div>' : '';
 }
 // Titres TMDB → titres du catalogue (identifiant TMDB si le serveur le donne, sinon titre + année à un an près)
 const tnorm = t => norm(cleanTitle(t)).replace(/[^a-z0-9]+/g, ' ').trim();
@@ -2692,6 +2740,8 @@ async function renderVod() {
     if (POP) {
       const FY = await Promise.race([forYou(kinds).catch(() => null), new Promise(r => setTimeout(() => r(null), 6000))]);
       if (!document.body.classList.contains('vod')) return;
+      h += '<!--MIX-->';                                   // « Notre sélection », composée plus bas une fois toutes les sources lues
+      V.fy = FY;
       if (FY && FY.all.length >= 4) h += vodRow('Pour vous', 'd\'après ce que vous regardez', FY.all);
       if (FY) FY.because.forEach(b => { bc += vodRow('Parce que vous avez regardé ' + b.seed.name, '', b.items); });
     }
@@ -2707,17 +2757,50 @@ async function renderVod() {
         });
         if (its.length) h += vodRow('Les plus vus en France cette semaine · ' + (kd === 'm' ? 'films' : 'séries'), 'top 10 Netflix France, semaine du ' + new Date(NF.week).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }), its, rk);
       }
+      // Les films et séries dont on parle en France : les plus consultés sur Wikipédia en français ces 3 derniers jours
+      const G = await loadGuide().catch(() => null), WK = G && G.wiki;
+      const wl = (l, kk) => { const ids = (l || []).map(x => { POP.meta[x.id] = POP.meta[x.id] || x.m; return x.id; }); return popList(ids, P, POP.meta, kk || kinds); };
+      const wTop = WK ? wl(WK.top) : [];
+      if (wTop.length >= 3) h += vodRow('Ce dont on parle en ce moment', 'les plus consultés sur Wikipédia en français ces 3 derniers jours', wTop.slice(0, 30), true);
+      const vNew = kinds.includes('m') && POP.vodNew ? popList(POP.vodNew, P, POP.meta, ['m']) : [];
+      if (vNew.length >= 3) h += vodRow('Nouveautés en VOD en France', 'sortis en location et à l\'achat ces 3 derniers mois · TMDB', vNew.slice(0, 30));
+      let cin = [];
       if (kinds.includes('m') && POP.cinema && POP.cinema.length) {
-        const cin = popList(POP.cinema, P, POP.meta, ['m']);
+        cin = popList(POP.cinema, P, POP.meta, ['m']);
         if (cin.length) h += vodRow('À l\'affiche au cinéma en France', 'films en salles en ce moment · déjà dans votre catalogue', cin.slice(0, 30));
       }
+      // Les plus suivis par les membres de BetaSeries (site français)
+      const BSP = await Promise.race([bsPopular().catch(() => null), new Promise(r => setTimeout(() => r(null), 5000))]);
+      if (BSP) Object.entries(BSP.meta).forEach(([k, m]) => { POP.meta[k] = POP.meta[k] || m; });
+      const bsl = BSP ? popList(BSP.ids, P, POP.meta, kinds) : [];
+      if (bsl.length >= 3) h += vodRow('Les plus suivis sur BetaSeries', 'membres français de BetaSeries', bsl.slice(0, 30), true);
       h += bc;
+      // Primés (Wikidata) : du plus récent au plus ancien
+      const prix = WK && kinds.includes('m') ? (WK.prix || []).map(p => ({ n: p.n, l: wl(p.l, ['m']), y: new Map(p.l.map(x => [x.id, x.y])) })).filter(p => p.l.length >= 3) : [];
+      // Notre sélection : un peu de tout, en alternance (pour vous, top Netflix, ce dont on parle, nouveautés VOD, primés,
+      // BetaSeries, cinéma), sans ce qui est déjà vu ou commencé ; l'ordre de départ change chaque jour
+      {
+        const seen = new Set([...seenAll().map(e => e.k), ...histAll().map(e => e.k)]);
+        const nfx = []; if (NF && NF.list.length) NF.list.slice().sort((a, b) => a.r - b.r).forEach(e => { const it = popMatch(e.id, P, POP.meta); if (it && kinds.includes(e.id[0])) nfx.push(it); });
+        const day = Math.floor(Date.now() / 864e5), rot = (l, n) => l.length ? l.slice(n % l.length).concat(l.slice(0, n % l.length)) : l;
+        const SHORT = { "Palmes d'or": "Palme d'or", 'César du meilleur film': 'César', 'Oscars du meilleur film': 'Oscar', "Lions d'or de Venise": "Lion d'or", "Ours d'or de Berlin": "Ours d'or", 'Oscars du meilleur film international': 'Oscar international' };
+        const pr = []; prix.forEach(p => p.l.slice(0, 12).forEach(it => { const y = p.y.get('m' + (it.tmdb || '')) || it.year || ''; pr.push([it, (SHORT[p.n] || p.n) + (y ? ' ' + y : '')]); }));
+        const SRC = [[V.fy ? V.fy.all : [], 'Pour vous'], [nfx, 'Top 10 Netflix'], [wTop, 'On en parle'], [vNew, 'Nouveau en VOD'], [rot(pr, day * 7), null], [bsl, 'Suivi sur BetaSeries'], [cin, 'Au cinéma']]
+          .map(([l, w]) => ({ l: l.map(x => Array.isArray(x) ? x : [x, w]).filter(([it]) => !seen.has(itemKey(it))), i: 0 })).filter(x => x.l.length);
+        const out = [], used = new Set(); let k = day % Math.max(1, SRC.length), guard = 0;
+        while (out.length < 30 && SRC.some(x => x.i < x.l.length) && guard++ < 1000) {
+          const S0 = SRC[k++ % SRC.length]; while (S0.i < S0.l.length) { const [it, w] = S0.l[S0.i++]; if (used.has(it)) continue; used.add(it); out.push([it, w]); break; }
+        }
+        const mix = out.length >= 6 ? `<div class="vrow"><h3>Notre sélection<small>un peu de tout : nouveautés, primés, populaires, pour vous</small></h3><div class="vwrap"><button class="varr l" data-arr="-1" aria-label="Précédents"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><div class="vscroll">${out.map(([it, w]) => posterHtml(it, V.shown.push(it) - 1).replace('<div class="im">', `<div class="im"><span class="why">${esc(w)}</span>`)).join('')}</div><button class="varr r" data-arr="1" aria-label="Suivants"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button></div></div>` : '';
+        h = h.replace('<!--MIX-->', mix);
+      }
       // Rangées par genre (genres TMDB, titres les plus suivis présents dans le catalogue)
       if (POP.genres) for (const [label, gm, gs] of VGENRES) {
         const ids = [].concat(kinds.includes('m') && POP.genres['m' + gm] || [], kinds.includes('s') && gs && POP.genres['s' + gs] || []);
         const l = popList(ids.map((x, k) => [x, k % 40]).sort((a, b) => a[1] - b[1]).map(x => x[0]), P, POP.meta, kinds);
         if (l.length >= 4) h += vodRow(label, '', l.slice(0, 30));
       }
+      prix.forEach(p => { h += vodRow(p.n, 'films primés présents dans votre catalogue, du plus récent au plus ancien · Wikidata', p.l.slice(0, 40)); });
       h += vodRow('Tendances mondiales de la semaine', 'popularité dans le monde · TMDB', popList(POP.trend, P, POP.meta, kinds).slice(0, 30), true);
       for (const [svc] of TMDB_SVC) {
         const S2 = POP.svc[svc]; if (!S2) continue;
@@ -3092,6 +3175,7 @@ async function vodEnrich(it) {
   else { const fr = ((d.content_ratings || {}).results || []).find(r => r.iso_3166_1 === 'FR'); cert = fr && fr.rating || ''; }
   const genres = (d.genres || []).map(g => g.name).slice(0, 3).join(', '), run = ti.kind === 'movie' ? (d.runtime ? fmtDur(d.runtime * 60) : '') : (d.number_of_seasons ? d.number_of_seasons + ' saison' + (d.number_of_seasons > 1 ? 's' : '') : '');
   const certTxt = cert && cert !== 'U' && cert !== 'TP' && cert !== 'Tous publics' ? '-' + String(cert).replace(/^-/, '') : cert ? 'Tous publics' : '';
+  frNotes(ti.id, ti.kind).then(n => { const h = frNotesHtml(n), mt = $('#vodMeta'); if (h && mt && V.open && V.open.it === it && !$('#vodDetail .frn')) mt.insertAdjacentHTML('afterend', h); }).catch(() => {});
   const m = $('#vodMeta'); if (m) m.textContent = [it.year || (d.release_date || d.first_air_date || '').slice(0, 4), genres || it.genre, run, it.rating ? '★ ' + it.rating.toFixed(1) : (d.vote_average ? '★ ' + d.vote_average.toFixed(1) : ''), certTxt, it.services.join(', ')].filter(Boolean).join(' · ');
   const cr = d.credits || {}, dir = (cr.crew || []).filter(c => c.job === 'Director').map(c => c.name).slice(0, 2).join(', ') || (d.created_by || []).map(c => c.name).slice(0, 2).join(', ');
   const crew = $('#vodCrew'); if (crew && dir) crew.innerHTML = `<div class="cr">${ti.kind === 'movie' ? 'Réalisation' : 'Création'} : ${esc(dir)}</div>`;
@@ -4186,6 +4270,7 @@ async function decEnc(E, pass) {
   const key = await C.deriveKey({ name: 'PBKDF2', salt: b64d(E.salt), iterations: 600000, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
   return new TextDecoder().decode(await C.decrypt({ name: 'AES-GCM', iv: b64d(E.iv) }, key, b64d(E.data)));
 }
+async function useBuiltinBs(pass) { const k = (await decEnc(BS_ENC, pass)).trim(); if (!/^[A-Za-z0-9]{8,64}$/.test(k)) throw new Error('clé'); LS.set('pref.bs', k); return k; }
 async function useBuiltinOst(pass) { const k = (await decEnc(OST_ENC, pass)).trim(); if (!/^[A-Za-z0-9]{20,64}$/.test(k)) throw new Error('clé'); LS.set('pref.ost', k); return k; }
 async function unlockTmdb(pass) {
   const C = crypto.subtle;
@@ -4196,7 +4281,8 @@ async function unlockTmdb(pass) {
 async function useBuiltinTmdb(pass) {
   const k = (await unlockTmdb(pass)).trim(); if (!/^[0-9a-f]{32}$/i.test(k)) throw new Error('clé');
   LS.set('pref.tmdb', k); TM.data = null; TM.err = ''; V.force2 = true;
-  if (!LS.get('pref.ost', '')) useBuiltinOst(pass).catch(() => {});        // sous-titres OpenSubtitles activés du même coup
+  if (!LS.get('pref.ost', '')) useBuiltinOst(pass).catch(() => {});
+  if (!LS.get('pref.bs', '')) useBuiltinBs(pass).catch(() => {});        // BetaSeries aussi        // sous-titres OpenSubtitles activés du même coup
   return k;
 }
 async function unlockBuiltin(pass) {
@@ -4217,7 +4303,8 @@ $('#bBtn').onclick = async () => {
     const text = await fetchPlaylist(url);
     stopAll();
     await savePlaylist({ id: 'builtin', name: 'Mon abonnement', url, text, added: 0 });
-    if (!LS.get('pref.ost', '')) useBuiltinOst(pass).catch(() => {});        // sous-titres OpenSubtitles activés du même coup
+    if (!LS.get('pref.ost', '')) useBuiltinOst(pass).catch(() => {});
+  if (!LS.get('pref.bs', '')) useBuiltinBs(pass).catch(() => {});        // BetaSeries aussi        // sous-titres OpenSubtitles activés du même coup
     $('#bPass').value = ''; closeModals(); toast('Liste déverrouillée');
     S.group = 'home'; renderGroups(); applyFilter(true); setHomeView(true);
   } catch (e) { err.textContent = e.message; }
