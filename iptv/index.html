@@ -3084,16 +3084,30 @@ function lchkQueue() {
   histAll().forEach(e => add(itemByKey(e.k))); myList().forEach(k => add(itemByKey(k)));
   (V.shown || []).forEach(add);
   D.items.slice().sort((a, b) => b.added - a.added).forEach(add);
-  return pri.filter(it => { const v = LANG()[itemKey(it)]; return !v && !it.vo && it.ol !== 'fr' && !isAnim(it) && !LCHK.skip.has(it); });
+  return pri.filter(it => !LCHK.skip.has(it) && (needLang(it) || needRes(it)));
+}
+// À vérifier : la langue (film ou série étranger pas encore lu), ou la résolution (film sans qualité annoncée ni mesurée,
+// français compris)
+const needLang = it => hideVf() && !LANG()[itemKey(it)] && !it.vo && it.ol !== 'fr' && !isAnim(it);
+const needRes = it => hideSd() && it.kind === 'movie' && !vodVars(it).some(x => VRESF()[x.id] || x.q >= 3) && vodVars(it).some(x => !x.q);
+// Résolution d'un film : en-tête de la meilleure version lue par l'appli Windows (1.19 et plus)
+async function resProbe(it) {
+  const pk = vodPick(it), url = vodUrl('movie', pk.id, pk.ext);
+  let j = null; try { j = await (await fetch(window.desktop.remux + '/probe?url=' + encodeURIComponent(url))).json(); } catch (e) { return null; }
+  if (!j || !j.ok) return /\b(403|429)\b|forbidden|too many/i.test(j && j.err || '') ? false : null;
+  if (!j.vh) return null;                                // appli trop ancienne : pas de hauteur renvoyée
+  vodResSet(pk.id, j.vh); return 'r';
 }
 async function lchkTick() {
-  if (LCHK.busy || !window.desktop || !window.desktop.remux || LS.get('dev.lchkoff', false) || !hideVf() || !V.data) return;
+  if (LCHK.busy || !window.desktop || !window.desktop.remux || LS.get('dev.lchkoff', false) || !(hideVf() || hideSd()) || !V.data) return;
   if (document.body.classList.contains('playing') || (typeof QT !== 'undefined' && QT.on)) return;
   const day = lchkDay(); if (day.n >= 300 || Date.now() < (day.stop || 0)) return;
   const it = lchkQueue()[0]; if (!it) return;
   LCHK.busy = true;
   try {
-    const r = await langProbe(it);
+    let r = needLang(it) ? await langProbe(it) : 'n';
+    // film dont la langue ne demandait pas de lire le fichier (français, animation…) : sa résolution
+    if (r !== false && r !== null && needRes(it)) { await new Promise(x => setTimeout(x, 1500)); const r2 = await resProbe(it); r = r2 === 'r' ? 'o' : r2; }
     if (r === false) { day.stop = Date.now() + 6 * 3600e3; toast('Vérification des langues mise en pause 6 h : le serveur refuse pour l\'instant'); }
     else if (r === null) LCHK.skip.add(it);
     else { if (r === 'o' || r === 'f') day.n++; LCHK.dirty = true; }
@@ -3106,11 +3120,12 @@ setInterval(() => { if (LCHK.dirty && !HOV.el && document.body.classList.contain
 function renderLangBox() {
   const b = $('#langBox'); if (!b) return;
   const o = LANG(), vals = Object.values(o), vo = vals.filter(v => v[0] === 'o').length, vf = vals.filter(v => v[0] === 'f').length, day = lchkDay(), app = !!(window.desktop && window.desktop.remux);
+  const rs = Object.values(VRESF()), sd = rs.filter(h => h < 900).length;
   const st = !app ? 'La vérification se fait dans l\'appli Windows ; ses résultats arrivent ici par la synchronisation.' : LS.get('dev.lchkoff', false) ? 'Vérification arrêtée.' : Date.now() < (day.stop || 0) ? 'En pause jusqu\'à ' + new Date(day.stop).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) + ' (le serveur a refusé).' : day.n >= 300 ? 'Plafond du jour atteint (300), reprise demain.' : 'Vérification en arrière-plan quand rien n\'est en lecture · ' + day.n + ' aujourd\'hui.';
   b.innerHTML = `<label class="lrow"><input type="checkbox" data-lpref="pref.hidevf"${hideVf() ? ' checked' : ''}> Masquer les films et séries étrangers en VF seule</label>
     <label class="lrow"><input type="checkbox" data-lpref="pref.hidevfq"${hideUnk() ? ' checked' : ''}> Masquer aussi ceux pas encore vérifiés (« VO ? »)</label>
     <label class="lrow"><input type="checkbox" data-lpref="pref.hidesd"${hideSd() ? ' checked' : ''}> Masquer les films en qualité inférieure à 1080p (annoncée ou mesurée)</label>
-    <p class="hint" style="margin:6px 0 0">${vo} avec VO · ${vf} en VF seule masqués · ${esc(st)}</p>${app ? `<button class="btn" data-lchk style="margin-top:8px">${LS.get('dev.lchkoff', false) || Date.now() < (lchkDay().stop || 0) ? 'Reprendre la vérification' : 'Arrêter la vérification'}</button>` : ''}`;
+    <p class="hint" style="margin:6px 0 0">${vo} avec VO · ${vf} en VF seule masqués · ${rs.length} versions de films mesurées, dont ${sd} sous 1080p · ${esc(st)}</p>${app ? `<button class="btn" data-lchk style="margin-top:8px">${LS.get('dev.lchkoff', false) || Date.now() < (lchkDay().stop || 0) ? 'Reprendre la vérification' : 'Arrêter la vérification'}</button>` : ''}`;
 }
 document.addEventListener('change', e => { const c = e.target.closest && e.target.closest('[data-lpref]'); if (!c) return; LS.set(c.dataset.lpref, c.checked); renderLangBox(); V.pop = null; if (document.body.classList.contains('vod')) renderVod(); });
 // Arrêter / reprendre ; reprendre lève aussi la pause de quelques heures posée après un refus du serveur (souvent dû à un VPN)
