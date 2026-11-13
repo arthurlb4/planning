@@ -2513,6 +2513,10 @@ async function nfxResolve() {
   if (list.length) DB.cachePut({ id, at: Date.now(), data });
   return data;
 }
+// Genres des rangées dans les catégories et genres du serveur (texte sans accents, en minuscules)
+const GENRE_RE = { 'Action et aventure': /action|aventure/, 'Comédies': /comedie|comique|humour/, 'Thrillers et polars': /thriller|policier|polar|crime|suspense/,
+  'Drames': /drame/, 'Science-fiction et fantastique': /science|fantastique|fantasy|sci-?fi/, 'Horreur': /horreur|epouvante/, 'Animation': /animation|anime/,
+  'En famille': /famil|enfant|jeunesse/, 'Documentaires': /documentaire/, 'Romance': /romance|romantique/ };
 // Genres des rangées : [titre, genre films TMDB, genre séries TMDB]
 const VGENRES = [['Action et aventure', 28, 10759], ['Comédies', 35, 35], ['Thrillers et polars', 53, 80], ['Drames', 18, 18], ['Science-fiction et fantastique', 878, 10765],
   ['Horreur', 27, 0], ['Animation', 16, 16], ['En famille', 10751, 10751], ['Documentaires', 99, 99], ['Romance', 10749, 0]];
@@ -2521,7 +2525,7 @@ async function loadPopular(force) {
   if (!force && TM.data) return TM.data;
   if (TM.loading) return TM.loading;
   TM.loading = (async () => {
-    if (!force) { const c = await DB.cacheGet('tmdb7:fr'); if (c && Date.now() - c.at < 12 * 3600e3) return (TM.data = c.data); }
+    if (!force) { const c = await DB.cacheGet('tmdb8:fr'); if (c && Date.now() - c.at < 12 * 3600e3) return (TM.data = c.data); }
     const meta = {}, ids = (res, kind) => (res.results || []).map(r => { const id = kind + r.id; meta[id] = { k: kind, t: r.title || r.name || '', o: r.original_title || r.original_name || '', y: +String(r.release_date || r.first_air_date || '').slice(0, 4) || 0, p: r.poster_path || '', l: r.original_language || '' }; return id; });
     const pages = async (path, kind, params, n) => { let out = []; for (let pg = 1; pg <= n; pg++) { try { out = out.concat(ids(await tmdb(path, Object.assign({ page: pg }, params)), kind)); } catch (e) { if (pg === 1) throw e; break; } } return out; };
     const data = { trend: [], svc: {}, svcNew: {}, meta, cinema: [] };
@@ -2531,7 +2535,13 @@ async function loadPopular(force) {
     // sortis pour la première fois il y a moins de 2 ans (sinon les ressorties restaurées, comme Le Parrain, s'y glissent)
     { const d0 = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10), d1 = new Date().toISOString().slice(0, 10), d2 = new Date(Date.now() - 730 * 864e5).toISOString().slice(0, 10);
       data.vodNew = await pages('/discover/movie', 'm', { region: 'FR', with_release_type: '4', 'release_date.gte': d0, 'release_date.lte': d1, 'primary_release_date.gte': d2, sort_by: 'popularity.desc' }, 3).catch(() => []); }
-    data.genres = {};
+    data.genres = {}; data.genresNew = {};
+    // sorties récentes de chaque genre (moins de 18 mois), pour que les rangées bougent
+    { const d0 = new Date(Date.now() - 548 * 864e5).toISOString().slice(0, 10);
+      await Promise.all(VGENRES.flatMap(([, gm, gs]) => [
+        gm && pages('/discover/movie', 'm', { with_genres: gm, sort_by: 'popularity.desc', 'vote_count.gte': 15, 'primary_release_date.gte': d0 }, 1).then(l => { data.genresNew['m' + gm] = l; }).catch(() => {}),
+        gs && pages('/discover/tv', 's', { with_genres: gs, sort_by: 'popularity.desc', 'vote_count.gte': 10, 'first_air_date.gte': d0 }, 1).then(l => { data.genresNew['s' + gs] = l; }).catch(() => {})
+      ].filter(Boolean))); }
     await Promise.all(VGENRES.flatMap(([, gm, gs]) => [
       gm && pages('/discover/movie', 'm', { with_genres: gm, sort_by: 'popularity.desc', 'vote_count.gte': 80, watch_region: 'FR' }, 2).then(l => { data.genres['m' + gm] = l; }).catch(() => {}),
       gs && pages('/discover/tv', 's', { with_genres: gs, sort_by: 'popularity.desc', 'vote_count.gte': 40, watch_region: 'FR' }, 2).then(l => { data.genres['s' + gs] = l; }).catch(() => {})
@@ -2552,7 +2562,7 @@ async function loadPopular(force) {
         pages('/discover/tv', 's', Object.assign({ 'first_air_date.gte': d0, 'first_air_date.lte': d1 }, nm), 2).catch(() => [])]);
       data.svcNew[name] = { m: m2, s: t2 };
     }));
-    DB.cachePut({ id: 'tmdb7:fr', at: Date.now(), data });
+    DB.cachePut({ id: 'tmdb8:fr', at: Date.now(), data });
     return (TM.data = data);
   })();
   try { return await TM.loading; } catch (e) { TM.err = e.message; return null; } finally { TM.loading = null; }
@@ -2831,11 +2841,22 @@ async function renderVod() {
         const mix = out.length >= 6 ? `<div class="vrow"><h3>Notre sélection<small>un peu de tout : nouveautés, primés, populaires, tendances, pour vous</small></h3><div class="vwrap"><button class="varr l" data-arr="-1" aria-label="Précédents"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><div class="vscroll">${out.map(([it, w]) => posterHtml(it, V.shown.push(it) - 1).replace('<div class="im">', `<div class="im"><span class="why">${esc(w)}</span>`)).join('')}</div><button class="varr r" data-arr="1" aria-label="Suivants"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button></div></div>` : '';
         h = h.replace('<!--MIX-->', mix);
       }
-      // Rangées par genre (genres TMDB, titres les plus suivis présents dans le catalogue)
-      if (POP.genres) for (const [label, gm, gs] of VGENRES) {
-        const ids = [].concat(kinds.includes('m') && POP.genres['m' + gm] || [], kinds.includes('s') && gs && POP.genres['s' + gs] || []);
-        const l = popList(ids.map((x, k) => [x, k % 40]).sort((a, b) => a[1] - b[1]).map(x => x[0]), P, POP.meta, kinds);
-        if (l.length >= 4) h += vodRow(label, '', l.slice(0, 30));
+      // Rangées par genre : en alternance les sorties récentes du genre (TMDB), les derniers ajouts du catalogue dans ce
+      // genre (catégorie ou genre du serveur), et les valeurs sûres du genre (ordre qui tourne chaque jour) ; déjà vus écartés
+      if (POP.genres) {
+        const seenK = new Set([...seenAll().map(e => e.k), ...histAll().map(e => e.k)]), day = Math.floor(Date.now() / 864e5);
+        const catTxt = it => (it.genre || '') + ' ' + (it.cats || []).map(c => (D.cats[c] && D.cats[c].raw) || '').join(' ');
+        const inter = l => { const a = l.filter(x => x.length), out = []; for (let i = 0; a.some(x => i < x.length); i++) a.forEach(x => { if (x[i]) out.push(x[i]); }); return out; };
+        const byKinds = (o, gm, gs) => [].concat(kinds.includes('m') && o['m' + gm] || [], kinds.includes('s') && gs && o['s' + gs] || []);
+        for (const [label, gm, gs] of VGENRES) {
+          const re = GENRE_RE[label];
+          const fresh = popList(byKinds(POP.genresNew || {}, gm, gs), P, POP.meta, kinds);
+          const added = re ? pool.filter(it => it.added && Date.now() / 1000 - it.added < 60 * 86400 && re.test(norm(catTxt(it)))).sort(byAdded).slice(0, 30) : [];
+          const best = popList(byKinds(POP.genres, gm, gs).map((x, k) => [x, k % 40]).sort((a, b) => a[1] - b[1]).map(x => x[0]), P, POP.meta, kinds);
+          const rot = best.length ? best.slice(day % best.length).concat(best.slice(0, day % best.length)) : best;
+          const l = [...new Set(inter([fresh, added, rot]))].filter(it => !seenK.has(itemKey(it)));
+          if (l.length >= 4) h += vodRow(label, fresh.length || added.length ? 'nouveautés et valeurs sûres' : '', l.slice(0, 30));
+        }
       }
       prix.forEach(p => { h += vodRow(p.n, 'films primés présents dans votre catalogue, du plus récent au plus ancien · Wikidata', p.l.slice(0, 40)); });
       h += vodRow('Tendances mondiales de la semaine', 'popularité dans le monde · TMDB', popList(POP.trend, P, POP.meta, kinds).slice(0, 30), true);
