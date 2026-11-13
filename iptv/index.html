@@ -2505,15 +2505,16 @@ async function loadPopular(force) {
   if (!force && TM.data) return TM.data;
   if (TM.loading) return TM.loading;
   TM.loading = (async () => {
-    if (!force) { const c = await DB.cacheGet('tmdb6:fr'); if (c && Date.now() - c.at < 12 * 3600e3) return (TM.data = c.data); }
+    if (!force) { const c = await DB.cacheGet('tmdb7:fr'); if (c && Date.now() - c.at < 12 * 3600e3) return (TM.data = c.data); }
     const meta = {}, ids = (res, kind) => (res.results || []).map(r => { const id = kind + r.id; meta[id] = { k: kind, t: r.title || r.name || '', o: r.original_title || r.original_name || '', y: +String(r.release_date || r.first_air_date || '').slice(0, 4) || 0, p: r.poster_path || '', l: r.original_language || '' }; return id; });
     const pages = async (path, kind, params, n) => { let out = []; for (let pg = 1; pg <= n; pg++) { try { out = out.concat(ids(await tmdb(path, Object.assign({ page: pg }, params)), kind)); } catch (e) { if (pg === 1) throw e; break; } } return out; };
     const data = { trend: [], svc: {}, svcNew: {}, meta, cinema: [] };
     // Films à l'affiche dans les salles françaises (sorties en France, les plus suivis d'abord)
     data.cinema = await pages('/movie/now_playing', 'm', { region: 'FR' }, 3).catch(() => []);
-    // Nouveautés en VOD en France : sortie en location / achat (numérique) en France ces 90 derniers jours
-    { const d0 = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10), d1 = new Date().toISOString().slice(0, 10);
-      data.vodNew = await pages('/discover/movie', 'm', { region: 'FR', with_release_type: '4', 'release_date.gte': d0, 'release_date.lte': d1, sort_by: 'popularity.desc' }, 3).catch(() => []); }
+    // Nouveautés en VOD en France : sortie en location / achat (numérique) en France ces 90 derniers jours, pour des films
+    // sortis pour la première fois il y a moins de 2 ans (sinon les ressorties restaurées, comme Le Parrain, s'y glissent)
+    { const d0 = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10), d1 = new Date().toISOString().slice(0, 10), d2 = new Date(Date.now() - 730 * 864e5).toISOString().slice(0, 10);
+      data.vodNew = await pages('/discover/movie', 'm', { region: 'FR', with_release_type: '4', 'release_date.gte': d0, 'release_date.lte': d1, 'primary_release_date.gte': d2, sort_by: 'popularity.desc' }, 3).catch(() => []); }
     data.genres = {};
     await Promise.all(VGENRES.flatMap(([, gm, gs]) => [
       gm && pages('/discover/movie', 'm', { with_genres: gm, sort_by: 'popularity.desc', 'vote_count.gte': 80, watch_region: 'FR' }, 2).then(l => { data.genres['m' + gm] = l; }).catch(() => {}),
@@ -2535,7 +2536,7 @@ async function loadPopular(force) {
         pages('/discover/tv', 's', Object.assign({ 'first_air_date.gte': d0, 'first_air_date.lte': d1 }, nm), 2).catch(() => [])]);
       data.svcNew[name] = { m: m2, s: t2 };
     }));
-    DB.cachePut({ id: 'tmdb6:fr', at: Date.now(), data });
+    DB.cachePut({ id: 'tmdb7:fr', at: Date.now(), data });
     return (TM.data = data);
   })();
   try { return await TM.loading; } catch (e) { TM.err = e.message; return null; } finally { TM.loading = null; }
@@ -2776,7 +2777,7 @@ async function renderVod() {
       const wl = (l, kk) => { const ids = (l || []).map(x => { POP.meta[x.id] = POP.meta[x.id] || x.m; return x.id; }); return popList(ids, P, POP.meta, kk || kinds); };
       const wTop = WK ? wl(WK.top) : [];
       if (wTop.length >= 3) h += vodRow('Ce dont on parle en ce moment', 'les plus consultés sur Wikipédia en français ces 3 derniers jours', wTop.slice(0, 30), true);
-      const vNew = kinds.includes('m') && POP.vodNew ? popList(POP.vodNew, P, POP.meta, ['m']) : [];
+      const vNew = kinds.includes('m') && POP.vodNew ? popList(POP.vodNew, P, POP.meta, ['m']).filter(it => !it.year || it.year >= yr - 2) : [];
       if (vNew.length >= 3) h += vodRow('Nouveautés en VOD en France', 'sortis en location et à l\'achat ces 3 derniers mois · TMDB', vNew.slice(0, 30));
       let cin = [];
       if (kinds.includes('m') && POP.cinema && POP.cinema.length) {
