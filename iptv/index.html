@@ -1389,8 +1389,10 @@ function openTorrent() {
     <p class="hint" style="margin:0 0 10px">Collez un lien magnet ou choisissez un fichier .torrent. La vidéo démarre pendant le téléchargement ; comme tout client torrent, l'appli repartage les morceaux reçus tant que le torrent est ouvert.</p>
     <div class="row" style="gap:8px"><input class="field" id="torMag" placeholder="magnet:?xt=urn:btih:…" autocomplete="off" spellcheck="false" style="flex:1;min-width:0;margin:0"><button class="btn primary" id="torGo">Ouvrir</button></div>
     <div class="row" style="gap:8px;margin-top:8px"><button class="btn" id="torFileBtn">Choisir un fichier .torrent…</button><input type="file" id="torFile" accept=".torrent,application/x-bittorrent" hidden></div>
-    <div id="torOut" style="margin-top:12px"></div></div>`;
+    <div id="torOut" style="margin-top:12px"></div>
+    <h4 class="vdh" style="margin-top:18px">Rechercher dans mes indexeurs (Prowlarr)</h4><div id="prwBox"></div></div>`;
   document.body.appendChild(m);
+  prwRender(m, b => send(b));
   const out = m.querySelector('#torOut'), close = () => { clearInterval(TOR.t); m.remove(); };
   m.querySelector('[data-x]').onclick = close; m.addEventListener('click', e => { if (e.target === m) close(); });
   const show = j => {
@@ -1420,6 +1422,50 @@ function openTorrent() {
   m.querySelector('#torFileBtn').onclick = () => m.querySelector('#torFile').click();
   m.querySelector('#torFile').onchange = async e => { const f = e.target.files[0]; if (!f) return; const b = new Uint8Array(await f.arrayBuffer()); let bin = ''; for (let i = 0; i < b.length; i += 8192) bin += String.fromCharCode.apply(null, b.subarray(i, i + 8192)); send(btoa(bin)); };
   setTimeout(() => m.querySelector('#torMag').focus(), 30);
+}
+/* Recherche dans les indexeurs que l'utilisateur a mis dans son Prowlarr (appli Windows) : « Lire » (pendant le
+   téléchargement) ou « Ajouter à ma médiathèque » (envoi à qBittorrent, catégorie films / series, rangé par Radarr /
+   Sonarr). L'appli ne contient aucune source : seulement ce que Prowlarr renvoie. */
+const prwConf = () => { const c = LS.get('dev.prowlarr', null); return c && c.url && c.key ? c : null; };
+function prwRender(m, playSrc) {
+  const box = m.querySelector('#prwBox'), c = prwConf();
+  if (!c) {
+    box.innerHTML = `<p class="hint" style="margin:0 0 8px">Clé d'API de Prowlarr : Prowlarr › Settings › General › API Key.</p>
+      <div class="row" style="gap:8px"><input class="field" id="prwUrl" value="${esc(LS.get('dev.prwurl', 'http://localhost:9696'))}" style="flex:1;min-width:0;margin:0" spellcheck="false"><input class="field" id="prwKey" placeholder="Clé d'API" style="flex:1;min-width:0;margin:0" spellcheck="false" autocomplete="off"><button class="btn" id="prwSave">Enregistrer</button></div><p class="err" id="prwErr"></p>`;
+    box.querySelector('#prwSave').onclick = async () => {
+      const url = box.querySelector('#prwUrl').value.trim().replace(/\/+$/, ''), key = box.querySelector('#prwKey').value.trim(); LS.set('dev.prwurl', url);
+      const r = await fetch(url + '/api/v1/system/status', { headers: { 'X-Api-Key': key } }).catch(() => null);
+      if (!r) return box.querySelector('#prwErr').textContent = 'Prowlarr injoignable (démarré ? adresse ?)';
+      if (!r.ok) return box.querySelector('#prwErr').textContent = r.status === 401 ? 'clé d\'API refusée' : 'Prowlarr répond ' + r.status;
+      LS.set('dev.prowlarr', { url, key }); prwRender(m, playSrc);
+    };
+    return;
+  }
+  box.innerHTML = `<div class="row" style="gap:8px"><input class="field" id="prwQ" placeholder="Titre à chercher" style="flex:1;min-width:0;margin:0" spellcheck="false"><button class="btn primary" id="prwGo">Chercher</button></div>
+    <div id="prwRes" style="margin-top:10px"></div><button class="chip" id="prwOut" style="margin-top:6px">Changer de Prowlarr</button>`;
+  box.querySelector('#prwOut').onclick = () => { LS.set('dev.prowlarr', null); prwRender(m, playSrc); };
+  const res = box.querySelector('#prwRes'), base = window.desktop.remux;
+  const mo = n => n >= 1e9 ? (n / 1e9).toFixed(1).replace('.', ',') + ' Go' : Math.round(n / 1e6) + ' Mo';
+  const go = async () => {
+    const q = box.querySelector('#prwQ').value.trim(); if (!q) return;
+    res.innerHTML = '<div class="spin" style="margin:14px auto"></div>';
+    const r = await fetch(c.url + '/api/v1/search?type=search&limit=60&query=' + encodeURIComponent(q), { headers: { 'X-Api-Key': c.key } }).catch(() => null);
+    if (!r || !r.ok) { res.innerHTML = `<p class="err">${!r ? 'Prowlarr injoignable' : r.status === 401 ? 'clé d\'API refusée' : 'Prowlarr répond ' + r.status}</p>`; return; }
+    const l = (await r.json().catch(() => [])).filter(x => (x.protocol || 'torrent') === 'torrent' && (x.magnetUrl || x.downloadUrl)).sort((a, b) => (b.seeders || 0) - (a.seeders || 0)).slice(0, 40);
+    if (!l.length) { res.innerHTML = '<p class="hint">Aucun résultat dans vos indexeurs (Prowlarr › Indexers pour en ajouter).</p>'; return; }
+    res.innerHTML = `<div class="brand"><div class="chs">${l.map((x, i) => `<div class="chr" style="flex-wrap:wrap"><span class="m" style="min-width:220px"><span class="l" style="font-size:13px">${esc(x.title || '')}</span>
+      <span class="e">${esc([x.size ? mo(x.size) : '', (x.seeders || 0) + ' source' + ((x.seeders || 0) > 1 ? 's' : ''), x.indexer || ''].filter(Boolean).join(' · '))}</span></span>
+      <span class="row" style="gap:6px"><button class="chip" data-pl="${i}">▶ Lire</button><button class="chip" data-pa="${i}" data-c="films">＋ Films</button><button class="chip" data-pa="${i}" data-c="series">＋ Séries</button></span></div>`).join('')}</div></div>`;
+    res.querySelectorAll('[data-pl]').forEach(b => b.onclick = () => { const x = l[+b.dataset.pl]; playSrc(x.magnetUrl || x.downloadUrl); m.querySelector('#torOut').scrollIntoView({ behavior: 'smooth' }); });
+    res.querySelectorAll('[data-pa]').forEach(b => b.onclick = async () => {
+      const x = l[+b.dataset.pa]; b.disabled = true;
+      const j = await fetch(base + '/torrent/qbt', { method: 'POST', body: JSON.stringify({ url: x.magnetUrl || x.downloadUrl, category: b.dataset.c }) }).then(r => r.status === 404 ? { error: 'mettez à jour l\'appli Windows (1.21 et plus)' } : r.json()).catch(() => ({ error: 'module de l\'appli injoignable' }));
+      toast(j.ok ? 'Envoyé à qBittorrent (' + (b.dataset.c === 'films' ? 'Films' : 'Séries') + ') : rangé dans la médiathèque une fois téléchargé' : 'qBittorrent : ' + j.error);
+      b.disabled = false;
+    });
+  };
+  box.querySelector('#prwGo').onclick = go;
+  box.querySelector('#prwQ').addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
 }
 /* ---------- Ma médiathèque : serveur Jellyfin (bibliothèque personnelle) ----------
    Connexion par identifiant et mot de passe (jeton gardé sur l'appareil, dev.jf). Appli Windows : fichier lu tel quel par
