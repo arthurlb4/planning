@@ -2555,6 +2555,20 @@ async function bsPopular() {
   if (ids.length) DB.cachePut({ id: 'bs1', at: Date.now(), data });
   return data;
 }
+/* Trakt (API officielle) : en tendance (regardés en ce moment) et les plus regardés de la semaine, films et séries ;
+   public mondial, surtout anglophone. Clé chiffrée (déverrouillée avec « Mon abonnement »), listes gardées 6 h. */
+const TRAKT_ENC = {"salt":"uhK1ka00YQdgbaNGUjWdEw==","iv":"401UT3Jg7CW4nnAa","data":"jU5Ispel1NJdRwBGicONBtgrNUCJXwNh0vsE7MjkGBeFzclRo6hYKcqGiYK7UEGTvjdDCc7MNoNpSPM="};
+async function traktLists() {
+  const key = LS.get('pref.trakt', ''); if (!key) return null;
+  const c = await DB.cacheGet('trakt1').catch(() => null); if (c && Date.now() - c.at < 6 * 3600e3) return c.data;
+  const one = path => fetch('https://api.trakt.tv/' + path, { headers: { 'Content-Type': 'application/json', 'trakt-api-version': '2', 'trakt-api-key': key } }).then(r => r.ok ? r.json() : []).catch(() => []);
+  const [mt, st, mw, sw] = await Promise.all([one('movies/trending?limit=100'), one('shows/trending?limit=100'), one('movies/watched/weekly?limit=100'), one('shows/watched/weekly?limit=100')]);
+  const meta = {}, ids = (l, kind) => (Array.isArray(l) ? l : []).map(x => { const o = x.movie || x.show, t = o && o.ids && o.ids.tmdb; if (!t) return null; const k = kind + t; meta[k] = meta[k] || { k: kind, t: o.title || '', o: o.title || '', y: +o.year || 0 }; return k; }).filter(Boolean);
+  const mix = (a, b) => { const out = []; for (let i = 0; i < Math.max(a.length, b.length); i++) { if (a[i]) out.push(a[i]); if (b[i]) out.push(b[i]); } return out; };
+  const data = { trend: mix(ids(mt, 'm'), ids(st, 's')), week: mix(ids(mw, 'm'), ids(sw, 's')), meta };
+  if (data.trend.length || data.week.length) DB.cachePut({ id: 'trakt1', at: Date.now(), data });
+  return data;
+}
 /* Notes françaises d'une fiche (AlloCiné spectateurs et presse, SensCritique, BetaSeries…) via « What's on? API »
    (projet libre, usage non commercial, 200 requêtes par jour sans clé) ; gardées 14 jours par titre */
 async function frNotes(tmdbId, kind) {
@@ -2774,6 +2788,12 @@ async function renderVod() {
       if (BSP) Object.entries(BSP.meta).forEach(([k, m]) => { POP.meta[k] = POP.meta[k] || m; });
       const bsl = BSP ? popList(BSP.ids, P, POP.meta, kinds) : [];
       if (bsl.length >= 3) h += vodRow('Les plus suivis sur BetaSeries', 'membres français de BetaSeries', bsl.slice(0, 30), true);
+      // Trakt : en tendance (regardés en ce moment) et les plus regardés de la semaine
+      const TK = await Promise.race([traktLists().catch(() => null), new Promise(r => setTimeout(() => r(null), 5000))]);
+      if (TK) Object.entries(TK.meta).forEach(([k, m]) => { POP.meta[k] = POP.meta[k] || m; });
+      const tkT = TK ? popList(TK.trend, P, POP.meta, kinds) : [], tkW = TK ? popList(TK.week, P, POP.meta, kinds) : [];
+      if (tkT.length >= 3) h += vodRow('Tendances Trakt', 'regardés en ce moment par les membres de Trakt (monde)', tkT.slice(0, 30), true);
+      if (tkW.length >= 3) h += vodRow('Les plus regardés de la semaine', 'membres de Trakt (monde)', tkW.slice(0, 30), true);
       h += bc;
       // Primés (Wikidata) : du plus récent au plus ancien
       const prix = WK && kinds.includes('m') ? (WK.prix || []).map(p => ({ n: p.n, l: wl(p.l, ['m']), y: new Map(p.l.map(x => [x.id, x.y])) })).filter(p => p.l.length >= 3) : [];
@@ -2785,13 +2805,13 @@ async function renderVod() {
         const day = Math.floor(Date.now() / 864e5), rot = (l, n) => l.length ? l.slice(n % l.length).concat(l.slice(0, n % l.length)) : l;
         const SHORT = { "Palmes d'or": "Palme d'or", 'César du meilleur film': 'César', 'Oscars du meilleur film': 'Oscar', "Lions d'or de Venise": "Lion d'or", "Ours d'or de Berlin": "Ours d'or", 'Oscars du meilleur film international': 'Oscar international' };
         const pr = []; prix.forEach(p => p.l.slice(0, 12).forEach(it => { const y = p.y.get('m' + (it.tmdb || '')) || it.year || ''; pr.push([it, (SHORT[p.n] || p.n) + (y ? ' ' + y : '')]); }));
-        const SRC = [[V.fy ? V.fy.all : [], 'Pour vous'], [nfx, 'Top 10 Netflix'], [wTop, 'On en parle'], [vNew, 'Nouveau en VOD'], [rot(pr, day * 7), null], [bsl, 'Suivi sur BetaSeries'], [cin, 'Au cinéma']]
+        const SRC = [[V.fy ? V.fy.all : [], 'Pour vous'], [nfx, 'Top 10 Netflix'], [wTop, 'On en parle'], [vNew, 'Nouveau en VOD'], [rot(pr, day * 7), null], [bsl, 'Suivi sur BetaSeries'], [tkT, 'Tendance Trakt'], [cin, 'Au cinéma']]
           .map(([l, w]) => ({ l: l.map(x => Array.isArray(x) ? x : [x, w]).filter(([it]) => !seen.has(itemKey(it))), i: 0 })).filter(x => x.l.length);
         const out = [], used = new Set(); let k = day % Math.max(1, SRC.length), guard = 0;
         while (out.length < 30 && SRC.some(x => x.i < x.l.length) && guard++ < 1000) {
           const S0 = SRC[k++ % SRC.length]; while (S0.i < S0.l.length) { const [it, w] = S0.l[S0.i++]; if (used.has(it)) continue; used.add(it); out.push([it, w]); break; }
         }
-        const mix = out.length >= 6 ? `<div class="vrow"><h3>Notre sélection<small>un peu de tout : nouveautés, primés, populaires, pour vous</small></h3><div class="vwrap"><button class="varr l" data-arr="-1" aria-label="Précédents"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><div class="vscroll">${out.map(([it, w]) => posterHtml(it, V.shown.push(it) - 1).replace('<div class="im">', `<div class="im"><span class="why">${esc(w)}</span>`)).join('')}</div><button class="varr r" data-arr="1" aria-label="Suivants"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button></div></div>` : '';
+        const mix = out.length >= 6 ? `<div class="vrow"><h3>Notre sélection<small>un peu de tout : nouveautés, primés, populaires, tendances, pour vous</small></h3><div class="vwrap"><button class="varr l" data-arr="-1" aria-label="Précédents"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><div class="vscroll">${out.map(([it, w]) => posterHtml(it, V.shown.push(it) - 1).replace('<div class="im">', `<div class="im"><span class="why">${esc(w)}</span>`)).join('')}</div><button class="varr r" data-arr="1" aria-label="Suivants"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button></div></div>` : '';
         h = h.replace('<!--MIX-->', mix);
       }
       // Rangées par genre (genres TMDB, titres les plus suivis présents dans le catalogue)
@@ -2831,7 +2851,7 @@ async function renderVod() {
       <div class="row"><input class="field" id="tmdbKey" type="password" placeholder="Clé d'API TMDB" value="${esc(key)}" autocomplete="off" spellcheck="false" style="flex:1;min-width:0;margin:0"><button class="chip" data-tmdb>Enregistrer</button>${key ? '<button class="chip" data-tmdbre>↻</button>' : '<button class="chip" data-tmdbin>Activer la clé intégrée</button>'}</div></div>`;
     if (key) h += tbox; else h = h.replace('<div class="vrow">', tbox + '<div class="vrow">');
     // Clés BetaSeries et OpenSubtitles pas encore déverrouillées sur ce compte : un bouton, une fois (synchronisé ensuite)
-    if (key && (!LS.get('pref.bs', '') || !LS.get('pref.ost', ''))) h = h.replace('<div class="vrow">', `<div class="tmdbbox"><b>Nouvelles sources</b><p class="hint" style="margin:6px 0 10px">BetaSeries (films et séries les plus suivis en France) et OpenSubtitles (sous-titres français) : à activer une fois avec le mot de passe de « Mon abonnement ».</p><button class="chip" data-keysin>Activer</button></div><div class="vrow">`);
+    if (key && (!LS.get('pref.bs', '') || !LS.get('pref.ost', '') || !LS.get('pref.trakt', ''))) h = h.replace('<div class="vrow">', `<div class="tmdbbox"><b>Nouvelles sources</b><p class="hint" style="margin:6px 0 10px">BetaSeries (films et séries les plus suivis en France), Trakt (tendances mondiales) et OpenSubtitles (sous-titres français) : à activer une fois avec le mot de passe de « Mon abonnement ».</p><button class="chip" data-keysin>Activer</button></div><div class="vrow">`);
   }
   box.innerHTML = h;
   const qi = $('#vodQ'); if (V.q) { qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); }
@@ -2864,7 +2884,7 @@ $('#vodInner').addEventListener('click', e => {
   if (e.target.closest('[data-seenclr]')) { if (confirm('Effacer l\'historique des films et séries vus (sur tous vos appareils) ?')) { LS.set('vod.seen', []); renderVod(); } return; }
   if (e.target.closest('[data-keysin]')) {
     askText('Mot de passe de « Mon abonnement »', { password: true }).then(async p => { const pw = (p || '').toLowerCase(); if (!pw) return;
-      try { if (!LS.get('pref.bs', '')) await useBuiltinBs(pw); if (!LS.get('pref.ost', '')) await useBuiltinOst(pw); toast('BetaSeries et sous-titres activés'); renderVod(); } catch (er) { toast('Mot de passe incorrect'); } });
+      try { if (!LS.get('pref.bs', '')) await useBuiltinBs(pw); if (!LS.get('pref.ost', '')) await useBuiltinOst(pw); if (!LS.get('pref.trakt', '')) await useBuiltinTrakt(pw); toast('BetaSeries, Trakt et sous-titres activés'); renderVod(); } catch (er) { toast('Mot de passe incorrect'); } });
     return;
   }
   if (e.target.closest('[data-tmdbre]')) { TM.data = null; V.force2 = true; renderVod(); return; }
@@ -4277,6 +4297,7 @@ async function decEnc(E, pass) {
   const key = await C.deriveKey({ name: 'PBKDF2', salt: b64d(E.salt), iterations: 600000, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
   return new TextDecoder().decode(await C.decrypt({ name: 'AES-GCM', iv: b64d(E.iv) }, key, b64d(E.data)));
 }
+async function useBuiltinTrakt(pass) { const k = (await decEnc(TRAKT_ENC, pass)).trim(); if (!/^[A-Za-z0-9_-]{20,80}$/.test(k)) throw new Error('clé'); LS.set('pref.trakt', k); return k; }
 async function useBuiltinBs(pass) { const k = (await decEnc(BS_ENC, pass)).trim(); if (!/^[A-Za-z0-9]{8,64}$/.test(k)) throw new Error('clé'); LS.set('pref.bs', k); return k; }
 async function useBuiltinOst(pass) { const k = (await decEnc(OST_ENC, pass)).trim(); if (!/^[A-Za-z0-9]{20,64}$/.test(k)) throw new Error('clé'); LS.set('pref.ost', k); return k; }
 async function unlockTmdb(pass) {
@@ -4289,7 +4310,8 @@ async function useBuiltinTmdb(pass) {
   const k = (await unlockTmdb(pass)).trim(); if (!/^[0-9a-f]{32}$/i.test(k)) throw new Error('clé');
   LS.set('pref.tmdb', k); TM.data = null; TM.err = ''; V.force2 = true;
   if (!LS.get('pref.ost', '')) useBuiltinOst(pass).catch(() => {});
-  if (!LS.get('pref.bs', '')) useBuiltinBs(pass).catch(() => {});        // BetaSeries aussi        // sous-titres OpenSubtitles activés du même coup
+  if (!LS.get('pref.bs', '')) useBuiltinBs(pass).catch(() => {});
+  if (!LS.get('pref.trakt', '')) useBuiltinTrakt(pass).catch(() => {});        // BetaSeries aussi        // sous-titres OpenSubtitles activés du même coup
   return k;
 }
 async function unlockBuiltin(pass) {
@@ -4311,7 +4333,8 @@ $('#bBtn').onclick = async () => {
     stopAll();
     await savePlaylist({ id: 'builtin', name: 'Mon abonnement', url, text, added: 0 });
     if (!LS.get('pref.ost', '')) useBuiltinOst(pass).catch(() => {});
-  if (!LS.get('pref.bs', '')) useBuiltinBs(pass).catch(() => {});        // BetaSeries aussi        // sous-titres OpenSubtitles activés du même coup
+  if (!LS.get('pref.bs', '')) useBuiltinBs(pass).catch(() => {});
+  if (!LS.get('pref.trakt', '')) useBuiltinTrakt(pass).catch(() => {});        // BetaSeries aussi        // sous-titres OpenSubtitles activés du même coup
     $('#bPass').value = ''; closeModals(); toast('Liste déverrouillée');
     S.group = 'home'; renderGroups(); applyFilter(true); setHomeView(true);
   } catch (e) { err.textContent = e.message; }
