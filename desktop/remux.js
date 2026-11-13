@@ -112,6 +112,7 @@ module.exports = function startRemux(ffmpeg, findVlc) {
         res.setHeader('Content-Type', 'text/vtt; charset=utf-8'); res.setHeader('Cache-Control', 'no-store');
         return fs.readFile(f || '', (e, b) => res.end(e ? 'WEBVTT\n' : b));
       }
+      if (u.pathname.startsWith('/torrent/')) return require('./torrent')(req, res, u);   // torrents fournis par l'utilisateur
       if (u.pathname === '/vlcinfo') { Promise.resolve(findVlc ? findVlc() : '').then(p => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ ok: !!p })); }); return; }
       const src = u.searchParams.get('url') || '';
       if (!/^https?:\/\//i.test(src)) { res.statusCode = 400; return res.end(); }

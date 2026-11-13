@@ -1380,6 +1380,47 @@ function askText(msg, opt) {
     setTimeout(() => i.focus(), 30);
   });
 }
+/* Torrent (appli Windows 1.20 et plus) : lien magnet ou fichier .torrent fourni par l'utilisateur ; ses vidéos sont lues
+   pendant le téléchargement (seuls les morceaux nécessaires, dans l'ordre), par le lecteur habituel */
+const TOR = { id: '', t: 0 };
+function openTorrent() {
+  const base = window.desktop.remux, m = document.createElement('div'); m.className = 'modal open'; m.style.zIndex = 60;
+  m.innerHTML = `<div class="sheet" style="max-width:560px"><h2>Lire un torrent <button class="btn icon" data-x aria-label="Fermer"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></h2>
+    <p class="hint" style="margin:0 0 10px">Collez un lien magnet ou choisissez un fichier .torrent. La vidéo démarre pendant le téléchargement ; comme tout client torrent, l'appli repartage les morceaux reçus tant que le torrent est ouvert.</p>
+    <div class="row" style="gap:8px"><input class="field" id="torMag" placeholder="magnet:?xt=urn:btih:…" autocomplete="off" spellcheck="false" style="flex:1;min-width:0;margin:0"><button class="btn primary" id="torGo">Ouvrir</button></div>
+    <div class="row" style="gap:8px;margin-top:8px"><button class="btn" id="torFileBtn">Choisir un fichier .torrent…</button><input type="file" id="torFile" accept=".torrent,application/x-bittorrent" hidden></div>
+    <div id="torOut" style="margin-top:12px"></div></div>`;
+  document.body.appendChild(m);
+  const out = m.querySelector('#torOut'), close = () => { clearInterval(TOR.t); m.remove(); };
+  m.querySelector('[data-x]').onclick = close; m.addEventListener('click', e => { if (e.target === m) close(); });
+  const show = j => {
+    if (j.error) { out.innerHTML = `<p class="err">Torrent : ${esc(j.error)}</p>`; return; }
+    TOR.id = j.id;
+    const vids = j.files.filter(f => f.video).sort((a, b) => a.name.localeCompare(b.name, 'fr', { numeric: true }));
+    const mo = n => n >= 1e9 ? (n / 1e9).toFixed(1).replace('.', ',') + ' Go' : Math.round(n / 1e6) + ' Mo';
+    out.innerHTML = `<p class="hint" id="torSt"></p>` + (vids.length ? `<div class="brand"><div class="chs">${vids.map(f => `<button class="chr" data-tf="${f.i}"><span class="lg">▶</span><span class="m"><span class="l">${esc(cleanTitle(f.name.replace(/\.[^.]+$/, '')))}</span><span class="e">${esc(f.name)} · ${mo(f.size)}</span></span></button>`).join('')}</div></div>` : '<p class="hint">Aucune vidéo dans ce torrent.</p>');
+    out.querySelectorAll('[data-tf]').forEach(b => b.onclick = () => {
+      const f = j.files[+b.dataset.tf]; close();
+      play({ name: cleanTitle(f.name.replace(/\.[^.]+$/, '')), url: base + '/torrent/file/' + j.id + '/' + f.i + '/' + encodeURIComponent(f.name), group: 'Torrent', logo: '', n: 0, chno: '', vod: true, key: '' });
+    });
+    clearInterval(TOR.t);
+    TOR.t = setInterval(async () => { const st = m.querySelector('#torSt'); if (!st) return clearInterval(TOR.t);
+      const i = await fetch(base + '/torrent/info?id=' + j.id).then(r => r.json()).catch(() => null);
+      if (i && !i.error) st.textContent = `${i.name} · ${i.peers} source${i.peers > 1 ? 's' : ''} · ${Math.round(i.progress * 100)} % reçu · ${(i.down / 1e6).toFixed(1).replace('.', ',')} Mo/s`; }, 1500);
+  };
+  const send = async body => {
+    out.innerHTML = '<div class="spin" style="margin:14px auto"></div><p class="hint" style="text-align:center">Recherche des sources du torrent…</p>';
+    const r = await fetch(base + '/torrent/add', { method: 'POST', body }).catch(() => null);
+    if (!r) return show({ error: 'module de l\'appli injoignable' });
+    if (r.status === 404) return show({ error: 'mettez à jour l\'appli Windows (1.20 et plus)' });
+    show(await r.json().catch(() => ({ error: 'réponse illisible' })));
+  };
+  m.querySelector('#torGo').onclick = () => { const v = m.querySelector('#torMag').value.trim(); if (/^magnet:\?/i.test(v)) send(v); else out.innerHTML = '<p class="err">Un lien magnet commence par « magnet:? ».</p>'; };
+  m.querySelector('#torMag').addEventListener('keydown', e => { if (e.key === 'Enter') m.querySelector('#torGo').click(); });
+  m.querySelector('#torFileBtn').onclick = () => m.querySelector('#torFile').click();
+  m.querySelector('#torFile').onchange = async e => { const f = e.target.files[0]; if (!f) return; const b = new Uint8Array(await f.arrayBuffer()); let bin = ''; for (let i = 0; i < b.length; i += 8192) bin += String.fromCharCode.apply(null, b.subarray(i, i + 8192)); send(btoa(bin)); };
+  setTimeout(() => m.querySelector('#torMag').focus(), 30);
+}
 // Dernière image figée par-dessus la vidéo pendant une relance (dessin seul : rien n'est relu, pas de souci d'origine)
 function freezeFrame() {
   const cv = $('#vfreeze'); if (!video.videoWidth) return;
@@ -2731,7 +2772,7 @@ async function renderVod() {
   const all = D.items.filter(it => langVisible(it) && qualVisible(it)), movies = all.filter(i => i.kind === 'movie'), series = all.filter(i => i.kind === 'series');
   const yr = new Date().getFullYear(), byAdded = (a, b) => b.added - a.added, byRate = (a, b) => b.rating - a.rating || b.added - a.added;
   let h = `<div class="vtop">
-    ${['home:Accueil', 'movie:Films', 'series:Séries', 'cats:Catégories', 'hist:Historique'].map(t => { const [k, l] = t.split(':'); return `<button class="chip${V.tab === k && !V.q ? ' on' : ''}" data-tab="${k}">${l}</button>`; }).join('')}
+    ${['home:Accueil', 'movie:Films', 'series:Séries', 'cats:Catégories', 'hist:Historique'].map(t => { const [k, l] = t.split(':'); return `<button class="chip${V.tab === k && !V.q ? ' on' : ''}" data-tab="${k}">${l}</button>`; }).join('')}${window.desktop && window.desktop.remux ? '<button class="chip" data-torrent title="Lire une vidéo depuis un lien magnet ou un fichier .torrent">Torrent</button>' : ''}
     <button class="chip" data-reload title="Recharger les catalogues depuis le serveur">↻</button>
     <label class="searchbar"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input id="vodQ" type="search" placeholder="Titre d'un film ou d'une série" value="${esc(V.q)}" autocomplete="off"></label></div>`;
   if (!all.length) { box.innerHTML = h + '<div class="empty">Aucun film ni série en français trouvé sur ce serveur.</div>'; return; }
@@ -2928,6 +2969,7 @@ $('#vodInner').addEventListener('click', e => {
       try { if (!LS.get('pref.bs', '')) await useBuiltinBs(pw); if (!LS.get('pref.ost', '')) await useBuiltinOst(pw); if (!LS.get('pref.trakt', '')) await useBuiltinTrakt(pw); toast('BetaSeries, Trakt et sous-titres activés'); renderVod(); } catch (er) { toast('Mot de passe incorrect'); } });
     return;
   }
+  if (e.target.closest('[data-torrent]')) { openTorrent(); return; }
   if (e.target.closest('[data-tmdbre]')) { TM.data = null; V.force2 = true; renderVod(); return; }
   if (V.q && extrasClick(e, V.x)) return;
   // Reprendre : ✓ marquer comme vu, ✕ retirer de la rangée
