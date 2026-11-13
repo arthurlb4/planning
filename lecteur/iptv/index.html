@@ -1484,24 +1484,25 @@ function prwShow(res, l, playSrc) {
    partagée avec ses autres applications). Page web en https : seul « localhost » (le PC du serveur) est joignable. */
 const JF = { shown: [], cur: null, t: 0 };
 // position de lecture retenue sous l'adresse sans la clé d'accès (les positions sont synchronisées entre appareils)
-const posK = u => 'pos.' + String(u || '').replace(/[?&]api_key=[^&]*/, '');
+const posK = u => 'pos.' + String(u || '').replace(/[?&]api_?key=[^&]*/i, '');
 const jfConf = () => { const c = LS.get('dev.jf', null); return c && c.url && c.token ? c : null; };
 const jfDev = () => { let d = LS.get('dev.jfdev', ''); if (!d) { d = 'iptv-' + Math.random().toString(36).slice(2, 12); LS.set('dev.jfdev', d); } return d; };
-const jfAuth = () => 'MediaBrowser Client="Lecteur IPTV", Device="' + (window.desktop ? 'Appli Windows' : 'Navigateur') + '", DeviceId="' + jfDev() + '", Version="1.0"';
+// En-tête « Authorization » (Jellyfin 10.11 refuse par défaut les anciens en-têtes X-Emby-… : erreur 400), jeton compris une fois connecté
+const jfAuth = tok => 'MediaBrowser Client="Lecteur IPTV", Device="' + (window.desktop ? 'Appli Windows' : 'Navigateur') + '", DeviceId="' + jfDev() + '", Version="1.0"' + (tok ? ', Token="' + tok + '"' : '');
 async function jfLogin(url, user, pw) {
   url = url.trim().replace(/\/+$/, ''); if (!/^https?:\/\//i.test(url)) url = 'http://' + url;
-  const r = await fetch(url + '/Users/AuthenticateByName', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Emby-Authorization': jfAuth() }, body: JSON.stringify({ Username: user, Pw: pw }) });
+  const r = await fetch(url + '/Users/AuthenticateByName', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': jfAuth() }, body: JSON.stringify({ Username: user, Pw: pw }) });
   if (r.status === 401) throw new Error('identifiant ou mot de passe refusé');
-  if (!r.ok) throw new Error('Jellyfin répond ' + r.status);
+  if (!r.ok) { const t = await r.text().catch(() => ''); throw new Error('Jellyfin répond ' + r.status + (t ? ' : ' + t.slice(0, 160) : '')); }
   const j = await r.json(); LS.set('dev.jf', { url, token: j.AccessToken, uid: j.User.Id, user });
 }
 async function jfGet(path) {
-  const c = jfConf(), r = await fetch(c.url + path, { headers: { 'X-Emby-Token': c.token } });
+  const c = jfConf(), r = await fetch(c.url + path, { headers: { 'Authorization': jfAuth(c.token) } });
   if (r.status === 401) { LS.set('dev.jf', null); throw new Error('session Jellyfin expirée : reconnectez-vous'); }
   if (!r.ok) throw new Error('Jellyfin répond ' + r.status);
   return r.json();
 }
-function jfPost(path, body) { const c = jfConf(); if (!c) return; fetch(c.url + path, { method: 'POST', headers: { 'X-Emby-Token': c.token, 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) }).catch(() => {}); }
+function jfPost(path, body) { const c = jfConf(); if (!c) return; fetch(c.url + path, { method: 'POST', headers: { 'Authorization': jfAuth(c.token), 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) }).catch(() => {}); }
 const jfImg = (x, id) => { const c = jfConf(), tag = x.ImageTags && x.ImageTags.Primary; return tag || id ? c.url + '/Items/' + (id || x.Id) + '/Images/Primary?maxHeight=450&quality=90' + (tag ? '&tag=' + tag : '') : ''; };
 const JF_FIELDS = 'ProductionYear,ProviderIds,DateCreated,CommunityRating,Overview,Container,UserData';
 // élément Jellyfin → forme des affiches de l'appli
@@ -1538,8 +1539,8 @@ async function jfRender() {
 // Lecture : fichier tel quel dans l'appli Windows (convertisseur habituel), flux HLS de Jellyfin ailleurs ; reprise de Jellyfin
 function jfPlay(x) {
   const c = jfConf(), ext = String(x.Container || 'mkv').split(',')[0];
-  const url = window.desktop && window.desktop.remux ? c.url + '/Videos/' + x.Id + '/stream.' + ext + '?static=true&api_key=' + c.token
-    : c.url + '/Videos/' + x.Id + '/master.m3u8?MediaSourceId=' + x.Id + '&VideoCodec=h264&AudioCodec=aac&TranscodingMaxAudioChannels=2&SegmentContainer=ts&api_key=' + c.token;
+  const url = window.desktop && window.desktop.remux ? c.url + '/Videos/' + x.Id + '/stream.' + ext + '?static=true&ApiKey=' + c.token
+    : c.url + '/Videos/' + x.Id + '/master.m3u8?MediaSourceId=' + x.Id + '&VideoCodec=h264&AudioCodec=aac&TranscodingMaxAudioChannels=2&SegmentContainer=ts&ApiKey=' + c.token;
   const pos = ((x.UserData || {}).PlaybackPositionTicks || 0) / 1e7; if (pos > 60) LS.set(posK(url), pos);
   const it = jfItem(x);
   play({ name: it.name, url, group: 'Ma médiathèque', logo: it.cover, n: 0, chno: '', vod: true, key: '', jfId: x.Id });
