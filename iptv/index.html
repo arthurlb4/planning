@@ -3009,15 +3009,53 @@ async function showTrailer(it) {
 const itemKey = it => (it.kind === 'series' ? 's' : 'm') + it.id;
 function itemByKey(k) {
   const D = V.data; if (!D) return null;
-  if (D._byKey !== D.items) { D._map = new Map(D.items.map(i => [itemKey(i), i])); D._byKey = D.items; }
+  if (D._byKey !== D.items) { D._map = new Map(D.items.map(i => [itemKey(i), i])); D._gmap = new Map(D.items.map(i => [gKey(i), i])); D._byKey = D.items; setTimeout(remapAll, 0); }
   return D._map.get(k) || null;
 }
+/* Clé universelle d'un film ou d'une série, la même d'un abonnement à l'autre : identifiant TMDB, sinon titre et année.
+   L'historique, les titres vus et Ma liste la gardent ; à chaque chargement du catalogue, chaque titre noté est retrouvé
+   par elle et son numéro (propre au serveur) mis à jour, avec l'adresse et la position de reprise d'un film. */
+const gKey = it => (it.kind === 'series' ? 's' : 'm') + (it.tmdb ? 't' + it.tmdb : ':' + tnorm(it.name) + ':' + (it.year || ''));
+const hostOf = u => { try { return new URL(u).host; } catch (e) { return ''; } };
+function remapList(l, hist) {
+  const D = V.data; let ch = false; if (!D || !D._gmap) return false;
+  l.forEach(e => {
+    if (!e || typeof e !== 'object') return;
+    if (!e.g) {                                         // noté avant les clés universelles
+      if (e.k[0] === 'x') return;
+      if (hist && e.url && hostOf(e.url) && hostOf(e.url) !== srvKey()) { e.k = 'x' + e.k; ch = true; return; }   // autre serveur : impossible à retrouver
+      const it = D._map.get(e.k); if (it) { e.g = gKey(it); ch = true; } return;
+    }
+    const it = D._gmap.get(e.g), nk = it ? itemKey(it) : 'x' + e.g;
+    if (nk !== e.k) { e.k = nk; ch = true; }
+    if (it && hist && e.url && hostOf(e.url) !== srvKey()) {   // titre retrouvé sur un autre serveur : nouvelle adresse
+      if (it.kind === 'movie') { const pk = vodPick(it), nu = vodUrl('movie', pk.id, pk.ext); if (e.pos) LS.set('pos.' + nu, e.pos); e.url = nu; }
+      else e.url = '';
+      e.nx = null; ch = true;
+    }
+  });
+  return ch;
+}
+function remapAll() {
+  if (!V.data || !epgCtx()) return;
+  const h = histAll(); if (remapList(h, true)) LS.set('vod.hist', h);
+  const s0 = seenAll(); if (remapList(s0, false)) LS.set('vod.seen', s0);
+  const m = myListRaw(); if (remapList(m, false)) LS.set('vod.mylist2', m);
+}
+setInterval(() => { if (V.data && V.data._gmap) remapAll(); }, 60000);   // titres arrivés d'un autre appareil
+const gOf = k => { const it = itemByKey(k); return it ? gKey(it) : ''; };
 const histAll = () => { const h = LS.get('vod.hist', []); return Array.isArray(h) ? h : []; };
-function histPut(e) { const h = histAll().filter(x => x.k !== e.k); h.unshift(Object.assign({ at: Date.now() }, e)); LS.set('vod.hist', h.slice(0, 40)); }
+function histPut(e) { const h = histAll().filter(x => x.k !== e.k); h.unshift(Object.assign({ at: Date.now(), g: gOf(e.k) }, e)); LS.set('vod.hist', h.slice(0, 40)); }
 function histDrop(k) { LS.set('vod.hist', histAll().filter(x => x.k !== k)); }
-const myList = () => { const l = LS.get('vod.mylist', []); return Array.isArray(l) ? l : []; };
+// Ma liste : [{ k, g }] (ancienne forme : numéros seuls, repris une fois)
+function myListRaw() {
+  let l = LS.get('vod.mylist2', null);
+  if (!Array.isArray(l)) { const old = LS.get('vod.mylist', []); l = (Array.isArray(old) ? old : []).map(k => ({ k, g: gOf(k) })); if (V.data) LS.set('vod.mylist2', l); }
+  return l.filter(x => x && x.k);
+}
+const myList = () => myListRaw().map(x => x.k);
 const inMyList = it => myList().includes(itemKey(it));
-function toggleMyList(it) { const k = itemKey(it), l = myList(); LS.set('vod.mylist', l.includes(k) ? l.filter(x => x !== k) : [k].concat(l)); toast(l.includes(k) ? 'Retiré de Ma liste' : 'Ajouté à Ma liste'); }
+function toggleMyList(it) { const k = itemKey(it), l = myListRaw(), on = l.some(x => x.k === k); LS.set('vod.mylist2', on ? l.filter(x => x.k !== k) : [{ k, g: gKey(it) }].concat(l)); toast(on ? 'Retiré de Ma liste' : 'Ajouté à Ma liste'); }
 // Épisodes d'une série dans l'ordre (saisons puis numéros) : pour trouver le suivant
 function epFlat(eps) {
   const out = []; Object.keys(eps || {}).sort((a, b) => a - b).forEach(sn => (eps[sn] || []).slice().sort((a, b) => (+a.episode_num || 0) - (+b.episode_num || 0)).forEach(e => out.push({ s: +sn, n: +e.episode_num || 0, e })));
@@ -3037,7 +3075,7 @@ const seenAll = () => { const h = LS.get('vod.seen', []); return Array.isArray(h
 function seenPut(k, lab, fin) {
   const l = seenAll(), o = l.find(x => x.k === k);
   if (o && l[0] === o && o.lab === lab && (o.f || !fin) && Date.now() - o.at < 30 * 60e3) return;   // déjà à jour : pas d'écriture toutes les 5 s
-  LS.set('vod.seen', [{ k, at: Date.now(), lab, f: fin || (o && o.lab === lab && o.f) ? 1 : 0 }].concat(l.filter(x => x.k !== k)).slice(0, 500));
+  LS.set('vod.seen', [{ k, g: (o && o.g) || gOf(k), at: Date.now(), lab, f: fin || (o && o.lab === lab && o.f) ? 1 : 0 }].concat(l.filter(x => x.k !== k)).slice(0, 500));
 }
 function histTrack(c, ended) {
   if (!c || !c.vod || !c.it) return;
@@ -3286,12 +3324,15 @@ async function vodSearchMore(q0, already) {
 // « Reprendre » : relance directement le film ou l'épisode à la position retenue (série : épisodes relus pour le suivant)
 async function resumeHist(k) {
   const e = histAll().find(x => x.k === k), it = itemByKey(k); if (!e || !it) return;
-  if (it.kind === 'movie') return playVod(it, e.url, null, null);
+  if (it.kind === 'movie') { const pk = vodPick(it); return playVod(it, e.url || vodUrl('movie', pk.id, pk.ext), null, null); }
   let fl = [];
   try { const j = await xget('&action=get_series_info&series_id=' + it.id); fl = epFlat(j.episodes || {}); } catch (err) {}
   const i = fl.findIndex(x => epUrl(x) === e.url);
   if (i >= 0) { V.open = { it, eps: null, cover: it.cover, flat: fl }; return playVod(it, e.url, fl[i], fl[i + 1]); }
   const m = /S(\d+)E(\d+)/.exec(e.lab || '');
+  const j2 = m ? fl.findIndex(x => +x.s === +m[1] && +x.n === +m[2]) : -1;   // autre serveur : même saison, même épisode
+  if (j2 >= 0) { V.open = { it, eps: null, cover: it.cover, flat: fl }; return playVod(it, epUrl(fl[j2]), fl[j2], fl[j2 + 1]); }
+  if (!e.url) return openVod(it);
   playVod(it, e.url, m ? { s: +m[1], n: +m[2] } : null, null);
 }
 // Fiche enrichie avec TMDB : genres, durée, âge conseillé, réalisation, distribution avec photos, titres similaires du
