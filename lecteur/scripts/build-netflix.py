@@ -1,6 +1,6 @@
 # Top 10 Netflix en France : à partir des classements hebdomadaires publiés par Netflix (fichier « all-weeks-countries »
 # du site Netflix Top 10), garde la dernière semaine pour la France, films et séries.
-# Usage : python3 scripts/build-netflix.py all-weeks-countries.tsv > netflix.json
+# Usage : python3 lecteur/scripts/build-netflix.py all-weeks-countries.tsv > netflix.json
 #   {"week": "2026-11-02", "films": [{"r": 1, "t": "Titre", "s": ""}, ...], "tv": [{"r": 1, "t": "Série", "s": "Série : Saison 2"}, ...]}
 import csv, json, sys
 

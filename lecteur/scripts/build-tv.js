@@ -1,13 +1,13 @@
-// Construit la version télé (Samsung Tizen 6, moteur Chromium 76) du lecteur IPTV à partir de iptv/index.html :
+// Construit la version télé (Samsung Tizen 6, moteur Chromium 76) du lecteur IPTV à partir de lecteur/iptv/index.html :
 // code converti pour ce moteur (esbuild), CSS traduit (inset, gap des lignes flexibles, dvh, min()), mise en page 1920×1080,
 // déplacement à la télécommande, vidéo en plein écran.
-// Usage : node scripts/build-tv.js iptv/index.html sortie/tv.html   (esbuild requis : npm install --no-save esbuild)
+// Usage : node lecteur/scripts/build-tv.js lecteur/iptv/index.html sortie/tv.html   (esbuild requis : npm install --no-save esbuild)
 const fs = require('fs');
 const path = require('path');
 const esbuild = require('esbuild');
 
 const [src, out] = process.argv.slice(2);
-if (!src || !out) { console.error('Usage : node scripts/build-tv.js iptv/index.html sortie/tv.html'); process.exit(1); }
+if (!src || !out) { console.error('Usage : node lecteur/scripts/build-tv.js lecteur/iptv/index.html sortie/tv.html'); process.exit(1); }
 let html = fs.readFileSync(src, 'utf8');
 const TARGET = 'chrome76';
 

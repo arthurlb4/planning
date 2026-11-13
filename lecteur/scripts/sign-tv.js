@@ -1,7 +1,7 @@
 // Signe l'appli télé (projet Tizen) et prépare le paquet d'installation Windows, sans VS Code ni Tizen Studio :
 // certificat d'auteur « Tizen » créé ici, certificat de distribution public de Tizen, outil sdb de Samsung.
 // Mêmes bibliothèques que l'extension VS Code « Tizen TV » de Samsung.
-// Usage (Windows) : node scripts/sign-tv.js <dossier du projet Tizen> <dossier de sortie>
+// Usage (Windows) : node lecteur/scripts/sign-tv.js <dossier du projet Tizen> <dossier de sortie>
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');

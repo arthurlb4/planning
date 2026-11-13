@@ -1,5 +1,5 @@
 // Contrôle automatique du texte du mail au gestionnaire (accords, élisions, phrases des écarts de paie).
-// Lancé avant chaque mise en ligne (node tests/mail.test.js).
+// Lancé avant chaque mise en ligne (node planning/tests/mail.test.js).
 const { load } = require('./harness');
 
 let fails = 0, count = 0;

@@ -1,4 +1,4 @@
-// Contrôle automatique des calculs d'heures. Lancé avant chaque mise en ligne (node tests/calc.test.js).
+// Contrôle automatique des calculs d'heures. Lancé avant chaque mise en ligne (node planning/tests/calc.test.js).
 // Chaque cas part d'une situation connue et vérifie les chiffres attendus, calculés à la main.
 const { load } = require('./harness');
 

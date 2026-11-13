@@ -22,7 +22,7 @@ jobs:
         run: node scripts/check.js
 
       - name: Contrôler les calculs d'heures et le texte du mail
-        run: node tests/calc.test.js && node tests/mail.test.js
+        run: node planning/tests/calc.test.js && node planning/tests/mail.test.js
 
       - name: Tester les écrans (app et admin dans un navigateur)
         timeout-minutes: 8 # d'habitude moins d'une minute : au-delà, c'est un blocage (échec plutôt qu'attente de 6 h)
@@ -30,27 +30,28 @@ jobs:
         # bibliothèques depuis un miroir Ubuntu parfois très lent, qui bloquait la publication)
         run: |
           npm install --no-save --no-package-lock playwright-core@1.56.0
-          CHROME_PATH="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)" node tests/ui.test.js
+          CHROME_PATH="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium)" node planning/tests/ui.test.js
 
       - name: Build deploy directory (mirror original structure)
         run: |
           mkdir -p /tmp/deploy/app
           mkdir -p /tmp/deploy/admin
-          cp -r app/. /tmp/deploy/app/
-          cp -r admin/. /tmp/deploy/admin/
-          mkdir -p /tmp/deploy/iptv && cp -r iptv/. /tmp/deploy/iptv/ # lecteur IPTV (page autonome)
-          npm install --no-save --no-package-lock esbuild@0.24.0 && node scripts/build-tv.js iptv/index.html /tmp/deploy/iptv/tv.html # version télé (Samsung)
-          cp index.html /tmp/deploy/index.html
-          cp apple-touch-icon.png apple-touch-icon-precomposed.png /tmp/deploy/ # icône de secours cherchée par iOS à la racine
-          cp 404.html /tmp/deploy/404.html
-          cp confidentialite.html /tmp/deploy/confidentialite.html
-          cp conditions.html /tmp/deploy/conditions.html
-          cp _headers /tmp/deploy/_headers 2>/dev/null || true
+          # planning/ : l'appli de planning (racine du site, app/, admin/) ; lecteur/ : le lecteur IPTV (servi sous /iptv/)
+          cp -r planning/app/. /tmp/deploy/app/
+          cp -r planning/admin/. /tmp/deploy/admin/
+          mkdir -p /tmp/deploy/iptv && cp -r lecteur/iptv/. /tmp/deploy/iptv/ # lecteur IPTV (page autonome)
+          npm install --no-save --no-package-lock esbuild@0.24.0 && node lecteur/scripts/build-tv.js lecteur/iptv/index.html /tmp/deploy/iptv/tv.html # version télé (Samsung)
+          cp planning/index.html /tmp/deploy/index.html
+          cp planning/apple-touch-icon.png planning/apple-touch-icon-precomposed.png /tmp/deploy/ # icône de secours cherchée par iOS à la racine
+          cp planning/404.html /tmp/deploy/404.html
+          cp planning/confidentialite.html /tmp/deploy/confidentialite.html
+          cp planning/conditions.html /tmp/deploy/conditions.html
+          cp planning/_headers /tmp/deploy/_headers 2>/dev/null || true
           touch /tmp/deploy/.nojekyll
           echo franceinfoplanning.com > /tmp/deploy/CNAME # domaine de l'app (sinon effacé à chaque publication)
           # Empreinte du code : adresses des fichiers partagés (?v=) et balise app-build ; un changement de code est ainsi
           # toujours vu par les iPhone (fichiers neufs, mise à jour proposée), même si le numéro de version n'a pas bougé
-          H=$(cat app/index.html app/core.js app/ui.js app/style.css app/pc/index.html app/pc/pc.js app/pc/pc.css app/sw.js | sha1sum | cut -c1-10)
+          H=$(cd planning && cat app/index.html app/core.js app/ui.js app/style.css app/pc/index.html app/pc/pc.js app/pc/pc.css app/sw.js | sha1sum | cut -c1-10)
           for f in /tmp/deploy/app/index.html /tmp/deploy/app/pc/index.html; do
             sed -i -E "s/\?v=[0-9.]+\"/?v=$H\"/g; s/name=\"app-build\" content=\"[^\"]*\"/name=\"app-build\" content=\"$H\"/" "$f"
           done

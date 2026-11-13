@@ -1,7 +1,7 @@
 # Guide des programmes du lecteur IPTV : à partir du guide TV libre XML TV Fr (https://xmltvfr.fr, ~400 chaînes accessibles
 # en France), garde pour chaque chaîne les programmes de 2 h avant à 30 h après maintenant, en JSON compact.
 # Plus complet que le guide du serveur de l'abonnement (souvent vide ou limité au titre).
-# Usage : python3 scripts/build-epg.py fichier.xml.gz > epg.json
+# Usage : python3 lecteur/scripts/build-epg.py fichier.xml.gz > epg.json
 #   {"at": ms, "src": "...", "ch": {"TF1.fr": [[début s, fin s, titre, sous-titre, résumé], ...]}, "k": {"tf1": "TF1.fr", ...}}
 # "k" : noms simplifiés (identifiant du guide et nom affiché) → identifiant, pour retrouver la chaîne d'une liste IPTV.
 import gzip, io, json, re, sys, time, unicodedata

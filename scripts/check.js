@@ -6,8 +6,9 @@ const os = require('os');
 const { execFileSync } = require('child_process');
 
 const root = path.join(__dirname, '..');
-const htmlFiles = ['index.html', '404.html', 'app/index.html', 'app/pc/index.html', 'admin/index.html', 'paie/index.html', 'iptv/index.html'];
-const jsFiles = ['app/sw.js', 'app/core.js', 'app/ui.js', 'app/pc/pc.js'].filter(f => fs.existsSync(path.join(root, f)));
+// planning/ : l'appli de planning ; lecteur/ : le lecteur IPTV ; worker/ : le serveur Cloudflare commun aux deux
+const htmlFiles = ['planning/index.html', 'planning/404.html', 'planning/app/index.html', 'planning/app/pc/index.html', 'planning/admin/index.html', 'planning/paie/index.html', 'lecteur/iptv/index.html'];
+const jsFiles = ['planning/app/sw.js', 'planning/app/core.js', 'planning/app/ui.js', 'planning/app/pc/pc.js'].filter(f => fs.existsSync(path.join(root, f)));
 const moduleFiles = ['worker/index.js'];
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'check-'));
 let failed = false;
@@ -23,8 +24,8 @@ function check(file, label) {
 }
 
 // Les pages et leurs fichiers partagés (core.js, ui.js, style.css…) doivent arriver ensemble : chaque ?v= suit la version de l'app
-for (const pg of ['app/index.html', 'app/pc/index.html']) { const fp = path.join(root, pg); if (!fs.existsSync(fp)) continue;
-  const h = fs.readFileSync(fp, 'utf8'), v = (fs.readFileSync(path.join(root, 'app/index.html'), 'utf8').match(/name="app-version" content="v([\d.]+)"/) || [])[1];
+for (const pg of ['planning/app/index.html', 'planning/app/pc/index.html']) { const fp = path.join(root, pg); if (!fs.existsSync(fp)) continue;
+  const h = fs.readFileSync(fp, 'utf8'), v = (fs.readFileSync(path.join(root, 'planning/app/index.html'), 'utf8').match(/name="app-version" content="v([\d.]+)"/) || [])[1];
   const refs = [...h.matchAll(/(?:src|href)="([^"]+\?v=([\d.]+))"/g)];
   const bad = refs.filter(m => m[2] !== v);
   if (!v || bad.length) { failed = true; console.error('FAIL ' + pg + ' : ' + bad.map(m => m[1]).join(', ') + ' ne suit pas la version v' + v); }

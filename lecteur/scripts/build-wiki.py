@@ -3,7 +3,7 @@
 #    France : sorties, films passés à la télé, succès des plateformes) ;
 #  - « prix » : les films primés (Palme d'or, César, Oscar, Lion d'or, Ours d'or…).
 # Chaque titre porte son identifiant TMDB (Wikidata P4947 film / P4983 série) : croisement exact avec le catalogue.
-# Usage : python3 scripts/build-wiki.py > wiki.json
+# Usage : python3 lecteur/scripts/build-wiki.py > wiki.json
 #   {"at": ms, "top": [{"id": "m27205", "v": vues, "m": {"k": "m", "t": "Inception", "o": "", "y": 2010}}, ...],
 #    "prix": [{"n": "Palmes d'or", "l": [{"id": "m...", "y": 2023, "m": {...}}, ...]}, ...]}
 import json, re, sys, time, urllib.error, urllib.parse, urllib.request

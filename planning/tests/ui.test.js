@@ -1,7 +1,7 @@
 // Tests des écrans : l'app et l'admin ouverts dans un vrai navigateur (format téléphone), avec un faux serveur
-// et les cycles / vacations figés dans tests/fixtures/server.json. Un écran qui casse (erreur JS, élément
+// et les cycles / vacations figés dans planning/tests/fixtures/server.json. Un écran qui casse (erreur JS, élément
 // absent, défilement bloqué) fait échouer la mise en ligne.
-// Lancement : node tests/ui.test.js  (Playwright requis ; CHROME_PATH pour un Chromium déjà installé)
+// Lancement : node planning/tests/ui.test.js  (Playwright requis ; CHROME_PATH pour un Chromium déjà installé)
 const http = require('http'), fs = require('fs'), path = require('path');
 let pw; try { pw = require('playwright'); } catch (e) { try { pw = require('playwright-core'); } catch (e2) { pw = require(process.env.PW_MODULE); } }
 const ROOT = path.join(__dirname, '..'), FIX = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures/server.json'), 'utf8'));

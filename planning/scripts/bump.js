@@ -1,6 +1,6 @@
 // Passe l'app à la version suivante (ou à celle donnée) : balise app-version et adresses ?v= des deux pages.
-// Usage : node scripts/bump.js            → +0.01
-//         node scripts/bump.js 8.10       → 8.10
+// Usage : node planning/scripts/bump.js            → +0.01
+//         node planning/scripts/bump.js 8.10       → 8.10
 const fs = require('fs'), path = require('path');
 const root = path.join(__dirname, '..'), pages = ['app/index.html', 'app/pc/index.html'];
 const cur = fs.readFileSync(path.join(root, pages[0]), 'utf8').match(/name="app-version" content="v([\d.]+)"/)[1];

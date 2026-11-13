@@ -1,7 +1,7 @@
 # Agenda sport du lecteur IPTV : à partir du guide TV libre XML TV Fr (https://xmltvfr.fr, chaînes accessibles en France),
 # garde les retransmissions sportives (directs et premières diffusions, sans magazines ni rediffusions) des chaînes sport
 # et des grandes chaînes gratuites, sur les 5 jours du guide, et regroupe un même match diffusé sur plusieurs chaînes.
-# Usage : python3 scripts/build-agenda.py [fichier .xml.gz déjà téléchargé] > agenda.json
+# Usage : python3 lecteur/scripts/build-agenda.py [fichier .xml.gz déjà téléchargé] > agenda.json
 import gzip, io, json, re, sys, time, unicodedata, urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
