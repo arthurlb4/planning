@@ -3095,7 +3095,22 @@ function posterHtml(it, i, rank, prog) {
   if (!coverOf(it)) setTimeout(() => coverWatch(i), 0);
   return `<button class="poster" data-v="${i}"><div class="im">${esc(it.name)}${coverOf(it) ? `<img src="${esc(posterUrl(coverOf(it)))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="coverMiss(this)">` : ''}${r}${it.kind === 'series' ? '<span class="kd">SÉRIE</span>' : ''}${it.tor ? `<span class="kd tor">TORRENT${it.tor.q ? ' ' + it.tor.q : ''}</span>` : ''}${vfOnly(it) ? '<span class="vfo" title="Film étranger proposé seulement en français (pas de VO)">VF seule</span>' : ''}${rank ? `<span class="rk">${rank}</span>` : ''}${pg}${lb}</div><div class="pt">${esc(it.name)}</div><div class="py">${it.year || ''}</div></button>`;
 }
-function vodRow(title, sub, list, ranked) { if (!list.length) return ''; return `<div class="vrow"><h3>${esc(title)}${sub ? `<small>${esc(sub)}</small>` : ''}</h3><div class="vwrap"><button class="varr l" data-arr="-1" aria-label="Précédents"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><div class="vscroll">${list.map((it, k) => posterHtml(it, V.shown.push(it) - 1, Array.isArray(ranked) ? ranked[k] : ranked && k < 20 ? k + 1 : 0)).join('')}</div><button class="varr r" data-arr="1" aria-label="Suivants"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button></div></div>`; }
+// keep : rangée toujours complète (classement, rangée personnelle) ; sinon rangée de découverte, sans les titres déjà
+// affichés plus haut (voir vodDedupe)
+/* Un titre une seule fois : dans l'ordre de la page, une rangée de découverte (genres, pour vous, nouveautés…) retire les
+   titres déjà affichés plus haut ; les classements (tops, tendances, primés, mieux notés) et les rangées personnelles
+   restent complets. Rangée de découverte réduite à moins de 4 titres : retirée. */
+function vodDedupe(box) {
+  const seen = new Set();
+  box.querySelectorAll('.vrow').forEach(row => {
+    const ps = [...row.querySelectorAll('.poster[data-v]')]; if (!ps.length) return;
+    const dd = row.dataset.dd === 'dedupe', key = p => { const it = V.shown[+p.dataset.v]; return it ? itemKey(it) : ''; };
+    const left = dd ? ps.filter(p => { const k = key(p); if (k && seen.has(k)) { p.remove(); return false; } return true; }) : ps;
+    if (dd && left.length < 4) { row.remove(); return; }
+    left.forEach(p => { const k = key(p); if (k) seen.add(k); });
+  });
+}
+function vodRow(title, sub, list, ranked, keep) { if (!list.length) return ''; return `<div class="vrow" data-dd="${ranked || keep ? 'keep' : 'dedupe'}"><h3>${esc(title)}${sub ? `<small>${esc(sub)}</small>` : ''}</h3><div class="vwrap"><button class="varr l" data-arr="-1" aria-label="Précédents"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><div class="vscroll">${list.map((it, k) => posterHtml(it, V.shown.push(it) - 1, Array.isArray(ranked) ? ranked[k] : ranked && k < 20 ? k + 1 : 0)).join('')}</div><button class="varr r" data-arr="1" aria-label="Suivants"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button></div></div>`; }
 
 /* ---------- Vraie popularité : TMDB (tendances de la semaine, et le plus regardé en France sur chaque service), croisée avec
    le catalogue de l'abonnement. Clé TMDB gratuite (themoviedb.org › Paramètres › API), partagée par la synchro. ---------- */
@@ -3429,7 +3444,7 @@ async function renderVod() {
     const hist = histAll().map(e => ({ e, it: itemByKey(e.k) })).filter(x => x.it && kinds.includes(x.e.k[0]));
     if (hist.length) h += `<div class="vrow"><h3>Reprendre</h3><div class="vwrap"><div class="vscroll">${hist.slice(0, 20).map(({ e, it }) => posterHtml(it, V.shown.push(it) - 1, 0, { pct: e.dur ? e.pos / e.dur * 100 : 0, lab: e.lab || (e.dur ? 'reste ' + fmtDur(e.dur - e.pos) : '') }).replace('<button class="poster"', `<button class="poster" data-hist="${esc(e.k)}"`).replace('<div class="im">', `<div class="im"><span class="hxb"><span data-histv="${esc(e.k)}" title="Marquer comme vu">✓</span><span data-histx="${esc(e.k)}" title="Retirer de Reprendre">✕</span></span>`)).join('')}</div></div></div>`;
     const ml = myList().map(itemByKey).filter(x => x && kinds.includes(itemKey(x)[0]));
-    if (ml.length) h += vodRow('Ma liste', '', ml);
+    if (ml.length) h += vodRow('Ma liste', '', ml, false, true);
     let bc = '';
     if (POP) {
       const FY = await Promise.race([forYou(kinds).catch(() => null), new Promise(r => setTimeout(() => r(null), 6000))]);
@@ -3512,7 +3527,7 @@ async function renderVod() {
           if (l.length >= 4) h += vodRow(label, fresh.length || added.length ? 'nouveautés et valeurs sûres' : '', l.slice(0, 30));
         }
       }
-      prix.forEach(p => { h += vodRow(p.n, 'films primés présents dans votre catalogue, du plus récent au plus ancien · Wikidata', p.l.slice(0, 40)); });
+      prix.forEach(p => { h += vodRow(p.n, 'films primés présents dans votre catalogue, du plus récent au plus ancien · Wikidata', p.l.slice(0, 40), false, true); });
       h += vodRow('Tendances mondiales de la semaine', 'popularité dans le monde · TMDB', popList(POP.trend, P, POP.meta, kinds).slice(0, 30), true);
       for (const [svc] of TMDB_SVC) {
         const S2 = POP.svc[svc]; if (!S2) continue;
@@ -3532,7 +3547,7 @@ async function renderVod() {
     }
     if (V.tab !== 'series') h += vodRow('Nouveautés · films', 'derniers ajouts', movies.slice().sort(byAdded).slice(0, 40));
     if (V.tab !== 'movie') h += vodRow('Nouveautés · séries', 'dernières mises à jour', series.slice().sort(byAdded).slice(0, 40));
-    h += vodRow('Les mieux notés', '', pool.filter(i => i.rating >= 7 && (!i.year || i.year >= yr - 25)).sort(byRate).slice(0, 40));
+    h += vodRow('Les mieux notés', '', pool.filter(i => i.rating >= 7 && (!i.year || i.year >= yr - 25)).sort(byRate).slice(0, 40), false, true);
     for (const [svc] of SERVICES) {
       const l = pool.filter(i => i.services.includes(svc)); if (l.length < 4) continue;
       h += vodRow('Le meilleur de ' + svc, l.length + ' titres · mieux notés', l.slice().sort(byRate).slice(0, 40));
@@ -3547,6 +3562,7 @@ async function renderVod() {
     if (key && (!LS.get('pref.bs', '') || !LS.get('pref.ost', '') || !LS.get('pref.trakt', ''))) h = h.replace('<div class="vrow">', `<div class="tmdbbox"><b>Nouvelles sources</b><p class="hint" style="margin:6px 0 10px">BetaSeries (films et séries les plus suivis en France), Trakt (tendances mondiales) et OpenSubtitles (sous-titres français) : à activer une fois avec le mot de passe de « Mon abonnement ».</p><button class="chip" data-keysin>Activer</button></div><div class="vrow">`);
   }
   box.innerHTML = h;
+  vodDedupe(box);
   const qi = $('#vodQ'); if (V.q) { qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); }
 }
 let vodQT;
