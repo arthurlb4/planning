@@ -645,11 +645,8 @@ body.vtools #prevBtn,body.vtools #nextBtn,body.vtools #soloBtn,body.vtools #solo
 #vbar input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:#fff;border:0}
 #vbar button:focus,#vbar input:focus{outline:none}
 #vbRange{flex:1;min-width:60px}
-/* Torrent en lecture : fresque des morceaux reçus au-dessus de la barre (comme qBittorrent), info-bulle au survol */
-#torMap{position:absolute;height:14px;padding:5px 0;box-sizing:border-box;cursor:default}
-#torMap canvas{display:block;width:100%;height:4px;border-radius:2px}
-#torMap .tip{display:none;position:absolute;bottom:20px;left:50%;transform:translateX(-50%);white-space:nowrap;padding:6px 10px;border-radius:8px;background:rgba(20,20,19,.95);border:.5px solid rgba(255,255,255,.18);font-size:12px;color:#fff;box-shadow:0 6px 20px rgba(0,0,0,.5)}
-#torMap:hover .tip{display:block}
+/* Torrent en lecture : morceaux reçus dans la barre de lecture, comme une zone tamponnée (fresque à la qBittorrent) */
+#vbar #vbRange.tbuf{background:linear-gradient(90deg,#fff var(--p,0%),transparent var(--p,0%)),var(--tbuf) 0 0/100% 100% no-repeat,rgba(255,255,255,.18)}
 #vbVol{width:80px;flex:none}
 #vbar .live{display:none;height:24px;padding:0 9px 0 20px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:.06em;color:#fff;background:rgba(255,255,255,.12);position:relative}
 #vbar .live::before{content:'';position:absolute;left:9px;top:50%;width:6px;height:6px;margin-top:-3px;border-radius:50%;background:#9d9b95}
@@ -766,7 +763,6 @@ h1,h2,h3,h4,h5,h6,b,strong,th,summary{font-weight:500}
         <button class="vb" id="vbFwd" title="Avancer de 10 s"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.4-5.7M20 4v4h-4" fill="none"/><text x="12" y="15.5" text-anchor="middle">10</text></svg></button>
         <span class="tm" id="vbCur">0:00</span>
         <input type="range" id="vbRange" min="0" max="100" step="0.1" value="0" aria-label="Position">
-        <span id="torMap" hidden><canvas></canvas><span class="tip"></span></span>
         <span class="tm" id="vbDur">0:00</span>
         <button class="live" id="vbLive" title="Revenir au direct">DIRECT</button>
         <button class="vb" id="vbMute" title="Couper le son (M)"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="iv" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" fill="none"/><path class="im" d="M16 9l5 6M21 9l-5 6" fill="none"/></svg></button>
@@ -2700,6 +2696,12 @@ async function masterInfo() {
     if (m) { const a = parseAttrs(m[1]); S.master = { codecs: a.codecs, res: a.resolution, fps: a['frame-rate'], bw: +a.bandwidth || +a['average-bandwidth'] }; }
   } catch (e) {}
 }
+// panneau ⓘ : téléchargement du torrent en lecture
+function torStatsHtml(row) {
+  const i = TMAP.info; if (!i || !S.current || !/\/torrent\/file\//.test(S.current.url || '')) return '';
+  const mo = x => (x / 1e6).toFixed(1).replace('.', ','), pc = Math.round((i.fprog != null ? i.fprog : i.progress || 0) * 100);
+  return `<h4>Torrent</h4><table>${row('Téléchargé', pc + ' %' + (i.fsize ? ' sur ' + torMo(i.fsize) : ''))}${row('Sources', (i.peers || 0) + ' connectée' + (i.peers > 1 ? 's' : '') + (i.known ? ' · ' + i.known + ' trouvées' : ''))}${row('Réception', '↓ ' + mo(i.down || 0) + ' Mo/s')}${row('Envoi', '↑ ' + mo(i.up || 0) + ' Mo/s')}${i.peers || !(i.err || i.warn) ? '' : row('Avertissement', esc(i.err || i.warn))}</table>`;
+}
 function refreshStats() {
   const el = $('#stats'); if (el.hidden) return;
   const row = (k, v) => v ? `<tr><td>${k}</td><td>${v}</td></tr>` : '';
@@ -2739,7 +2741,7 @@ function refreshStats() {
     ${row('Lecteur', { hls: 'hls.js', mpegts: 'mpegts.js', native: 'lecteur du navigateur', remux: 'ffmpeg (conversion' + (S.remux && S.remux.enc ? ' image et son' : ' du son') + ')' }[S.engine] || '')}
     ${S.engine === 'remux' && S.remux.info ? row('Source', esc([S.remux.info.vcodec, S.remux.info.vprofile].filter(Boolean).join(' ') + ' · ' + ((S.remux.info.audio || [])[S.remux.a] || {}).codec)) : ''}
     ${row('Format', S.playUrl ? (kindOf(S.playUrl) === 'hls' ? 'HLS (.m3u8)' : kindOf(S.playUrl) === 'ts' ? 'MPEG-TS' : 'fichier') + (/^https:/.test(S.playUrl) ? ' · https' : ' · http') : '')}
-  </table>`;
+  </table>${torStatsHtml(row)}`;
 }
 function toggleStats(on) {
   const el = $('#stats'); el.hidden = on === undefined ? !el.hidden : !on;
@@ -4458,23 +4460,20 @@ $('#vodDetail').addEventListener('click', e => {
   playVod(it, url, null, null);
 });
 // Reprise : position retenue toutes les 5 s, reprise à l'ouverture (sauf presque à la fin)
-/* Fresque du torrent en lecture : morceaux reçus du fichier (appli Windows 1.30 et plus), toutes les 2 s pendant la lecture */
-const TMAP = { t: 0, info: null };
+/* Torrent en lecture : morceaux reçus du fichier (appli Windows 1.30 et plus), toutes les 2 s, dessinés dans la barre de
+   lecture comme une zone tamponnée ; détail (téléchargé, sources, débits) dans le panneau ⓘ */
+const TMAP = { info: null, cv: null };
 function torMapTick() {
-  const c = S.current, m = c && /\/torrent\/file\/([0-9a-f]{40})\/(\d+)\//i.exec(c.url || ''), el = $('#torMap');
-  if (!m || !document.body.classList.contains('playing') || !window.desktop) { if (el) el.hidden = true; return; }
+  const c = S.current, m = c && /\/torrent\/file\/([0-9a-f]{40})\/(\d+)\//i.exec(c.url || ''), rg = $('#vbRange');
+  if (!m || !document.body.classList.contains('playing') || !window.desktop) { TMAP.info = null; rg.classList.remove('tbuf'); return; }
   fetch(window.desktop.remux + '/torrent/info?id=' + m[1] + '&f=' + m[2]).then(r => r.ok ? r.json() : null).then(i => {
-    if (!i || !i.map || S.current !== c) { el.hidden = true; return; }
-    TMAP.info = i; el.hidden = false;
-    const rg = $('#vbRange'), bar = $('#vbar'), rr = rg.getBoundingClientRect(), br = bar.getBoundingClientRect();
-    el.style.left = (rr.left - br.left) + 'px'; el.style.width = rr.width + 'px'; el.style.top = (rr.top - br.top - 13) + 'px';
-    const cv = el.querySelector('canvas'), dpr = window.devicePixelRatio || 1, W = Math.max(1, Math.round(rr.width * dpr));
-    if (cv.width !== W) { cv.width = W; cv.height = Math.round(4 * dpr); }
-    const g = cv.getContext('2d'), n = i.map.length; g.clearRect(0, 0, cv.width, cv.height);
-    g.fillStyle = 'rgba(255,255,255,.16)'; g.fillRect(0, 0, cv.width, cv.height);
-    for (let k = 0; k < n; k++) { const v = +i.map[k]; if (!v) continue; g.fillStyle = `rgba(98,170,220,${0.35 + 0.65 * v / 9})`; g.fillRect(Math.floor(k * cv.width / n), 0, Math.ceil(cv.width / n), cv.height); }
-    const mo = x => (x / 1e6).toFixed(1).replace('.', ','), pc = Math.round((i.fprog != null ? i.fprog : i.progress) * 100);
-    el.querySelector('.tip').textContent = `Torrent · ${pc} % téléchargé${i.fsize ? ' sur ' + torMo(i.fsize) : ''} · ${i.peers} source${i.peers > 1 ? 's' : ''} · ↓ ${mo(i.down)} Mo/s · ↑ ${mo(i.up || 0)} Mo/s`;
+    if (S.current !== c) return;
+    TMAP.info = i; if (!i || !i.map) { rg.classList.remove('tbuf'); return; }
+    const n = i.map.length, cv = TMAP.cv || (TMAP.cv = document.createElement('canvas')); cv.width = n; cv.height = 1;
+    const g = cv.getContext('2d'); g.clearRect(0, 0, n, 1);
+    for (let k = 0; k < n; k++) { const v = +i.map[k]; if (v) { g.fillStyle = `rgba(255,255,255,${(0.2 + 0.35 * v / 9).toFixed(2)})`; g.fillRect(k, 0, 1, 1); } }
+    rg.style.setProperty('--tbuf', `url(${cv.toDataURL()})`); rg.classList.add('tbuf');
+    if (!$('#stats').hidden) refreshStats();
   }).catch(() => {});
 }
 setInterval(torMapTick, 2000);
