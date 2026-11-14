@@ -5181,13 +5181,16 @@ function stopAll() { token++; stopEngines(); unfreeze(); S.engine = ''; S.curren
 const RELAY = 'https://planning-gcal.arthur-lebreton94.workers.dev/iptv/m3u?url=';
 async function fetchText(url) {
   // Toujours un essai direct : bloqué tout de suite dans un navigateur si l'adresse est en http, mais permis dans l'appli Windows
-  try { const res = await fetch(url, { cache: 'no-store' }); if (res.ok) return await res.text(); } catch (e) {}
+  // (réponse gardée pour le message d'erreur : c'est celle qui compte avec un VPN)
+  let pc = '';
+  try { const res = await fetch(url, { cache: 'no-store' }); if (res.ok) return await res.text(); pc = 'Depuis ce PC : le serveur répond ' + res.status; }
+  catch (e) { if (window.desktop) pc = 'Depuis ce PC : serveur injoignable'; }
   let res;
   try { res = await fetch(RELAY + encodeURIComponent(url), { cache: 'no-store' }); }
-  catch (e) { throw new Error('Impossible de joindre le serveur de l\'app. Vérifiez votre connexion, ou téléchargez le fichier puis importez-le.'); }
+  catch (e) { throw new Error((pc ? pc + '. ' : '') + 'Impossible de joindre le serveur de l\'app. Vérifiez votre connexion, ou téléchargez le fichier puis importez-le.'); }
   if (res.ok) return res.text();
   const msg = (await res.text().catch(() => '')).slice(0, 200);
-  throw new Error((msg || 'Erreur ' + res.status) + '.');
+  throw new Error((pc ? pc + '. Par le relais : ' : '') + (msg || 'Erreur ' + res.status) + '.');
 }
 /* Lien Xtream (get.php?username=…&password=…) : si la liste M3U est refusée, on interroge le serveur comme les applis IPTV
    (player_api.php : catégories et chaînes), puis on en fait une liste M3U */
