@@ -15,33 +15,51 @@ const fs = require('fs');
 
 const DIR = path.join(os.tmpdir(), 'lecteur-iptv-torrents');
 const VIDEO = /\.(mkv|mp4|avi|mov|m4v|webm|ts|m2ts|wmv|flv|mpg|mpeg|ogv)$/i;
-let client = null;
+// Trackers publics ajoutés aux liens magnet (souvent sans tracker ou avec des trackers morts) : sans eux, seul le DHT
+// trouve des pairs, ce qui peut prendre longtemps. Jamais ajoutés à un fichier .torrent (trackers privés : passkey).
+const TRACKERS = ['udp://tracker.opentrackr.org:1337/announce', 'udp://open.stealth.si:80/announce', 'udp://tracker.torrent.eu.org:451/announce',
+  'udp://exodus.desync.com:6969/announce', 'udp://open.demonii.com:1337/announce', 'udp://tracker.openbittorrent.com:6969/announce',
+  'https://tracker.tamersunion.org:443/announce', 'udp://explodie.org:6969/announce'];
+let client = null, clientErr = '';
 function getClient() {
-  if (!client) {
+  if (!client || client.destroyed) {
     const WebTorrent = require('webtorrent');
-    client = new WebTorrent({ utp: false });            // pas de module natif à compiler
-    client.on('error', () => {});
+    client = new WebTorrent({ utp: false, maxConns: 80 });   // pas de module natif à compiler
+    client.on('error', e => { clientErr = e.message || String(e); });
   }
   return client;
 }
 // à la fermeture de l'appli : torrents fermés, morceaux supprimés
 process.on('exit', () => { try { if (client) client.destroy(); } catch (e) {} try { fs.rmSync(DIR, { recursive: true, force: true }); } catch (e) {} });
 
-const info = t => ({ id: t.infoHash, name: t.name, files: t.files.map((f, i) => ({ i, name: f.name, size: f.length, video: VIDEO.test(f.name) })),
-  progress: t.progress, peers: t.numPeers, down: t.downloadSpeed });
+// progression : celle du fichier en lecture (sinon du plus gros fichier vidéo) ; « known » = pairs trouvés par les trackers
+// et le DHT, pas encore forcément connectés
+const mainFile = t => t._playing != null ? t.files[t._playing] : t.files.filter(f => VIDEO.test(f.name)).sort((a, b) => b.length - a.length)[0];
+const info = t => { const f = t.ready && mainFile(t);
+  return { id: t.infoHash, name: t.name, files: (t.files || []).map((f, i) => ({ i, name: f.name, size: f.length, video: VIDEO.test(f.name) })),
+    progress: f ? f.progress : t.progress, peers: t.numPeers, known: t._peersLength || 0, down: t.downloadSpeed, up: t.uploadSpeed,
+    warn: t._lastWarn || '', err: clientErr }; };
 
 function add(src) {
   return new Promise((resolve, reject) => {
     const c = getClient(), old = c.get(src);
     if (old && old.ready) return resolve(info(old));
     let done = false;
-    const timer = setTimeout(() => { if (done) return; done = true; try { const t = c.get(src); if (t) t.destroy(); } catch (e) {} reject(new Error('aucun pair trouvé en 90 s (torrent sans source en ligne ?)')); }, 90000);
+    const timer = setTimeout(() => { if (done) return; done = true; try { const t = c.get(src); if (t) t.destroy(); } catch (e) {} reject(new Error('aucun pair trouvé en 90 s (torrent sans source en ligne ?)' + (clientErr ? ' · ' + clientErr : ''))); }, 90000);
     try {
-      c.add(src, { path: DIR, destroyStoreOnDestroy: true }, t => {
+      const opts = { path: DIR, destroyStoreOnDestroy: true };
+      if (typeof src === 'string') opts.announce = TRACKERS;
+      const t = c.add(src, opts, t => {
         if (done) return; done = true; clearTimeout(timer);
-        t.deselect(0, t.pieces.length - 1, false);        // rien d'avance : seulement ce que la lecture demande
+        // Seul le fichier vidéo principal est demandé (pas les bonus, sous-titres…), dans l'ordre ; il ne faut pas tout
+        // désélectionner : sans rien à demander, l'appli n'intéresse plus les pairs, qui coupent la connexion (0 source)
+        t.deselect(0, t.pieces.length - 1, false);
+        t.files.forEach(f => f.deselect());
+        const f = mainFile(t); if (f) f.select();
         resolve(info(t));
       });
+      t.on('warning', e => { t._lastWarn = String((e && e.message) || e).slice(0, 200); });
+      t.on('error', e => { if (done) return; done = true; clearTimeout(timer); reject(e); });
     } catch (e) { done = true; clearTimeout(timer); reject(e); }
   });
 }
@@ -114,6 +132,9 @@ module.exports = function handleTorrent(req, res, u) {
   if (u.pathname === '/torrent/info') { const t = c.get(u.searchParams.get('id') || ''); json(t ? info(t) : { error: 'torrent fermé' }, t ? 200 : 404); return true; }
   if (u.pathname === '/torrent/stop') { const t = c.get(u.searchParams.get('id') || ''); if (t) t.destroy({ destroyStore: true }); json({ ok: true }); return true; }
   const m = /^\/torrent\/file\/([0-9a-f]{40})\/(\d+)\//i.exec(u.pathname);
-  if (m) { const t = c.get(m[1]), f = t && t.files[+m[2]]; if (!f) { res.statusCode = 404; res.end(); return true; } sendFile(t, f, req, res); return true; }
+  if (m) { const t = c.get(m[1]), f = t && t.files[+m[2]]; if (!f) { res.statusCode = 404; res.end(); return true; }
+    // fichier lu : c'est lui qui est demandé aux pairs (et plus le précédent, pour un épisode suivant)
+    if (t._playing !== +m[2]) { const p = t._playing != null ? t.files[t._playing] : mainFile(t); if (p && p !== f) p.deselect(); f.select(); t._playing = +m[2]; }
+    sendFile(t, f, req, res); return true; }
   res.statusCode = 404; res.end(); return true;
 };

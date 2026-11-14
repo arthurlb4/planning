@@ -227,6 +227,32 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 .poster .pgb i{display:block;height:100%;background:#e5322d}
 .poster .pgl{position:absolute;left:8px;bottom:16px;z-index:1;font-size:11px;font-weight:800;padding:2px 6px;border-radius:6px;background:rgba(0,0,0,.75);color:#fff}
 .vdh{margin:18px 0 10px;font-size:15px}
+.tsearch{display:flex;gap:10px;align-items:center;margin:16px 0 10px;max-width:900px}
+.searchbar.tbig{flex:1;min-width:0;height:46px;margin:0}.searchbar.tbig input{font-size:16px}
+.tsearch .btn{height:46px;padding:0 20px}
+.tfil{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 14px}
+.tfil .chip{height:30px;padding:0 12px;font-size:13px}
+.tsep{width:1px;height:20px;background:var(--border);margin:0 4px}
+.tlist{display:flex;flex-direction:column;gap:6px;max-width:1100px}
+.trow{display:flex;align-items:center;gap:14px;padding:10px 12px;border-radius:14px;background:var(--bg2);border:.5px solid var(--border);transition:background .15s}
+.trow:hover{background:var(--bg3)}
+.tsd{flex:none;width:56px;display:flex;flex-direction:column;align-items:center;line-height:1.1}
+.tsd b{font-size:18px;font-variant-numeric:tabular-nums}.tsd small{font-size:10px;color:var(--text3)}
+.tsd.hi b{color:var(--green)}.tsd.md b{color:var(--gold)}.tsd.lo b{color:var(--red)}
+.tmn{flex:1;min-width:0}
+.ttl{font-weight:600;font-size:14px;line-height:1.35;word-break:break-word}
+.tmt{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin-top:5px;font-size:12px;color:var(--text3)}
+.tmt>span:last-child{margin-left:2px}
+.tbg{font-size:10px;font-weight:800;padding:2px 6px;border-radius:6px;background:var(--bg4);color:var(--text2);letter-spacing:.02em}
+.tbg.k4{background:#b8860b;color:#fff}.tbg.vf{background:#2f5f9e;color:#fff}.tbg.vo{background:#2e7d4f;color:#fff}.tbg.cam{background:#8a2a26;color:#fff}
+.tac{flex:none;display:flex;gap:6px;align-items:center}
+.btn.sm{height:34px;padding:0 14px;font-size:14px}
+.tcur{margin:14px 0 6px;padding:14px;border-radius:16px;background:var(--bg2);border:.5px solid var(--border);max-width:1100px}
+.tch{display:flex;gap:10px;align-items:flex-start}
+.tpb{height:4px;border-radius:4px;background:var(--bg4);overflow:hidden;margin-top:10px}.tpb i{display:block;height:100%;background:#e5322d;transition:width .6s}
+.tcard{max-width:720px}
+#torPage .padd{max-width:1100px}
+@media (max-width:700px){.trow{flex-wrap:wrap}.tac{width:100%;justify-content:flex-end}.tsep{display:none}}
 .cast{display:flex;gap:12px;overflow-x:auto;padding-bottom:8px}
 .cast .ca{flex:none;width:84px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:3px}
 .cast .ph{width:72px;height:72px;border-radius:50%;background:var(--bg3) center/cover no-repeat;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:var(--text3)}
@@ -1380,104 +1406,184 @@ function askText(msg, opt) {
     setTimeout(() => i.focus(), 30);
   });
 }
-/* Torrent (appli Windows 1.20 et plus) : lien magnet ou fichier .torrent fourni par l'utilisateur ; ses vidéos sont lues
-   pendant le téléchargement (seuls les morceaux nécessaires, dans l'ordre), par le lecteur habituel */
-const TOR = { id: '', t: 0 };
-function openTorrent(src0) {
-  const base = window.desktop.remux, m = document.createElement('div'); m.className = 'modal open'; m.style.zIndex = 60;
-  m.innerHTML = `<div class="sheet" style="max-width:560px"><h2>Lire un torrent <button class="btn icon" data-x aria-label="Fermer"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></h2>
-    <p class="hint" style="margin:0 0 10px">Collez un lien magnet ou choisissez un fichier .torrent. La vidéo démarre pendant le téléchargement ; comme tout client torrent, l'appli repartage les morceaux reçus tant que le torrent est ouvert.</p>
-    <div class="row" style="gap:8px"><input class="field" id="torMag" placeholder="magnet:?xt=urn:btih:…" autocomplete="off" spellcheck="false" style="flex:1;min-width:0;margin:0"><button class="btn primary" id="torGo">Ouvrir</button></div>
-    <div class="row" style="gap:8px;margin-top:8px"><button class="btn" id="torFileBtn">Choisir un fichier .torrent…</button><input type="file" id="torFile" accept=".torrent,application/x-bittorrent" hidden></div>
-    <div id="torOut" style="margin-top:12px"></div>
-    <h4 class="vdh" style="margin-top:18px">Rechercher dans mes indexeurs (Prowlarr)</h4><div id="prwBox"></div></div>`;
-  document.body.appendChild(m);
-  prwRender(m, b => send(b));
-  if (src0) setTimeout(() => send(src0), 0);
-  const out = m.querySelector('#torOut'), close = () => { clearInterval(TOR.t); m.remove(); };
-  m.querySelector('[data-x]').onclick = close; m.addEventListener('click', e => { if (e.target === m) close(); });
-  const show = j => {
-    if (j.error) { out.innerHTML = `<p class="err">Torrent : ${esc(j.error)}</p>`; return; }
-    TOR.id = j.id;
-    const vids = j.files.filter(f => f.video).sort((a, b) => a.name.localeCompare(b.name, 'fr', { numeric: true }));
-    const mo = n => n >= 1e9 ? (n / 1e9).toFixed(1).replace('.', ',') + ' Go' : Math.round(n / 1e6) + ' Mo';
-    out.innerHTML = `<p class="hint" id="torSt"></p>` + (vids.length ? `<div class="brand"><div class="chs">${vids.map(f => `<button class="chr" data-tf="${f.i}"><span class="lg">▶</span><span class="m"><span class="l">${esc(cleanTitle(f.name.replace(/\.[^.]+$/, '')))}</span><span class="e">${esc(f.name)} · ${mo(f.size)}</span></span></button>`).join('')}</div></div>` : '<p class="hint">Aucune vidéo dans ce torrent.</p>');
-    out.querySelectorAll('[data-tf]').forEach(b => b.onclick = () => {
-      const f = j.files[+b.dataset.tf]; close();
-      play({ name: cleanTitle(f.name.replace(/\.[^.]+$/, '')), url: base + '/torrent/file/' + j.id + '/' + f.i + '/' + encodeURIComponent(f.name), group: 'Torrent', logo: '', n: 0, chno: '', vod: true, key: '' });
-    });
-    clearInterval(TOR.t);
-    TOR.t = setInterval(async () => { const st = m.querySelector('#torSt'); if (!st) return clearInterval(TOR.t);
-      const i = await fetch(base + '/torrent/info?id=' + j.id).then(r => r.json()).catch(() => null);
-      if (i && !i.error) st.textContent = `${i.name} · ${i.peers} source${i.peers > 1 ? 's' : ''} · ${Math.round(i.progress * 100)} % reçu · ${(i.down / 1e6).toFixed(1).replace('.', ',')} Mo/s`; }, 1500);
-  };
-  const send = async body => {
-    out.innerHTML = '<div class="spin" style="margin:14px auto"></div><p class="hint" style="text-align:center">Recherche des sources du torrent…</p>';
-    const r = await fetch(base + '/torrent/add', { method: 'POST', body }).catch(() => null);
-    if (!r) return show({ error: 'module de l\'appli injoignable' });
-    if (r.status === 404) return show({ error: 'mettez à jour l\'appli Windows (1.20 et plus)' });
-    show(await r.json().catch(() => ({ error: 'réponse illisible' })));
-  };
-  m.querySelector('#torGo').onclick = () => { const v = m.querySelector('#torMag').value.trim(); if (/^magnet:\?/i.test(v)) send(v); else out.innerHTML = '<p class="err">Un lien magnet commence par « magnet:? ».</p>'; };
-  m.querySelector('#torMag').addEventListener('keydown', e => { if (e.key === 'Enter') m.querySelector('#torGo').click(); });
-  m.querySelector('#torFileBtn').onclick = () => m.querySelector('#torFile').click();
-  m.querySelector('#torFile').onchange = async e => { const f = e.target.files[0]; if (!f) return; const b = new Uint8Array(await f.arrayBuffer()); let bin = ''; for (let i = 0; i < b.length; i += 8192) bin += String.fromCharCode.apply(null, b.subarray(i, i + 8192)); send(btoa(bin)); };
-  setTimeout(() => m.querySelector('#torMag').focus(), 30);
-}
-/* Recherche dans les indexeurs que l'utilisateur a mis dans son Prowlarr (appli Windows) : « Lire » (pendant le
-   téléchargement) ou « Ajouter à ma médiathèque » (envoi à qBittorrent, catégorie films / series, rangé par Radarr /
-   Sonarr). L'appli ne contient aucune source : seulement ce que Prowlarr renvoie. */
+/* ---------- Indexeurs (appli Windows) : onglet de Films & séries, intégré à la page (plus de fenêtre par-dessus) ----------
+   Recherche dans les indexeurs que l'utilisateur a mis dans son Prowlarr : « Lire » (pendant le téléchargement, appli
+   Windows 1.20 et plus) ou « ＋ Films / ＋ Séries » (envoi à qBittorrent, rangé par Radarr / Sonarr). Lien magnet ou fichier
+   .torrent fourni par l'utilisateur. L'appli ne contient aucune source : seulement ce que Prowlarr renvoie. */
+const TOR = { q: '', kind: 'all', qual: 'all', sort: 'seed', res: null, err: '', busy: false, cur: null, curErr: '', curBusy: false, info: null, t: 0, hist: LS.get('dev.prwhist', []) };
 const prwConf = () => { const c = LS.get('dev.prowlarr', null); return c && c.url && c.key ? c : null; };
-function prwRender(m, playSrc) {
-  const box = m.querySelector('#prwBox'), c = prwConf();
-  if (!c) {
-    box.innerHTML = `<p class="hint" style="margin:0 0 8px">Clé d'API de Prowlarr : Prowlarr › Settings › General › API Key.</p>
-      <div class="row" style="gap:8px"><input class="field" id="prwUrl" value="${esc(LS.get('dev.prwurl', 'http://localhost:9696'))}" style="flex:1;min-width:0;margin:0" spellcheck="false"><input class="field" id="prwKey" placeholder="Clé d'API" style="flex:1;min-width:0;margin:0" spellcheck="false" autocomplete="off"><button class="btn" id="prwSave">Enregistrer</button></div><p class="err" id="prwErr"></p>`;
-    box.querySelector('#prwSave').onclick = async () => {
-      const url = box.querySelector('#prwUrl').value.trim().replace(/\/+$/, ''), key = box.querySelector('#prwKey').value.trim(); LS.set('dev.prwurl', url);
-      const r = await fetch(url + '/api/v1/system/status', { headers: { 'X-Api-Key': key } }).catch(() => null);
-      if (!r) return box.querySelector('#prwErr').textContent = 'Prowlarr injoignable (démarré ? adresse ?)';
-      if (!r.ok) return box.querySelector('#prwErr').textContent = r.status === 401 ? 'clé d\'API refusée' : 'Prowlarr répond ' + r.status;
-      LS.set('dev.prowlarr', { url, key }); prwRender(m, playSrc);
-    };
-    return;
-  }
-  box.innerHTML = `<div class="row" style="gap:8px"><input class="field" id="prwQ" placeholder="Titre à chercher" style="flex:1;min-width:0;margin:0" spellcheck="false"><button class="btn primary" id="prwGo">Chercher</button></div>
-    <div id="prwRes" style="margin-top:10px"></div><button class="chip" id="prwOut" style="margin-top:6px">Changer de Prowlarr</button>`;
-  box.querySelector('#prwOut').onclick = () => { LS.set('dev.prowlarr', null); prwRender(m, playSrc); };
-  const res = box.querySelector('#prwRes'), base = window.desktop.remux;
-  const mo = n => n >= 1e9 ? (n / 1e9).toFixed(1).replace('.', ',') + ' Go' : Math.round(n / 1e6) + ' Mo';
-  const go = async () => {
-    const q = box.querySelector('#prwQ').value.trim(); if (!q) return;
-    res.innerHTML = '<div class="spin" style="margin:14px auto"></div>';
-    const r = await fetch(c.url + '/api/v1/search?type=search&limit=60&query=' + encodeURIComponent(q), { headers: { 'X-Api-Key': c.key } }).catch(() => null);
-    if (!r || !r.ok) { res.innerHTML = `<p class="err">${!r ? 'Prowlarr injoignable' : r.status === 401 ? 'clé d\'API refusée' : 'Prowlarr répond ' + r.status}</p>`; return; }
-    const l = (await r.json().catch(() => [])).filter(x => (x.protocol || 'torrent') === 'torrent' && (x.magnetUrl || x.downloadUrl)).sort((a, b) => (b.seeders || 0) - (a.seeders || 0)).slice(0, 40);
-    if (!l.length) { res.innerHTML = '<p class="hint">Aucun résultat dans vos indexeurs (Prowlarr › Indexers pour en ajouter).</p>'; return; }
-    prwShow(res, l, src => { playSrc(src); m.querySelector('#torOut').scrollIntoView({ behavior: 'smooth' }); });
-  };
-  box.querySelector('#prwGo').onclick = go;
-  box.querySelector('#prwQ').addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+const torOk = () => !!(window.desktop && window.desktop.remux);
+const torMo = n => !n ? '' : n >= 1e9 ? (n / 1e9).toFixed(1).replace('.', ',') + ' Go' : Math.round(n / 1e6) + ' Mo';
+// qualité, codec, HDR et langue lus dans le nom de la publication
+function torTags(t) {
+  t = String(t || '');
+  const q = /2160p|\b4k\b|\buhd\b/i.test(t) ? '4K' : /1080p/i.test(t) ? '1080p' : /720p/i.test(t) ? '720p' : /480p|\bsd\b|dvdrip/i.test(t) ? 'SD' : '';
+  const l = /\bmulti\b/i.test(t) ? 'MULTI' : /vostfr|subfrench/i.test(t) ? 'VOSTFR' : /\b(true)?french\b|\bvff\b|\bvfq\b|\bvf2?\b/i.test(t) ? 'VF' : '';
+  return { q, l, hevc: /x265|h\.?265|hevc/i.test(t), hdr: /\bhdr|dolby.?vision|\bdv\b/i.test(t), remux: /remux/i.test(t), cam: /\b(cam|ts|telesync|hdcam)\b/i.test(t) };
 }
-async function prwSearch(q) {
+const torAge = d => { const t = Date.parse(d || ''); if (!t) return ''; const n = Math.floor((Date.now() - t) / 864e5);
+  return n < 1 ? 'aujourd\'hui' : n < 2 ? 'hier' : n < 31 ? 'il y a ' + n + ' j' : n < 365 ? 'il y a ' + Math.round(n / 30) + ' mois' : 'il y a ' + Math.round(n / 365) + ' an' + (n >= 730 ? 's' : ''); };
+async function prwSearch(q, kind) {
   const c = prwConf(); if (!c) return null;
-  const r = await fetch(c.url + '/api/v1/search?type=search&limit=60&query=' + encodeURIComponent(q), { headers: { 'X-Api-Key': c.key } }).catch(() => null);
-  if (!r || !r.ok) return null;
-  return (await r.json().catch(() => [])).filter(x => (x.protocol || 'torrent') === 'torrent' && (x.magnetUrl || x.downloadUrl)).sort((a, b) => (b.seeders || 0) - (a.seeders || 0)).slice(0, 40);
+  const cats = kind === 'movie' ? '&categories=2000' : kind === 'series' ? '&categories=5000' : '';
+  const r = await fetch(c.url + '/api/v1/search?type=search&limit=100' + cats + '&query=' + encodeURIComponent(q), { headers: { 'X-Api-Key': c.key } }).catch(() => null);
+  if (!r) throw new Error('Prowlarr injoignable (démarré ? adresse ?)');
+  if (!r.ok) throw new Error(r.status === 401 ? 'clé d\'API refusée' : 'Prowlarr répond ' + r.status);
+  const seen = new Set();
+  return (await r.json().catch(() => [])).filter(x => (x.protocol || 'torrent') === 'torrent' && (x.magnetUrl || x.downloadUrl))
+    .filter(x => { const k = (x.infoHash || x.title || '').toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; })
+    .map(x => Object.assign(x, { _t: torTags(x.title) }));
 }
-function prwShow(res, l, playSrc) {
-    const base = window.desktop.remux, mo = n => n >= 1e9 ? (n / 1e9).toFixed(1).replace('.', ',') + ' Go' : Math.round(n / 1e6) + ' Mo';
-    res.innerHTML = `<div class="brand"><div class="chs">${l.map((x, i) => `<div class="chr" style="flex-wrap:wrap"><span class="m" style="min-width:220px"><span class="l" style="font-size:13px">${esc(x.title || '')}</span>
-      <span class="e">${esc([x.size ? mo(x.size) : '', (x.seeders || 0) + ' source' + ((x.seeders || 0) > 1 ? 's' : ''), x.indexer || ''].filter(Boolean).join(' · '))}</span></span>
-      <span class="row" style="gap:6px"><button class="chip" data-pl="${i}">▶ Lire</button><button class="chip" data-pa="${i}" data-c="films">＋ Films</button><button class="chip" data-pa="${i}" data-c="series">＋ Séries</button></span></div>`).join('')}</div></div>`;
-    res.querySelectorAll('[data-pl]').forEach(b => b.onclick = () => { const x = l[+b.dataset.pl]; playSrc(x.magnetUrl || x.downloadUrl); });
-    res.querySelectorAll('[data-pa]').forEach(b => b.onclick = async () => {
-      const x = l[+b.dataset.pa]; b.disabled = true;
-      const j = await fetch(base + '/torrent/qbt', { method: 'POST', body: JSON.stringify({ url: x.magnetUrl || x.downloadUrl, category: b.dataset.c }) }).then(r => r.status === 404 ? { error: 'mettez à jour l\'appli Windows (1.21 et plus)' } : r.json()).catch(() => ({ error: 'module de l\'appli injoignable' }));
-      toast(j.ok ? 'Envoyé à qBittorrent (' + (b.dataset.c === 'films' ? 'Films' : 'Séries') + ') : rangé dans la médiathèque une fois téléchargé' : 'qBittorrent : ' + j.error);
-      b.disabled = false;
-    });
+// ligne d'un résultat (onglet Indexeurs et recherche générale)
+function torRowHtml(x, i) {
+  const g = x._t || torTags(x.title), s = x.seeders || 0, cat = (x.categories || []).map(c => c.id).find(Boolean) || 0;
+  const badge = (t, cls) => t ? `<span class="tbg${cls ? ' ' + cls : ''}">${t}</span>` : '';
+  const meta = [torMo(x.size), torAge(x.publishDate), x.indexer].filter(Boolean).map(esc).join(' · ');
+  return `<div class="trow" data-ti="${i}"><div class="tsd ${s >= 20 ? 'hi' : s >= 5 ? 'md' : 'lo'}" title="${s} source${s > 1 ? 's' : ''}, ${x.leechers || 0} en téléchargement"><b>${s}</b><small>sources</small></div>
+    <div class="tmn"><div class="ttl">${esc(x.title || '')}</div><div class="tmt">${badge(g.q, g.q === '4K' ? 'k4' : '')}${badge(g.l, g.l === 'VOSTFR' ? 'vo' : 'vf')}${g.hdr ? badge('HDR') : ''}${g.hevc ? badge('HEVC') : ''}${g.remux ? badge('REMUX') : ''}${g.cam ? badge('CAM', 'cam') : ''}<span>${meta}</span></div></div>
+    <div class="tac"><button class="btn primary sm" data-tpl="${i}">▶ Lire</button><button class="chip" data-tpa="${i}" data-c="${cat >= 5000 && cat < 6000 ? 'series' : 'films'}" title="Télécharger en entier avec qBittorrent et ranger dans Ma médiathèque">＋ ${cat >= 5000 && cat < 6000 ? 'Séries' : 'Films'}</button></div></div>`;
 }
+async function torQbt(x, cat, b) {
+  if (b) b.disabled = true;
+  const j = await fetch(window.desktop.remux + '/torrent/qbt', { method: 'POST', body: JSON.stringify({ url: x.magnetUrl || x.downloadUrl, category: cat }) }).then(r => r.status === 404 ? { error: 'mettez à jour l\'appli Windows (1.21 et plus)' } : r.json()).catch(() => ({ error: 'module de l\'appli injoignable' }));
+  toast(j.ok ? 'Envoyé à qBittorrent (' + (cat === 'films' ? 'Films' : 'Séries') + ') : rangé dans la médiathèque une fois téléchargé' : 'qBittorrent : ' + j.error);
+  if (b) { b.disabled = false; if (j.ok) { b.textContent = '✓ Envoyé'; b.classList.add('on'); } }
+}
+function torFiltered() {
+  let l = (TOR.res || []).filter(x => TOR.qual === 'all' || x._t.q === TOR.qual);
+  const k = { seed: (a, b) => (b.seeders || 0) - (a.seeders || 0), size: (a, b) => (b.size || 0) - (a.size || 0), date: (a, b) => (Date.parse(b.publishDate) || 0) - (Date.parse(a.publishDate) || 0) }[TOR.sort];
+  return l.slice().sort(k);
+}
+// Onglet « Indexeurs » : rendu dans la page Films & séries
+function torRender() {
+  if (!torOk()) return '<div class="empty">La recherche dans les indexeurs et la lecture des torrents se font dans l\'appli Windows.</div>';
+  const c = prwConf();
+  let h = '<div id="torPage">';
+  h += '<div id="torCur">' + torCurHtml() + '</div>';
+  if (!c) {
+    h += `<div class="tmdbbox tcard"><b>Relier Prowlarr</b><p class="hint" style="margin:6px 0 10px">Prowlarr regroupe vos indexeurs : leurs résultats s'affichent ici. Clé d'API : Prowlarr › Settings › General › API Key.</p>
+      <div class="row" style="gap:8px;flex-wrap:wrap"><input class="field" id="prwUrl" value="${esc(LS.get('dev.prwurl', 'http://localhost:9696'))}" style="flex:1;min-width:200px;margin:0" spellcheck="false"><input class="field" id="prwKey" placeholder="Clé d'API" style="flex:1;min-width:200px;margin:0" spellcheck="false" autocomplete="off"><button class="btn primary" data-prwsave>Enregistrer</button></div><p class="err" id="prwErr"></p></div>`;
+  } else {
+    const chips = (k, opts) => opts.map(([v, l]) => `<button class="chip${TOR[k] === v ? ' on' : ''}" data-tf="${k}" data-tv="${v}">${l}</button>`).join('');
+    h += `<div class="tsearch"><label class="searchbar tbig"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input id="torQ" type="search" placeholder="Chercher un film ou une série dans mes indexeurs" value="${esc(TOR.q)}" autocomplete="off" spellcheck="false"></label><button class="btn primary" data-tgo>Chercher</button></div>`;
+    if (!TOR.res && !TOR.busy && TOR.hist.length) h += `<div class="tfil"><span class="hint">Récemment :</span>${TOR.hist.map(q => `<button class="chip" data-thq="${esc(q)}">${esc(q)}</button>`).join('')}</div>`;
+    h += `<div class="tfil">${chips('kind', [['all', 'Tout'], ['movie', 'Films'], ['series', 'Séries']])}<span class="tsep"></span>${chips('qual', [['all', 'Toutes qualités'], ['4K', '4K'], ['1080p', '1080p'], ['720p', '720p']])}<span class="tsep"></span>${chips('sort', [['seed', 'Plus de sources'], ['date', 'Plus récents'], ['size', 'Plus lourds']])}</div>`;
+    h += '<div id="torRes">' + torResHtml() + '</div>';
+  }
+  h += `<details class="padd"><summary>Lien magnet ou fichier .torrent</summary>
+    <p class="hint" style="margin:0 0 10px">La vidéo démarre pendant le téléchargement ; comme tout client torrent, l'appli repartage les morceaux reçus tant que le torrent est ouvert.</p>
+    <div class="row" style="gap:8px;flex-wrap:wrap"><input class="field" id="torMag" placeholder="magnet:?xt=urn:btih:…" autocomplete="off" spellcheck="false" style="flex:1;min-width:220px;margin:0"><button class="btn primary" data-tmag>Ouvrir</button><button class="btn" data-tfile>Choisir un fichier .torrent…</button><input type="file" id="torFile" accept=".torrent,application/x-bittorrent" hidden></div></details>`;
+  if (c) h += `<div class="vrow" style="margin-top:14px"><small class="hint">Prowlarr · ${esc(c.url)}</small> <button class="chip" data-prwout>Changer de Prowlarr</button></div>`;
+  return h + '</div>';
+}
+function torResHtml() {
+  if (TOR.busy) return '<div class="spin" style="margin:30px auto"></div><p class="hint" style="text-align:center">Recherche dans vos indexeurs…</p>';
+  if (TOR.err) return `<p class="err">${esc(TOR.err)}</p>`;
+  if (!TOR.res) return '';
+  if (!TOR.res.length) return '<div class="empty">Aucun résultat dans vos indexeurs (Prowlarr › Indexers pour en ajouter).</div>';
+  const l = torFiltered(); TOR.shown = l;
+  return `<div class="vrow"><h3>Résultats<small>${l.length} sur ${TOR.res.length}${TOR.qual !== 'all' ? ' · ' + TOR.qual : ''}</small></h3></div>`
+    + (l.length ? `<div class="tlist">${l.slice(0, 80).map(torRowHtml).join('')}</div>` : '<div class="empty">Aucun résultat dans cette qualité.</div>');
+}
+// Torrent ouvert : avancement et vidéos, en haut de l'onglet
+function torCurHtml() {
+  if (TOR.curBusy) return '<div class="tcur"><div class="spin" style="margin:6px auto"></div><p class="hint" style="text-align:center;margin:6px 0 0">Recherche des sources du torrent…</p></div>';
+  if (TOR.curErr) return `<div class="tcur"><p class="err" style="margin:0">Torrent : ${esc(TOR.curErr)}</p><button class="chip" data-tclose style="margin-top:8px">Fermer</button></div>`;
+  const j = TOR.cur; if (!j) return '';
+  const vids = j.files.filter(f => f.video).sort((a, b) => a.name.localeCompare(b.name, 'fr', { numeric: true })), i = TOR.info;
+  const pct = i ? Math.round(i.progress * 100) : 0;
+  return `<div class="tcur"><div class="tch"><div style="min-width:0;flex:1"><b class="ttl">${esc((i && i.name) || j.name || 'Torrent')}</b>
+    <div class="hint">${i ? `${i.peers} source${i.peers > 1 ? 's' : ''} connectée${i.peers > 1 ? 's' : ''}${i.known != null ? ' (' + i.known + ' trouvée' + (i.known > 1 ? 's' : '') + ')' : ''} · ${pct} % reçu · ${(i.down / 1e6).toFixed(1).replace('.', ',')} Mo/s` : 'Connexion aux sources…'}</div>
+    ${i && !i.peers && i.known == null ? '<div class="hint" style="color:var(--gold)">Mettez à jour l\'appli Windows (1.22 et plus) : les anciennes versions perdent leurs sources juste après l\'ouverture du torrent.</div>' : ''}
+    ${i && !i.peers && (i.err || i.warn) ? `<div class="hint" style="color:var(--gold)">${esc(i.err || i.warn)}</div>` : ''}</div><button class="chip" data-tclose title="Fermer le torrent et supprimer ses morceaux">Fermer</button></div>
+    <div class="tpb"><i style="width:${pct}%"></i></div>
+    ${vids.length ? `<div class="chs" style="padding:0;margin-top:8px">${vids.map(f => `<button class="chr" data-tfi="${f.i}"><span class="lg">▶</span><span class="m"><span class="l">${esc(cleanTitle(f.name.replace(/\.[^.]+$/, '')))}</span><span class="e">${esc(f.name)} · ${torMo(f.size)}</span></span></button>`).join('')}</div>` : '<p class="hint">Aucune vidéo dans ce torrent.</p>'}</div>`;
+}
+const torPaint = id => { const el = $('#' + id); if (el) el.innerHTML = id === 'torCur' ? torCurHtml() : torResHtml(); };
+async function torGo(q) {
+  q = (q || '').trim(); if (!q) return;
+  TOR.q = q; TOR.busy = true; TOR.err = ''; TOR.res = null;
+  TOR.hist = [q].concat(TOR.hist.filter(x => x.toLowerCase() !== q.toLowerCase())).slice(0, 8); LS.set('dev.prwhist', TOR.hist);
+  if ($('#torRes')) torPaint('torRes'); else { V.tab = 'tor'; V.q = ''; renderVod(); }
+  try { TOR.res = await prwSearch(q, TOR.kind); } catch (e) { TOR.err = e.message; }
+  TOR.busy = false; if (TOR.q === q) torPaint('torRes');
+}
+// ouverture d'un torrent (lien magnet, .torrent en base64 ou adresse d'un .torrent) : affiché en haut de l'onglet
+async function openTorrent(src) {
+  if (V.tab !== 'tor' || V.q || !$('#torPage')) { V.tab = 'tor'; V.q = ''; await renderVod(); }
+  torStop();
+  TOR.curBusy = true; TOR.curErr = ''; TOR.cur = null; TOR.info = null; torPaint('torCur');
+  $('#vod').scrollTo({ top: 0, behavior: 'smooth' });
+  const base = window.desktop.remux, r = await fetch(base + '/torrent/add', { method: 'POST', body: src }).catch(() => null);
+  let j = !r ? { error: 'module de l\'appli injoignable' } : r.status === 404 ? { error: 'mettez à jour l\'appli Windows (1.20 et plus)' } : await r.json().catch(() => ({ error: 'réponse illisible' }));
+  TOR.curBusy = false;
+  if (j.error) TOR.curErr = j.error; else { TOR.cur = j; torPoll(); }
+  torPaint('torCur');
+}
+function torPoll() {
+  clearInterval(TOR.t);
+  TOR.t = setInterval(async () => {
+    if (!TOR.cur) return clearInterval(TOR.t);
+    const i = await fetch(window.desktop.remux + '/torrent/info?id=' + TOR.cur.id).then(r => r.json()).catch(() => null);
+    if (i && !i.error) { TOR.info = i; if ($('#torCur')) torPaint('torCur'); }
+  }, 1500);
+}
+function torStop() {
+  clearInterval(TOR.t);
+  // un torrent en cours de lecture reste ouvert ; les autres sont fermés (morceaux supprimés)
+  if (TOR.cur && !(S.current && String(S.current.url || '').includes('/torrent/file/' + TOR.cur.id))) fetch(window.desktop.remux + '/torrent/stop?id=' + TOR.cur.id).catch(() => {});
+  TOR.cur = null; TOR.info = null; TOR.curErr = '';
+}
+function torClick(e) {
+  if (!e.target.closest('#torPage, #xprw')) return false;
+  const g = sel => e.target.closest(sel);
+  let b;
+  if (g('[data-prwsave]')) {
+    (async () => {
+      const url = $('#prwUrl').value.trim().replace(/\/+$/, ''), key = $('#prwKey').value.trim(), err = $('#prwErr'); LS.set('dev.prwurl', url);
+      err.textContent = 'Connexion…';
+      const r = await fetch(url + '/api/v1/system/status', { headers: { 'X-Api-Key': key } }).catch(() => null);
+      if (!r) return err.textContent = 'Prowlarr injoignable (démarré ? adresse ?)';
+      if (!r.ok) return err.textContent = r.status === 401 ? 'clé d\'API refusée' : 'Prowlarr répond ' + r.status;
+      LS.set('dev.prowlarr', { url, key }); renderVod();
+    })();
+    return true;
+  }
+  if (g('[data-prwout]')) { LS.set('dev.prowlarr', null); TOR.res = null; renderVod(); return true; }
+  if (g('[data-tgo]')) { torGo($('#torQ').value); return true; }
+  if ((b = g('[data-thq]'))) { torGo(b.dataset.thq); return true; }
+  if ((b = g('[data-tf]'))) {
+    const k = b.dataset.tf, ch = TOR[k] !== b.dataset.tv; TOR[k] = b.dataset.tv;
+    b.parentNode.querySelectorAll(`[data-tf="${k}"]`).forEach(x => x.classList.toggle('on', x === b));
+    if (k === 'kind' && ch && TOR.q && TOR.res) torGo(TOR.q); else torPaint('torRes');
+    return true;
+  }
+  const list = g('#xprw') ? TOR.xs : TOR.shown;
+  if ((b = g('[data-tpl]'))) { const x = list[+b.dataset.tpl]; if (x) openTorrent(x.magnetUrl || x.downloadUrl); return true; }
+  if ((b = g('[data-tpa]'))) { const x = list[+b.dataset.tpa]; if (x) torQbt(x, b.dataset.c, b); return true; }
+  if ((b = g('[data-txall]'))) { torGo(V.q); return true; }
+  if ((b = g('[data-tfi]'))) {
+    const j = TOR.cur, f = j && j.files[+b.dataset.tfi]; if (!f) return true;
+    play({ name: cleanTitle(f.name.replace(/\.[^.]+$/, '')), url: window.desktop.remux + '/torrent/file/' + j.id + '/' + f.i + '/' + encodeURIComponent(f.name), group: 'Torrent', logo: '', n: 0, chno: '', vod: true, key: '' });
+    return true;
+  }
+  if (g('[data-tclose]')) { torStop(); torPaint('torCur'); return true; }
+  if (g('[data-tmag]')) { const v = $('#torMag').value.trim(); if (/^magnet:\?/i.test(v) || /^https?:\/\//i.test(v)) openTorrent(v); else toast('Un lien magnet commence par « magnet:? »'); return true; }
+  if (g('[data-tfile]')) { $('#torFile').click(); return true; }
+  return false;
+}
+$('#vodInner').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  if (e.target.id === 'torQ') torGo(e.target.value);
+  else if (e.target.id === 'torMag') $('[data-tmag]').click();
+  else if (e.target.id === 'prwKey') $('[data-prwsave]').click();
+});
+$('#vodInner').addEventListener('change', async e => {
+  if (e.target.id !== 'torFile') return;
+  const f = e.target.files[0]; if (!f) return;
+  const b = new Uint8Array(await f.arrayBuffer()); let bin = ''; for (let i = 0; i < b.length; i += 8192) bin += String.fromCharCode.apply(null, b.subarray(i, i + 8192));
+  openTorrent(btoa(bin));
+});
 /* ---------- Ma médiathèque : serveur Jellyfin (bibliothèque personnelle) ----------
    Connexion par identifiant et mot de passe (jeton gardé sur l'appareil, dev.jf). Appli Windows : fichier lu tel quel par
    le convertisseur habituel ; navigateur : flux HLS préparé par Jellyfin. Position de lecture envoyée à Jellyfin (reprise
@@ -1588,10 +1694,10 @@ async function xSearch(q0) {
   }
   if (window.desktop && window.desktop.remux && prwConf()) {
     const el0 = $('#xprw'); if (el0) el0.innerHTML = '<div class="vrow"><h3>Dans mes indexeurs</h3><div class="spin" style="margin:10px 0"></div></div>';
-    const l = await prwSearch(q0), el = $('#xprw'); if (!el || V.q !== q0) return;
+    const l = await prwSearch(q0).catch(() => null), el = $('#xprw'); if (!el || V.q !== q0) return;
     if (!l || !l.length) { el.innerHTML = ''; return; }
-    el.innerHTML = '<div class="vrow"><h3>Dans mes indexeurs<small>Prowlarr</small></h3><div id="xprwL" style="max-width:820px"></div></div>';
-    prwShow($('#xprwL'), l.slice(0, 12), src => openTorrent(src));
+    TOR.xs = l.sort((a, b) => (b.seeders || 0) - (a.seeders || 0)).slice(0, 6);
+    el.innerHTML = `<div class="vrow"><h3>Dans mes indexeurs<small>Prowlarr · ${l.length} résultat${l.length > 1 ? 's' : ''}</small><button class="chip" data-txall style="margin-left:auto">Tout voir et filtrer ›</button></h3><div class="tlist">${TOR.xs.map(torRowHtml).join('')}</div></div>`;
   }
 }
 /* Fiche d'un film de l'abonnement : même film dans Ma médiathèque (identifiant TMDB, sinon titre et année) ? Les versions
@@ -2968,7 +3074,7 @@ async function renderVod() {
   const all = D.items.filter(it => langVisible(it) && qualVisible(it)), movies = all.filter(i => i.kind === 'movie'), series = all.filter(i => i.kind === 'series');
   const yr = new Date().getFullYear(), byAdded = (a, b) => b.added - a.added, byRate = (a, b) => b.rating - a.rating || b.added - a.added;
   let h = `<div class="vtop">
-    ${['home:Accueil', 'movie:Films', 'series:Séries', 'cats:Catégories', 'hist:Historique', 'jf:Ma médiathèque'].map(t => { const [k, l] = t.split(':'); return `<button class="chip${V.tab === k && !V.q ? ' on' : ''}" data-tab="${k}">${l}</button>`; }).join('')}${window.desktop && window.desktop.remux ? '<button class="chip" data-torrent title="Lire une vidéo depuis un lien magnet ou un fichier .torrent">Torrent</button>' : ''}
+    ${['home:Accueil', 'movie:Films', 'series:Séries', 'cats:Catégories', 'hist:Historique', 'jf:Ma médiathèque'].concat(torOk() ? ['tor:Indexeurs'] : []).map(t => { const [k, l] = t.split(':'); return `<button class="chip${V.tab === k && !V.q ? ' on' : ''}" data-tab="${k}">${l}</button>`; }).join('')}
     <button class="chip" data-reload title="Recharger les catalogues depuis le serveur">↻</button>
     <label class="searchbar"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input id="vodQ" type="search" placeholder="Titre d'un film ou d'une série" value="${esc(V.q)}" autocomplete="off"></label></div>`;
   if (!all.length) { box.innerHTML = h + '<div class="empty">Aucun film ni série en français trouvé sur ce serveur.</div>'; return; }
@@ -2985,6 +3091,8 @@ async function renderVod() {
     setTimeout(() => xSearch(V.q), 0);
   } else if (V.tab === 'jf') {
     h += await jfRender();
+  } else if (V.tab === 'tor') {
+    h += torRender();
   } else if (V.tab === 'hist') {
     // Historique : regroupé par jour, le plus récent d'abord
     const l = seenAll().map(e => ({ e, it: itemByKey(e.k) })).filter(x => x.it);
@@ -3141,7 +3249,7 @@ async function renderVod() {
 let vodQT;
 $('#vodInner').addEventListener('input', e => { if (e.target.id !== 'vodQ') return; clearTimeout(vodQT); vodQT = setTimeout(() => { V.q = e.target.value; renderVod(); }, 250); });
 $('#vodInner').addEventListener('click', e => {
-  if (jfClick(e)) return;
+  if (jfClick(e) || torClick(e)) return;
   if (e.target.closest('[data-reload]')) { V.force = true; V.data = null; renderVod(); return; }
   if (e.target.closest('[data-vdiag]')) {
     const D = V.data || {}, cats = Object.values(D.cats || {}), ex = D.excluded || [];
@@ -3170,7 +3278,6 @@ $('#vodInner').addEventListener('click', e => {
       try { if (!LS.get('pref.bs', '')) await useBuiltinBs(pw); if (!LS.get('pref.ost', '')) await useBuiltinOst(pw); if (!LS.get('pref.trakt', '')) await useBuiltinTrakt(pw); toast('BetaSeries, Trakt et sous-titres activés'); renderVod(); } catch (er) { toast('Mot de passe incorrect'); } });
     return;
   }
-  if (e.target.closest('[data-torrent]')) { openTorrent(); return; }
   if (e.target.closest('[data-tmdbre]')) { TM.data = null; V.force2 = true; renderVod(); return; }
   if (V.q && extrasClick(e, V.x)) return;
   // Reprendre : ✓ marquer comme vu, ✕ retirer de la rangée
