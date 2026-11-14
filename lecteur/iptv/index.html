@@ -355,6 +355,8 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 .poster .py{font-size:12px;color:var(--text3)}
 .vgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:18px 14px;margin-top:14px}
 .vgrid .poster{width:auto}
+.vgrid .poster.xp,.vgrid .poster.xpc{z-index:6}
+.vgrid .poster.xp .pt,.vgrid .poster.xp .py{visibility:hidden}
 .vd{display:grid;grid-template-columns:170px minmax(0,1fr);gap:18px}
 .vd>div{min-width:0}
 .vd .cv{width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:12px;background:var(--bg3)}
@@ -2881,7 +2883,7 @@ function hovClose(fast) {
   if (!el) return;
   if (el.classList.contains('poster')) {                // aperçu dans la rangée : l'affiche reprend sa taille
     // pendant la réduction la hauteur reste fixe (sinon l'affiche, encore large, grandirait en hauteur avec la rangée)
-    el.classList.add('xpc'); el.classList.remove('xp'); el.style.width = '';
+    el.classList.add('xpc'); el.classList.remove('xp'); el.style.width = ''; el.style.marginLeft = '';
     setTimeout(() => { if (!el.classList.contains('xp')) { el.classList.remove('xpc'); el.style.removeProperty('--ph'); } }, 340);
     const v = el.querySelector('.xpv'), b = el.querySelector('.xpb');
     if (v) { const f = v.querySelector('iframe'); if (f) f.remove(); }
@@ -2895,14 +2897,14 @@ function hovClose(fast) {
 function hovOpen(poster) {
   const it = V.shown[+poster.dataset.v]; if (!it || !document.body.contains(poster)) return;
   hovClose(true); HOV.it = it; HOV.src = poster;
-  if (poster.closest('.vscroll')) return hovInline(poster, it);
+  if (poster.closest('.vscroll, .vgrid')) return hovInline(poster, it);
   const r = poster.getBoundingClientRect(), w = Math.max(320, Math.min(420, r.width * 2.3));
   const el = document.createElement('div'); el.className = 'hovc';
   el.style.width = w + 'px'; el.style.left = Math.max(10, Math.min(innerWidth - w - 10, r.left + r.width / 2 - w / 2)) + 'px';
   const snd = LS.get('pref.hoverSound', false);
   el.innerHTML = `<div class="md" style="background-image:url('${esc(posterUrl(it.cover || ''))}')"><button class="snd${snd ? ' on' : ''}" title="Son"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="iv" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" fill="none"/><path class="im" d="M16 9l5 6M21 9l-5 6" fill="none"/></svg></button></div>
     <div class="bd"><div class="bt"><button class="btn primary" data-hplay>▶ ${it.kind === 'series' ? 'Épisodes' : 'Lecture'}</button><button class="btn" data-hinfo>Plus d'infos</button></div>
-    <div class="ti">${esc(it.name)}</div><div class="mt">${esc([it.year, it.rating ? '★ ' + it.rating.toFixed(1) : '', it.kind === 'series' ? 'Série' : 'Film', (it.services || []).join(', ')].filter(Boolean).join(' · '))}</div></div>`;
+    <div class="ti">${esc(it.name)}</div><div class="mt">${esc([it.year, noteTxt(it), it.kind === 'series' ? 'Série' : 'Film', (it.services || []).join(', ')].filter(Boolean).join(' · '))}</div></div>`;
   document.body.appendChild(el); HOV.el = el;
   const h = el.offsetHeight; el.style.top = Math.max(10, Math.min(innerHeight - h - 10, r.top + r.height / 2 - h / 2)) + 'px';
   // départ : exactement la case de l'affiche, puis agrandissement jusqu'à la fiche
@@ -2926,7 +2928,7 @@ function hovOpen(poster) {
     if (!tr || HOV.it !== it || !HOV.el) return;
     const cc = tr.cc ? '&cc_load_policy=1&cc_lang_pref=fr&hl=fr' : '';
     const f = document.createElement('iframe');
-    f.src = `${YT_EMBED}/embed/${encodeURIComponent(tr.key)}?autoplay=1&mute=1&controls=0&disablekb=1&fs=0&iv_load_policy=3&rel=0&modestbranding=1&playsinline=1&enablejsapi=1${cc}`;
+    f.src = `${YT_EMBED}/embed/${encodeURIComponent(tr.key)}?autoplay=1&mute=1&controls=0&disablekb=1&fs=0&iv_load_policy=3&rel=0&modestbranding=1&playsinline=1&enablejsapi=1${cc}${trStart(tr.key)}`;
     f.allow = 'autoplay; encrypted-media'; f.tabIndex = -1; f.title = 'Bande-annonce'; f.dataset.k = tr.key;
     f.onload = () => ytOnPlay(f, () => { f.classList.add('on'); if (LS.get('pref.hoverSound', false)) try { f.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unMute', args: [] }), '*'); } catch (e) {} }, 4000);
     ytListen(f); el.querySelector('.md').prepend(f);
@@ -2943,15 +2945,18 @@ function hovInline(poster, it) {
     const v = poster.querySelector('.xpv'), cc = tr.cc ? '&cc_load_policy=1&cc_lang_pref=fr&hl=fr' : '';
     const f = document.createElement('iframe');
     // toujours sans le son pendant le chargement en coulisse : le son (si choisi) ne vient qu'avec l'image, à l'ouverture
-    f.src = `${YT_EMBED}/embed/${encodeURIComponent(tr.key)}?autoplay=1&mute=1&controls=0&disablekb=1&fs=0&iv_load_policy=3&rel=0&modestbranding=1&playsinline=1&enablejsapi=1${cc}`;
+    f.src = `${YT_EMBED}/embed/${encodeURIComponent(tr.key)}?autoplay=1&mute=1&controls=0&disablekb=1&fs=0&iv_load_policy=3&rel=0&modestbranding=1&playsinline=1&enablejsapi=1${cc}${trStart(tr.key)}`;
     f.allow = 'autoplay; encrypted-media'; f.tabIndex = -1; f.title = 'Bande-annonce'; f.dataset.k = tr.key;
     f.onload = () => ytOnPlay(f, () => {                 // la vidéo joue vraiment : on ouvre, puis le son
       if (HOV.el !== poster || !document.body.contains(poster)) return;
       const h = im.offsetHeight, w = Math.round(h * 16 / 9);
       poster.style.setProperty('--ph', h + 'px'); poster.style.width = w + 'px'; poster.classList.add('xp'); f.classList.add('on');
+      // grille (recherche) : l'affiche s'élargit par-dessus ses voisines ; au bord droit, elle s'élargit vers la gauche
+      if (poster.closest('.vgrid')) { const g = poster.closest('.vgrid').getBoundingClientRect(), a = poster.getBoundingClientRect(), over = a.left + w - g.right;
+        if (over > 0) poster.style.marginLeft = -Math.min(over, a.left - g.left) + 'px'; }
       if (LS.get('pref.hoverSound', false)) setTimeout(() => { try { f.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unMute', args: [] }), '*'); } catch (e) {} }, 250);
       poster.insertAdjacentHTML('beforeend', `<span class="xpb"><span class="bt"><span class="btn primary" data-hplay>▶ ${it.kind === 'series' ? 'Épisodes' : 'Lecture'}</span><span class="btn" data-hinfo>Plus d'infos</span></span>
-        <span class="mt">${esc([it.rating ? '★ ' + it.rating.toFixed(1) : '', (it.services || []).join(', ')].filter(Boolean).join(' · '))}</span></span>`);
+        <span class="mt">${esc([noteTxt(it), (it.services || []).join(', ')].filter(Boolean).join(' · '))}</span></span>`);
       setTimeout(() => { const sc = poster.closest('.vscroll'); if (!sc || HOV.el !== poster) return; const a = poster.getBoundingClientRect(), bb = sc.getBoundingClientRect();
         if (a.right > bb.right - 8) { HOV.auto = Date.now(); sc.scrollBy({ left: a.right - bb.right + 16, behavior: 'smooth' }); } }, 320);
     }, 4000);
@@ -3011,7 +3016,7 @@ async function coverFetch(el) {
 // Affiche du serveur cassée : retirée, puis cherchée sur TMDB
 function coverMiss(img) { const p = img.closest('.poster'), it = p && V.shown[+p.dataset.v]; img.remove(); if (it && !it._covBad) { it._covBad = true; if (!COV[itemKey(it)]) coverWatch(+p.dataset.v); } }
 function posterHtml(it, i, rank, prog) {
-  const r = it.rating ? `<span class="rt">★ ${it.rating.toFixed(1)}</span>` : '';
+  const r = noteBadge(it);
   const ls = langState(it), lb = ls === 'vo' ? '<span class="lgb vo">VO</span>' : ls === '?' ? '<span class="lgb">VO ?</span>' : '';
   const pg = prog ? `<span class="pgb"><i style="width:${Math.max(3, Math.min(100, prog.pct || 0))}%"></i></span>${prog.lab ? `<span class="pgl">${esc(prog.lab)}</span>` : ''}` : '';
   if (!coverOf(it)) setTimeout(() => coverWatch(i), 0);
@@ -3144,6 +3149,48 @@ async function frNotes(tmdbId, kind) {
   DB.cachePut({ id, at: Date.now(), data });
   return data;
 }
+/* Note des affiches : SensCritique, sinon IMDb (même source que la fiche, « What's on? API » : 200 demandes par jour sans clé).
+   Chargée seulement pour les affiches visibles, gardée 14 jours ; au plus 150 nouvelles notes par jour et par appareil. */
+const NOTES = new Map();                                   // clé du titre → { sc, im }
+const noteOf = n => n && n.sc ? 'SC ' + n.sc.toFixed(1).replace('.', ',') : n && n.im ? 'IMDb ' + n.im.toFixed(1).replace('.', ',') : '';
+const noteTxt = it => { try { return noteOf(NOTES.get(itemKey(it))); } catch (e) { return ''; } };
+const noteBadge = it => { const t = noteTxt(it); return t ? `<span class="rt">${esc(t)}</span>` : ''; };
+const NQ = { q: [], run: 0, seen: new Set() };
+async function tmdbIdOf(it) {
+  if (it.tmdb) return it.tmdb; if (it._ti) return it._ti.id;
+  const kind = it.kind === 'series' ? 'tv' : 'movie', ck = 'tid1:' + kind + ':' + tnorm(it.name) + ':' + (it.year || ''), c = await DB.cacheGet(ck);
+  if (c) return c.data;
+  const q = { query: it.name }; if (it.year) q[kind === 'tv' ? 'first_air_date_year' : 'year'] = it.year;
+  const r = await tmdb('/search/' + kind, q).catch(() => null), id = r && r.results && r.results[0] && r.results[0].id || 0;
+  if (r) DB.cachePut({ id: ck, at: Date.now(), data: id });
+  return id;
+}
+async function noteLoad(it) {
+  const key = itemKey(it), kind = it.kind === 'series' ? 'tv' : 'movie';
+  const id = await tmdbIdOf(it); if (!id) return;
+  const c = await DB.cacheGet('wo1:' + kind + id);
+  let n = c && Date.now() - c.at < 14 * 864e5 ? c.data : null;
+  if (!n) {
+    const day = new Date().toISOString().slice(0, 10), b = LS.get('dev.wobud', null), used = b && b.d === day ? b.n : 0;
+    if (used >= 150) return;
+    LS.set('dev.wobud', { d: day, n: used + 1 });
+    n = await frNotes(id, kind).catch(() => null);
+  }
+  if (!n || !(n.sc || n.im)) return;
+  NOTES.set(key, { sc: n.sc, im: n.im });
+  const t = noteOf(NOTES.get(key));
+  document.querySelectorAll('#vod .poster[data-v]').forEach(p => { const x = V.shown[+p.dataset.v]; if (!x || itemKey(x) !== key) return;
+    const im = p.querySelector('.im'), old = im && im.querySelector('.rt'); if (old) old.textContent = t; else if (im) im.insertAdjacentHTML('beforeend', `<span class="rt">${esc(t)}</span>`); });
+}
+function noteNext() {
+  while (NQ.run < 3 && NQ.q.length) { const it = NQ.q.shift(); NQ.run++; noteLoad(it).catch(() => {}).finally(() => { NQ.run--; noteNext(); }); }
+}
+const noteIO = 'IntersectionObserver' in window ? new IntersectionObserver(es => es.forEach(e => {
+  if (!e.isIntersecting) return; noteIO.unobserve(e.target);
+  const it = V.shown[+e.target.dataset.v]; if (!it || !it.id || !LS.get('pref.tmdb', '')) return;
+  const k = itemKey(it); if (NQ.seen.has(k) || NOTES.has(k)) return; NQ.seen.add(k); NQ.q.push(it); noteNext();
+}), { rootMargin: '200px' }) : null;
+if (noteIO) { let t0; new MutationObserver(() => { clearTimeout(t0); t0 = setTimeout(() => document.querySelectorAll('#vod .poster[data-v]:not([data-nq])').forEach(p => { p.dataset.nq = '1'; noteIO.observe(p); }), 200); }).observe($('#vodInner'), { childList: true, subtree: true }); }
 // note de la fiche : SensCritique (spectateurs), sinon IMDb
 function frNotesHtml(n) {
   if (!n) return '';
@@ -3513,6 +3560,8 @@ async function trailerFor0(it) {
 }
 // Bande-annonce vue dans l'aperçu au survol : la fiche la reprend là où elle en était (si c'était il y a moins d'une minute)
 const TR_POS = new Map();
+// reprise d'une bande-annonce déjà vue (survol ou fiche) là où elle s'était arrêtée ; presque finie : depuis le début
+const trStart = k => { const p = TR_POS.get(k); return p && p.t > 1 && !(p.dur && p.t > p.dur - 4) ? '&start=' + Math.floor(p.t) : ''; };
 // panneau posé sur la bande-annonce : YouTube refuse de la lire (demande de connexion, « Vidéo non disponible »)
 function trLoginBox(box, err) {
   if (!box || box.querySelector('.trlogin') || !(window.desktop && window.desktop.ytLogin)) return;
@@ -3536,7 +3585,7 @@ async function showTrailer(it) {
   // Ordinateur : avec le son, sans les boutons de YouTube (on ne peut que couper / remettre le son) ; téléphone : lecteur
   // YouTube normal et sans le son (le téléphone refuse la lecture automatique avec le son)
   const bare = !MOBILE, p = bare ? 'mute=0&controls=0&disablekb=1&fs=0&iv_load_policy=3' : 'mute=1';
-  const tp = TR_POS.get(tr.key), st = tp && Date.now() - tp.at < 60000 && tp.t > 1 ? '&start=' + Math.floor(tp.t) : '';
+  const st = trStart(tr.key);
   box.innerHTML = `<iframe src="${YT_EMBED}/embed/${encodeURIComponent(tr.key)}?autoplay=1&${p}${st}&rel=0&modestbranding=1&playsinline=1&enablejsapi=1${cc}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" title="Bande-annonce"${bare ? ' class="bare" tabindex="-1"' : ''}></iframe>${bare ? '<button class="trplay" title="Pause / lecture"><svg viewBox="0 0 24 24"><path class="ip" d="M7 4v16l13-8z"/><path class="ipa" d="M7 4h3.5v16H7zM13.5 4H17v16h-3.5z"/></svg></button>' : ''}${bare ? '<button class="trmute" title="Couper / remettre le son"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="iv" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" fill="none"/><path class="im" d="M16 9l5 6M21 9l-5 6" fill="none"/></svg></button>' : ''}`;
   $('#vodDetail').prepend(box); $('#vodModal .sheet').classList.add('hastr');
   ytListen(box.querySelector('iframe'));
@@ -3892,7 +3941,7 @@ async function vodEnrich(it) {
   else { const fr = ((d.content_ratings || {}).results || []).find(r => r.iso_3166_1 === 'FR'); cert = fr && fr.rating || ''; }
   const genres = (d.genres || []).map(g => g.name).slice(0, 3).join(', '), run = ti.kind === 'movie' ? (d.runtime ? fmtDur(d.runtime * 60) : '') : (d.number_of_seasons ? d.number_of_seasons + ' saison' + (d.number_of_seasons > 1 ? 's' : '') : '');
   const certTxt = cert && cert !== 'U' && cert !== 'TP' && cert !== 'Tous publics' ? '-' + String(cert).replace(/^-/, '') : cert ? 'Tous publics' : '';
-  frNotes(ti.id, ti.kind).then(n => { const h = frNotesHtml(n), mt = $('#vodMeta'); if (h && mt && V.open && V.open.it === it && !$('#vodDetail .frn')) mt.insertAdjacentHTML('afterend', h); }).catch(() => {});
+  frNotes(ti.id, ti.kind).then(n => { if (n && (n.sc || n.im)) NOTES.set(itemKey(it), { sc: n.sc, im: n.im }); const h = frNotesHtml(n), mt = $('#vodMeta'); if (h && mt && V.open && V.open.it === it && !$('#vodDetail .frn')) mt.insertAdjacentHTML('afterend', h); }).catch(() => {});
   const m = $('#vodMeta'); if (m) m.textContent = [it.year || (d.release_date || d.first_air_date || '').slice(0, 4), genres || it.genre, run, certTxt, it.services.join(', ')].filter(Boolean).join(' · ');
   const cr = d.credits || {}, dir = (cr.crew || []).filter(c => c.job === 'Director').map(c => c.name).slice(0, 2).join(', ') || (d.created_by || []).map(c => c.name).slice(0, 2).join(', ');
   const crew = $('#vodCrew'); if (crew && dir) crew.innerHTML = `<div class="cr">${ti.kind === 'movie' ? 'Réalisation' : 'Création'} : ${esc(dir)}</div>`;
@@ -4580,7 +4629,7 @@ window.addEventListener('message', e => {
     if (d && d.event === 'onError') { f.dataset.alive = 'err'; trLoginBox(f.closest('#vodTrailer'), true); return; }   // « Vidéo non disponible »
     if (!f.dataset.alive) { f.dataset.alive = '1'; const o = $('#vodTrailer .trlogin'); if (o) o.remove(); } });
   // position de la bande-annonce de l'aperçu (reprise au même endroit dans la fiche)
-  if (d && d.info && typeof d.info.currentTime === 'number') document.querySelectorAll('.hovc iframe, .poster .xpv iframe').forEach(f => { if (f.contentWindow === e.source && f.dataset.k) TR_POS.set(f.dataset.k, { t: d.info.currentTime, at: Date.now() }); });
+  if (d && d.info && typeof d.info.currentTime === 'number') document.querySelectorAll('.hovc iframe, .poster .xpv iframe, #vodTrailer iframe').forEach(f => { if (f.contentWindow === e.source && f.dataset.k) { const o = TR_POS.get(f.dataset.k) || {}; TR_POS.set(f.dataset.k, { t: d.info.currentTime, dur: d.info.duration || o.dur || 0, at: Date.now() }); } });
   if (d && d.info && d.info.playerState === 1) YT_PLAY.forEach((cb, f) => { if (f.contentWindow === e.source) { YT_PLAY.delete(f); cb(); } });
   if (!d || !d.info || d.info.playerState !== 0) return;
   document.querySelectorAll('#vodTrailer iframe, .hovc iframe, .poster .xpv iframe').forEach(f => { if (f.contentWindow === e.source) {
