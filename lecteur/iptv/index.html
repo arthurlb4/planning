@@ -3451,11 +3451,17 @@ async function renderVod() {
         });
         if (its.length) h += vodRow('Les plus vus en France cette semaine · ' + (kd === 'm' ? 'films' : 'séries'), 'top 10 Netflix France, semaine du ' + new Date(NF.week).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }), its, rk);
       }
+      // Les plus suivis par les membres de BetaSeries (site français) : juste après le top Netflix
+      const BSP = await Promise.race([bsPopular().catch(() => null), new Promise(r => setTimeout(() => r(null), 5000))]);
+      if (BSP) Object.entries(BSP.meta).forEach(([k, m]) => { POP.meta[k] = POP.meta[k] || m; });
+      const bsl = BSP ? popList(BSP.ids, P, POP.meta, kinds) : [];
+      if (bsl.length >= 3) h += vodRow('Les plus suivis sur BetaSeries', 'membres français de BetaSeries', bsl.slice(0, 30), true);
       // Les films et séries dont on parle en France : les plus consultés sur Wikipédia en français ces 3 derniers jours
+      // (rangée placée tout en bas des recommandations)
       const G = await loadGuide().catch(() => null), WK = G && G.wiki;
       const wl = (l, kk) => { const ids = (l || []).map(x => { POP.meta[x.id] = POP.meta[x.id] || x.m; return x.id; }); return popList(ids, P, POP.meta, kk || kinds); };
       const wTop = WK ? wl(WK.top) : [];
-      if (wTop.length >= 3) h += vodRow('Ce dont on parle en ce moment', 'les plus consultés sur Wikipédia en français ces 3 derniers jours', wTop.slice(0, 30), true);
+      const wRow = wTop.length >= 3 ? vodRow('Ce dont on parle en ce moment', 'les plus consultés sur Wikipédia en français ces 3 derniers jours', wTop.slice(0, 30), true) : '';
       const vNew = kinds.includes('m') && POP.vodNew ? popList(POP.vodNew, P, POP.meta, ['m']).filter(it => !it.year || it.year >= yr - 2) : [];
       if (vNew.length >= 3) h += vodRow('Nouveautés en VOD en France', 'sortis en location et à l\'achat ces 3 derniers mois · TMDB', vNew.slice(0, 30));
       let cin = [];
@@ -3463,11 +3469,6 @@ async function renderVod() {
         cin = popList(POP.cinema, P, POP.meta, ['m']);
         if (cin.length) h += vodRow('À l\'affiche au cinéma en France', 'films en salles en ce moment · déjà dans votre catalogue', cin.slice(0, 30));
       }
-      // Les plus suivis par les membres de BetaSeries (site français)
-      const BSP = await Promise.race([bsPopular().catch(() => null), new Promise(r => setTimeout(() => r(null), 5000))]);
-      if (BSP) Object.entries(BSP.meta).forEach(([k, m]) => { POP.meta[k] = POP.meta[k] || m; });
-      const bsl = BSP ? popList(BSP.ids, P, POP.meta, kinds) : [];
-      if (bsl.length >= 3) h += vodRow('Les plus suivis sur BetaSeries', 'membres français de BetaSeries', bsl.slice(0, 30), true);
       // Trakt : en tendance (regardés en ce moment) et les plus regardés de la semaine
       const TK = await Promise.race([traktLists().catch(() => null), new Promise(r => setTimeout(() => r(null), 5000))]);
       if (TK) Object.entries(TK.meta).forEach(([k, m]) => { POP.meta[k] = POP.meta[k] || m; });
@@ -3523,6 +3524,7 @@ async function renderVod() {
         const ln = N2 ? popList(mix(N2), P, POP.meta, kinds) : [];
         if (ln.length >= 2) h += vodRow('Nouveautés sur ' + svc, 'sorties des 4 derniers mois · TMDB', ln.slice(0, 30));
       }
+      h += wRow;
     } else {
       // Sans clé TMDB : le serveur ne donne pas d'audience ; approché par les titres récents les mieux notés
       h += vodRow('Populaires en ce moment', 'récents et bien notés', pool.filter(i => recent(i) && i.rating >= 6.5).sort(byRate).slice(0, 40));
