@@ -456,6 +456,40 @@ async function iptvSync(request, env, url) {
   return out({ error: 'méthode' }, 405);
 }
 
+// Lecteur IPTV : liste de chaînes partagée par la synchro. Un appareil qui a pu la télécharger (l'appli Windows surtout, qui
+// joint le fournisseur directement) en dépose une copie compressée ; les autres (iPhone…) la reprennent ici sans contacter le
+// fournisseur (qui bloque souvent les relais, ou répond 429). Rangée sous l'empreinte du code de synchro et celle de la liste ;
+// effacée au bout de 30 jours sans mise à jour.  GET ?k=&l=  (…&meta=1 : date seule)   POST ?k=&l=&enc=gzip  corps : la liste
+var LIST_MAX = 20 * 1024 * 1024;
+async function iptvSyncList(request, env, url) {
+  var h = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Expose-Headers': 'X-List-At, X-List-Enc', 'Cache-Control': 'no-store' };
+  var k = url.searchParams.get('k') || '', l = url.searchParams.get('l') || '';
+  if (!/^[a-f0-9]{64}$/.test(k) || !/^[a-f0-9]{32}$/.test(l)) return new Response('clé invalide', { status: 400, headers: h });
+  var key = 'iptvlist:' + k + ':' + l;
+  if (request.method === 'GET') {
+    if (url.searchParams.get('meta')) {
+      var m = await env.PLANNING_DB.getWithMetadata(key, { type: 'stream' });
+      if (m.value) try { m.value.cancel(); } catch (e) {}
+      h['Content-Type'] = 'application/json';
+      return new Response(JSON.stringify({ at: m.value && m.metadata ? m.metadata.at || 0 : 0 }), { status: 200, headers: h });
+    }
+    var r = await env.PLANNING_DB.getWithMetadata(key, { type: 'arrayBuffer' });
+    if (!r.value) return new Response('', { status: 404, headers: h });
+    h['Content-Type'] = 'application/octet-stream'; h['X-List-At'] = String((r.metadata && r.metadata.at) || 0); h['X-List-Enc'] = (r.metadata && r.metadata.enc) || '';
+    return new Response(r.value, { status: 200, headers: h });
+  }
+  if (request.method === 'POST') {
+    var buf = await request.arrayBuffer();
+    if (!buf.byteLength) return new Response('vide', { status: 400, headers: h });
+    if (buf.byteLength > LIST_MAX) return new Response('trop volumineux', { status: 413, headers: h });
+    var enc = url.searchParams.get('enc') === 'gzip' ? 'gzip' : '';
+    await env.PLANNING_DB.put(key, buf, { metadata: { at: Date.now(), enc: enc }, expirationTtl: 30 * 86400 });
+    h['Content-Type'] = 'application/json';
+    return new Response('{"ok":true}', { status: 200, headers: h });
+  }
+  return new Response('méthode', { status: 405, headers: h });
+}
+
 // Sous-titres OpenSubtitles pour la page web et l'iPhone : OpenSubtitles refuse la vérification préalable (CORS) que le
 // navigateur envoie avant une requête avec clé. La page envoie ici une requête simple (clé dans l'adresse ou le corps) ;
 // seules la recherche (/subtitles) et la demande de téléchargement (/download) sont relayées, et pour nos sites seulement.
@@ -527,6 +561,7 @@ async function handle(request, env, ctx) {
     if (path === '/iptv/m3u') return iptvM3u(request, url);
     if (path === '/iptv/ost') return iptvOst(request, url);
     if (path === '/iptv/sync') return iptvSync(request, env, url);
+    if (path === '/iptv/synclist') return iptvSyncList(request, env, url);
     if (path === '/iptv/agenda') {                    // agenda sport préparé par GitHub (scripts/build-agenda.py) à partir de xmltvfr.fr
       var ag = await env.PLANNING_DB.get('iptv:agenda');
       return new Response(ag || '{"events":[]}', { status: 200, headers: { 'Access-Control-Allow-Origin': '*', 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'public, max-age=600' } });

@@ -5049,6 +5049,7 @@ async function fetchPlaylist(url) {
   }
 }
 async function savePlaylist(p) {
+  delete p.fromShare;
   const { channels } = parseM3U(p.text);
   if (!channels.length) throw new Error('Aucune chaîne trouvée : ce n\'est pas une liste M3U valide.');
   p.count = channels.length; p.updated = Date.now();
@@ -5057,6 +5058,7 @@ async function savePlaylist(p) {
   if (i >= 0) S.playlists[i] = p; else S.playlists.push(p);
   usePlaylist(p.id);
   syncTouch('list@' + listKey(p));
+  setTimeout(() => listShare(p, true).catch(() => {}), 3000);
   return p;
 }
 function guessName(url) { try { const u = new URL(url); return u.hostname.replace(/^www\./, ''); } catch (e) { return 'Ma liste'; } }
@@ -5252,6 +5254,62 @@ async function syncHash(code) {
   }
   return sha256hex(data);                                  // page en http : le navigateur n'offre pas crypto.subtle
 }
+/* Liste partagée par la synchro (serveur de l'app, /iptv/synclist) : un appareil qui a téléchargé une liste en dépose une
+   copie compressée (au plus une fois par jour si elle n'a pas changé) ; un appareil qui ne l'a pas la reprend de là sans
+   contacter le fournisseur, et une copie plus récente remplace la sienne (vérifié au plus une fois par heure). */
+const LIST_URL = 'https://planning-gcal.arthur-lebreton94.workers.dev/iptv/synclist';
+async function sha256s(str) {
+  const data = new TextEncoder().encode(str);
+  if (window.crypto && crypto.subtle) { const d = await crypto.subtle.digest('SHA-256', data); return [...new Uint8Array(d)].map(b => b.toString(16).padStart(2, '0')).join(''); }
+  return sha256hex(data);
+}
+async function listIds(lk) { const code = LS.get('sync.code'); if (!code) return null; return { k: await syncHash(code), l: (await sha256s('iptv-list:' + lk)).slice(0, 32) }; }
+async function listGz(text) {
+  if (typeof CompressionStream === 'undefined') return { body: new TextEncoder().encode(text), enc: '' };
+  return { body: await new Response(new Blob([text]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer(), enc: 'gzip' };
+}
+async function listGunz(buf, enc) {
+  if (enc !== 'gzip') return new TextDecoder().decode(buf);
+  if (typeof DecompressionStream === 'undefined') throw new Error('navigateur trop ancien pour la liste partagée');
+  return new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+}
+// dépôt de la copie d'une liste de cet appareil (pas d'une liste elle-même reprise du partage)
+async function listShare(p, force) {
+  if (!p || p.extra || p.fromShare || !p.text) return;
+  const ids = await listIds(listKey(p)); if (!ids) return;
+  const U = LS.get('dev.listup', {}), u = U[ids.l], sig = p.text.length + ':' + (p.count || 0);
+  if (!force && u && u.sig === sig && Date.now() - u.at < 864e5) return;
+  const { body, enc } = await listGz(p.text);
+  const r = await fetch(LIST_URL + '?k=' + ids.k + '&l=' + ids.l + (enc ? '&enc=' + enc : ''), { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body }).catch(() => null);
+  if (r && r.ok) { U[ids.l] = { sig, at: Date.now() }; LS.set('dev.listup', U); }
+}
+// copie partagée d'une liste (null si aucune) : { text, at }
+async function listFromShare(lk) {
+  const ids = await listIds(lk); if (!ids) return null;
+  const r = await fetch(LIST_URL + '?k=' + ids.k + '&l=' + ids.l, { cache: 'no-store' }).catch(() => null);
+  if (!r || !r.ok) return null;
+  const text = await listGunz(await r.arrayBuffer(), r.headers.get('X-List-Enc') || '');
+  return { text, at: +(r.headers.get('X-List-At') || 0) };
+}
+// listes de cet appareil : dépôt de leur copie, ou remplacement par une copie partagée plus récente
+async function listShareTick() {
+  if (!LS.get('sync.code')) return;
+  const C = LS.get('dev.listchk', {});
+  for (const p of S.playlists.filter(x => !x.extra)) {
+    try {
+      if (!p.fromShare) { await listShare(p); continue; }
+      const lk = listKey(p); if (C[lk] && Date.now() - C[lk] < 3600e3) continue;
+      C[lk] = Date.now(); LS.set('dev.listchk', C);
+      const ids = await listIds(lk), m = await fetch(LIST_URL + '?k=' + ids.k + '&l=' + ids.l + '&meta=1', { cache: 'no-store' }).then(r => r.json()).catch(() => null);
+      if (!m || !(m.at > (p.updated || 0) + 1000)) continue;
+      const sh = await listFromShare(lk); if (!sh || !parseM3U(sh.text).channels.length) continue;
+      const np = Object.assign({}, p, { text: sh.text, count: parseM3U(sh.text).channels.length, updated: sh.at || Date.now(), fromShare: true });
+      await DB.put(np); const i = S.playlists.indexOf(p); if (i >= 0) S.playlists[i] = np;
+      if (S.pl === p) usePlaylist(np.id);
+      toast('Liste « ' + np.name + ' » mise à jour depuis un autre appareil');
+    } catch (e) {}
+  }
+}
 function sha256hex(bytes) {
   const K = [0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
   const H = [0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
@@ -5290,16 +5348,20 @@ async function applyRemote(sk, val, t) {
   if (sk.startsWith('list@')) {
     const key = sk.slice(5), p = S.playlists.find(x => listKey(x) === key);
     if (val === null) { if (p) { await DB.del(p.id); S.playlists = S.playlists.filter(x => x !== p); if (S.pl === p) { S.pl = null; S.channels = []; } } }
-    else if (!p && val.url) {
+    else if (!p && (val.url || val.name)) {
       // Liste venue d'un autre appareil, à télécharger ici. Après un échec : pas de nouvel essai avant 1 h (puis 2, 4… jusqu'à
       // 24 h ; 6 h au moins après un refus « trop de demandes ») — avant, chaque synchro (toutes les 3 min, et à chaque retour
       // sur la page) redemandait la liste au fournisseur, qui restait bloqué en 429
       const F = LS.get('dev.listfail', {}), f = F[sk];
-      if (f && Date.now() < f.next) return;
+      // d'abord la copie déposée par un autre appareil : pas de demande au fournisseur
+      const sh = await listFromShare(key).catch(() => null);
+      if (!sh && f && Date.now() < f.next) return;
       try {
-        const text = await fetchPlaylist(val.url), np = { id: key === 'builtin' ? 'builtin' : 'p' + Date.now().toString(36), name: val.name || guessName(val.url), url: val.url, text, added: key === 'builtin' ? 0 : Date.now() };
+        if (!sh && !val.url) return;                      // liste importée d'un fichier : seulement par la copie partagée
+        const text = sh ? sh.text : await fetchPlaylist(val.url), np = { id: key === 'builtin' ? 'builtin' : 'p' + Date.now().toString(36), name: val.name || guessName(val.url), url: val.url, text, added: key === 'builtin' ? 0 : Date.now() };
+        if (sh) { np.fromShare = true; np.updated = sh.at || Date.now(); }
         const { channels } = parseM3U(text); if (!channels.length) return;
-        np.count = channels.length; np.updated = Date.now(); await DB.put(np); S.playlists.push(np);
+        np.count = channels.length; np.updated = np.updated || Date.now(); await DB.put(np); S.playlists.push(np);
         toast('Liste « ' + np.name + ' » ajoutée depuis un autre appareil');
         if (!S.pl) usePlaylist(np.id);
         delete F[sk]; LS.set('dev.listfail', F);
@@ -5337,6 +5399,7 @@ async function syncNow() {
       await fetch(SYNC_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify({ k, doc: { v: 1, items: merged } }) });
     }
     SY.at = Date.now(); LS.set('sync.at', SY.at); SY.err = '';
+    listShareTick().catch(() => {});
     if (changedLocal) {                                    // recharger ce qui a changé
       renderPlaylists();
       if (S.pl) { S.fav = new Set(LS.get(favKey(), [])); S.recent = LS.get(recKey(), []); renderGroups(); applyFilter(false); updateNowFav(); }
