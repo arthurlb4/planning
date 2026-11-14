@@ -1539,18 +1539,31 @@ async function torResolve(q) {
 }
 const torRel = g => g.rel.filter(x => TOR.qual === 'all' || x._t.q === TOR.qual);
 const torBestQ = l => ['4K', '1080p', '720p', 'SD'].find(q => l.some(x => x._t.q === q)) || '';
-/* Meilleure publication à télécharger : langue (MULTI d'abord ; titre étranger d'après TMDB : VOSTFR ensuite, la VF seule
-   en dernier ; titre français : VF autant que MULTI), qualité (4K d'abord), nombre de sources (peu de sources : lecture
-   qui saccade ou n'avance pas). CAM écartées ; moins de 3 sources seulement s'il n'y a rien d'autre. Séries : saison
-   complète préférée à un épisode seul. */
+/* Meilleure publication à télécharger (règles choisies avec l'utilisateur) :
+   1. 4K d'abord, si elle est jouable pendant le téléchargement (10 sources au moins) et en MULTI ou VOSTFR (VF aussi pour
+      un titre français) ; sinon elle passe juste derrière la 1080p ;
+   2. à qualité égale : langue (MULTI, puis VOSTFR pour un titre étranger, VF seule ensuite), H.265 préféré, fichier léger
+      préféré (REMUX et plus de 35 Go en retrait), puis nombre de sources ;
+   3. CAM écartées, moins de 3 sources seulement s'il n'y a rien d'autre ; séries : saison complète avant épisode seul. */
+const TOR_4K_MIN = 10;
+function torLangOk4k(t, g) { const fr = g && g.tm && g.tm.lang === 'fr'; return t.l === 'MULTI' || (t.l === 'VOSTFR' && !fr) || (t.l === 'VF' && fr); }
 function torScore(x, g) {
   const t = x._t || torTags(x.title), s = x.seeders || 0, lang = g && g.tm ? g.tm.lang : '', fr = lang === 'fr';
-  const L = t.l === 'MULTI' ? 3 : t.l === 'VF' ? (fr ? 3 : lang ? 1.5 : 2) : t.l === 'VOSTFR' ? (fr ? 0 : 2.2) : 0.8;
-  const Q = { '4K': 4, '1080p': 3, '720p': 2, 'SD': 1 }[t.q] || 1.5;
-  let v = L * 30 + Q * 20 + Math.min(Math.log2(s + 1), 7) * 6 + (t.hdr ? 2 : 0) + (t.hevc ? 1 : 0);
-  if (t.cam) v -= 500; if (s < 3) v -= 200;
-  if (g && g.kind === 'series' && x._p && x._p.ep != null) v -= 25;
+  const tier = t.q === '4K' ? (s >= TOR_4K_MIN && torLangOk4k(t, g) ? 4 : 2.5) : ({ '1080p': 3, '720p': 2, 'SD': 1 }[t.q] || 1.5);
+  const L = t.l === 'MULTI' ? 3 : t.l === 'VF' ? (fr ? 3 : 1) : t.l === 'VOSTFR' ? (fr ? 0 : 2) : 0.5;
+  const heavy = t.remux || (x.size || 0) > 35e9;
+  let v = tier * 1000 + L * 100 + (t.hevc ? 40 : 0) + (heavy ? -60 : 0) + (t.hdr ? 5 : 0) + Math.min(Math.log2(s + 1), 7) * 6;
+  if (g && g.kind === 'series' && x._p && x._p.ep != null) v -= 300;
+  if (s < 3) v -= 5000; if (t.cam) v -= 10000;
   return v;
+}
+// une 4K existe mais n'a pas été retenue : pourquoi
+function torWhyNot4k(l, g, bx) {
+  if (!bx || bx._t.q === '4K') return '';
+  const k = l.filter(x => x._t.q === '4K' && !x._t.cam).sort((a, b) => (b.seeders || 0) - (a.seeders || 0))[0]; if (!k) return '';
+  const s = k.seeders || 0;
+  return s < TOR_4K_MIN ? `4K disponible mais pas retenue : ${s} source${s > 1 ? 's' : ''} seulement (${TOR_4K_MIN} au moins pour la lire pendant le téléchargement)`
+    : `4K disponible mais pas retenue : ${k._t.l ? k._t.l + ' seule' : 'langue non indiquée dans le nom'} (MULTI ou VOSTFR demandé)`;
 }
 const torBest = (l, g) => l.length ? l.reduce((a, b) => torScore(b, g) > torScore(a, g) ? b : a) : null;
 const torWhy = (x, g) => { const t = x._t, fr = g.tm && g.tm.lang === 'fr', s = x.seeders || 0;
@@ -1590,7 +1603,8 @@ function torFicheHtml(g) {
     <div style="min-width:0"><h2>${esc(tm ? tm.name : g.title)}</h2>
     <div class="mt" id="torMeta">${esc([(tm && tm.year) || g.year, g.kind === 'series' ? 'Série' : 'Film', tm && tm.rating ? '★ ' + tm.rating.toFixed(1) : '', tm && tm.orig && tnK(tm.orig) !== tnK(tm.name) ? tm.orig : ''].filter(Boolean).join(' · '))}</div>
     <div class="plot">${esc(tm ? tm.plot : '')}</div><div id="torCrew" class="cr"></div><div id="torSub" class="row" style="margin-top:12px;gap:8px"></div></div></div></div>`;
-  if (bx) h += `<div class="vrow"><h3>Meilleur choix<small>${esc(torWhy(bx, g))}</small></h3><div class="tlist">${torRowHtml(bx, l.indexOf(bx))}</div></div>`;
+  const w4 = torWhyNot4k(l, g, bx);
+  if (bx) h += `<div class="vrow"><h3>Meilleur choix<small>${esc(torWhy(bx, g))}</small></h3>${w4 ? `<p class="hint" style="margin:-4px 2px 8px">${esc(w4)}</p>` : ''}<div class="tlist">${torRowHtml(bx, l.indexOf(bx))}</div></div>`;
   // séries : versions rangées par saison (saison complète, puis épisodes)
   if (g.kind === 'series') {
     const ss = new Map(); l.forEach(x => { const s = x._p.season; const k = s == null ? 'Intégrale ou saisons multiples' : 'Saison ' + s; if (!ss.has(k)) ss.set(k, []); ss.get(k).push(x); });
