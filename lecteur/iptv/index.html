@@ -1461,6 +1461,7 @@ async function prwSearch(q, kind) {
   const cats = kind === 'movie' ? '&categories=2000' : kind === 'series' ? '&categories=5000' : '';
   const r = await fetch(c.url + '/api/v1/search?type=search&limit=100' + cats + '&query=' + encodeURIComponent(q), { headers: { 'X-Api-Key': c.key } }).catch(() => null);
   if (!r) throw new Error('Prowlarr injoignable (démarré ? adresse ?)');
+  if (r.status === 429 && typeof ixHalt === 'function') ixHalt('Prowlarr refuse les recherches (trop de requêtes)');
   if (!r.ok) throw new Error(r.status === 401 ? 'clé d\'API refusée' : 'Prowlarr répond ' + r.status);
   const seen = new Set();
   return (await r.json().catch(() => [])).filter(x => (x.protocol || 'torrent') === 'torrent' && (x.magnetUrl || x.downloadUrl))
@@ -1698,10 +1699,32 @@ async function torFindMovie(titles, year) {
 }
 /* Recommandations (Netflix, Wikipédia, BetaSeries, Trakt, TMDB…) : un film absent de l'abonnement est cherché dans les
    indexeurs ; s'il y a une version jouable (3 sources au moins, pas de CAM), il entre dans la rangée (étiquette TORRENT).
-   Résultats gardés 24 h (dev.ix) ; au plus 25 nouvelles recherches par lancement, 2 à la fois (chaque recherche interroge
-   tous les indexeurs). Une fois ces recherches finies, l'accueil est redessiné à la même place. */
-const IX = { q: [], run: 0, n: 0, found: 0, queued: new Set(), virt: new Map() };
-const ixOn = () => torOk() && !!prwConf();
+   Résultats gardés 24 h (dev.ix) ; 2 recherches à la fois (chaque recherche interroge tous les indexeurs), 60 au plus par
+   lancement. Arrêt dès que Prowlarr signale un problème : indexeur mis en pause pendant nos recherches (erreurs, limite
+   atteinte), avertissement de limite, ou refus (429) ; plus de recherche pendant 1 h. Une fois les recherches finies,
+   l'accueil est redessiné à la même place. */
+const IX = { q: [], run: 0, n: 0, found: 0, queued: new Set(), virt: new Map(), base: null, checking: null };
+const IX_MAX = 60;
+const ixOn = () => torOk() && !!prwConf() && !(LS.get('dev.ixstop', 0) > Date.now());
+function ixHalt(why) { LS.set('dev.ixstop', Date.now() + 3600e3); IX.q.length = 0; console.warn('Recommandations torrent arrêtées 1 h : ' + why); }
+// état des indexeurs dans Prowlarr : ceux en pause, et les avertissements de limite
+async function ixState() {
+  const c = prwConf(); if (!c) return null;
+  const get = path => fetch(c.url + path, { headers: { 'X-Api-Key': c.key } }).then(r => r.ok ? r.json() : null).catch(() => null);
+  const [st, he] = await Promise.all([get('/api/v1/indexerstatus'), get('/api/v1/health')]);
+  if (!st && !he) return null;
+  const off = new Set((st || []).filter(x => x.disabledTill && Date.parse(x.disabledTill) > Date.now()).map(x => x.indexerId));
+  const lim = (he || []).some(x => /limit/i.test((x.message || '') + ' ' + (x.source || '')));
+  return { off, lim };
+}
+// contrôle avant de commencer, puis toutes les 10 recherches : arrêt si un indexeur a été mis en pause depuis le départ
+async function ixCheck() {
+  const s0 = await ixState(); if (!s0) return true;
+  if (!IX.base) { IX.base = s0; if (s0.lim) { ixHalt('limite signalée par Prowlarr'); return false; } return true; }
+  const fresh = [...s0.off].filter(id => !IX.base.off.has(id));
+  if (fresh.length || (s0.lim && !IX.base.lim)) { ixHalt(fresh.length ? fresh.length + ' indexeur(s) mis en pause par Prowlarr' : 'limite signalée par Prowlarr'); return false; }
+  return true;
+}
 const ixGet = () => { const o = LS.get('dev.ix', {}); return o && typeof o === 'object' ? o : {}; };
 function ixVirtual(id, m) {
   if (!ixOn() || id[0] !== 'm' || !m || !m.t) return null;
@@ -1713,11 +1736,18 @@ function ixVirtual(id, m) {
   return v;
 }
 function ixQueue(id, m) {
-  if (IX.queued.has(id) || IX.n + IX.q.length >= 25) return;
+  if (IX.queued.has(id) || IX.n + IX.q.length >= IX_MAX) return;
   IX.queued.add(id); IX.q.push([id, m]); ixNext();
 }
 function ixNext() {
-  while (IX.run < 2 && IX.q.length) {
+  if (IX.checking) return;
+  // contrôle de l'état de Prowlarr avant la première recherche, puis toutes les 10
+  if (IX.q.length && !IX.run && (!IX.base || (IX.n && IX.n % 10 === 0 && IX.lastCheck !== IX.n))) {
+    IX.lastCheck = IX.n;
+    IX.checking = ixCheck().finally(() => { IX.checking = null; if (ixOn()) ixNext(); });
+    return;
+  }
+  while (IX.run < 2 && IX.q.length && ixOn() && !(IX.n && IX.n % 10 === 0 && IX.lastCheck !== IX.n)) {
     const [id, m] = IX.q.shift(); IX.run++; IX.n++;
     torFindMovie([m.t, m.o], m.y).then(rel => {
       const ok = rel.filter(x => (x.seeders || 0) >= 3 && !(x._t || torTags(x.title)).cam), g = { kind: 'movie', tm: { lang: m.l || '' } }, bx = ok.length ? torBest(ok, g) : null;
