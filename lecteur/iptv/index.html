@@ -801,6 +801,7 @@ h1,h2,h3,h4,h5,h6,b,strong,th,summary{font-weight:500}
     </div>
     <h3>Aide au réglage</h3>
     <div class="dl"><span><b>Exemples de noms pour diagnostic</b><small>Copie des noms de chaînes et de films de la liste en cours (sans adresse ni identifiants), à coller dans la conversation pour régler la reconnaissance des chaînes et des titres</small></span><button class="btn" onclick="copyNames()">Copier</button></div>
+    <div class="dl" style="margin-top:8px"><span><b>Changer l'adresse de « Mon abonnement »</b><small>Nouvelle adresse de liste chiffrée sur cet appareil avec votre mot de passe, puis copiée, à coller dans la conversation pour l'intégrer à l'appli</small></span><button class="btn" onclick="builtinNew()">Changer…</button></div>
     </section>
   </div>
 </div>
@@ -5342,6 +5343,25 @@ $('#demoBtn').onclick = async e => {
 const BUILTIN = { salt: 'ICM8NZYZdHDn21X1oKdVVQ==', iv: 'NYYZVYKCFXsb31rz',
   data: '4jCbRo8czPnqsiSETCELl8Z6lQczQlySU0guZsyY0VVaJBoufNKqGmQnMwyWehL0WQYZYHIrMigw08JzXK0ROSmZrLUeGcxpDHlunsCIWWoNLTRgYk665MCi47WY5n44WfqhgGNCWZeLN4jR' };
 const b64d = s => Uint8Array.from(atob(s), ch => ch.charCodeAt(0));
+/* Nouvelle adresse pour « Mon abonnement », chiffrée sur cet appareil avec le même mot de passe (vérifié sur l'adresse
+   actuelle : les clés intégrées TMDB, BetaSeries… restent valables). Le texte chiffré est copié, à coller dans la
+   conversation pour être intégré à l'appli : ni l'adresse ni le mot de passe ne sortent en clair. */
+async function builtinNew() {
+  const url = (await askText('Nouvelle adresse de « Mon abonnement » (liste M3U)', { placeholder: 'http://…/get.php?username=…&password=…' }) || '').trim();
+  if (!url) return;
+  if (!/^https?:\/\/\S+$/i.test(url)) return toast('Adresse de liste attendue (http://…)');
+  const pass = ((await askText('Mot de passe de « Mon abonnement » (le même qu\'aujourd\'hui)', { password: true })) || '').trim().toLowerCase();
+  if (!pass) return;
+  if (!(window.crypto && crypto.subtle)) return toast('Chiffrement indisponible ici : utilisez l\'appli Windows');
+  try { await unlockBuiltin(pass); } catch (e) { return toastLong('Mot de passe incorrect (ce doit être celui de « Mon abonnement »)'); }
+  const C = crypto.subtle, salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+  const base = await C.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
+  const key = await C.deriveKey({ name: 'PBKDF2', salt, iterations: 600000, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt']);
+  const data = new Uint8Array(await C.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(url)));
+  const b64 = u => btoa(String.fromCharCode(...u));
+  const txt = 'MON-ABONNEMENT ' + JSON.stringify({ salt: b64(salt), iv: b64(iv), data: b64(data) });
+  (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => toastLong('Adresse chiffrée copiée : collez-la dans la conversation'), () => prompt('Copiez ce texte et collez-le dans la conversation :', txt));
+}
 // Clé TMDB intégrée, chiffrée avec le même mot de passe que l'abonnement : activée en déverrouillant la liste
 const TMDB_ENC = { salt: 'jyaqEiMiGbi+oYy5B5TZBw==', iv: '3xilUtIYCDBzCe4d', data: 'sVCliRusMkctrrqSzb1mUkZFIS+iTSB2wmyxP61Yik7Ejo7UIxISv+FfrvWCeyLJ' };
 // Clé OpenSubtitles (sous-titres à télécharger), chiffrée de la même façon
