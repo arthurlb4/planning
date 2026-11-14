@@ -3926,10 +3926,26 @@ async function playRemux(c, t) {
   remuxStart(pos > 60 && (!dur || pos < dur - Math.min(120, dur * 0.1)) ? pos : 0, t);
   if (pos > 60) toast('Reprise à ' + fmtDur(pos));
 }
-function remuxStart(ss, t) {
+function remuxStart(ss, t, exact) {
   const R = S.remux; if (!R) return;
   t = t || token;
-  R.ss = Math.max(0, Math.floor(ss));
+  // départ en cours de film, image gardée telle quelle : elle part de l'image clé précédente, et le son avec elle (appli
+  // 1.26 et plus) ; on demande laquelle pour que la position affichée et les sous-titres restent justes
+  if (ss >= 1 && !exact && !R.via && !R.enc) {
+    setStatus('load');
+    const from = S.engine === 'remux' ? curPos() : 0;
+    const kfAt = x => fetch(R.base + '/seekpt?url=' + encodeURIComponent(R.url) + '&ss=' + Math.floor(x)).then(r => r.ok ? r.json() : null).then(j => j && j.kf != null ? j.kf : null).catch(() => null);
+    (async () => {
+      let kf = await kfAt(ss), kf0 = kf, kf2 = false;
+      // en avançant, images clés très espacées : on ne doit pas retomber avant la position actuelle
+      if (kf != null && ss > from + 1 && kf < from + 1) { const k2 = await kfAt(ss + (ss - kf)); if (k2 != null && k2 > kf) { kf = k2; kf2 = true; } }
+      if (t !== token || S.remux !== R) return;
+      remuxStart(kf != null ? kf : Math.floor(ss), t, { seek: kf != null ? (kf2 ? Math.floor(ss + (ss - kf0)) : Math.floor(ss)) : Math.floor(ss) });
+    })();
+    return;
+  }
+  R.ss = Math.max(0, exact ? ss : Math.floor(ss));
+  R.seek = exact && exact.seek != null ? exact.seek : R.ss;   // point demandé à ffmpeg (il part de l'image clé R.ss)
   R.sid = R.s >= 0 ? Math.random().toString(36).slice(2, 12) : ''; R.ncues = 0; clearCues(subT('r'));
   subT('r').mode = R.s >= 0 ? 'showing' : 'disabled';
   const hevc = /hevc|h265/i.test(R.info.vcodec || '') ? '1' : '0';
@@ -3944,11 +3960,11 @@ function remuxStart(ss, t) {
   const ok = () => { if (done || t !== token) return; done = true; clearTimeout(timer); setStatus(null); unfreeze(); S.engine = 'remux'; S.playUrl = R.url; document.body.classList.add('remux'); vbarUpdate(); setTimeout(applyTrackPrefs, 300); renderTrackMenu(); };
   const ko = () => {
     if (done || t !== token) return; done = true; clearTimeout(timer);
-    if (!R.enc) { R.enc = true; toast('Image convertie (format non lu par la carte graphique)'); return remuxStart(R.ss, t); }
+    if (!R.enc) { R.enc = true; toast('Image convertie (format non lu par la carte graphique)'); return remuxStart(R.ss, t, { seek: R.ss }); }
     failRemux(S.current, video.error ? 'erreur ' + video.error.code + (video.error.message ? ' · ' + video.error.message : '') : 'rien reçu en 30 s');
   };
   attempt = { ok, ko };
-  video.src = R.base + '/remux?url=' + encodeURIComponent(R.url) + '&ss=' + R.ss + '&a=' + R.a + '&hevc=' + hevc + (R.enc ? '&v=enc' : '') + (R.via ? '&via=vlc&al=' + encodeURIComponent((R.info.audio[R.a] || {}).lang || '') : '') + (R.s >= 0 ? '&s=' + R.s + '&sid=' + R.sid : '');
+  video.src = R.base + '/remux?url=' + encodeURIComponent(R.url) + '&ss=' + R.seek + '&a=' + R.a + '&hevc=' + hevc + (R.enc ? '&v=enc' : '') + (R.via ? '&via=vlc&al=' + encodeURIComponent((R.info.audio[R.a] || {}).lang || '') : '') + (R.s >= 0 ? '&s=' + R.s + '&sid=' + R.sid : '');
   loadFileCues();
   const p = video.play(); if (p && p.catch) p.catch(() => {});
 }

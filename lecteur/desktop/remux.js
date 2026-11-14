@@ -75,6 +75,26 @@ function probeOnce(ffmpeg, src, vlcPath) {
   });
 }
 
+// Image clé d'où ffmpeg partira réellement pour un départ à ss secondes (même recherche que /remux, qui doit recevoir le même
+// ss), en secondes depuis le début du film (moment d'affichage) ; null si on ne la trouve pas
+function seekPoint(ffmpeg, src, ss) {
+  return new Promise(resolve => {
+    if (!ss) return resolve(0);
+    const ff = spawn(ffmpeg, ['-hide_banner', '-copyts', '-noaccurate_seek', '-ss', String(ss), '-rw_timeout', '20000000', '-i', src, '-map', '0:v:0', '-c', 'copy', '-frames:v', '1', '-f', 'framecrc', '-'], { windowsHide: true });
+    let out = '', err = '', done = false;
+    const end = () => {
+      if (done) return; done = true;
+      const tb = /#tb 0:\s*(\d+)\/(\d+)/.exec(out), pk = /^0,\s*(-?\d+),\s*(-?\d+)/m.exec(out), st = /start:\s*(-?[\d.]+)/.exec(err);
+      if (!tb || !pk) return resolve(null);
+      const kf = +pk[2] * +tb[1] / +tb[2] - (st ? +st[1] : 0);
+      resolve(isFinite(kf) && kf <= ss + 0.5 && kf > ss - 60 ? Math.max(0, Math.round(kf * 1000) / 1000) : null);
+    };
+    ff.stdout.on('data', b => { out += b; }); ff.stderr.on('data', b => { err += b; });
+    ff.on('exit', end); ff.on('error', () => { done = true; resolve(null); });
+    setTimeout(() => { try { ff.kill('SIGKILL'); } catch (e) {} }, 25000);
+  });
+}
+
 /* VLC en coulisse, pour les serveurs qui refusent ffmpeg mais acceptent VLC. VLC est arrêté dès que la page
    ferme la connexion, et ceux encore ouverts le sont quand l'appli se ferme. */
 const VLCS = new Set();
@@ -132,6 +152,7 @@ module.exports = function startRemux(ffmpeg, findVlc) {
         probe(ffmpeg, src).then(j => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(j)); });
         return;
       }
+      if (u.pathname === '/seekpt') { seekPoint(ffmpeg, src, Math.max(0, +u.searchParams.get('ss') || 0)).then(kf => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ kf })); }); return; }
       if (u.pathname !== '/remux') { res.statusCode = 404; return res.end(); }
       remux(u, src, req, res, '');
     });
@@ -142,7 +163,10 @@ module.exports = function startRemux(ffmpeg, findVlc) {
       if (vlcPath) args.push('-f', 'mpegts', '-i', 'pipe:0');      // VLC a déjà démarré à ss secondes
       else {
         args.push('-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5');
-        if (ss) args.push('-ss', String(ss));
+        // image gardée telle quelle : elle ne peut partir que d'une image clé (jusqu'à ~10 s avant ss) ; sans
+        // « noaccurate_seek », le son partait de ss et un trou au début de la piste son décalait le son de cet écart.
+        // Le son part donc de la même image clé (la page demande d'abord laquelle à /seekpt, pour afficher la bonne position)
+        if (ss) args.push(...(enc ? [] : ['-noaccurate_seek']), '-ss', String(ss));
         args.push('-i', src);
       }
       // par VLC, l'ordre des pistes audio peut changer d'une fois à l'autre : piste choisie par sa langue quand elle est connue
