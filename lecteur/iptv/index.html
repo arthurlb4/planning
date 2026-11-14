@@ -1482,6 +1482,13 @@ function torTags(t) {
 }
 const torAge = d => { const t = Date.parse(d || ''); if (!t) return ''; const n = Math.floor((Date.now() - t) / 864e5);
   return n < 1 ? 'aujourd\'hui' : n < 2 ? 'hier' : n < 31 ? 'il y a ' + n + ' j' : n < 365 ? 'il y a ' + Math.round(n / 30) + ' mois' : 'il y a ' + Math.round(n / 365) + ' an' + (n >= 730 ? 's' : ''); };
+const PRW_DIAG = {};
+// indexeurs actifs dans Prowlarr (diagnostic d'une recherche sans résultat)
+async function prwIndexers() {
+  const c = prwConf(); if (!c) return null;
+  const l = await fetch(c.url + '/api/v1/indexer', { headers: { 'X-Api-Key': c.key } }).then(r => r.ok ? r.json() : null).catch(() => null);
+  return Array.isArray(l) ? l.filter(x => x.enable).map(x => x.name + (x.protocol && x.protocol !== 'torrent' ? ' (' + x.protocol + ')' : '')) : null;
+}
 async function prwSearch(q, kind) {
   const c = prwConf(); if (!c) return null;
   const cats = kind === 'movie' ? '&categories=2000' : kind === 'series' ? '&categories=5000' : '';
@@ -1491,8 +1498,10 @@ async function prwSearch(q, kind) {
   if (!r) throw new Error('Prowlarr injoignable (démarré ? adresse ?)');
   if (r.status === 429 && typeof ixHalt === 'function') ixHalt('Prowlarr refuse les recherches (trop de requêtes)');
   if (!r.ok) throw new Error(r.status === 401 ? 'clé d\'API refusée' : 'Prowlarr répond ' + r.status);
-  const seen = new Set();
-  return (await r.json().catch(() => [])).filter(x => (x.protocol || 'torrent') === 'torrent' && (x.magnetUrl || x.downloadUrl))
+  const seen = new Set(), raw = await r.json().catch(() => []), L = Array.isArray(raw) ? raw : [];
+  // diagnostic (recherche sans résultat) : ce que Prowlarr a renvoyé et ce qui a été écarté
+  PRW_DIAG[q] = { raw: L.length, usenet: L.filter(x => (x.protocol || 'torrent') !== 'torrent').length, nolink: L.filter(x => (x.protocol || 'torrent') === 'torrent' && !x.magnetUrl && !x.downloadUrl).length, idx: [...new Set(L.map(x => x.indexer).filter(Boolean))] };
+  return L.filter(x => (x.protocol || 'torrent') === 'torrent' && (x.magnetUrl || x.downloadUrl))
     .filter(x => { const k = (x.infoHash || x.title || '').toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; })
     .map(x => Object.assign(x, { _t: torTags(x.title) }));
 }
@@ -2012,7 +2021,15 @@ async function xSearch(q0) {
     const seen = new Set(), l = [];
     (await Promise.all(qs.slice(0, 3).map(q => prwSearch(q).catch(e => { err = e.message; return null; })))).forEach(r => (r || []).forEach(x => { const k = (x.infoHash || x.title || '').toLowerCase(); if (!seen.has(k)) { seen.add(k); l.push(x); } }));
     const el = $('#xprw'); if (!el || V.q !== q0) return;
-    if (!l.length) { el.innerHTML = `<div class="vrow"><h3>Torrent</h3><p class="hint">${err ? 'Prowlarr : ' + esc(err) : 'Aucun résultat dans vos indexeurs pour ' + qs.map(q => '« ' + esc(q) + ' »').join(' ni ')}.</p></div>`; return; }
+    if (!l.length) {
+      // détail : réponse brute de Prowlarr (résultats écartés : Usenet, sans lien) et indexeurs actifs
+      const nq = q => String(q || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w\s-]+/g, ' ').replace(/\s+/g, ' ').trim();
+      const D = qs.slice(0, 3).map(q => PRW_DIAG[nq(q)]).filter(Boolean), raw = D.reduce((a, d) => a + d.raw, 0), us = D.reduce((a, d) => a + d.usenet, 0), nl = D.reduce((a, d) => a + d.nolink, 0);
+      const ix = err ? null : await prwIndexers();
+      const det = err ? '' : raw ? `Prowlarr a renvoyé ${raw} résultat${raw > 1 ? 's' : ''}, tous écartés${us ? ' · ' + us + ' Usenet (pas des torrents)' : ''}${nl ? ' · ' + nl + ' sans lien de téléchargement' : ''}.`
+        : `Prowlarr n'a renvoyé aucun résultat${ix ? ' · indexeurs actifs : ' + (ix.length ? ix.join(', ') : 'aucun') : ''}.`;
+      el.innerHTML = `<div class="vrow"><h3>Torrent</h3><p class="hint">${err ? 'Prowlarr : ' + esc(err) : 'Aucun résultat dans vos indexeurs pour ' + qs.map(q => '« ' + esc(q) + ' »').join(' ni ') + '.<br>' + esc(det)}</p></div>`; return;
+    }
     TOR.q = q0; TOR.res = l; TOR.err = ''; TOR.busy = false; TOR.open = null; TOR.qual = 'all'; TOR.sort = 'best';
     el.innerHTML = '<div class="vrow"><h3>Torrent</h3></div><div id="torRes"></div>';
     torResolve(q0);
