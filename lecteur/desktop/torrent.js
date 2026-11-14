@@ -196,7 +196,18 @@ module.exports = function handleTorrent(req, res, u) {
     });
     return true;
   }
-  if (u.pathname === '/torrent/info') { const t = c.get(u.searchParams.get('id') || ''); json(t ? info(t) : { error: 'torrent fermé' }, t ? 200 : 404); return true; }
+  if (u.pathname === '/torrent/info') {
+    const t = c.get(u.searchParams.get('id') || ''); if (!t) { json({ error: 'torrent fermé' }, 404); return true; }
+    const o = info(t), fi = u.searchParams.get('f');
+    // fresque du fichier lu (comme la barre des morceaux de qBittorrent) : part reçue de chaque tranche, en 0 à 9, 200 tranches
+    const f = fi != null && t.ready ? t.files[+fi] : null;
+    if (f && f._endPiece >= f._startPiece) {
+      const a = f._startPiece, n = f._endPiece - a + 1, W = Math.min(200, n); let map = '';
+      for (let k = 0; k < W; k++) { const p0 = a + Math.floor(k * n / W), p1 = a + Math.floor((k + 1) * n / W); let got = 0; for (let i = p0; i < Math.max(p1, p0 + 1); i++) if (t.bitfield.get(i)) got++; map += Math.round(9 * got / Math.max(1, p1 - p0)); }
+      o.map = map; o.fprog = f.progress; o.fsize = f.length;
+    }
+    json(o); return true;
+  }
   if (u.pathname === '/torrent/stop') { const t = c.get(u.searchParams.get('id') || ''); if (t) { idxTouch(t); t.destroy({ destroyStore: false }); } json({ ok: true }); return true; }   // fichiers gardés une semaine
   const m = /^\/torrent\/file\/([0-9a-f]{40})\/(\d+)\//i.exec(u.pathname);
   if (m) { const t = c.get(m[1]), f = t && t.files[+m[2]]; if (!f) { res.statusCode = 404; res.end(); return true; }

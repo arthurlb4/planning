@@ -645,6 +645,11 @@ body.vtools #prevBtn,body.vtools #nextBtn,body.vtools #soloBtn,body.vtools #solo
 #vbar input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:#fff;border:0}
 #vbar button:focus,#vbar input:focus{outline:none}
 #vbRange{flex:1;min-width:60px}
+/* Torrent en lecture : fresque des morceaux reçus au-dessus de la barre (comme qBittorrent), info-bulle au survol */
+#torMap{position:absolute;height:14px;padding:5px 0;box-sizing:border-box;cursor:default}
+#torMap canvas{display:block;width:100%;height:4px;border-radius:2px}
+#torMap .tip{display:none;position:absolute;bottom:20px;left:50%;transform:translateX(-50%);white-space:nowrap;padding:6px 10px;border-radius:8px;background:rgba(20,20,19,.95);border:.5px solid rgba(255,255,255,.18);font-size:12px;color:#fff;box-shadow:0 6px 20px rgba(0,0,0,.5)}
+#torMap:hover .tip{display:block}
 #vbVol{width:80px;flex:none}
 #vbar .live{display:none;height:24px;padding:0 9px 0 20px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:.06em;color:#fff;background:rgba(255,255,255,.12);position:relative}
 #vbar .live::before{content:'';position:absolute;left:9px;top:50%;width:6px;height:6px;margin-top:-3px;border-radius:50%;background:#9d9b95}
@@ -761,6 +766,7 @@ h1,h2,h3,h4,h5,h6,b,strong,th,summary{font-weight:500}
         <button class="vb" id="vbFwd" title="Avancer de 10 s"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.4-5.7M20 4v4h-4" fill="none"/><text x="12" y="15.5" text-anchor="middle">10</text></svg></button>
         <span class="tm" id="vbCur">0:00</span>
         <input type="range" id="vbRange" min="0" max="100" step="0.1" value="0" aria-label="Position">
+        <span id="torMap" hidden><canvas></canvas><span class="tip"></span></span>
         <span class="tm" id="vbDur">0:00</span>
         <button class="live" id="vbLive" title="Revenir au direct">DIRECT</button>
         <button class="vb" id="vbMute" title="Couper le son (M)"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="iv" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" fill="none"/><path class="im" d="M16 9l5 6M21 9l-5 6" fill="none"/></svg></button>
@@ -4452,6 +4458,26 @@ $('#vodDetail').addEventListener('click', e => {
   playVod(it, url, null, null);
 });
 // Reprise : position retenue toutes les 5 s, reprise à l'ouverture (sauf presque à la fin)
+/* Fresque du torrent en lecture : morceaux reçus du fichier (appli Windows 1.30 et plus), toutes les 2 s pendant la lecture */
+const TMAP = { t: 0, info: null };
+function torMapTick() {
+  const c = S.current, m = c && /\/torrent\/file\/([0-9a-f]{40})\/(\d+)\//i.exec(c.url || ''), el = $('#torMap');
+  if (!m || !document.body.classList.contains('playing') || !window.desktop) { if (el) el.hidden = true; return; }
+  fetch(window.desktop.remux + '/torrent/info?id=' + m[1] + '&f=' + m[2]).then(r => r.ok ? r.json() : null).then(i => {
+    if (!i || !i.map || S.current !== c) { el.hidden = true; return; }
+    TMAP.info = i; el.hidden = false;
+    const rg = $('#vbRange'), bar = $('#vbar'), rr = rg.getBoundingClientRect(), br = bar.getBoundingClientRect();
+    el.style.left = (rr.left - br.left) + 'px'; el.style.width = rr.width + 'px'; el.style.top = (rr.top - br.top - 13) + 'px';
+    const cv = el.querySelector('canvas'), dpr = window.devicePixelRatio || 1, W = Math.max(1, Math.round(rr.width * dpr));
+    if (cv.width !== W) { cv.width = W; cv.height = Math.round(4 * dpr); }
+    const g = cv.getContext('2d'), n = i.map.length; g.clearRect(0, 0, cv.width, cv.height);
+    g.fillStyle = 'rgba(255,255,255,.16)'; g.fillRect(0, 0, cv.width, cv.height);
+    for (let k = 0; k < n; k++) { const v = +i.map[k]; if (!v) continue; g.fillStyle = `rgba(98,170,220,${0.35 + 0.65 * v / 9})`; g.fillRect(Math.floor(k * cv.width / n), 0, Math.ceil(cv.width / n), cv.height); }
+    const mo = x => (x / 1e6).toFixed(1).replace('.', ','), pc = Math.round((i.fprog != null ? i.fprog : i.progress) * 100);
+    el.querySelector('.tip').textContent = `Torrent · ${pc} % téléchargé${i.fsize ? ' sur ' + torMo(i.fsize) : ''} · ${i.peers} source${i.peers > 1 ? 's' : ''} · ↓ ${mo(i.down)} Mo/s · ↑ ${mo(i.up || 0)} Mo/s`;
+  }).catch(() => {});
+}
+setInterval(torMapTick, 2000);
 /* ---------- Films convertis par ffmpeg (appli Windows) : le flux part de ss secondes ; avancer, reculer ou changer de langue
    relance la conversion au bon endroit. Image gardée telle quelle, convertie seulement si la carte graphique ne la lit pas. ---------- */
 // Barre de lecture de l'appli partout, sauf iPhone / iPad (lecteur d'Apple) et télé (télécommande)
