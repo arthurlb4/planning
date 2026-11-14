@@ -138,8 +138,10 @@ function setupUpdates(win) {
   autoUpdater.on('download-progress', p => send({ state: 'downloading', version: updState.version, pct: Math.round(p.percent || 0) }));
   // Mise à jour prête : proposée par la page, dans le style de l'appli (bandeau « Redémarrer maintenant / Plus tard »)
   autoUpdater.on('update-downloaded', info => send({ state: 'ready', version: info.version }));
-  autoUpdater.on('error', e => send({ state: 'error', msg: String(e && e.message || e).split('\n')[0].slice(0, 200) }));
-  const check = () => autoUpdater.checkForUpdates().catch(e => send({ state: 'error', msg: String(e && e.message || e).split('\n')[0].slice(0, 200) }));
+  // latest.yml absent quelques secondes pendant la mise en ligne d'une nouvelle version : nouvel essai 2 min plus tard
+  autoUpdater.on('error', e => { const msg = String(e && e.message || e).split('\n')[0].slice(0, 200);
+    if (/latest\.yml|404/i.test(msg)) { send({ state: 'checking' }); setTimeout(check, 120e3); return; } send({ state: 'error', msg }); });
+  const check = () => autoUpdater.checkForUpdates().catch(() => {});   // erreurs traitées par l'évènement « error »
   ipcMain.on('upd-check', () => { if (updState.state === 'ready') autoUpdater.quitAndInstall(true, true); else if (updState.state !== 'downloading') check(); });
   setTimeout(check, 5000);
   setInterval(check, 6 * 3600e3);

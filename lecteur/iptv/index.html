@@ -252,6 +252,15 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 .tpb{height:4px;border-radius:4px;background:var(--bg4);overflow:hidden;margin-top:10px}.tpb i{display:block;height:100%;background:#e5322d;transition:width .6s}
 .tcard{max-width:720px}
 #torPage .padd{max-width:1100px}
+.tfiche{position:relative;margin-top:6px}
+.tbk{position:absolute;left:-24px;right:-24px;top:-6px;height:360px;background:center 20%/cover no-repeat;opacity:.28;-webkit-mask-image:linear-gradient(#000 30%,transparent);mask-image:linear-gradient(#000 30%,transparent);pointer-events:none}
+.tfd{position:relative;display:grid;grid-template-columns:180px minmax(0,1fr);gap:22px;margin:14px 0 8px;max-width:1100px}
+.tfd .cv{width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:12px;background:var(--bg3);display:flex;align-items:center;justify-content:center;text-align:center;padding:10px;color:var(--text3);font-weight:700;box-shadow:0 8px 30px rgba(0,0,0,.5)}
+.tfd h2{font-size:26px;margin:4px 0 6px;line-height:1.2}
+.tfd .mt{color:var(--text3);font-size:13px;margin-bottom:10px}
+.tfd .plot{line-height:1.55;color:var(--text2);font-size:14px;max-width:760px}
+.tfd .cr{color:var(--text3);font-size:12.5px;margin-top:10px;line-height:1.6}
+@media (max-width:700px){.tfd{grid-template-columns:110px minmax(0,1fr);gap:14px}.tfd h2{font-size:20px}}
 @media (max-width:700px){.trow{flex-wrap:wrap}.tac{width:100%;justify-content:flex-end}.tsep{display:none}}
 .cast{display:flex;gap:12px;overflow-x:auto;padding-bottom:8px}
 .cast .ca{flex:none;width:84px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:3px}
@@ -1449,11 +1458,6 @@ async function torQbt(x, cat, b) {
   toast(j.ok ? 'Envoyé à qBittorrent (' + (cat === 'films' ? 'Films' : 'Séries') + ') : rangé dans la médiathèque une fois téléchargé' : 'qBittorrent : ' + j.error);
   if (b) { b.disabled = false; if (j.ok) { b.textContent = '✓ Envoyé'; b.classList.add('on'); } }
 }
-function torFiltered() {
-  let l = (TOR.res || []).filter(x => TOR.qual === 'all' || x._t.q === TOR.qual);
-  const k = { seed: (a, b) => (b.seeders || 0) - (a.seeders || 0), size: (a, b) => (b.size || 0) - (a.size || 0), date: (a, b) => (Date.parse(b.publishDate) || 0) - (Date.parse(a.publishDate) || 0) }[TOR.sort];
-  return l.slice().sort(k);
-}
 // Onglet « Indexeurs » : rendu dans la page Films & séries
 function torRender() {
   if (!torOk()) return '<div class="empty">La recherche dans les indexeurs et la lecture des torrents se font dans l\'appli Windows.</div>';
@@ -1476,14 +1480,121 @@ function torRender() {
   if (c) h += `<div class="vrow" style="margin-top:14px"><small class="hint">Prowlarr · ${esc(c.url)}</small> <button class="chip" data-prwout>Changer de Prowlarr</button></div>`;
   return h + '</div>';
 }
+/* Résultats des indexeurs rattachés aux fiches TMDB : les publications (« Dune.Part.Two.2024.MULTi.2160p… ») sont regroupées
+   par titre, retrouvées sur TMDB (affiche, résumé, note, distribution) et affichées comme le reste du catalogue ; la fiche
+   (dans la page) liste les versions disponibles. Sans clé TMDB : regroupement par titre, sans affiche. */
+function torParse(t) {
+  let s = String(t || '').replace(/^\s*(\[[^\]]*\]|\([^)]*\)|【[^】]*】)\s*[-.]?\s*/g, '').replace(/[._]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const se = /\bS(\d{1,2})\s?(?:E(\d{1,3}))?\b|\bSaison\s?(\d{1,2})\b|\b(\d{1,2})x(\d{2})\b/i.exec(s);
+  const yr = /[\s(\[]((?:19|20)\d\d)(?=[\s)\].]|$)/.exec(s);
+  const stop = /\b(2160p|1080p|720p|480p|4k|uhd|multi|truefrench|french|vff|vfq|vfi|vf2?|vostfr|subfrench|web(-?dl|rip)?|bluray|blu-ray|bdrip|brrip|hdrip|dvdrip|hdtv|remux|x26[45]|h ?26[45]|hevc|avc|hdr\d*|dv|10bit|aac|ac3|dts|complete|integrale|intégrale)\b/i.exec(s);
+  const cut = Math.min(...[se && se.index, yr && yr.index, stop && stop.index].filter(x => x != null && x > 0), s.length);
+  const title = s.slice(0, cut).replace(/[\s\-–:([]+$/, '').trim();
+  const season = se ? +(se[1] || se[3] || se[4]) : null, ep = se ? (se[2] != null ? +se[2] : se[5] != null ? +se[5] : null) : null;
+  return { title: title || s, year: yr ? +yr[1] : 0, season, ep, series: !!se || /\b(complete series|integrale|intégrale)\b/i.test(s) };
+}
+const tnK = s => norm(String(s || '')).replace(/[^a-z0-9]+/g, ' ').trim();
+// regroupement par titre (et année pour les films), rattaché à TMDB ensuite
+function torGroup(list) {
+  const G = new Map();
+  list.forEach(x => {
+    const p = x._p = x._p || torParse(x.title), cat = (x.categories || []).map(c => c.id).find(Boolean) || 0;
+    const kind = p.series || (cat >= 5000 && cat < 6000) ? 'series' : 'movie';
+    const k = kind[0] + ':' + tnK(p.title) + (kind === 'movie' && p.year ? ':' + p.year : '');
+    if (!G.has(k)) G.set(k, { k, kind, title: p.title, year: p.year, rel: [] });
+    const g = G.get(k); g.rel.push(x); if (!g.year && p.year) g.year = p.year;
+  });
+  return [...G.values()];
+}
+const TORTM = new Map();            // recherche TMDB gardée pendant la session (titre + année → fiche)
+async function torTmdb(g) {
+  const ck = g.k; if (TORTM.has(ck)) return TORTM.get(ck);
+  const pr = (async () => {
+    const path = g.kind === 'series' ? '/search/tv' : '/search/movie';
+    let r = g.year ? await tmdb(path, { query: g.title, [g.kind === 'series' ? 'first_air_date_year' : 'year']: g.year }).catch(() => null) : null;
+    if (!r || !(r.results || []).length) r = await tmdb(path, { query: g.title }).catch(() => null);
+    const l = (r && r.results) || [];
+    // le plus proche : même année si connue, sinon le plus populaire parmi les titres exacts
+    const exact = l.filter(x => [x.title, x.name, x.original_title, x.original_name].some(t => t && tnK(t) === tnK(g.title)));
+    const x = (g.year && (exact.concat(l)).find(x => Math.abs((+String(x.release_date || x.first_air_date || '').slice(0, 4) || 0) - g.year) <= 1)) || exact[0] || l[0];
+    return x ? { id: x.id, kind: g.kind, name: x.title || x.name, orig: x.original_title || x.original_name || '', year: +String(x.release_date || x.first_air_date || '').slice(0, 4) || 0,
+      poster: x.poster_path || '', back: x.backdrop_path || '', plot: x.overview || '', rating: x.vote_average || 0, lang: x.original_language || '' } : null;
+  })();
+  TORTM.set(ck, pr); return pr;
+}
+// groupes rattachés à la même fiche TMDB fusionnés (« Dune Part Two » et « Dune Deuxième Partie »)
+async function torResolve(q) {
+  const groups = torGroup(TOR.res || []);
+  TOR.groups = groups; torPaint('torRes');
+  if (!LS.get('pref.tmdb', '')) return;
+  let i = 0;
+  const worker = async () => { while (i < groups.length) { const g = groups[i++]; g.tm = await torTmdb(g); } };
+  await Promise.all([1, 2, 3, 4, 5, 6].map(worker));
+  if (TOR.q !== q) return;
+  const by = new Map(), out = [];
+  groups.forEach(g => { const id = g.tm ? g.kind + g.tm.id : g.k; if (by.has(id)) by.get(id).rel.push(...g.rel); else { by.set(id, g); out.push(g); } });
+  TOR.groups = out; torPaint('torRes');
+}
+const torRel = g => g.rel.filter(x => TOR.qual === 'all' || x._t.q === TOR.qual);
+const torBestQ = l => ['4K', '1080p', '720p', 'SD'].find(q => l.some(x => x._t.q === q)) || '';
+function torSort(l) {
+  const k = { seed: (a, b) => (b.seeders || 0) - (a.seeders || 0), size: (a, b) => (b.size || 0) - (a.size || 0), date: (a, b) => (Date.parse(b.publishDate) || 0) - (Date.parse(a.publishDate) || 0) }[TOR.sort];
+  return l.slice().sort(k);
+}
+function torPosterHtml(g, i) {
+  const l = torRel(g), tm = g.tm, img = tm && tm.poster ? 'https://image.tmdb.org/t/p/w342' + tm.poster : '';
+  const seeds = Math.max(0, ...l.map(x => x.seeders || 0)), q = torBestQ(l);
+  return `<button class="poster" data-tg="${i}"><div class="im">${esc(tm ? tm.name : g.title)}${img ? `<img src="${esc(img)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}${tm && tm.rating ? `<span class="rt">★ ${tm.rating.toFixed(1)}</span>` : ''}${g.kind === 'series' ? '<span class="kd">SÉRIE</span>' : ''}${q ? `<span class="vfo"${q === '4K' ? '' : ' style="background:rgba(0,0,0,.7)"'}>${q}</span>` : ''}</div>
+    <div class="pt">${esc(tm ? tm.name : g.title)}</div><div class="py">${[(tm && tm.year) || g.year || '', l.length + ' version' + (l.length > 1 ? 's' : ''), seeds + ' src'].filter(Boolean).join(' · ')}</div></button>`;
+}
 function torResHtml() {
   if (TOR.busy) return '<div class="spin" style="margin:30px auto"></div><p class="hint" style="text-align:center">Recherche dans vos indexeurs…</p>';
   if (TOR.err) return `<p class="err">${esc(TOR.err)}</p>`;
   if (!TOR.res) return '';
   if (!TOR.res.length) return '<div class="empty">Aucun résultat dans vos indexeurs (Prowlarr › Indexers pour en ajouter).</div>';
-  const l = torFiltered(); TOR.shown = l;
-  return `<div class="vrow"><h3>Résultats<small>${l.length} sur ${TOR.res.length}${TOR.qual !== 'all' ? ' · ' + TOR.qual : ''}</small></h3></div>`
-    + (l.length ? `<div class="tlist">${l.slice(0, 80).map(torRowHtml).join('')}</div>` : '<div class="empty">Aucun résultat dans cette qualité.</div>');
+  const gs = (TOR.groups || []).filter(g => torRel(g).length);
+  if (TOR.open != null && TOR.groups && TOR.groups[TOR.open]) return torFicheHtml(TOR.groups[TOR.open]);
+  const score = g => { const l = torRel(g); return TOR.sort === 'date' ? Math.max(...l.map(x => Date.parse(x.publishDate) || 0)) : TOR.sort === 'size' ? Math.max(...l.map(x => x.size || 0)) : l.reduce((s, x) => s + (x.seeders || 0), 0); };
+  gs.sort((a, b) => score(b) - score(a));
+  const nk = !LS.get('pref.tmdb', '') ? '<p class="hint">Ajoutez la clé TMDB (Films & séries › Accueil, en bas) pour voir les affiches et les fiches des titres.</p>' : '';
+  return `<div class="vrow"><h3>Résultats<small>${gs.length} titre${gs.length > 1 ? 's' : ''} · ${TOR.res.length} publications${TOR.qual !== 'all' ? ' · ' + TOR.qual : ''}</small></h3></div>${nk}`
+    + (gs.length ? `<div class="vgrid">${gs.map(g => torPosterHtml(g, TOR.groups.indexOf(g))).join('')}</div>` : '<div class="empty">Aucun résultat dans cette qualité.</div>');
+}
+// Fiche d'un titre trouvé dans les indexeurs : infos TMDB, lien vers l'abonnement s'il l'a, versions disponibles
+function torFicheHtml(g) {
+  const tm = g.tm, l = torSort(torRel(g)); TOR.shown = l;
+  const img = (p, w) => p ? 'https://image.tmdb.org/t/p/' + w + p : '';
+  let h = `<div class="tfiche">${tm && tm.back ? `<div class="tbk" style="background-image:url('${esc(img(tm.back, 'w1280'))}')"></div>` : ''}
+    <button class="chip" data-tback style="position:relative">‹ Tous les résultats</button>
+    <div class="tfd">${tm && tm.poster ? `<img class="cv" src="${esc(img(tm.poster, 'w342'))}" alt="" referrerpolicy="no-referrer">` : `<div class="cv">${esc(g.title)}</div>`}
+    <div style="min-width:0"><h2>${esc(tm ? tm.name : g.title)}</h2>
+    <div class="mt" id="torMeta">${esc([(tm && tm.year) || g.year, g.kind === 'series' ? 'Série' : 'Film', tm && tm.rating ? '★ ' + tm.rating.toFixed(1) : '', tm && tm.orig && tnK(tm.orig) !== tnK(tm.name) ? tm.orig : ''].filter(Boolean).join(' · '))}</div>
+    <div class="plot">${esc(tm ? tm.plot : '')}</div><div id="torCrew" class="cr"></div><div id="torSub" class="row" style="margin-top:12px;gap:8px"></div></div></div></div>`;
+  // séries : versions rangées par saison (saison complète, puis épisodes)
+  if (g.kind === 'series') {
+    const ss = new Map(); l.forEach(x => { const s = x._p.season; const k = s == null ? 'Intégrale ou saisons multiples' : 'Saison ' + s; if (!ss.has(k)) ss.set(k, []); ss.get(k).push(x); });
+    const keys = [...ss.keys()].sort((a, b) => (parseInt(a.replace(/\D+/g, '')) || 0) - (parseInt(b.replace(/\D+/g, '')) || 0));
+    keys.forEach(k => { const r = ss.get(k).sort((a, b) => (a._p.ep == null ? -1 : a._p.ep) - (b._p.ep == null ? -1 : b._p.ep));
+      h += `<div class="vrow"><h3>${esc(k)}<small>${r.length} version${r.length > 1 ? 's' : ''}</small></h3><div class="tlist">${r.map(x => torRowHtml(x, l.indexOf(x))).join('')}</div></div>`; });
+  } else h += `<div class="vrow"><h3>Versions disponibles<small>${l.length}</small></h3><div class="tlist">${l.map(torRowHtml).join('')}</div></div>`;
+  setTimeout(() => torFicheMore(g), 0);
+  return h;
+}
+async function torFicheMore(g) {
+  const tm = g.tm; if (!tm) return;
+  // même titre dans l'abonnement ou dans Ma médiathèque : lecture directe, sans torrent
+  const sub = $('#torSub');
+  if (sub && V.data && V.data.items) {
+    const id = (g.kind === 'series' ? 's' : 'm') + tm.id, it = popMatch(id, popIndex(V.data.items), { [id]: { k: id[0], t: tm.name, o: tm.orig, y: tm.year, p: tm.poster, l: tm.lang } });
+    if (it) { const k = V.shown.push(it) - 1; sub.insertAdjacentHTML('beforeend', `<button class="btn primary" data-tsub="${k}">▶ Dans votre abonnement</button>`); }
+  }
+  const d = await tmdb('/' + (g.kind === 'series' ? 'tv/' : 'movie/') + tm.id, { append_to_response: 'credits' }).catch(() => null);
+  if (!d || TOR.groups[TOR.open] !== g) return;
+  const dir = g.kind === 'series' ? (d.created_by || []).map(x => x.name) : ((d.credits || {}).crew || []).filter(c => c.job === 'Director').map(c => c.name);
+  const cast = ((d.credits || {}).cast || []).slice(0, 6).map(c => c.name);
+  const run = g.kind === 'series' ? (d.number_of_seasons ? d.number_of_seasons + ' saison' + (d.number_of_seasons > 1 ? 's' : '') : '') : (d.runtime ? fmtDur(d.runtime * 60) : '');
+  const m = $('#torMeta'); if (m) m.textContent = [tm.year || g.year, (d.genres || []).map(x => x.name).slice(0, 3).join(', '), run, tm.rating ? '★ ' + tm.rating.toFixed(1) : ''].filter(Boolean).join(' · ');
+  const c = $('#torCrew'); if (c) c.innerHTML = (dir.length ? `<div>${g.kind === 'series' ? 'Création' : 'Réalisation'} : ${esc(dir.join(', '))}</div>` : '') + (cast.length ? `<div>Avec : ${esc(cast.join(', '))}</div>` : '');
 }
 // Torrent ouvert : avancement et vidéos, en haut de l'onglet
 function torCurHtml() {
@@ -1502,11 +1613,12 @@ function torCurHtml() {
 const torPaint = id => { const el = $('#' + id); if (el) el.innerHTML = id === 'torCur' ? torCurHtml() : torResHtml(); };
 async function torGo(q) {
   q = (q || '').trim(); if (!q) return;
-  TOR.q = q; TOR.busy = true; TOR.err = ''; TOR.res = null;
+  TOR.q = q; TOR.busy = true; TOR.err = ''; TOR.res = null; TOR.groups = null; TOR.open = null;
   TOR.hist = [q].concat(TOR.hist.filter(x => x.toLowerCase() !== q.toLowerCase())).slice(0, 8); LS.set('dev.prwhist', TOR.hist);
   if ($('#torRes')) torPaint('torRes'); else { V.tab = 'tor'; V.q = ''; renderVod(); }
   try { TOR.res = await prwSearch(q, TOR.kind); } catch (e) { TOR.err = e.message; }
-  TOR.busy = false; if (TOR.q === q) torPaint('torRes');
+  TOR.busy = false; if (TOR.q !== q) return;
+  if (TOR.res && TOR.res.length) torResolve(q); else torPaint('torRes');
 }
 // ouverture d'un torrent (lien magnet, .torrent en base64 ou adresse d'un .torrent) : affiché en haut de l'onglet
 async function openTorrent(src) {
@@ -1558,6 +1670,9 @@ function torClick(e) {
     if (k === 'kind' && ch && TOR.q && TOR.res) torGo(TOR.q); else torPaint('torRes');
     return true;
   }
+  if ((b = g('[data-tg]'))) { TOR.open = +b.dataset.tg; TOR.scroll = $('#vod').scrollTop; torPaint('torRes'); const r = $('#torRes'); if (r) $('#vod').scrollTop = Math.max(0, r.offsetTop - 70); return true; }
+  if (g('[data-tback]')) { TOR.open = null; torPaint('torRes'); $('#vod').scrollTop = TOR.scroll || 0; return true; }
+  if ((b = g('[data-tsub]'))) { openVod(V.shown[+b.dataset.tsub]); return true; }
   const list = g('#xprw') ? TOR.xs : TOR.shown;
   if ((b = g('[data-tpl]'))) { const x = list[+b.dataset.tpl]; if (x) openTorrent(x.magnetUrl || x.downloadUrl); return true; }
   if ((b = g('[data-tpa]'))) { const x = list[+b.dataset.tpa]; if (x) torQbt(x, b.dataset.c, b); return true; }
@@ -2788,14 +2903,14 @@ document.addEventListener('click', e => {
   hovClose(true);                                        // Plus d'infos, ou clic ailleurs : la fiche s'ouvre normalement
 }, true);
 document.addEventListener('mouseover', e => {
-  const p = e.target.closest && e.target.closest('#vod .poster');
+  const p = e.target.closest && e.target.closest('#vod .poster[data-v]');
   if (!p || !canHover() || document.querySelector('.vscroll.drag') || $('#vodModal').classList.contains('open')) return;
   if (HOV.src === p) { clearTimeout(HOV.close); return; }
   if (HOV.pre !== p) { HOV.pre = p; const it = V.shown[+p.dataset.v]; if (it && LS.get('pref.tmdb', '')) trailerFor(it).catch(() => {}); }   // recherche lancée tout de suite
   clearTimeout(HOV.t); HOV.t = setTimeout(() => hovOpen(p), 450);
 });
 document.addEventListener('mouseout', e => {
-  const p = e.target.closest && e.target.closest('#vod .poster'); if (!p) return;
+  const p = e.target.closest && e.target.closest('#vod .poster[data-v]'); if (!p) return;
   if (e.relatedTarget && p.contains(e.relatedTarget)) return;
   clearTimeout(HOV.t);
   if (HOV.src === p) HOV.close = setTimeout(hovClose, 120);
