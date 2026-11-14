@@ -3069,7 +3069,10 @@ document.addEventListener('mouseout', e => {
 document.addEventListener('scroll', e => { if (HOV.el && !(e.target.closest && e.target.closest('.hovc')) && !(HOV.auto && Date.now() - HOV.auto < 900)) hovClose(true); }, true);
 /* Affiches manquantes (absentes ou cassées sur le serveur) : retrouvées sur TMDB quand l'affiche arrive à l'écran,
    et retenues sur l'appareil */
-const COV = (() => { try { return JSON.parse(localStorage.getItem('iptv.dev.cov') || '{}') || {}; } catch (e) { return {}; } })();
+const COV = (() => { try { const o = JSON.parse(localStorage.getItem('iptv.dev.cov') || '{}') || {};
+  // une fois : les « rien sur TMDB » notés jusqu'ici l'étaient aussi après une simple erreur ; ils sont recherchés à nouveau
+  if (!localStorage.getItem('iptv.dev.covfix1')) { Object.keys(o).forEach(k => { if (o[k] === '') delete o[k]; }); localStorage.setItem('iptv.dev.cov', JSON.stringify(o)); localStorage.setItem('iptv.dev.covfix1', '1'); }
+  return o; } catch (e) { return {}; } })();
 const coverOf = it => (it._covBad ? '' : it.cover) || (COV[itemKey(it)] ? 'https://image.tmdb.org/t/p/w342' + COV[itemKey(it)] : '');
 const COVQ = { io: null, busy: 0 };
 function coverWatch(i) {
@@ -3079,7 +3082,13 @@ function coverWatch(i) {
 }
 async function coverFetch(el) {
   const it = V.shown[+el.dataset.v]; if (!it || COV[itemKey(it)] === '') return;
-  const ti = await tmdbInfo(it).catch(() => null), pp = ti && ti.d && ti.d.poster_path;
+  const ti = await tmdbInfo(it).catch(() => null); let pp = ti && ti.d && ti.d.poster_path;
+  if (!ti) {
+    // pas de fiche : « rien sur TMDB » seulement si TMDB a vraiment répondu sans résultat ; erreur (réseau, VPN, limite de
+    // TMDB) : rien n'est retenu, l'affiche sera recherchée à nouveau plus tard
+    const id = await tmdbIdOf(it).catch(() => null);
+    if (id !== 0) return;
+  }
   COV[itemKey(it)] = pp || '';                         // '' : rien sur TMDB, on ne recherche plus
   const keys = Object.keys(COV); if (keys.length > 4000) delete COV[keys[0]];
   try { localStorage.setItem('iptv.dev.cov', JSON.stringify(COV)); } catch (e) {}
@@ -3249,8 +3258,9 @@ async function tmdbIdOf(it) {
   const kind = it.kind === 'series' ? 'tv' : 'movie', ck = 'tid1:' + kind + ':' + tnorm(it.name) + ':' + (it.year || ''), c = await DB.cacheGet(ck);
   if (c) return c.data;
   const q = { query: it.name }; if (it.year) q[kind === 'tv' ? 'first_air_date_year' : 'year'] = it.year;
-  const r = await tmdb('/search/' + kind, q).catch(() => null), id = r && r.results && r.results[0] && r.results[0].id || 0;
-  if (r) DB.cachePut({ id: ck, at: Date.now(), data: id });
+  const r = await tmdb('/search/' + kind, q).catch(() => null); if (!r) return null;   // erreur : null (0 = aucun résultat)
+  const id = r.results && r.results[0] && r.results[0].id || 0;
+  DB.cachePut({ id: ck, at: Date.now(), data: id });
   return id;
 }
 async function noteLoad(it) {
@@ -3618,12 +3628,7 @@ async function tmdbInfo(it) {
   if (it._ti) return it._ti;
   if (!LS.get('pref.tmdb', '')) return null;
   const kind = it.kind === 'series' ? 'tv' : 'movie';
-  let id = it.tmdb;
-  if (!id) {
-    const q = { query: it.name }; if (it.year) q[kind === 'tv' ? 'first_air_date_year' : 'year'] = it.year;
-    const r = await tmdb('/search/' + kind, q).catch(() => null);
-    id = r && r.results && r.results[0] && r.results[0].id;
-  }
+  const id = it.tmdb || await tmdbIdOf(it).catch(() => null);   // recherche par titre partagée (affiches, notes, fiche)
   if (!id) return null;
   const d = await tmdb('/' + kind + '/' + id, { append_to_response: 'videos,credits,recommendations,' + (kind === 'tv' ? 'content_ratings' : 'release_dates'), include_video_language: 'fr,en,null' }).catch(() => null);
   if (!d) return null;
