@@ -1485,6 +1485,8 @@ const torAge = d => { const t = Date.parse(d || ''); if (!t) return ''; const n 
 async function prwSearch(q, kind) {
   const c = prwConf(); if (!c) return null;
   const cats = kind === 'movie' ? '&categories=2000' : kind === 'series' ? '&categories=5000' : '';
+  // sans accents ni ponctuation : beaucoup d'indexeurs ne trouvent pas « deuxième » ou « L'Amour » tels quels
+  q = String(q || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w\s-]+/g, ' ').replace(/\s+/g, ' ').trim();
   const r = await fetch(c.url + '/api/v1/search?type=search&limit=100' + cats + '&query=' + encodeURIComponent(q), { headers: { 'X-Api-Key': c.key } }).catch(() => null);
   if (!r) throw new Error('Prowlarr injoignable (démarré ? adresse ?)');
   if (r.status === 429 && typeof ixHalt === 'function') ixHalt('Prowlarr refuse les recherches (trop de requêtes)');
@@ -1997,8 +1999,20 @@ async function xSearch(q0) {
   }
   if (window.desktop && window.desktop.remux && prwConf()) {
     const el0 = $('#xprw'); if (el0) el0.innerHTML = '<div class="vrow"><h3>Torrent</h3><div class="spin" style="margin:10px 0"></div></div>';
-    const l = await prwSearch(q0).catch(() => null), el = $('#xprw'); if (!el || V.q !== q0) return;
-    if (!l || !l.length) { el.innerHTML = ''; return; }
+    // recherche lancée une fois la frappe finie (chaque recherche interroge tous les indexeurs)
+    await new Promise(r => setTimeout(r, 700)); if (V.q !== q0 || !$('#xprw')) return;
+    // titre tapé (souvent en français) et titre original (TMDB) : les publications portent le plus souvent le titre original
+    const qs = [q0];
+    if (LS.get('pref.tmdb', '')) {
+      const t = await tmdb('/search/multi', { query: q0 }).catch(() => null), x = t && (t.results || []).find(y => y.media_type === 'movie' || y.media_type === 'tv');
+      if (x) [x.original_title || x.original_name, x.title || x.name].forEach(v => { if (v && !qs.some(z => tnK(z) === tnK(v)) && /^[\x00-\u024f\s]+$/.test(v)) qs.push(v); });
+    }
+    if (V.q !== q0) return;
+    let err = '';
+    const seen = new Set(), l = [];
+    (await Promise.all(qs.slice(0, 3).map(q => prwSearch(q).catch(e => { err = e.message; return null; })))).forEach(r => (r || []).forEach(x => { const k = (x.infoHash || x.title || '').toLowerCase(); if (!seen.has(k)) { seen.add(k); l.push(x); } }));
+    const el = $('#xprw'); if (!el || V.q !== q0) return;
+    if (!l.length) { el.innerHTML = `<div class="vrow"><h3>Torrent</h3><p class="hint">${err ? 'Prowlarr : ' + esc(err) : 'Aucun résultat dans vos indexeurs pour ' + qs.map(q => '« ' + esc(q) + ' »').join(' ni ')}.</p></div>`; return; }
     TOR.q = q0; TOR.res = l; TOR.err = ''; TOR.busy = false; TOR.open = null; TOR.qual = 'all'; TOR.sort = 'best';
     el.innerHTML = '<div class="vrow"><h3>Torrent</h3></div><div id="torRes"></div>';
     torResolve(q0);
