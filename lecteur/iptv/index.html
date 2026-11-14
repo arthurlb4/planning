@@ -1770,8 +1770,12 @@ function ixVirtual(id, m) {
   const c = ixGet()[id];
   if (!c || Date.now() - c.at > 864e5) { ixQueue(id, m); return null; }
   if (!c.ok) return null;
+  return virtItem(id, m, { q: c.q, s: c.s });
+}
+// titre hors abonnement (fiche TMDB) : « tor » marque qu'il ne vient pas du serveur IPTV
+function virtItem(id, m, tor) {
   let v = IX.virt.get(id);
-  if (!v) { v = { kind: 'movie', id: 't' + id.slice(1), tmdb: +id.slice(1), name: m.t, year: m.y || 0, cover: m.p ? 'https://image.tmdb.org/t/p/w342' + m.p : '', ol: m.l || '', tor: { q: c.q, s: c.s }, services: [], cats: [], rating: 0, added: 0 }; IX.virt.set(id, v); }
+  if (!v) { v = { kind: id[0] === 's' ? 'series' : 'movie', id: 't' + id.slice(1), tmdb: +id.slice(1), name: m.t, year: m.y || 0, cover: m.p ? 'https://image.tmdb.org/t/p/w342' + m.p : '', ol: m.l || '', tor: tor || {}, services: [], cats: [], rating: 0, added: 0 }; IX.virt.set(id, v); }
   return v;
 }
 function ixQueue(id, m) {
@@ -1841,6 +1845,7 @@ function pmHtml() {
     : bx ? `<button class="pi" data-pmi="tor:${tl.indexOf(bx)}"><b>Torrent</b><small>${esc(torMo(bx.size))}</small>${qTag(torQ(bx))}</button><button class="pi pdl" data-pmq="${tl.indexOf(bx)}"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><b>Télécharger dans Ma médiathèque</b></button>`
     : '<button class="pi" disabled><b>Torrent</b><small>aucune version</small></button>';
   if (jf) h += `<button class="pi" data-pmi="jf"><b>Ma médiathèque</b>${qTag(JF.lab)}</button>`;
+  if (!h) h = '<button class="pi" disabled><b>Aucune source pour ce titre</b>' + (torOk() ? '' : '<small>torrent : appli Windows</small>') + '</button>';
   if ((!it.tor && vs.length > 1) || tl.length > 1) h += '<hr><button class="pi" data-pmsub><b>⋯ Autres versions</b></button>';
   return h;
 }
@@ -3496,15 +3501,19 @@ async function forYou(kinds) {
   });
   return { all, because };
 }
-function popList(idsArr, P, meta, kinds) { const seen = new Set(), out = []; for (const id of idsArr) { if (!kinds.includes(id[0])) continue; const it = popMatch(id, P, meta) || ixVirtual(id, meta[id]); if (it && !seen.has(it)) { seen.add(it); out.push(it); } } return out; }
+function popList(idsArr, P, meta, kinds) { const seen = new Set(), out = []; for (const id of idsArr) { if (!kinds.includes(id[0])) continue; const it = popMatch(id, P, meta) || (V.data && V.data.noSub && meta[id] && meta[id].t ? virtItem(id, meta[id]) : ixVirtual(id, meta[id])); if (it && !seen.has(it)) { seen.add(it); out.push(it); } } return out; }
 async function renderVod() {
   const box = $('#vodInner');
-  if (!S.pl) { box.innerHTML = '<div class="empty">Ajoutez ou déverrouillez une liste pour voir les films et séries.</div>'; return; }
-  if (!epgCtx()) { box.innerHTML = '<div class="empty">Les films et séries viennent du serveur de l\'abonnement (connexion Xtream) : pas disponibles pour cette liste.</div>'; return; }
-  if (!V.data || V.data.pl !== S.pl) box.innerHTML = '<div class="spin" style="margin:60px auto"></div><p class="hint" style="text-align:center">Chargement des catalogues…<br><span id="vodProg"></span></p>';
+  // Sans liste (ou liste sans films : pas de connexion Xtream) : catalogue vide, les rangées viennent de TMDB et chaque titre
+  // se lit par les autres sources (torrent, Ma médiathèque)
+  const noSub = !S.pl || !epgCtx();
   let D;
-  try { D = await loadVod(V.force); } catch (e) { box.innerHTML = `<div class="empty">Films et séries indisponibles : ${esc(e.message)}<br><br><button class="btn" data-reload>Réessayer</button></div>`; return; }
-  finally { V.force = false; }
+  if (noSub) { D = V.data = V.data && V.data.noSub ? V.data : { noSub: true, items: [], cats: {}, pl: null }; V.force = false; }
+  else {
+    if (!V.data || V.data.pl !== S.pl) box.innerHTML = '<div class="spin" style="margin:60px auto"></div><p class="hint" style="text-align:center">Chargement des catalogues…<br><span id="vodProg"></span></p>';
+    try { D = await loadVod(V.force); } catch (e) { box.innerHTML = `<div class="empty">Films et séries indisponibles : ${esc(e.message)}<br><br><button class="btn" data-reload>Réessayer</button></div>`; return; }
+    finally { V.force = false; }
+  }
   if (!document.body.classList.contains('vod')) return;
   V.shown = [];
   // Films et séries étrangers proposés seulement en VF (pas de MULTI / VOSTFR) : retirés. La langue d'origine vient de TMDB
@@ -3518,7 +3527,8 @@ async function renderVod() {
     ${['home:Accueil', 'movie:Films', 'series:Séries', 'hist:Historique', 'jf:Ma médiathèque'].map(t => { const [k, l] = t.split(':'); return `<button class="chip${V.tab === k && !V.q ? ' on' : ''}" data-tab="${k}">${l}</button>`; }).join('')}
     <button class="chip" data-reload title="Recharger les catalogues depuis le serveur">↻</button>
     <label class="searchbar"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input id="vodQ" type="search" placeholder="Titre d'un film ou d'une série" value="${esc(V.q)}" autocomplete="off"></label></div>`;
-  if (!all.length) { box.innerHTML = h + '<div class="empty">Aucun film ni série en français trouvé sur ce serveur.</div>'; return; }
+  if (!all.length && !noSub) { box.innerHTML = h + '<div class="empty">Aucun film ni série en français trouvé sur ce serveur.</div>'; return; }
+  if (noSub && !LS.get('pref.tmdb', '') && !['jf', 'hist'].includes(V.tab)) { box.innerHTML = h + '<div class="empty">' + (S.pl ? 'Cette liste n\'a pas de films ni de séries (pas de connexion Xtream).' : 'Pas encore de liste.') + '<br>Sans abonnement, les films et séries viennent de TMDB : activez-le dans Paramètres › Sources pour voir les tops, les nouveautés et les fiches (lecture par torrent ou Ma médiathèque).</div>'; return; }
   const q = norm(V.q).trim();
   if (q) {
     // Titres (tolérant aux fautes de frappe), puis via TMDB : acteurs, titres originaux ou étrangers, genres
@@ -4166,7 +4176,7 @@ async function openVod(it) {
     if (it.tor) h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-pmenu>▶ Lecture<svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button></div><p class="hint" style="margin-top:8px">Pas dans votre abonnement : trouvé dans vos indexeurs (torrent).</p>`;
     else h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-pmenu>▶ ${pos > 60 ? 'Reprendre à ' + fmtDur(pos) : 'Lecture'}<svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>${pos > 60 ? `<button class="btn" data-pm="${esc(url)}" data-zero>Depuis le début</button>` : ''}${listBtn}<button class="btn" data-vlc="${esc(url)}">VLC</button></div>`;
     setTimeout(() => jfLink(it).catch(() => {}), 0);
-  } else if (!flat.length) h += `<div class="row" style="margin-top:14px">${listBtn}</div><p class="hint" style="margin-top:14px">Aucun épisode trouvé.</p>`;
+  } else if (!flat.length) h += it.tor ? '<p class="hint" style="margin-top:14px">Série absente de votre abonnement : pas d\'épisode à lire ici.</p>' : `<div class="row" style="margin-top:14px">${listBtn}</div><p class="hint" style="margin-top:14px">Aucun épisode trouvé.</p>`;
   else {
     // Reprendre l'épisode en cours (ou le suivant à voir), sinon le premier
     let k0 = hist ? flat.findIndex(x => epUrl(x) === hist.url) : -1; if (k0 < 0) k0 = 0;
