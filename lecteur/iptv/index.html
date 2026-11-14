@@ -281,6 +281,15 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 #nextBox{position:absolute;right:16px;bottom:78px;z-index:8;display:flex;align-items:center;gap:10px;padding:10px 10px 10px 14px;border-radius:14px;background:rgba(20,20,19,.95);border:.5px solid var(--border);box-shadow:0 10px 30px rgba(0,0,0,.5)}
 #nextBox span{display:flex;flex-direction:column}#nextBox small{font-size:11px;color:var(--text3)}#nextBox b{font-size:14px}
 #nextBox .btn{height:34px}
+.pmenu{position:fixed;z-index:95;min-width:250px;max-width:340px;max-height:60vh;overflow:auto;background:rgba(30,30,29,.98);border:.5px solid var(--border);border-radius:14px;padding:6px;box-shadow:0 14px 40px rgba(0,0,0,.6);animation:updIn .15s ease}
+.pmenu .pi{display:flex;align-items:center;gap:10px;width:100%;min-width:0;padding:10px 12px;border-radius:10px;color:var(--text);text-align:left;font-size:14px}
+.pmenu .pi:hover:not(:disabled){background:var(--bg3)}.pmenu .pi:disabled{opacity:.55;cursor:default}
+.pmenu .pi b{flex:1;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pmenu .pi small{color:var(--text3);font-size:12px;white-space:nowrap}
+.pmenu .q{flex:none;font-size:11px;font-weight:800;padding:2px 7px;border-radius:6px;background:var(--bg4);color:var(--text2)}.pmenu .q.k4{background:#b8860b;color:#fff}
+.pmenu .pirow{display:flex;align-items:center;gap:2px}.pmenu .pq{flex:none;width:34px;height:34px;border-radius:9px;color:var(--text3);font-size:16px}.pmenu .pq:hover{background:var(--bg3);color:var(--text)}
+.pmenu h5{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin:10px 12px 4px}
+.pmenu hr{border:0;border-top:.5px solid var(--border);margin:4px 6px}.pmenu .back{color:var(--text2)}
+.btn .chev{width:16px;height:16px;margin-left:2px;margin-right:-4px;fill:none;stroke:currentColor;stroke-width:2.2}
 .vvers{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}
 .vvers .chip{height:30px;padding:0 12px}
 #slowBox{position:absolute;left:50%;top:16px;transform:translateX(-50%);z-index:8;display:flex;align-items:center;gap:10px;padding:10px 10px 10px 14px;border-radius:14px;background:rgba(20,20,19,.95);border:.5px solid var(--border);box-shadow:0 10px 30px rgba(0,0,0,.5);font-size:13px;max-width:calc(100% - 24px)}
@@ -1457,12 +1466,9 @@ async function prwSearch(q, kind) {
 }
 // ligne d'un résultat (onglet Indexeurs et recherche générale)
 function torRowHtml(x, i) {
-  const g = x._t || torTags(x.title), s = x.seeders || 0, cat = (x.categories || []).map(c => c.id).find(Boolean) || 0;
-  const badge = (t, cls) => t ? `<span class="tbg${cls ? ' ' + cls : ''}">${t}</span>` : '';
-  const meta = [torMo(x.size), torAge(x.publishDate), x.indexer].filter(Boolean).map(esc).join(' · ');
-  return `<div class="trow${x._best ? ' tbest' : ''}" data-ti="${i}"><div class="tsd ${s >= 20 ? 'hi' : s >= 5 ? 'md' : 'lo'}" title="${s} source${s > 1 ? 's' : ''}, ${x.leechers || 0} en téléchargement"><b>${s}</b><small>sources</small></div>
-    <div class="tmn"><div class="ttl">${esc(x.title || '')}</div><div class="tmt">${x._best ? '<span class="tbg k4">★ MEILLEUR CHOIX</span>' : ''}${badge(g.q, g.q === '4K' ? 'k4' : '')}${badge(g.l, g.l === 'VOSTFR' ? 'vo' : 'vf')}${g.hdr ? badge('HDR') : ''}${g.hevc ? badge('HEVC') : ''}${g.remux ? badge('REMUX') : ''}${g.cam ? badge('CAM', 'cam') : ''}<span>${meta}</span></div></div>
-    <div class="tac"><button class="btn primary sm" data-tpl="${i}">▶ Lire</button><button class="chip" data-tpa="${i}" data-c="${cat >= 5000 && cat < 6000 ? 'series' : 'films'}" title="Télécharger en entier avec qBittorrent et ranger dans Ma médiathèque">＋ ${cat >= 5000 && cat < 6000 ? 'Séries' : 'Films'}</button></div></div>`;
+  const cat = (x.categories || []).map(c => c.id).find(Boolean) || 0, q = torQ(x), ser = cat >= 5000 && cat < 6000;
+  return `<div class="trow${x._best ? ' tbest' : ''}" data-ti="${i}"><div class="tmn"><div class="tmt" style="margin:0">${q ? `<span class="tbg${q === '4K' ? ' k4' : ''}">${q}</span>` : ''}<b style="font-size:14px;color:var(--text)">${esc(torMo(x.size))}</b>${x._best ? '<span class="tbg k4">★ MEILLEUR CHOIX</span>' : ''}</div></div>
+    <div class="tac"><button class="btn primary sm" data-tpl="${i}">▶ Lire</button><button class="chip" data-tpa="${i}" data-c="${ser ? 'series' : 'films'}" title="Télécharger en entier avec qBittorrent et ranger dans Ma médiathèque">＋ ${ser ? 'Séries' : 'Films'}</button></div></div>`;
 }
 async function torQbt(x, cat, b) {
   if (b) { b.disabled = true; b.textContent = 'Envoi…'; }
@@ -1556,8 +1562,7 @@ function torWhyNot4k(l, g, bx) {
     : `4K disponible mais pas retenue : ${k._t.l ? k._t.l + ' seule' : 'langue non indiquée dans le nom'} (MULTI ou VOSTFR demandé)`;
 }
 const torBest = (l, g) => l.length ? l.reduce((a, b) => torScore(b, g) > torScore(a, g) ? b : a) : null;
-const torWhy = (x, g) => { const t = x._t, fr = g.tm && g.tm.lang === 'fr', s = x.seeders || 0;
-  return [t.q || 'qualité non indiquée', t.l ? t.l + (t.l === 'VOSTFR' && g.tm && !fr ? ' (VO sous-titrée)' : t.l === 'VF' && g.tm && !fr ? ' (pas de VO)' : '') : 'langue non indiquée', s + ' source' + (s > 1 ? 's' : ''), torMo(x.size)].filter(Boolean).join(' · '); };
+const torWhy = x => [torQ(x), torMo(x.size)].filter(Boolean).join(' · ');
 function torSort(l, g) {
   if (TOR.sort === 'best') return l.slice().sort((a, b) => torScore(b, g) - torScore(a, g));
   const k = { seed: (a, b) => (b.seeders || 0) - (a.seeders || 0), size: (a, b) => (b.size || 0) - (a.size || 0), date: (a, b) => (Date.parse(b.publishDate) || 0) - (Date.parse(a.publishDate) || 0) }[TOR.sort];
@@ -1565,9 +1570,9 @@ function torSort(l, g) {
 }
 function torPosterHtml(g, i) {
   const l = torRel(g), tm = g.tm, img = tm && tm.poster ? 'https://image.tmdb.org/t/p/w342' + tm.poster : '';
-  const seeds = Math.max(0, ...l.map(x => x.seeders || 0)), bx = torBest(l, g), q = bx ? [bx._t.q, bx._t.l].filter(Boolean).join(' ') : torBestQ(l);
-  return `<button class="poster" data-tg="${i}"><div class="im">${esc(tm ? tm.name : g.title)}${img ? `<img src="${esc(img)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}${tm && tm.rating ? `<span class="rt">★ ${tm.rating.toFixed(1)}</span>` : ''}${g.kind === 'series' ? '<span class="kd">SÉRIE</span>' : ''}${q ? `<span class="vfo"${/4K/.test(q) ? '' : ' style="background:rgba(0,0,0,.7)"'} title="Meilleur choix">${esc(q)}</span>` : ''}</div>
-    <div class="pt">${esc(tm ? tm.name : g.title)}</div><div class="py">${[(tm && tm.year) || g.year || '', l.length + ' version' + (l.length > 1 ? 's' : ''), seeds + ' src'].filter(Boolean).join(' · ')}</div></button>`;
+  const seeds = Math.max(0, ...l.map(x => x.seeders || 0)), bx = torBest(l, g), q = bx ? torQ(bx) : '';
+  return `<button class="poster" data-tg="${i}"><div class="im">${esc(tm ? tm.name : g.title)}${img ? `<img src="${esc(img)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}${g.kind === 'series' ? '<span class="kd">SÉRIE</span>' : ''}${q ? `<span class="vfo"${/4K/.test(q) ? '' : ' style="background:rgba(0,0,0,.7)"'} title="Meilleur choix">${esc(q)}</span>` : ''}</div>
+    <div class="pt">${esc(tm ? tm.name : g.title)}</div><div class="py">${[(tm && tm.year) || g.year || '', l.length + ' version' + (l.length > 1 ? 's' : '')].filter(Boolean).join(' · ')}</div></button>`;
 }
 function torResHtml() {
   if (TOR.busy) return '<div class="spin" style="margin:30px auto"></div><p class="hint" style="text-align:center">Recherche dans vos indexeurs…</p>';
@@ -1591,10 +1596,10 @@ function torFicheHtml(g) {
     <button class="chip" data-tback style="position:relative">‹ Résultats Torrent</button>
     <div class="tfd">${tm && tm.poster ? `<img class="cv" src="${esc(img(tm.poster, 'w342'))}" alt="" referrerpolicy="no-referrer">` : `<div class="cv">${esc(g.title)}</div>`}
     <div style="min-width:0"><h2>${esc(tm ? tm.name : g.title)}</h2>
-    <div class="mt" id="torMeta">${esc([(tm && tm.year) || g.year, g.kind === 'series' ? 'Série' : 'Film', tm && tm.rating ? '★ ' + tm.rating.toFixed(1) : '', tm && tm.orig && tnK(tm.orig) !== tnK(tm.name) ? tm.orig : ''].filter(Boolean).join(' · '))}</div>
+    <div class="mt" id="torMeta">${esc([(tm && tm.year) || g.year, g.kind === 'series' ? 'Série' : 'Film', tm && tm.orig && tnK(tm.orig) !== tnK(tm.name) ? tm.orig : ''].filter(Boolean).join(' · '))}</div>
     <div class="plot">${esc(tm ? tm.plot : '')}</div><div id="torCrew" class="cr"></div><div id="torSub" class="row" style="margin-top:12px;gap:8px"></div></div></div></div>`;
   const w4 = torWhyNot4k(l, g, bx);
-  if (bx) h += `<div class="vrow"><h3>Meilleur choix<small>${esc(torWhy(bx, g))}</small></h3>${w4 ? `<p class="hint" style="margin:-4px 2px 8px">${esc(w4)}</p>` : ''}<div class="tlist">${torRowHtml(bx, l.indexOf(bx))}</div></div>`;
+  if (bx) h += `<div class="vrow"><h3>Meilleur choix<small>${esc(torWhy(bx, g))}</small></h3><div class="tlist">${torRowHtml(bx, l.indexOf(bx))}</div></div>`;
   // séries : versions rangées par saison (saison complète, puis épisodes)
   if (g.kind === 'series') {
     const ss = new Map(); l.forEach(x => { const s = x._p.season; const k = s == null ? 'Intégrale ou saisons multiples' : 'Saison ' + s; if (!ss.has(k)) ss.set(k, []); ss.get(k).push(x); });
@@ -1618,7 +1623,7 @@ async function torFicheMore(g) {
   const dir = g.kind === 'series' ? (d.created_by || []).map(x => x.name) : ((d.credits || {}).crew || []).filter(c => c.job === 'Director').map(c => c.name);
   const cast = ((d.credits || {}).cast || []).slice(0, 6).map(c => c.name);
   const run = g.kind === 'series' ? (d.number_of_seasons ? d.number_of_seasons + ' saison' + (d.number_of_seasons > 1 ? 's' : '') : '') : (d.runtime ? fmtDur(d.runtime * 60) : '');
-  const m = $('#torMeta'); if (m) m.textContent = [tm.year || g.year, (d.genres || []).map(x => x.name).slice(0, 3).join(', '), run, tm.rating ? '★ ' + tm.rating.toFixed(1) : ''].filter(Boolean).join(' · ');
+  const m = $('#torMeta'); if (m) m.textContent = [tm.year || g.year, (d.genres || []).map(x => x.name).slice(0, 3).join(', '), run].filter(Boolean).join(' · ');
   const c = $('#torCrew'); if (c) c.innerHTML = (dir.length ? `<div>${g.kind === 'series' ? 'Création' : 'Réalisation'} : ${esc(dir.join(', '))}</div>` : '') + (cast.length ? `<div>Avec : ${esc(cast.join(', '))}</div>` : '');
 }
 const torPaint = id => { const el = $('#' + id); if (el) el.innerHTML = torResHtml(); };
@@ -1682,28 +1687,74 @@ function torClick(e) {
    le téléchargement ou à ajouter à Ma médiathèque ; les autres versions dépliables dessous */
 const VT = { it: null, g: null, list: [] };
 async function vodTorLoad(it) {
-  const box = $('#vodTor'); if (!box || !torOk() || !prwConf() || it.kind !== 'movie') return;
-  VT.it = it; VT.g = null; VT.list = [];
-  box.innerHTML = '<h4 class="vdh">Meilleur torrent</h4><p class="hint">Recherche dans vos indexeurs…</p>';
+  VT.it = it; VT.g = null; VT.list = []; VT.state = '';
+  if (!torOk() || !prwConf() || it.kind !== 'movie') return;
+  VT.state = 'loading';
   const ti = await tmdbInfo(it).catch(() => null), d = (ti && ti.d) || {};
   const name = d.title || it.name, orig = d.original_title || '', year = it.year || +String(d.release_date || '').slice(0, 4) || 0;
   const qs = [...new Set([name, orig, it.name].filter(Boolean).map(t => t.trim()))].slice(0, 3);
   const seen = new Set(), all = [];
   for (const l of await Promise.all(qs.map(q => prwSearch(q, 'movie').catch(() => null)))) (l || []).forEach(x => { const k = (x.infoHash || x.title || '').toLowerCase(); if (!seen.has(k)) { seen.add(k); all.push(x); } });
-  if (!V.open || V.open.it !== it || !$('#vodTor')) return;
+  if (!V.open || V.open.it !== it) return;
   // publications de ce film : même titre (français, original ou celui de l'abonnement), même année à un an près
   const keys = new Set(qs.map(tnK));
   const rel = all.filter(x => { const p = x._p = x._p || torParse(x.title); return !p.series && keys.has(tnK(p.title)) && (!year || !p.year || Math.abs(p.year - year) <= 1); });
   const g = VT.g = { kind: 'movie', title: name, year, rel, tm: { id: ti && ti.id, name, orig, year, poster: d.poster_path || '', lang: d.original_language || it.ol || '' } };
-  const el = $('#vodTor');
-  if (!rel.length) { el.innerHTML = '<h4 class="vdh">Meilleur torrent</h4><p class="hint">Aucune version de ce film dans vos indexeurs.</p>'; return; }
-  const l = VT.list = rel.slice().sort((a, c) => torScore(c, g) - torScore(a, g));
-  l.forEach(x => { x._best = false; }); const bx = torBest(l, g); if (bx) bx._best = true;
-  const w4 = torWhyNot4k(l, g, bx), rest = l.filter(x => x !== bx);
-  el.innerHTML = `<h4 class="vdh">Meilleur torrent <small class="hint" style="font-weight:500">${esc(torWhy(bx, g))}</small></h4>${w4 ? `<p class="hint" style="margin:-4px 0 8px">${esc(w4)}</p>` : ''}
-    <div class="tlist">${torRowHtml(bx, l.indexOf(bx))}</div>
-    ${rest.length ? `<details class="xtbox" style="margin-top:8px"><summary>${rest.length} autre${rest.length > 1 ? 's' : ''} version${rest.length > 1 ? 's' : ''}</summary><div class="tlist">${rest.map(x => torRowHtml(x, l.indexOf(x))).join('')}</div></details>` : ''}`;
+  VT.list = rel.slice().sort((a, c) => torScore(c, g) - torScore(a, g)); VT.state = 'done'; pmRefresh();
 }
+/* Bouton Lecture de la fiche d'un film : mini-menu des meilleures versions par source (IPTV, Torrent, Ma médiathèque), avec
+   leur résolution (et la taille pour un torrent) ; « ⋯ Autres versions » : toutes les autres, IPTV et torrent */
+const TQ = { '4K': '4K', '1080p': 'FHD', '720p': 'HD', 'SD': 'SD' };
+const torQ = x => TQ[(x._t || torTags(x.title)).q] || '';
+const qTag = q => q ? `<span class="q${q === '4K' ? ' k4' : ''}">${q}</span>` : '';
+const PM = { el: null, sub: false };
+function pmClose() { if (PM.el) PM.el.remove(); PM.el = null; PM.sub = false; }
+function pmHtml() {
+  const it = V.open && V.open.it; if (!it) return '';
+  const vs = vodVars(it), pick = vodPick(it), url = vodUrl('movie', pick.id, pick.ext), pos = LS.get('pos.' + url, 0);
+  const torOn = torOk() && prwConf(), g = VT.g, tl = VT.it === it ? VT.list : [], bx = tl.length ? torBest(tl, g) : null, jf = JF.for === it && JF.link;
+  if (PM.sub) {
+    let h = '<button class="pi back" data-pmback>‹ Retour</button>';
+    const others = vs.slice().reverse().filter(x => x !== pick);
+    if (others.length) h += '<h5>IPTV</h5>' + others.map(x => `<button class="pi" data-pmi="iptv:${x.id}"><b>${esc(String(x.cat || 'Abonnement').replace(/[ᴬ-ᵡ⁰-⁹ᴴᴰᴿᴮʸᵁᴵᴼᴾ]+/g, '').trim().slice(0, 28) || 'Abonnement')}</b>${qTag(vodLbl(x))}</button>`).join('');
+    const tor = tl.filter(x => x !== bx);
+    if (tor.length) h += '<h5>Torrent</h5>' + tor.map(x => `<span class="pirow"><button class="pi" data-pmi="tor:${tl.indexOf(x)}"><b>${esc(torMo(x.size))}</b>${qTag(torQ(x))}</button><button class="pq" data-pmq="${tl.indexOf(x)}" title="Télécharger dans Ma médiathèque (qBittorrent)">＋</button></span>`).join('');
+    if (!others.length && !tor.length) h += '<p class="hint" style="margin:6px 12px">Pas d\'autre version.</p>';
+    return h;
+  }
+  let h = `<button class="pi" data-pmi="iptv:${pick.id}"><b>IPTV</b>${pos > 60 ? `<small>reprise à ${fmtDur(pos)}</small>` : ''}${qTag(vodLbl(pick))}</button>`;
+  if (torOn) h += VT.state === 'loading' && VT.it === it ? '<button class="pi" disabled><b>Torrent</b><small>recherche…</small></button>'
+    : bx ? `<span class="pirow"><button class="pi" data-pmi="tor:${tl.indexOf(bx)}"><b>Torrent</b><small>${esc(torMo(bx.size))}</small>${qTag(torQ(bx))}</button><button class="pq" data-pmq="${tl.indexOf(bx)}" title="Télécharger dans Ma médiathèque (qBittorrent)">＋</button></span>`
+    : '<button class="pi" disabled><b>Torrent</b><small>aucune version</small></button>';
+  if (jf) h += `<button class="pi" data-pmi="jf"><b>Ma médiathèque</b>${qTag(JF.lab)}</button>`;
+  if (vs.length > 1 || tl.length > 1) h += '<hr><button class="pi" data-pmsub><b>⋯ Autres versions</b></button>';
+  return h;
+}
+function pmPlace() {
+  const b = $('#vodDetail [data-pmenu]'); if (!PM.el || !b) return pmClose();
+  const r = b.getBoundingClientRect(), w = PM.el.offsetWidth, hh = PM.el.offsetHeight;
+  PM.el.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + 'px';
+  PM.el.style.top = (r.bottom + 6 + hh > innerHeight - 8 ? Math.max(8, r.top - 6 - hh) : r.bottom + 6) + 'px';
+}
+function pmOpen() { pmClose(); PM.el = document.createElement('div'); PM.el.className = 'pmenu'; PM.el.innerHTML = pmHtml(); document.body.appendChild(PM.el); pmPlace(); }
+function pmRefresh() { if (PM.el) { PM.el.innerHTML = pmHtml(); pmPlace(); } }
+document.addEventListener('click', e => {
+  if (e.target.closest && e.target.closest('#vodDetail [data-pmenu]')) { e.stopPropagation(); PM.el ? pmClose() : pmOpen(); return; }
+  if (!PM.el) return;
+  if (!PM.el.contains(e.target)) { pmClose(); return; }
+  e.stopPropagation();
+  const it = V.open && V.open.it; let b;
+  if (e.target.closest('[data-pmsub]')) { PM.sub = true; pmRefresh(); return; }
+  if (e.target.closest('[data-pmback]')) { PM.sub = false; pmRefresh(); return; }
+  if ((b = e.target.closest('[data-pmq]'))) { const x = VT.list[+b.dataset.pmq]; if (x) torQbt(x, 'films', null); return; }
+  if (!(b = e.target.closest('[data-pmi]')) || !it) return;
+  const [k, v] = b.dataset.pmi.split(':');
+  if (k === 'iptv') { LS.set('vver.' + it.id, +v); const pk = vodPick(it); pmClose(); closeModals(); playVod(it, vodUrl('movie', pk.id, pk.ext), null, null); }
+  else if (k === 'tor') { const x = VT.list[+v]; if (x) { b.disabled = true; b.querySelector('small') ? b.querySelector('small').textContent = 'connexion…' : b.insertAdjacentHTML('beforeend', '<small>connexion…</small>'); torPlay(x, VT.g, null).finally(pmClose); } }
+  else if (k === 'jf' && JF.link) { pmClose(); closeModals(); jfPlay(JF.link); }
+}, true);
+document.addEventListener('keydown', e => { if (PM.el && e.key === 'Escape') { e.stopPropagation(); pmClose(); } }, true);
+window.addEventListener('resize', pmClose);
 $('#vodDetail').addEventListener('click', e => { if (torClick(e)) e.stopPropagation(); }, true);
 /* Paramètres › Appareils (appli Windows) : Prowlarr (indexeurs) et connexion à YouTube (bandes-annonces) */
 function prwSettings() {
@@ -1853,20 +1904,11 @@ async function jfLink(it) {
   const ti = await tmdbInfo(it).catch(() => null), tm = String(it.tmdb || (ti && ti.id) || '');
   const j = await jfGet('/Users/' + c.uid + '/Items?Recursive=true&Limit=10&IncludeItemTypes=Movie&Fields=MediaSources,UserData,ProviderIds,Container&searchTerm=' + encodeURIComponent(it.name)).catch(() => null);
   if (!j || !V.open || V.open.it !== it) return;
+  JF.for = null;
   const x = (j.Items || []).find(y => (tm && (y.ProviderIds || {}).Tmdb === tm) || (tnorm(y.Name) === tnorm(it.name) && (!it.year || !y.ProductionYear || Math.abs(y.ProductionYear - it.year) <= 1)));
   if (!x) return;
   const v = (((x.MediaSources || [])[0] || {}).MediaStreams || []).find(m0 => m0.Type === 'Video'), hJ = v && v.Height || 0;
-  const qJ = hJ ? qOfHeight(hJ) : 2.5, qI = vodVq(vodPick(it));          // version de l'abonnement choisie sur la fiche
-  const lab = hJ ? QLBL[qOfHeight(hJ)] + ' · ' + hJ + 'p' : 'qualité inconnue';
-  let row = null; for (let k = 0; k < 20 && !row; k++) { row = $('#vodDetail [data-pm]') && $('#vodDetail [data-pm]').parentElement; if (!row) await new Promise(r => setTimeout(r, 150)); }
-  if (!row || !V.open || V.open.it !== it || row.querySelector('[data-jfplay]')) return;
-  JF.link = x;
-  const better = qJ > qI;                                  // à égalité : l'abonnement reste en tête
-  const btn = `<button class="btn${better ? ' primary' : ''}" data-jfplay>▶ Ma médiathèque (${esc(lab)})</button>`;
-  if (better) { const p0 = row.querySelector('.btn.primary'); if (p0) { p0.classList.remove('primary'); p0.insertAdjacentHTML('beforeend', ' · abonnement'); } row.insertAdjacentHTML('afterbegin', btn); }
-  else row.insertAdjacentHTML('beforeend', btn);
-  document.querySelectorAll('#vodDetail .jfnote').forEach(n => n.remove());
-  row.insertAdjacentHTML('afterend', `<p class="hint jfnote" style="margin:6px 0 0">Aussi dans votre médiathèque (${esc(lab)}) · ${better ? 'meilleure que l\'abonnement : lancée par défaut' : 'l\'abonnement est ' + (qI > qJ ? 'meilleur' : 'équivalent') + ' : lancé par défaut'}</p>`);
+  JF.link = x; JF.lab = hJ ? QLBL[qOfHeight(hJ)] : ''; JF.for = it; pmRefresh();
 }
 document.addEventListener('click', e => { if (!(e.target.closest && e.target.closest('[data-jfplay]')) || !JF.link) return; e.stopPropagation(); closeModals(); jfPlay(JF.link); }, true);
 // Dernière image figée par-dessus la vidéo pendant une relance (dessin seul : rien n'est relu, pas de souci d'origine)
@@ -3102,17 +3144,12 @@ async function frNotes(tmdbId, kind) {
   DB.cachePut({ id, at: Date.now(), data });
   return data;
 }
+// note de la fiche : SensCritique (spectateurs), sinon IMDb
 function frNotesHtml(n) {
   if (!n) return '';
   const f = (v, d) => v.toFixed(d).replace('.', ','), k = v => v >= 1000 ? Math.round(v / 1000) + ' k' : String(v);
-  const l = [];
-  if (n.ac) l.push(`<span><b>AlloCiné</b> ${f(n.ac, 1)}/5 <small>spectateurs${n.acn ? ' · ' + k(n.acn) : ''}</small></span>`);
-  if (n.ap) l.push(`<span><b>Presse</b> ${f(n.ap, 1)}/5 <small>AlloCiné${n.apn ? ' · ' + n.apn + ' critiques' : ''}</small></span>`);
-  if (n.sc) l.push(`<span><b>SensCritique</b> ${f(n.sc, 1)}/10${n.scn ? ' <small>' + k(n.scn) + '</small>' : ''}</span>`);
-  if (n.bs) l.push(`<span><b>BetaSeries</b> ${f(n.bs, 1)}/5${n.bsn ? ' <small>' + k(n.bsn) + '</small>' : ''}</span>`);
-  if (n.im) l.push(`<span><b>IMDb</b> ${f(n.im, 1)}/10</span>`);
-  if (n.lb) l.push(`<span><b>Letterboxd</b> ${f(n.lb, 1)}/5</span>`);
-  return l.length ? '<div class="frn">' + l.join('') + '</div>' : '';
+  const x = n.sc ? `<span><b>SensCritique</b> ${f(n.sc, 1)}/10${n.scn ? ' <small>' + k(n.scn) + ' notes</small>' : ''}</span>` : n.im ? `<span><b>IMDb</b> ${f(n.im, 1)}/10</span>` : '';
+  return x ? '<div class="frn">' + x + '</div>' : '';
 }
 // Titres TMDB → titres du catalogue (identifiant TMDB si le serveur le donne, sinon titre + année à un an près)
 const tnorm = t => norm(cleanTitle(t)).replace(/[^a-z0-9]+/g, ' ').trim();
@@ -3769,7 +3806,7 @@ async function openVod(it) {
     else { const j = await xget('&action=get_series_info&series_id=' + it.id); info = j.info || {}; eps = j.episodes || {}; }
   } catch (e) {}
   const cover = info.movie_image || info.cover_big || info.cover || it.cover;
-  const meta = [it.year || (info.releasedate || info.releaseDate || '').slice(0, 4), info.genre || it.genre, fmtDur(info.duration_secs) || info.duration, it.rating ? '★ ' + it.rating.toFixed(1) : '', it.services.join(', ')].filter(Boolean).join(' · ');
+  const meta = [it.year || (info.releasedate || info.releaseDate || '').slice(0, 4), info.genre || it.genre, fmtDur(info.duration_secs) || info.duration, it.services.join(', ')].filter(Boolean).join(' · ');
   const mine = inMyList(it), hist = histAll().find(x => x.k === itemKey(it));
   let h = `<div class="vd"><div>${cover ? `<img class="cv" src="${esc(cover)}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">` : '<div class="cv"></div>'}</div><div>
     <h3>${esc(it.name)}</h3><div class="mt" id="vodMeta">${esc(meta)}</div>
@@ -3779,10 +3816,7 @@ async function openVod(it) {
   const flat = it.kind === 'series' ? epFlat(eps) : [];
   if (it.kind === 'movie') {
     const vs = vodVars(it), pick = vodPick(it), url = vodUrl('movie', pick.id, pick.ext), pos = LS.get('pos.' + url, 0);
-    // même qualité en double (deux « HD ») : la catégorie d'origine les distingue
-    const vlab = x => { const q = vodLbl(x); return vs.filter(y => vodLbl(y) === q).length > 1 ? q + ' · ' + String(x.cat || '').replace(/^\W*[A-Z]{2,3}\s*[-:|]\s*/i, '').replace(/[ᴬ-ᵡ⁰-⁹ᴴᴰᴿᴮʸᵁᴵᴼᴾ]+/g, '').trim().slice(0, 18) : q; };
-    if (vs.length > 1) h += `<div class="vvers"><span class="hint">Version :</span>${vs.slice().reverse().map(x => `<button class="chip${x === pick ? ' on' : ''}" data-vver="${x.id}" title="${esc(x.cat)}">${esc(vlab(x))}</button>`).join('')}</div>`;
-    h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-pm="${esc(url)}">▶ ${pos > 60 ? 'Reprendre à ' + fmtDur(pos) : 'Lecture'}</button>${pos > 60 ? `<button class="btn" data-pm="${esc(url)}" data-zero>Depuis le début</button>` : ''}${listBtn}<button class="btn" data-vlc="${esc(url)}">VLC</button></div>`;
+    h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-pmenu>▶ ${pos > 60 ? 'Reprendre à ' + fmtDur(pos) : 'Lecture'}<svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>${pos > 60 ? `<button class="btn" data-pm="${esc(url)}" data-zero>Depuis le début</button>` : ''}${listBtn}<button class="btn" data-vlc="${esc(url)}">VLC</button></div>`;
     setTimeout(() => jfLink(it).catch(() => {}), 0);
   } else if (!flat.length) h += `<div class="row" style="margin-top:14px">${listBtn}</div><p class="hint" style="margin-top:14px">Aucun épisode trouvé.</p>`;
   else {
@@ -3798,7 +3832,7 @@ async function openVod(it) {
       return `<button class="ep" data-epk="${k}" data-epn="${x.n}"><span class="epi" ${img ? `style="background-image:url('${esc(img)}')"` : ''}><span class="n">${esc(x.n)}</span>${pct ? `<i style="width:${pct}%"></i>` : ''}</span><span class="ept"><b>${esc(cleanTitle(x.e.title || 'Épisode ' + x.n).replace(/^.*?S\d+\s*E\d+\s*[-:·]?\s*/i, '') || 'Épisode ' + x.n)}</b><span class="d">${esc([fmtDur(d.duration_secs) || d.duration, pos > 60 ? 'vu jusqu\'à ' + fmtDur(pos) : ''].filter(Boolean).join(' · '))}</span><span class="eppl">${esc(d.plot || '')}</span></span></button>`; }).join('');
     h += '</div>';
   }
-  h += `<div class="cr" id="vodLangs">${esc(langLine(it))}</div><div id="vodTor"></div><div id="vodCast"></div><div id="vodSimilar"></div>`;
+  h += `<div class="cr" id="vodLangs">${esc(langLine(it))}</div><div id="vodCast"></div><div id="vodSimilar"></div>`;
   $('#vodDetail').innerHTML = h + '</div></div>';
   showTrailer(it);
   V.open = { it, eps, cover, flat };
@@ -3859,7 +3893,7 @@ async function vodEnrich(it) {
   const genres = (d.genres || []).map(g => g.name).slice(0, 3).join(', '), run = ti.kind === 'movie' ? (d.runtime ? fmtDur(d.runtime * 60) : '') : (d.number_of_seasons ? d.number_of_seasons + ' saison' + (d.number_of_seasons > 1 ? 's' : '') : '');
   const certTxt = cert && cert !== 'U' && cert !== 'TP' && cert !== 'Tous publics' ? '-' + String(cert).replace(/^-/, '') : cert ? 'Tous publics' : '';
   frNotes(ti.id, ti.kind).then(n => { const h = frNotesHtml(n), mt = $('#vodMeta'); if (h && mt && V.open && V.open.it === it && !$('#vodDetail .frn')) mt.insertAdjacentHTML('afterend', h); }).catch(() => {});
-  const m = $('#vodMeta'); if (m) m.textContent = [it.year || (d.release_date || d.first_air_date || '').slice(0, 4), genres || it.genre, run, it.rating ? '★ ' + it.rating.toFixed(1) : (d.vote_average ? '★ ' + d.vote_average.toFixed(1) : ''), certTxt, it.services.join(', ')].filter(Boolean).join(' · ');
+  const m = $('#vodMeta'); if (m) m.textContent = [it.year || (d.release_date || d.first_air_date || '').slice(0, 4), genres || it.genre, run, certTxt, it.services.join(', ')].filter(Boolean).join(' · ');
   const cr = d.credits || {}, dir = (cr.crew || []).filter(c => c.job === 'Director').map(c => c.name).slice(0, 2).join(', ') || (d.created_by || []).map(c => c.name).slice(0, 2).join(', ');
   const crew = $('#vodCrew'); if (crew && dir) crew.innerHTML = `<div class="cr">${ti.kind === 'movie' ? 'Réalisation' : 'Création'} : ${esc(dir)}</div>`;
   const cast = (cr.cast || []).slice(0, 12);
@@ -3891,16 +3925,6 @@ $('#vodDetail').addEventListener('click', e => {
   const ek = e.target.closest('[data-epk]');
   if (ek) { const it = V.open.it, fl = V.open.flat || [], k = +ek.dataset.epk, x = fl[k]; if (!x) return; closeModals(); playVod(it, epUrl(x), x, fl[k + 1]); return; }
   const sp = e.target.closest('#vodSimilar [data-v]'); if (sp) { openVod(V.shown[+sp.dataset.v]); return; }
-  const vv = e.target.closest('[data-vver]');
-  if (vv) {
-    const it = V.open.it; LS.set('vver.' + it.id, +vv.dataset.vver);
-    const pk = vodPick(it), url = vodUrl('movie', pk.id, pk.ext), pos = LS.get('pos.' + url, 0);
-    $('#vodDetail').querySelectorAll('.vvers .chip').forEach(c => c.classList.toggle('on', +c.dataset.vver === pk.id));
-    const row = $('#vodDetail').querySelector('[data-pm]').parentElement;
-    row.innerHTML = `<button class="btn primary" data-pm="${esc(url)}">▶ ${pos > 60 ? 'Reprendre à ' + fmtDur(pos) : 'Lecture'}</button>${pos > 60 ? `<button class="btn" data-pm="${esc(url)}" data-zero>Depuis le début</button>` : ''}<button class="btn" data-vlc="${esc(url)}">VLC</button>`;
-    if (V.open && V.open.it) jfLink(V.open.it).catch(() => {});   // la version de Ma médiathèque, comparée à la nouvelle version choisie
-    return;
-  }
   const b = e.target.closest('[data-pm]'), v = e.target.closest('[data-vlc]');
   if (v) return openVlc({ name: V.open.it.name, url: v.dataset.vlc });
   if (!b) return;
@@ -4753,7 +4777,7 @@ function moveSel(d) {
 
 /* ---------- Gestion des listes ---------- */
 function openModal(id) { if (id === 'plModal' && typeof ptab === 'function') ptab(); $('#' + id).classList.add('open'); }
-function closeModals() { document.querySelectorAll('.modal.open').forEach(m => m.classList.remove('open')); document.querySelectorAll('#vodTrailer').forEach(f => f.remove()); $('#vodModal .sheet').classList.remove('hastr'); }
+function closeModals() { pmClose(); document.querySelectorAll('.modal.open').forEach(m => m.classList.remove('open')); document.querySelectorAll('#vodTrailer').forEach(f => f.remove()); $('#vodModal .sheet').classList.remove('hastr'); }
 document.querySelectorAll('.modal').forEach(m => m.addEventListener('click', e => { if (e.target === m || e.target.closest('[data-close]')) closeModals(); }));
 $('#managePl').onclick = () => { $('#addErr').textContent = ''; openModal('plModal'); };
 
