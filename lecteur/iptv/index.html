@@ -346,6 +346,7 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 .poster .im{position:relative;width:100%;aspect-ratio:2/3;border-radius:12px;overflow:hidden;background:linear-gradient(160deg,#34332f,#1b1b1a);display:flex;align-items:center;justify-content:center;padding:10px;text-align:center;font-weight:700;color:var(--text3);font-size:13px;box-shadow:0 4px 14px rgba(0,0,0,.35);transition:transform .15s}
 .poster:hover .im{transform:scale(1.04)}
 .poster .im img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.poster .kd.tor{background:#2f5f9e;color:#fff}
 .poster .rt{position:absolute;top:7px;left:7px;font-size:11px;font-weight:800;padding:2px 6px;border-radius:6px;background:rgba(0,0,0,.7);color:var(--gold);z-index:1}
 .poster .kd{position:absolute;top:7px;right:7px;font-size:10px;font-weight:800;padding:2px 6px;border-radius:6px;background:rgba(0,0,0,.7);color:#fff;z-index:1}
 .poster .rk{position:absolute;left:6px;bottom:2px;z-index:1;font-size:46px;font-weight:900;line-height:1;color:#111;-webkit-text-stroke:2px #f3f2ef;letter-spacing:-.04em;text-shadow:0 2px 8px rgba(0,0,0,.6)}
@@ -1688,19 +1689,61 @@ function torClick(e) {
 /* Fiche d'un film (abonnement) : meilleure version trouvée dans les indexeurs (mêmes règles que torScore), à lire pendant
    le téléchargement ou à ajouter à Ma médiathèque ; les autres versions dépliables dessous */
 const VT = { it: null, g: null, list: [] };
+// Publications d'un film dans les indexeurs : même titre (français, original…), même année à un an près
+async function torFindMovie(titles, year) {
+  const qs = [...new Set(titles.filter(Boolean).map(t => t.trim()))].slice(0, 3), seen = new Set(), all = [];
+  for (const l of await Promise.all(qs.map(q => prwSearch(q, 'movie').catch(() => null)))) (l || []).forEach(x => { const k = (x.infoHash || x.title || '').toLowerCase(); if (!seen.has(k)) { seen.add(k); all.push(x); } });
+  const keys = new Set(qs.map(tnK));
+  return all.filter(x => { const p = x._p = x._p || torParse(x.title); return !p.series && keys.has(tnK(p.title)) && (!year || !p.year || Math.abs(p.year - year) <= 1); });
+}
+/* Recommandations (Netflix, Wikipédia, BetaSeries, Trakt, TMDB…) : un film absent de l'abonnement est cherché dans les
+   indexeurs ; s'il y a une version jouable (3 sources au moins, pas de CAM), il entre dans la rangée (étiquette TORRENT).
+   Résultats gardés 24 h (dev.ix) ; au plus 25 nouvelles recherches par lancement, 2 à la fois (chaque recherche interroge
+   tous les indexeurs). Une fois ces recherches finies, l'accueil est redessiné à la même place. */
+const IX = { q: [], run: 0, n: 0, found: 0, queued: new Set(), virt: new Map() };
+const ixOn = () => torOk() && !!prwConf();
+const ixGet = () => { const o = LS.get('dev.ix', {}); return o && typeof o === 'object' ? o : {}; };
+function ixVirtual(id, m) {
+  if (!ixOn() || id[0] !== 'm' || !m || !m.t) return null;
+  const c = ixGet()[id];
+  if (!c || Date.now() - c.at > 864e5) { ixQueue(id, m); return null; }
+  if (!c.ok) return null;
+  let v = IX.virt.get(id);
+  if (!v) { v = { kind: 'movie', id: 't' + id.slice(1), tmdb: +id.slice(1), name: m.t, year: m.y || 0, cover: m.p ? 'https://image.tmdb.org/t/p/w342' + m.p : '', ol: m.l || '', tor: { q: c.q, s: c.s }, services: [], cats: [], rating: 0, added: 0 }; IX.virt.set(id, v); }
+  return v;
+}
+function ixQueue(id, m) {
+  if (IX.queued.has(id) || IX.n + IX.q.length >= 25) return;
+  IX.queued.add(id); IX.q.push([id, m]); ixNext();
+}
+function ixNext() {
+  while (IX.run < 2 && IX.q.length) {
+    const [id, m] = IX.q.shift(); IX.run++; IX.n++;
+    torFindMovie([m.t, m.o], m.y).then(rel => {
+      const ok = rel.filter(x => (x.seeders || 0) >= 3 && !(x._t || torTags(x.title)).cam), g = { kind: 'movie', tm: { lang: m.l || '' } }, bx = ok.length ? torBest(ok, g) : null;
+      const o = ixGet(); o[id] = bx ? { ok: 1, q: torQ(bx), s: bx.size || 0, at: Date.now() } : { ok: 0, at: Date.now() };
+      const k = Object.keys(o); if (k.length > 1500) k.slice(0, k.length - 1500).forEach(x => delete o[x]);
+      LS.set('dev.ix', o); if (bx) IX.found++;
+    }).catch(() => {}).finally(() => { IX.run--; if (!IX.q.length && !IX.run && IX.found) { IX.found = 0; ixRefresh(); } ixNext(); });
+  }
+}
+// accueil redessiné avec les films trouvés, au même endroit (pas pendant un aperçu, une fiche ouverte ou un glissement)
+async function ixRefresh() {
+  const b = document.body.classList;
+  if (!b.contains('vod') || V.q || !['home', 'movie'].includes(V.tab)) return;
+  if (HOV.el || $('#vodModal').classList.contains('open') || document.querySelector('.vscroll.drag')) { setTimeout(ixRefresh, 5000); return; }
+  const top = $('#vod').scrollTop, rows = [...document.querySelectorAll('#vod .vscroll')].map(x => x.scrollLeft);
+  await renderVod();
+  $('#vod').scrollTop = top; document.querySelectorAll('#vod .vscroll').forEach((x, i) => { if (rows[i]) x.scrollLeft = rows[i]; });
+}
 async function vodTorLoad(it) {
   VT.it = it; VT.g = null; VT.list = []; VT.state = '';
   if (!torOk() || !prwConf() || it.kind !== 'movie') return;
   VT.state = 'loading';
   const ti = await tmdbInfo(it).catch(() => null), d = (ti && ti.d) || {};
   const name = d.title || it.name, orig = d.original_title || '', year = it.year || +String(d.release_date || '').slice(0, 4) || 0;
-  const qs = [...new Set([name, orig, it.name].filter(Boolean).map(t => t.trim()))].slice(0, 3);
-  const seen = new Set(), all = [];
-  for (const l of await Promise.all(qs.map(q => prwSearch(q, 'movie').catch(() => null)))) (l || []).forEach(x => { const k = (x.infoHash || x.title || '').toLowerCase(); if (!seen.has(k)) { seen.add(k); all.push(x); } });
+  const rel = await torFindMovie([name, orig, it.name], year);
   if (!V.open || V.open.it !== it) return;
-  // publications de ce film : même titre (français, original ou celui de l'abonnement), même année à un an près
-  const keys = new Set(qs.map(tnK));
-  const rel = all.filter(x => { const p = x._p = x._p || torParse(x.title); return !p.series && keys.has(tnK(p.title)) && (!year || !p.year || Math.abs(p.year - year) <= 1); });
   const g = VT.g = { kind: 'movie', title: name, year, rel, tm: { id: ti && ti.id, name, orig, year, poster: d.poster_path || '', lang: d.original_language || it.ol || '' } };
   VT.list = rel.slice().sort((a, c) => torScore(c, g) - torScore(a, g)); VT.state = 'done'; pmRefresh();
 }
@@ -1713,23 +1756,23 @@ const PM = { el: null, sub: false };
 function pmClose() { if (PM.el) PM.el.remove(); PM.el = null; PM.sub = false; }
 function pmHtml() {
   const it = V.open && V.open.it; if (!it) return '';
-  const vs = vodVars(it), pick = vodPick(it), url = vodUrl('movie', pick.id, pick.ext), pos = LS.get('pos.' + url, 0);
+  const vs = vodVars(it), pick = vodPick(it), url = it.tor ? '' : vodUrl('movie', pick.id, pick.ext), pos = url ? LS.get('pos.' + url, 0) : 0;
   const torOn = torOk() && prwConf(), g = VT.g, tl = VT.it === it ? VT.list : [], bx = tl.length ? torBest(tl, g) : null, jf = JF.for === it && JF.link;
   if (PM.sub) {
     let h = '<button class="pi back" data-pmback>‹ Retour</button>';
-    const others = vs.slice().reverse().filter(x => x !== pick);
+    const others = it.tor ? [] : vs.slice().reverse().filter(x => x !== pick);
     if (others.length) h += '<h5>IPTV</h5>' + others.map(x => `<button class="pi" data-pmi="iptv:${x.id}"><b>${esc(String(x.cat || 'Abonnement').replace(/[ᴬ-ᵡ⁰-⁹ᴴᴰᴿᴮʸᵁᴵᴼᴾ]+/g, '').trim().slice(0, 28) || 'Abonnement')}</b>${qTag(vodLbl(x))}</button>`).join('');
     const tor = tl.filter(x => x !== bx);
     if (tor.length) h += '<h5>Torrent</h5>' + tor.map(x => `<span class="pirow"><button class="pi" data-pmi="tor:${tl.indexOf(x)}"><b>${esc(torMo(x.size))}</b>${qTag(torQ(x))}</button><button class="pq" data-pmq="${tl.indexOf(x)}" title="Télécharger dans Ma médiathèque (qBittorrent)">＋</button></span>`).join('');
     if (!others.length && !tor.length) h += '<p class="hint" style="margin:6px 12px">Pas d\'autre version.</p>';
     return h;
   }
-  let h = `<button class="pi" data-pmi="iptv:${pick.id}"><b>IPTV</b>${pos > 60 ? `<small>reprise à ${fmtDur(pos)}</small>` : ''}${qTag(vodLbl(pick))}</button>`;
+  let h = it.tor ? '' : `<button class="pi" data-pmi="iptv:${pick.id}"><b>IPTV</b>${pos > 60 ? `<small>reprise à ${fmtDur(pos)}</small>` : ''}${qTag(vodLbl(pick))}</button>`;
   if (torOn) h += VT.state === 'loading' && VT.it === it ? '<button class="pi" disabled><b>Torrent</b><small>recherche…</small></button>'
     : bx ? `<span class="pirow"><button class="pi" data-pmi="tor:${tl.indexOf(bx)}"><b>Torrent</b><small>${esc(torMo(bx.size))}</small>${qTag(torQ(bx))}</button><button class="pq" data-pmq="${tl.indexOf(bx)}" title="Télécharger dans Ma médiathèque (qBittorrent)">＋</button></span>`
     : '<button class="pi" disabled><b>Torrent</b><small>aucune version</small></button>';
   if (jf) h += `<button class="pi" data-pmi="jf"><b>Ma médiathèque</b>${qTag(JF.lab)}</button>`;
-  if (vs.length > 1 || tl.length > 1) h += '<hr><button class="pi" data-pmsub><b>⋯ Autres versions</b></button>';
+  if ((!it.tor && vs.length > 1) || tl.length > 1) h += '<hr><button class="pi" data-pmsub><b>⋯ Autres versions</b></button>';
   return h;
 }
 function pmPlace() {
@@ -2917,7 +2960,7 @@ function hovOpen(poster) {
   el.querySelector('.md').addEventListener('click', ev => { if (!ev.target.closest('.snd')) { hovClose(true); openVod(it); } });
   el.querySelector('[data-hplay]').onclick = () => {
     hovClose(true);
-    if (it.kind !== 'movie') return openVod(it);
+    if (it.kind !== 'movie' || it.tor) return openVod(it);
     const pk = vodPick(it), url = vodUrl('movie', pk.id, pk.ext);
     play({ name: it.name, url, group: 'Film' + (it.year ? ' · ' + it.year : ''), logo: it.cover, n: 0, chno: '', vod: true, key: '', it });
   };
@@ -2973,7 +3016,7 @@ document.addEventListener('click', e => {
     const f = p.querySelector('iframe'); if (f) f.contentWindow.postMessage(JSON.stringify({ event: 'command', func: on ? 'unMute' : 'mute', args: [] }), '*');
     return;
   }
-  if (e.target.closest('[data-hplay]') && it.kind === 'movie') {
+  if (e.target.closest('[data-hplay]') && it.kind === 'movie' && !it.tor) {
     e.stopPropagation(); e.preventDefault(); hovClose(true);
     const pk = vodPick(it); playVod(it, vodUrl('movie', pk.id, pk.ext), null, null);
     return;
@@ -3020,7 +3063,7 @@ function posterHtml(it, i, rank, prog) {
   const ls = langState(it), lb = ls === 'vo' ? '<span class="lgb vo">VO</span>' : ls === '?' ? '<span class="lgb">VO ?</span>' : '';
   const pg = prog ? `<span class="pgb"><i style="width:${Math.max(3, Math.min(100, prog.pct || 0))}%"></i></span>${prog.lab ? `<span class="pgl">${esc(prog.lab)}</span>` : ''}` : '';
   if (!coverOf(it)) setTimeout(() => coverWatch(i), 0);
-  return `<button class="poster" data-v="${i}"><div class="im">${esc(it.name)}${coverOf(it) ? `<img src="${esc(posterUrl(coverOf(it)))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="coverMiss(this)">` : ''}${r}${it.kind === 'series' ? '<span class="kd">SÉRIE</span>' : ''}${vfOnly(it) ? '<span class="vfo" title="Film étranger proposé seulement en français (pas de VO)">VF seule</span>' : ''}${rank ? `<span class="rk">${rank}</span>` : ''}${pg}${lb}</div><div class="pt">${esc(it.name)}</div><div class="py">${it.year || ''}</div></button>`;
+  return `<button class="poster" data-v="${i}"><div class="im">${esc(it.name)}${coverOf(it) ? `<img src="${esc(posterUrl(coverOf(it)))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="coverMiss(this)">` : ''}${r}${it.kind === 'series' ? '<span class="kd">SÉRIE</span>' : ''}${it.tor ? `<span class="kd tor">TORRENT${it.tor.q ? ' ' + it.tor.q : ''}</span>` : ''}${vfOnly(it) ? '<span class="vfo" title="Film étranger proposé seulement en français (pas de VO)">VF seule</span>' : ''}${rank ? `<span class="rk">${rank}</span>` : ''}${pg}${lb}</div><div class="pt">${esc(it.name)}</div><div class="py">${it.year || ''}</div></button>`;
 }
 function vodRow(title, sub, list, ranked) { if (!list.length) return ''; return `<div class="vrow"><h3>${esc(title)}${sub ? `<small>${esc(sub)}</small>` : ''}</h3><div class="vwrap"><button class="varr l" data-arr="-1" aria-label="Précédents"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><div class="vscroll">${list.map((it, k) => posterHtml(it, V.shown.push(it) - 1, Array.isArray(ranked) ? ranked[k] : ranked && k < 20 ? k + 1 : 0)).join('')}</div><button class="varr r" data-arr="1" aria-label="Suivants"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button></div></div>`; }
 
@@ -3285,7 +3328,7 @@ async function forYou(kinds) {
   });
   return { all, because };
 }
-function popList(idsArr, P, meta, kinds) { const seen = new Set(), out = []; for (const id of idsArr) { if (!kinds.includes(id[0])) continue; const it = popMatch(id, P, meta); if (it && !seen.has(it)) { seen.add(it); out.push(it); } } return out; }
+function popList(idsArr, P, meta, kinds) { const seen = new Set(), out = []; for (const id of idsArr) { if (!kinds.includes(id[0])) continue; const it = popMatch(id, P, meta) || ixVirtual(id, meta[id]); if (it && !seen.has(it)) { seen.add(it); out.push(it); } } return out; }
 async function renderVod() {
   const box = $('#vodInner');
   if (!S.pl) { box.innerHTML = '<div class="empty">Ajoutez ou déverrouillez une liste pour voir les films et séries.</div>'; return; }
@@ -3851,7 +3894,8 @@ async function openVod(it) {
   $('#vodDetail').innerHTML = '<div class="spin" style="margin:30px auto"></div>'; openModal('vodModal');
   let info = {}, eps = null;
   try {
-    if (it.kind === 'movie') { const j = await xget('&action=get_vod_info&vod_id=' + it.id); info = j.info || {}; }
+    if (it.tor) {}                                          // film des indexeurs : rien sur le serveur de l'abonnement
+    else if (it.kind === 'movie') { const j = await xget('&action=get_vod_info&vod_id=' + it.id); info = j.info || {}; }
     else { const j = await xget('&action=get_series_info&series_id=' + it.id); info = j.info || {}; eps = j.episodes || {}; }
   } catch (e) {}
   const cover = info.movie_image || info.cover_big || info.cover || it.cover;
@@ -3864,8 +3908,9 @@ async function openVod(it) {
   const listBtn = `<button class="btn" data-mylist>${mine ? '✓ Ma liste' : '＋ Ma liste'}</button>`;
   const flat = it.kind === 'series' ? epFlat(eps) : [];
   if (it.kind === 'movie') {
-    const vs = vodVars(it), pick = vodPick(it), url = vodUrl('movie', pick.id, pick.ext), pos = LS.get('pos.' + url, 0);
-    h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-pmenu>▶ ${pos > 60 ? 'Reprendre à ' + fmtDur(pos) : 'Lecture'}<svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>${pos > 60 ? `<button class="btn" data-pm="${esc(url)}" data-zero>Depuis le début</button>` : ''}${listBtn}<button class="btn" data-vlc="${esc(url)}">VLC</button></div>`;
+    const vs = vodVars(it), pick = vodPick(it), url = it.tor ? '' : vodUrl('movie', pick.id, pick.ext), pos = url ? LS.get('pos.' + url, 0) : 0;
+    if (it.tor) h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-pmenu>▶ Lecture<svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button></div><p class="hint" style="margin-top:8px">Pas dans votre abonnement : trouvé dans vos indexeurs (torrent).</p>`;
+    else h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-pmenu>▶ ${pos > 60 ? 'Reprendre à ' + fmtDur(pos) : 'Lecture'}<svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>${pos > 60 ? `<button class="btn" data-pm="${esc(url)}" data-zero>Depuis le début</button>` : ''}${listBtn}<button class="btn" data-vlc="${esc(url)}">VLC</button></div>`;
     setTimeout(() => jfLink(it).catch(() => {}), 0);
   } else if (!flat.length) h += `<div class="row" style="margin-top:14px">${listBtn}</div><p class="hint" style="margin-top:14px">Aucun épisode trouvé.</p>`;
   else {
@@ -3888,7 +3933,7 @@ async function openVod(it) {
   vodEnrich(it);
   vodTorLoad(it).catch(() => {});
   // appli Windows, rien en lecture : langues de ce film lues tout de suite si on ne les connaît pas
-  if (window.desktop && window.desktop.remux && !LANG()[itemKey(it)] && !document.body.classList.contains('playing') && !LCHK.busy) {
+  if (window.desktop && window.desktop.remux && !it.tor && !LANG()[itemKey(it)] && !document.body.classList.contains('playing') && !LCHK.busy) {
     LCHK.busy = true; langProbe(it).then(() => { const l = $('#vodLangs'); if (l && V.open && V.open.it === it) l.textContent = langLine(it) || (langState(it) === 'fr' ? '' : 'Langues : non lues'); LCHK.dirty = true; }).finally(() => { LCHK.busy = false; });
   }
 }
