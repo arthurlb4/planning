@@ -281,6 +281,13 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 #nextBox{position:absolute;right:16px;bottom:78px;z-index:8;display:flex;align-items:center;gap:10px;padding:10px 10px 10px 14px;border-radius:14px;background:rgba(20,20,19,.95);border:.5px solid var(--border);box-shadow:0 10px 30px rgba(0,0,0,.5)}
 #nextBox span{display:flex;flex-direction:column}#nextBox small{font-size:11px;color:var(--text3)}#nextBox b{font-size:14px}
 #nextBox .btn{height:34px}
+.qsug{position:fixed;z-index:96;max-height:62vh;overflow:auto;background:rgba(30,30,29,.98);border:.5px solid var(--border);border-radius:14px;padding:6px;box-shadow:0 14px 40px rgba(0,0,0,.6)}
+.qsug .qs{display:flex;align-items:center;gap:12px;width:100%;padding:7px 10px;border-radius:10px;color:var(--text);text-align:left}
+.qsug .qs:hover,.qsug .qs.on{background:var(--bg3)}
+.qsug .qp{flex:none;width:30px;height:44px;border-radius:5px;background:var(--bg3);overflow:hidden}.qsug .qp img{width:100%;height:100%;object-fit:cover}
+.qsug .qi{flex:none;width:30px;text-align:center;color:var(--text3);font-size:15px}
+.qsug .qm{min-width:0;display:flex;flex-direction:column}.qsug .ql{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.qsug .qd{font-size:12px;color:var(--text3)}
+.qsug .qclr{justify-content:center;font-size:12px;color:var(--text3);padding:8px}
 .pmenu{position:fixed;z-index:95;min-width:250px;max-width:340px;max-height:60vh;overflow:auto;background:rgba(30,30,29,.98);border:.5px solid var(--border);border-radius:14px;padding:6px;box-shadow:0 14px 40px rgba(0,0,0,.6);animation:updIn .15s ease}
 .pmenu .pi{display:flex;align-items:center;gap:10px;width:100%;min-width:0;padding:10px 12px;border-radius:10px;color:var(--text);text-align:left;font-size:14px}
 .pmenu .pi:hover:not(:disabled){background:var(--bg3)}.pmenu .pi:disabled{opacity:.55;cursor:default}
@@ -3486,6 +3493,8 @@ async function renderVod() {
     const w = q.split(/\s+/).filter(Boolean), exact = all.filter(i => w.every(x => norm(i.name).includes(x)));
     const res = exact.concat(all.filter(i => !exact.includes(i) && fuzzyHit(i.name, w))).slice(0, 120);
     const X = V.x = searchExtras(V.q, ['ch', 'ev']);
+    const PL = platOf(q); if (PL) h += await platRows(PL, all);
+    if (!document.body.classList.contains('vod') || norm(V.q).trim() !== q) return;
     if (X.ch.length || X.ev.length) h += `<div class="vxs">${extrasHtml(X)}</div>`;
     h += `<div class="vgrid">${res.map(it => posterHtml(it, V.shown.push(it) - 1)).join('')}</div>` + (res.length ? '' : '<div class="empty" id="vodNone">Aucun titre de ce nom dans le catalogue.</div>') + '<div id="vodTm"></div>';
     setTimeout(() => vodSearchMore(V.q, res), 0);
@@ -3661,8 +3670,82 @@ async function renderVod() {
   vodDedupe(box);
   const qi = $('#vodQ'); if (V.q) { qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); }
 }
+/* Recherche d'une plateforme (« netflix », « prime », « disney »…) : ses classements en tête des résultats — top 10 France
+   (Netflix), populaires et nouveautés (TMDB), et le meilleur de votre catalogue rattaché à elle */
+const PLAT_ALIAS = [['Netflix', ['netflix']], ['Prime Video', ['prime video', 'prime', 'amazon', 'amazon prime']], ['Disney+', ['disney', 'disney+', 'disney plus']],
+  ['Apple TV', ['apple tv', 'apple', 'apple tv+', 'appletv']], ['Canal+', ['canal', 'canal+', 'mycanal', 'canal plus']], ['Max', ['max', 'hbo', 'hbo max']],
+  ['Paramount+', ['paramount', 'paramount+', 'paramount plus']], ['Crunchyroll', ['crunchyroll']]];
+function platOf(q) { q = norm(q).trim(); if (q.length < 3) return null; const hit = PLAT_ALIAS.find(([, a]) => a.some(x => x === q || (q.length >= 4 && x.startsWith(q)))); return hit ? hit[0] : null; }
+async function platRows(svc, all) {
+  let h = ''; const POP = await loadPopular(false).catch(() => null), P = popIndex(all), byRate = (a, b) => b.rating - a.rating || b.added - a.added;
+  const mix = X => X.m.map((x, i) => [x, i]).concat(X.s.map((x, i) => [x, i])).sort((a, b) => a[1] - b[1]).map(x => x[0]);
+  if (svc === 'Netflix') {
+    const NF = await nfxResolve().catch(() => null);
+    if (NF && NF.list.length && POP) for (const kd of ['m', 's']) {
+      const its = [], rk = [];
+      NF.list.filter(e => e.id[0] === kd).sort((a, b) => a.r - b.r).forEach(e => { POP.meta[e.id] = POP.meta[e.id] || e.m; const it = popMatch(e.id, P, POP.meta) || ixVirtual(e.id, POP.meta[e.id]); if (it && !its.includes(it)) { its.push(it); rk.push(e.r); } });
+      if (its.length) h += vodRow('Top 10 Netflix France · ' + (kd === 'm' ? 'films' : 'séries'), 'les plus vus cette semaine', its, rk);
+    }
+  }
+  if (POP && POP.svc && POP.svc[svc]) { const l = popList(mix(POP.svc[svc]), P, POP.meta, ['m', 's']); if (l.length) h += vodRow('Populaires sur ' + svc, 'popularité · TMDB', l.slice(0, 30), true); }
+  if (POP && POP.svcNew && POP.svcNew[svc]) { const l = popList(mix(POP.svcNew[svc]), P, POP.meta, ['m', 's']); if (l.length) h += vodRow('Nouveautés sur ' + svc, 'sorties des 4 derniers mois · TMDB', l.slice(0, 30)); }
+  const cat = all.filter(i => (i.services || []).includes(svc)).sort(byRate);
+  if (cat.length) h += vodRow('Le meilleur de ' + svc + ' dans votre catalogue', cat.length + ' titres · mieux notés', cat.slice(0, 40), false, true);
+  if (!h) h = `<div class="vrow"><p class="hint">${esc(svc)} : ${POP ? 'rien trouvé dans votre catalogue pour l\'instant.' : 'activez TMDB (Paramètres › Sources) pour voir ses classements.'}</p></div>`;
+  return h;
+}
+/* Propositions pendant la frappe (sous le champ de recherche) : plateformes, genres, titres du catalogue (affiche, année),
+   et recherches récentes quand le champ est vide. ↑ ↓ Entrée, ou clic ; Échap pour fermer. */
+const QS = { el: null, list: [], sel: -1 };
+const qHist = () => LS.get('vod.qhist', []);
+function qHistPut(q) { q = (q || '').trim(); if (q.length < 2) return; LS.set('vod.qhist', [q].concat(qHist().filter(x => norm(x) !== norm(q))).slice(0, 8)); }
+function qsClose() { if (QS.el) QS.el.remove(); QS.el = null; QS.list = []; QS.sel = -1; }
+function qsBuild(v) {
+  const q = norm(v).trim(), out = [];
+  if (!q) { qHist().forEach(x => out.push({ k: 'q', q: x, l: x, sub: 'recherche récente', ic: '↺' })); return out; }
+  PLAT_ALIAS.forEach(([svc, a]) => { if (a.some(x => x.startsWith(q) || (q.length >= 3 && q.startsWith(x)))) out.push({ k: 'q', q: svc, l: svc, sub: 'tops, populaires, nouveautés', ic: '▶' }); });
+  if (q.length >= 3) VGENRES.forEach(([label]) => { if (norm(label).split(/\W+/).some(x => x.startsWith(q))) out.push({ k: 'q', q: label.split(' ').find(x => x.length > 3) || label, l: label, sub: 'genre', ic: '#' }); });
+  const D = V.data; if (D && D.items) {
+    const w = q.split(/\s+/).filter(Boolean), pool = D.items.filter(it => langVisible(it) && qualVisible(it)), seen = new Set();
+    const starts = pool.filter(it => norm(it.name).startsWith(q)), inc = pool.filter(it => !starts.includes(it) && w.every(x => norm(it.name).includes(x)));
+    starts.concat(inc).forEach(it => { const k = itemKey(it); if (seen.has(k) || seen.size >= 7) return; seen.add(k); out.push({ k: 'it', it, l: it.name, sub: [it.kind === 'series' ? 'Série' : 'Film', it.year].filter(Boolean).join(' · ') }); });
+  }
+  return out.slice(0, 11);
+}
+function qsRender() {
+  const inp = $('#vodQ'); if (!inp || document.activeElement !== inp) return qsClose();
+  QS.list = qsBuild(inp.value); QS.sel = -1;
+  if (!QS.list.length) return qsClose();
+  if (!QS.el) { QS.el = document.createElement('div'); QS.el.className = 'qsug'; document.body.appendChild(QS.el); }
+  QS.el.innerHTML = QS.list.map((x, i) => `<button class="qs" data-qs="${i}">${x.k === 'it' ? `<span class="qp">${coverOf(x.it) ? `<img src="${esc(posterUrl(coverOf(x.it)))}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}</span>` : `<span class="qi">${esc(x.ic)}</span>`}<span class="qm"><span class="ql">${esc(x.l)}</span><span class="qd">${esc(x.sub || '')}</span></span></button>`).join('')
+    + (inp.value.trim() ? '' : '<button class="qs qclr" data-qsclr>Effacer les recherches récentes</button>');
+  const r = inp.closest('.searchbar').getBoundingClientRect();
+  QS.el.style.left = r.left + 'px'; QS.el.style.top = (r.bottom + 6) + 'px'; QS.el.style.width = Math.max(r.width, 300) + 'px';
+}
+function qsPick(i) {
+  const x = QS.list[i]; if (!x) return; qsClose();
+  if (x.k === 'it') { qHistPut($('#vodQ').value); openVod(x.it); return; }
+  qHistPut(x.q); V.q = x.q; renderVod().then(() => { const qi = $('#vodQ'); if (qi) qi.blur(); }); $('#vod').scrollTop = 0;
+}
+document.addEventListener('mousedown', e => {
+  if (!QS.el) return;
+  const b = e.target.closest && e.target.closest('.qsug [data-qs], .qsug [data-qsclr]');
+  if (b) { e.preventDefault(); if (b.dataset.qsclr != null) { LS.set('vod.qhist', []); qsClose(); } else qsPick(+b.dataset.qs); return; }
+  if (!e.target.closest('.qsug') && e.target.id !== 'vodQ') qsClose();
+}, true);
+$('#vodInner').addEventListener('focusin', e => { if (e.target.id === 'vodQ') setTimeout(qsRender, 0); });
+$('#vodInner').addEventListener('keydown', e => {
+  if (e.target.id !== 'vodQ') return;
+  if (e.key === 'Escape') { qsClose(); return; }
+  if (!QS.el) { if (e.key === 'Enter') qHistPut(e.target.value); return; }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); const n = QS.list.length; QS.sel = (QS.sel + (e.key === 'ArrowDown' ? 1 : -1) + n + 1) % (n + 1) - (0); if (QS.sel === n) QS.sel = -1;
+    QS.el.querySelectorAll('[data-qs]').forEach((b, i) => b.classList.toggle('on', i === QS.sel)); return; }
+  if (e.key === 'Enter') { if (QS.sel >= 0) { e.preventDefault(); qsPick(QS.sel); } else { qHistPut(e.target.value); qsClose(); } }
+});
+window.addEventListener('resize', qsClose);
+$('#vod').addEventListener('scroll', () => { if (QS.el) qsClose(); }, { passive: true });
 let vodQT;
-$('#vodInner').addEventListener('input', e => { if (e.target.id !== 'vodQ') return; clearTimeout(vodQT); vodQT = setTimeout(() => { V.q = e.target.value; renderVod(); }, 250); });
+$('#vodInner').addEventListener('input', e => { if (e.target.id !== 'vodQ') return; qsRender(); clearTimeout(vodQT); vodQT = setTimeout(() => { V.q = e.target.value; renderVod().then(() => { if (QS.el) qsRender(); }); }, 250); });
 $('#vodInner').addEventListener('click', e => {
   if (jfClick(e) || torClick(e)) return;
   if (e.target.closest('[data-reload]')) { V.force = true; V.data = null; renderVod(); return; }
