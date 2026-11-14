@@ -3229,6 +3229,43 @@ async function loadPopular(force) {
 /* BetaSeries (site français, API officielle) : films et séries les plus suivis par ses membres, avec leur identifiant TMDB.
    Clé chiffrée (déverrouillée avec « Mon abonnement »), liste gardée 12 h. */
 const BS_ENC = {"salt":"0cMLFcctzhONyJudE2rBnA==","iv":"9hWwAv28mEwo33u8","data":"jUVElVXNehE4sUn9Z4cNXbKjMac22eOgjS1amQ=="};
+/* Top SensCritique de l'année (films, séries) : « What's on? API », titres sortis depuis le 1er janvier triés par note des
+   membres de SensCritique, 300 notes au moins ; 3 pages de 20 par type, gardé 24 h (6 demandes par jour au plus). */
+async function scTop(kind) {
+  const yr = new Date().getFullYear(), ck = 'sctop1:' + kind + ':' + yr, c = await DB.cacheGet(ck).catch(() => null);
+  if (c && Date.now() - c.at < 864e5) return c.data;
+  const out = [], meta = {}, k0 = kind === 'tvshow' ? 's' : 'm';
+  for (let page = 1; page <= 3; page++) {
+    const r = await fetch('https://whatson-api.onrender.com/?item_type=' + kind + '&release_date=from:' + yr + '-01-01&ratings_filters=senscritique_users&sort_by=ratings&order=desc&limit=20&page=' + page).catch(() => null);
+    if (!r || !r.ok) break;
+    const j = await r.json().catch(() => null), l = (j && (j.results || (Array.isArray(j) ? j : null))) || [];
+    l.forEach(x => {
+      const sc = x.senscritique || {}, n = +sc.users_rating_count || 0, v = +sc.users_rating || 0;
+      if (!x.id || !v || n < 300) return;
+      const id = k0 + x.id, img = String(x.image || ''), pp = (img.match(/\/t\/p\/[^/]+(\/[^/?]+)$/) || [])[1] || (img[0] === '/' ? img : '');
+      meta[id] = { k: k0, t: x.title || '', o: x.original_title || '', y: +String(x.release_date || '').slice(0, 4) || yr, p: pp, sc: v };
+      if (!out.includes(id)) out.push(id);
+    });
+    if (l.length < 20) break;
+  }
+  out.sort((a, b) => meta[b].sc - meta[a].sc);
+  const data = { ids: out, meta };
+  if (out.length) DB.cachePut({ id: ck, at: Date.now(), data });
+  return data;
+}
+/* Français récents : films et séries de production française sortis depuis 18 mois, les plus populaires (TMDB) ; 12 h */
+async function frRecent() {
+  const c = await DB.cacheGet('frrec1').catch(() => null); if (c && Date.now() - c.at < 12 * 3600e3) return c.data;
+  const since = new Date(Date.now() - 548 * 864e5).toISOString().slice(0, 10), meta = {}, ids = [];
+  const [m, t] = await Promise.all([tmdb('/discover/movie', { with_origin_country: 'FR', 'primary_release_date.gte': since, sort_by: 'popularity.desc', 'vote_count.gte': 10, region: 'FR' }).catch(() => null),
+    tmdb('/discover/tv', { with_origin_country: 'FR', 'first_air_date.gte': since, sort_by: 'popularity.desc', 'vote_count.gte': 5 }).catch(() => null)]);
+  const put = (x, k) => { const id = k + x.id; meta[id] = { k, t: x.title || x.name || '', o: x.original_title || x.original_name || '', y: +String(x.release_date || x.first_air_date || '').slice(0, 4) || 0, p: x.poster_path || '', l: x.original_language || 'fr' }; return id; };
+  const a = ((m && m.results) || []).map(x => put(x, 'm')), b = ((t && t.results) || []).map(x => put(x, 's'));
+  for (let i = 0; i < Math.max(a.length, b.length); i++) { if (a[i]) ids.push(a[i]); if (b[i]) ids.push(b[i]); }
+  const data = { ids, meta };
+  if (ids.length) DB.cachePut({ id: 'frrec1', at: Date.now(), data });
+  return data;
+}
 async function bsPopular() {
   const key = LS.get('pref.bs', ''); if (!key) return null;
   const c = await DB.cacheGet('bs1').catch(() => null); if (c && Date.now() - c.at < 12 * 3600e3) return c.data;
@@ -3512,6 +3549,20 @@ async function renderVod() {
       if (BSP) Object.entries(BSP.meta).forEach(([k, m]) => { POP.meta[k] = POP.meta[k] || m; });
       const bsl = BSP ? popList(BSP.ids, P, POP.meta, kinds) : [];
       if (bsl.length >= 3) h += vodRow('Les plus suivis sur BetaSeries', 'membres français de BetaSeries', bsl.slice(0, 30), true);
+      // Top SensCritique de l'année (films, séries) et Français récents, juste après BetaSeries
+      const [SCM, SCS, FRR] = await Promise.all([kinds.includes('m') ? scTop('movie').catch(() => null) : null, kinds.includes('s') ? scTop('tvshow').catch(() => null) : null, frRecent().catch(() => null)].map(x => Promise.race([Promise.resolve(x), new Promise(r => setTimeout(() => r(null), 6000))])));
+      for (const [T, kd, lab] of [[SCM, 'm', 'films'], [SCS, 's', 'séries']]) {
+        if (!T) continue;
+        Object.entries(T.meta).forEach(([k, m]) => { POP.meta[k] = POP.meta[k] || m; });
+        const l = popList(T.ids, P, POP.meta, [kd]);
+        l.forEach(it => { const id = T.ids.find(x => popMatch(x, P, POP.meta) === it || (it.tor && 'm' + it.tmdb === x)); const sc = id && T.meta[id].sc; if (sc && !NOTES.has(itemKey(it))) NOTES.set(itemKey(it), { sc }); });
+        if (l.length >= 3) h += vodRow('Top SensCritique ' + new Date().getFullYear() + ' · ' + lab, 'les mieux notés par les membres de SensCritique, sortis cette année', l.slice(0, 30), true);
+      }
+      if (FRR) {
+        Object.entries(FRR.meta).forEach(([k, m]) => { POP.meta[k] = POP.meta[k] || m; });
+        const l = popList(FRR.ids, P, POP.meta, kinds);
+        if (l.length >= 3) h += vodRow('Français récents', 'films et séries français sortis ces 18 derniers mois · TMDB', l.slice(0, 30), false, true);
+      }
       // Les films et séries dont on parle en France : les plus consultés sur Wikipédia en français ces 3 derniers jours
       // (rangée placée tout en bas des recommandations)
       const G = await loadGuide().catch(() => null), WK = G && G.wiki;
