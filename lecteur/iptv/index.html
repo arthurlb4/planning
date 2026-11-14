@@ -294,7 +294,9 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 @media (max-width:700px){.tfd{grid-template-columns:110px minmax(0,1fr);gap:14px}.tfd h2{font-size:20px}}
 @media (max-width:700px){.trow{flex-wrap:wrap}.tac{width:100%;justify-content:flex-end}.tsep{display:none}}
 .cast{display:flex;gap:12px;overflow-x:auto;padding-bottom:8px}
-.cast .ca{flex:none;width:84px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:3px}
+.cast .ca{flex:none;width:84px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:3px;color:var(--text);cursor:pointer;padding:4px 0;border-radius:10px}
+.cast .ca:hover{background:var(--bg3)}
+.cast{scrollbar-width:thin}
 .cast .ph{width:72px;height:72px;border-radius:50%;background:var(--bg3) center/cover no-repeat;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:500;color:var(--text3)}
 .cast b{font-size:12px;line-height:1.2}.cast small{font-size:11px;color:var(--text3);line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 #vodSimilar .poster{width:120px}
@@ -1866,6 +1868,7 @@ async function vodTorLoad(it) {
    leur résolution (et la taille pour un torrent) ; « ⋯ Autres versions » : toutes les autres, IPTV et torrent */
 const TQ = { '4K': '4K', '1080p': 'FHD', '720p': 'HD', 'SD': 'SD' };
 const torQ = x => TQ[(x._t || torTags(x.title)).q] || '';
+const torSd = x => { const n = x.seeders || 0; return n + ' source' + (n > 1 ? 's' : ''); };
 const qTag = q => q ? `<span class="q${q === '4K' ? ' k4' : ''}">${q}</span>` : '';
 const PM = { el: null, sub: false };
 function pmClose() { if (PM.el) PM.el.remove(); PM.el = null; PM.sub = false; }
@@ -1878,13 +1881,13 @@ function pmHtml() {
     const others = it.tor ? [] : vs.slice().reverse().filter(x => x !== pick);
     if (others.length) h += '<h5>IPTV</h5>' + others.map(x => `<button class="pi" data-pmi="iptv:${x.id}"><b>${esc(String(x.cat || 'Abonnement').replace(/[ᴬ-ᵡ⁰-⁹ᴴᴰᴿᴮʸᵁᴵᴼᴾ]+/g, '').trim().slice(0, 28) || 'Abonnement')}</b>${qTag(vodLbl(x))}</button>`).join('');
     const tor = tl.filter(x => x !== bx);
-    if (tor.length) h += '<h5>Torrent</h5>' + tor.map(x => `<span class="pirow"><button class="pi" data-pmi="tor:${tl.indexOf(x)}"><b>${esc(torMo(x.size))}</b>${qTag(torQ(x))}</button><button class="pq" data-pmq="${tl.indexOf(x)}" title="Télécharger dans Ma médiathèque (qBittorrent)"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></button></span>`).join('');
+    if (tor.length) h += '<h5>Torrent</h5>' + tor.map(x => `<span class="pirow"><button class="pi" data-pmi="tor:${tl.indexOf(x)}"><b>${esc(torMo(x.size))}</b><small>${torSd(x)}</small>${qTag(torQ(x))}</button><button class="pq" data-pmq="${tl.indexOf(x)}" title="Télécharger dans Ma médiathèque (qBittorrent)"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></button></span>`).join('');
     if (!others.length && !tor.length) h += '<p class="hint" style="margin:6px 12px">Pas d\'autre version.</p>';
     return h;
   }
   let h = it.tor ? '' : `<button class="pi" data-pmi="iptv:${pick.id}"><b>IPTV</b>${pos > 60 ? `<small>reprise à ${fmtDur(pos)}</small>` : ''}${qTag(vodLbl(pick))}</button>`;
   if (torOn) h += VT.state === 'loading' && VT.it === it ? '<button class="pi" disabled><b>Torrent</b><small>recherche…</small></button>'
-    : bx ? `<button class="pi" data-pmi="tor:${tl.indexOf(bx)}"><b>Torrent</b><small>${esc(torMo(bx.size))}</small>${qTag(torQ(bx))}</button><button class="pi pdl" data-pmq="${tl.indexOf(bx)}"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><b>Télécharger dans Ma médiathèque</b></button>`
+    : bx ? `<button class="pi" data-pmi="tor:${tl.indexOf(bx)}"><b>Torrent</b><small>${esc(torMo(bx.size))} · ${torSd(bx)}</small>${qTag(torQ(bx))}</button><button class="pi pdl" data-pmq="${tl.indexOf(bx)}"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><b>Télécharger dans Ma médiathèque</b></button>`
     : '<button class="pi" disabled><b>Torrent</b><small>aucune version</small></button>';
   if (jf) h += `<button class="pi" data-pmi="jf"><b>Ma médiathèque</b>${qTag(JF.lab)}</button>`;
   if (!h) h = '<button class="pi" disabled><b>Aucune source pour ce titre</b>' + (torOk() ? '' : '<small>torrent : appli Windows</small>') + '</button>';
@@ -4300,9 +4303,20 @@ async function vodSearchMore(q0, already) {
   const r = await tmdb('/search/multi', { query: q0 }).catch(() => null);
   if (!r || V.q !== q0 || !$('#vodTm')) return;
   const meta = {}, put = (x, kind) => { const k = (kind || (x.media_type === 'tv' ? 's' : 'm')) + x.id; meta[k] = { k: k[0], t: x.title || x.name || '', o: x.original_title || x.original_name || '', y: +String(x.release_date || x.first_air_date || '').slice(0, 4) || 0, p: x.poster_path || '', l: x.original_language || '' }; return k; };
+  // personne choisie dans une distribution : ses titres en premier (par son identifiant, pas d'homonyme), réalisés puis joués
+  const PS = V.person && V.person.name === q0 ? V.person : null;
+  if (PS) {
+    const cc = await tmdb('/person/' + PS.id + '/combined_credits').catch(() => null);
+    if (cc && V.q === q0) {
+      const pop = (a, b) => (b.popularity || 0) - (a.popularity || 0);
+      const dir = (cc.crew || []).filter(c => c.job === 'Director' || c.job === 'Creator').sort(pop), act = (cc.cast || []).filter(c => (c.episode_count || 2) > 1 || c.media_type === 'movie').sort(pop);
+      if (dir.length) row('Réalisés par ' + PS.name, popList(dir.map(x => put(x)), P, meta, ['m', 's']));
+      if (act.length) row('Avec ' + PS.name, popList(act.map(x => put(x)), P, meta, ['m', 's']));
+    }
+  }
   const titles = (r.results || []).filter(x => x.media_type === 'movie' || x.media_type === 'tv').map(x => put(x));
   row('Titres correspondants', popList(titles, P, meta, ['m', 's']));
-  const person = (r.results || []).find(x => x.media_type === 'person');
+  const person = PS ? null : (r.results || []).find(x => x.media_type === 'person');
   if (person) {
     const cc = await tmdb('/person/' + person.id + '/combined_credits').catch(() => null);
     if (cc && V.q === q0) {
@@ -4342,8 +4356,11 @@ async function vodEnrich(it) {
   const m = $('#vodMeta'); if (m) m.textContent = [it.year || (d.release_date || d.first_air_date || '').slice(0, 4), genres || it.genre, run, certTxt, it.services.join(', ')].filter(Boolean).join(' · ');
   const cr = d.credits || {}, dir = (cr.crew || []).filter(c => c.job === 'Director').map(c => c.name).slice(0, 2).join(', ') || (d.created_by || []).map(c => c.name).slice(0, 2).join(', ');
   const crew = $('#vodCrew'); if (crew && dir) crew.innerHTML = `<div class="cr">${ti.kind === 'movie' ? 'Réalisation' : 'Création'} : ${esc(dir)}</div>`;
-  const cast = (cr.cast || []).slice(0, 12);
-  if (cast.length && $('#vodCast')) $('#vodCast').innerHTML = '<h4 class="vdh">Distribution</h4><div class="cast">' + cast.map(c => `<div class="ca"><span class="ph" ${c.profile_path ? `style="background-image:url('${img(c.profile_path, 'w185')}')"` : ''}>${c.profile_path ? '' : esc(initials(c.name))}</span><b>${esc(c.name)}</b><small>${esc(c.character || '')}</small></div>`).join('') + '</div>';
+  // Distribution : réalisation (ou création) d'abord, puis les acteurs ; un clic montre les titres de la personne
+  const dirs = ti.kind === 'movie' ? (cr.crew || []).filter(c => c.job === 'Director').slice(0, 2).map(c => Object.assign({}, c, { character: 'Réalisation' }))
+    : (d.created_by || []).slice(0, 2).map(c => Object.assign({}, c, { character: 'Création' }));
+  const cast = dirs.concat((cr.cast || []).filter(c => !dirs.some(x => x.id === c.id)).slice(0, 20));
+  if (cast.length && $('#vodCast')) $('#vodCast').innerHTML = '<h4 class="vdh">Distribution</h4><div class="cast">' + cast.map(c => `<button class="ca" data-person="${c.id}" data-pname="${esc(c.name)}" title="Voir les titres avec ${esc(c.name)}"><span class="ph" ${c.profile_path ? `style="background-image:url('${img(c.profile_path, 'w185')}')"` : ''}>${c.profile_path ? '' : esc(initials(c.name))}</span><b>${esc(c.name)}</b><small>${esc(c.character || '')}</small></button>`).join('') + '</div>';
   // Titres similaires présents dans le catalogue
   const recs = ((d.recommendations || {}).results || []).slice(0, 40), meta = {}, P = popIndex(V.data ? V.data.items : []);
   const ids = recs.map(r => { const k = ((r.media_type ? r.media_type === 'tv' : ti.kind === 'tv') ? 's' : 'm') + r.id; meta[k] = { k: k[0], t: r.title || r.name || '', o: r.original_title || r.original_name || '', y: +String(r.release_date || r.first_air_date || '').slice(0, 4) || 0, p: r.poster_path || '', l: r.original_language || '' }; return k; });
@@ -4368,6 +4385,16 @@ $('#vodDetail').addEventListener('click', e => {
   const b = e.target.closest('.fbrow [data-fb]'); if (!b || !V.open) return;
   e.stopPropagation(); fbSet(V.open.it, b.dataset.fb);
   b.closest('.fbrow').innerHTML = fbButtons(V.open.it, 'fbb');
+}, true);
+// Distribution : molette = défilement horizontal ; clic sur une personne = ses titres (recherche par son identifiant TMDB)
+$('#vodDetail').addEventListener('wheel', e => {
+  const c = e.target.closest('.cast'); if (!c || Math.abs(e.deltaX) > Math.abs(e.deltaY) || c.scrollWidth <= c.clientWidth) return;
+  e.preventDefault(); c.scrollLeft += e.deltaY;
+}, { passive: false });
+$('#vodDetail').addEventListener('click', e => {
+  const b = e.target.closest('.cast [data-person]'); if (!b) return;
+  e.stopPropagation(); V.person = { id: +b.dataset.person, name: b.dataset.pname };
+  closeModals(); V.q = b.dataset.pname; document.body.classList.remove('drawer'); setHomeView(true, true, 'vod'); $('#vod').scrollTop = 0;
 }, true);
 $('#vodDetail').addEventListener('change', e => { if (e.target.id === 'seasonSel') { LS.set('season.' + V.open.it.id, e.target.value); openVod(V.open.it); } });
 $('#vodDetail').addEventListener('click', e => {
