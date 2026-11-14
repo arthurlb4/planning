@@ -2816,9 +2816,9 @@ $('#agendaBtn').onclick = () => { document.body.classList.remove('drawer'); setH
 setInterval(() => { if (document.body.classList.contains('agenda') && document.body.classList.contains('homeview')) renderAgenda(); }, 60000);
 
 /* ---------- Films & séries (VOD du serveur Xtream) façon Netflix : nouveautés, populaires, mieux notés, le meilleur de
-   chaque service (Netflix, Apple TV+, Disney+…), catégories. Seulement les catalogues en français (VF, VOSTFR). ---------- */
+   chaque service (Netflix, Apple TV, Disney+…), catégories. Seulement les catalogues en français (VF, VOSTFR). ---------- */
 const V = { data: null, loading: null, tab: 'home', q: '', cat: null };
-const SERVICES = [['Netflix', /netflix/i], ['Apple TV+', /apple/i], ['Disney+', /disney/i], ['Prime Video', /prime|amazon/i], ['Canal+', /canal|my ?canal/i],
+const SERVICES = [['Netflix', /netflix/i], ['Apple TV', /apple/i], ['Disney+', /disney/i], ['Prime Video', /prime|amazon/i], ['Canal+', /canal|my ?canal/i],
   ['Max', /\b(hbo|max)\b/i], ['Paramount+', /paramount/i], ['OCS', /\bocs\b/i], ['France.tv', /france\.?\s?tv/i], ['Arte', /\barte\b/i], ['TF1+', /tf1/i], ['M6+', /\bm6\b/i], ['Crunchyroll', /crunchyroll/i]];
 async function xget(q) {
   const x = epgCtx(); if (!x) throw new Error('Pas de connexion Xtream');
@@ -2827,7 +2827,7 @@ async function xget(q) {
 }
 // Étiquettes de service que les fournisseurs collent devant les titres (« NF - The Crown » = Netflix)
 const SVC_TAGS = { NF: 'Netflix', NFX: 'Netflix', NETFLIX: 'Netflix', AMZ: 'Prime Video', PV: 'Prime Video', PRIME: 'Prime Video', DSNP: 'Disney+', DNP: 'Disney+', DISNEY: 'Disney+',
-  ATVP: 'Apple TV+', APPLE: 'Apple TV+', HMAX: 'Max', MAX: 'Max', HBO: 'Max', PMTP: 'Paramount+', PARAMOUNT: 'Paramount+', CNLP: 'Canal+', CANAL: 'Canal+', OCS: 'OCS', CR: 'Crunchyroll' };
+  ATVP: 'Apple TV', APPLE: 'Apple TV', HMAX: 'Max', MAX: 'Max', HBO: 'Max', PMTP: 'Paramount+', PARAMOUNT: 'Paramount+', CNLP: 'Canal+', CANAL: 'Canal+', OCS: 'OCS', CR: 'Crunchyroll' };
 // Étiquette en tête, seulement suivie d'un séparateur (« NF - », « AMZ: », « |FR| », « [4K] ») : « Top Gun » reste « Top Gun »
 const TAG_RE = /^\s*(?:[\[(|]\s*)?\b(fr|fra|vf|vff|vfq|vfi|vostfr|vost|french|truefrench|multi|4k|uhd|fhd|hd|sd|hdr|hdr10|dv|hevc|x265|h265|x264|top|new|nouveau|nf|nfx|netflix|amz|pv|prime|dsnp|dnp|disney|atvp|apple|hmax|max|hbo|pmtp|paramount|cnlp|canal|ocs|cr)\b\s*(?:[\])|]+\s*[-:·]?|[-:|·])\s*/i;
 function titleTags(n) { const out = []; let t = String(n || ''), k = 0, m; while ((m = t.match(TAG_RE)) && k++ < 6) { const s2 = SVC_TAGS[m[1].toUpperCase()]; if (s2) out.push(s2); t = t.slice(m[0].length); } return out; }
@@ -3146,7 +3146,7 @@ function vodRow(title, sub, list, ranked, keep) { if (!list.length) return ''; r
 
 /* ---------- Vraie popularité : TMDB (tendances de la semaine, et le plus regardé en France sur chaque service), croisée avec
    le catalogue de l'abonnement. Clé TMDB gratuite (themoviedb.org › Paramètres › API), partagée par la synchro. ---------- */
-const TMDB_SVC = [['Netflix', /^netflix$/i], ['Prime Video', /^(amazon )?prime video$/i], ['Disney+', /^disney( plus|\+)$/i], ['Apple TV+', /^apple tv( plus|\+)$/i],
+const TMDB_SVC = [['Netflix', /^netflix$/i], ['Prime Video', /^(amazon )?prime video$/i], ['Disney+', /^disney( plus|\+)$/i], ['Apple TV', /^apple tv( plus|\+)?$/i, 350],
   ['Canal+', /^canal\+$/i], ['Max', /^(hbo )?max$/i], ['Paramount+', /^paramount( plus|\+)$/i], ['Crunchyroll', /^crunchyroll$/i]];
 const TM = { data: null, loading: null, err: '' };
 async function tmdb(path, params) {
@@ -3184,7 +3184,7 @@ async function loadPopular(force) {
   if (!force && TM.data) return TM.data;
   if (TM.loading) return TM.loading;
   TM.loading = (async () => {
-    if (!force) { const c = await DB.cacheGet('tmdb8:fr'); if (c && Date.now() - c.at < 12 * 3600e3) return (TM.data = c.data); }
+    if (!force) { const c = await DB.cacheGet('tmdb9:fr'); if (c && Date.now() - c.at < 12 * 3600e3) return (TM.data = c.data); }
     const meta = {}, ids = (res, kind) => (res.results || []).map(r => { const id = kind + r.id; meta[id] = { k: kind, t: r.title || r.name || '', o: r.original_title || r.original_name || '', y: +String(r.release_date || r.first_air_date || '').slice(0, 4) || 0, p: r.poster_path || '', l: r.original_language || '' }; return id; });
     const pages = async (path, kind, params, n) => { let out = []; for (let pg = 1; pg <= n; pg++) { try { out = out.concat(ids(await tmdb(path, Object.assign({ page: pg }, params)), kind)); } catch (e) { if (pg === 1) throw e; break; } } return out; };
     const data = { trend: [], svc: {}, svcNew: {}, meta, cinema: [] };
@@ -3209,8 +3209,9 @@ async function loadPopular(force) {
     data.trend = tm.map((x, i) => [x, i]).concat(tt.map((x, i) => [x, i])).sort((a, b) => a[1] - b[1]).map(x => x[0]);
     let provs = [];
     try { provs = (await tmdb('/watch/providers/movie', { watch_region: 'FR' })).results || []; } catch (e) {}
-    await Promise.all(TMDB_SVC.map(async ([name, re]) => {
-      const pr = provs.filter(p => re.test(p.provider_name.trim())).sort((a, b) => a.provider_id - b.provider_id)[0]; if (!pr) return;
+    // id préféré : Apple a renommé « Apple TV+ » en « Apple TV » (2025), comme sa boutique de location : l'abonnement est le 350
+    await Promise.all(TMDB_SVC.map(async ([name, re, pid]) => {
+      const pr = provs.filter(p => re.test(p.provider_name.trim())).sort((a, b) => (b.provider_id === pid) - (a.provider_id === pid) || a.provider_id - b.provider_id)[0]; if (!pr) return;
       const pa = { watch_region: 'FR', with_watch_providers: pr.provider_id, sort_by: 'popularity.desc', with_watch_monetization_types: 'flatrate' };
       const [m, t] = await Promise.all([pages('/discover/movie', 'm', pa, 2).catch(() => []), pages('/discover/tv', 's', pa, 2).catch(() => [])]);
       data.svc[name] = { m, s: t };
@@ -3221,7 +3222,7 @@ async function loadPopular(force) {
         pages('/discover/tv', 's', Object.assign({ 'first_air_date.gte': d0, 'first_air_date.lte': d1 }, nm), 2).catch(() => [])]);
       data.svcNew[name] = { m: m2, s: t2 };
     }));
-    DB.cachePut({ id: 'tmdb8:fr', at: Date.now(), data });
+    DB.cachePut({ id: 'tmdb9:fr', at: Date.now(), data });
     return (TM.data = data);
   })();
   try { return await TM.loading; } catch (e) { TM.err = e.message; return null; } finally { TM.loading = null; }
@@ -3244,31 +3245,6 @@ async function scTop(kind) {
       if (!x.id || !v || n < 300) return;
       const id = k0 + x.id, img = String(x.image || ''), pp = (img.match(/\/t\/p\/[^/]+(\/[^/?]+)$/) || [])[1] || (img[0] === '/' ? img : '');
       meta[id] = { k: k0, t: x.title || '', o: x.original_title || '', y: +String(x.release_date || '').slice(0, 4) || yr, p: pp, sc: v };
-      if (!out.includes(id)) out.push(id);
-    });
-    if (l.length < 20) break;
-  }
-  out.sort((a, b) => meta[b].sc - meta[a].sc);
-  const data = { ids: out, meta };
-  if (out.length) DB.cachePut({ id: ck, at: Date.now(), data });
-  return data;
-}
-/* Top SensCritique par plateforme : films et séries disponibles sur la plateforme (« What's on? API »), triés par note des
-   membres de SensCritique, 1 000 notes au moins ; 2 pages de 20, gardé 24 h */
-const SC_PLAT = { 'Netflix': 'Netflix', 'Prime Video': 'Prime Video', 'Disney+': 'Disney', 'Apple TV+': 'Apple TV', 'Canal+': 'Canal', 'Max': 'Max', 'Paramount+': 'Paramount', 'Crunchyroll': 'Crunchyroll' };
-async function scTopPlat(svc, types) {
-  const ck = 'scplat1:' + svc + ':' + types, c = await DB.cacheGet(ck).catch(() => null);
-  if (c && Date.now() - c.at < 864e5) return c.data;
-  const out = [], meta = {};
-  for (let page = 1; page <= 2; page++) {
-    const r = await fetch('https://whatson-api.onrender.com/?item_type=' + types + '&platforms=' + encodeURIComponent(SC_PLAT[svc] || svc) + '&is_active=true,false&ratings_filters=senscritique_users&sort_by=ratings&order=desc&limit=20&page=' + page).catch(() => null);
-    if (!r || !r.ok) break;
-    const j = await r.json().catch(() => null), l = (j && (j.results || (Array.isArray(j) ? j : null))) || [];
-    l.forEach(x => {
-      const sc = x.senscritique || {}, n = +sc.users_rating_count || 0, v = +sc.users_rating || 0;
-      if (!x.id || !v || n < 1000) return;
-      const k0 = x.item_type === 'tvshow' ? 's' : 'm', id = k0 + x.id, img = String(x.image || ''), pp = (img.match(/\/t\/p\/[^/]+(\/[^/?]+)$/) || [])[1] || (img[0] === '/' ? img : '');
-      meta[id] = { k: k0, t: x.title || '', o: x.original_title || '', y: +String(x.release_date || '').slice(0, 4) || 0, p: pp, sc: v };
       if (!out.includes(id)) out.push(id);
     });
     if (l.length < 20) break;
@@ -3646,16 +3622,7 @@ async function renderVod() {
       }
       prix.forEach(p => { h += vodRow(p.n, 'films primés présents dans votre catalogue, du plus récent au plus ancien · Wikidata', p.l.slice(0, 40), false, true); });
       h += vodRow('Tendances mondiales de la semaine', 'popularité dans le monde · TMDB', popList(POP.trend, P, POP.meta, kinds).slice(0, 30), true);
-      const scTypes = kinds.length === 2 ? 'movie,tvshow' : kinds[0] === 'm' ? 'movie' : 'tvshow';
-      const SCP = await Promise.race([Promise.all(TMDB_SVC.map(([svc]) => scTopPlat(svc, scTypes).catch(() => null))), new Promise(r => setTimeout(() => r([]), 8000))]);
       for (const [svc] of TMDB_SVC) {
-        const T = SCP[TMDB_SVC.findIndex(x => x[0] === svc)];
-        if (T && T.ids.length) {
-          Object.entries(T.meta).forEach(([k, m]) => { POP.meta[k] = POP.meta[k] || m; });
-          const tl = popList(T.ids, P, POP.meta, kinds);
-          tl.forEach(it => { const id = T.ids.find(x => popMatch(x, P, POP.meta) === it || (it.tor && 'm' + it.tmdb === x)); const sc = id && T.meta[id].sc; if (sc && !NOTES.has(itemKey(it))) NOTES.set(itemKey(it), { sc }); });
-          if (tl.length >= 3) h += vodRow('Top SensCritique · ' + svc, 'les mieux notés par les membres de SensCritique, disponibles sur ' + svc, tl.slice(0, 30), true);
-        }
         const S2 = POP.svc[svc]; if (!S2) continue;
         const mix = X => kinds.length === 2 ? X.m.map((x, i) => [x, i]).concat(X.s.map((x, i) => [x, i])).sort((a, b) => a[1] - b[1]).map(x => x[0]) : kinds[0] === 'm' ? X.m : X.s;
         const top = svc === 'Netflix' && NF && NF.list.length;   // Netflix : déjà le vrai top France en tête
@@ -3681,7 +3648,7 @@ async function renderVod() {
     // Réglage de la vraie popularité
     const key = LS.get('pref.tmdb', '');
     const tbox = `<div class="tmdbbox"><b>Popularité réelle (TMDB)</b> ${key ? (POP ? '· activée' : '· ' + esc(TM.err || 'indisponible')) : ''}
-      <p class="hint" style="margin:6px 0 10px">${key ? 'Tendances et classements par service mis à jour toutes les 12 h.' : 'Votre serveur ne donne aucune audience. Avec une clé gratuite TMDB (themoviedb.org › compte › Paramètres › API, « Clé d\'API » ou « Jeton d\'accès en lecture »), l\'accueil montre les vraies tendances de la semaine et ce qui est le plus regardé en France sur Netflix, Prime Video, Disney+, Apple TV+, Canal+…'}</p>
+      <p class="hint" style="margin:6px 0 10px">${key ? 'Tendances et classements par service mis à jour toutes les 12 h.' : 'Votre serveur ne donne aucune audience. Avec une clé gratuite TMDB (themoviedb.org › compte › Paramètres › API, « Clé d\'API » ou « Jeton d\'accès en lecture »), l\'accueil montre les vraies tendances de la semaine et ce qui est le plus regardé en France sur Netflix, Prime Video, Disney+, Apple TV, Canal+…'}</p>
       <div class="row"><input class="field" id="tmdbKey" type="password" placeholder="Clé d'API TMDB" value="${esc(key)}" autocomplete="off" spellcheck="false" style="flex:1;min-width:0;margin:0"><button class="chip" data-tmdb>Enregistrer</button>${key ? '<button class="chip" data-tmdbre>↻</button>' : '<button class="chip" data-tmdbin>Activer la clé intégrée</button>'}</div></div>`;
     if (!key) h = h.replace('<div class="vrow">', tbox + '<div class="vrow">');   // sans clé : réglage en haut (avec la clé : Paramètres › Sources)
   }
