@@ -758,6 +758,8 @@ body.solo #guide .dy{background:rgba(14,14,13,.95)}
     <section class="ptab" data-ptabc="appareils">
     <h3 id="appVerH" hidden>Appli</h3>
     <div id="appVer" hidden></div>
+    <h3 id="prwH" hidden>Indexeurs et YouTube</h3>
+    <div id="prwBox" hidden></div>
     <h3>Synchronisation entre appareils</h3>
     <div id="syncBox"></div>
     <h3>Télécharger l'appli</h3>
@@ -1401,7 +1403,7 @@ if (window.desktop && window.desktop.win) {
 // Retour aux films et séries, là où on était : le film continue dans le mini lecteur (fermez-le avec ✕)
 $('#vodBack').onclick = async e => {
   e.stopPropagation(); const B = V.back; if (!B) return;
-  V.tab = B.tab; V.cat = B.cat; V.q = B.q || '';
+  V.tab = B.tab === 'tor' ? 'home' : B.tab; V.cat = B.cat; V.q = B.q || '';
   document.body.classList.remove('drawer'); setSolo(false); setHomeView(true, true, 'vod');
   for (let i = 0; i < 40; i++) { await new Promise(r => setTimeout(r, 100)); if ($('#vodInner .vrow, #vodInner .vgrid') && !$('#vodInner > .spin')) break; }
   await new Promise(r => setTimeout(r, 150));
@@ -1470,27 +1472,6 @@ async function torQbt(x, cat, b) {
   if (!j.ok) { clearTimeout(toast.t); toast.t = setTimeout(() => $('#toast').classList.remove('show'), 7000); }   // message d'erreur : le temps de le lire
 }
 // Onglet « Indexeurs » : rendu dans la page Films & séries
-function torRender() {
-  if (!torOk()) return '<div class="empty">La recherche dans les indexeurs et la lecture des torrents se font dans l\'appli Windows.</div>';
-  const c = prwConf();
-  let h = '<div id="torPage">';
-  h += '<div id="torCur">' + torCurHtml() + '</div>';
-  if (!c) {
-    h += `<div class="tmdbbox tcard"><b>Relier Prowlarr</b><p class="hint" style="margin:6px 0 10px">Prowlarr regroupe vos indexeurs : leurs résultats s'affichent ici. Clé d'API : Prowlarr › Settings › General › API Key.</p>
-      <div class="row" style="gap:8px;flex-wrap:wrap"><input class="field" id="prwUrl" value="${esc(LS.get('dev.prwurl', 'http://localhost:9696'))}" style="flex:1;min-width:200px;margin:0" spellcheck="false"><input class="field" id="prwKey" placeholder="Clé d'API" style="flex:1;min-width:200px;margin:0" spellcheck="false" autocomplete="off"><button class="btn primary" data-prwsave>Enregistrer</button></div><p class="err" id="prwErr"></p></div>`;
-  } else {
-    const chips = (k, opts) => opts.map(([v, l]) => `<button class="chip${TOR[k] === v ? ' on' : ''}" data-tf="${k}" data-tv="${v}">${l}</button>`).join('');
-    h += `<div class="tsearch"><label class="searchbar tbig"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input id="torQ" type="search" placeholder="Chercher un film ou une série dans mes indexeurs" value="${esc(TOR.q)}" autocomplete="off" spellcheck="false"></label><button class="btn primary" data-tgo>Chercher</button></div>`;
-    if (!TOR.res && !TOR.busy && TOR.hist.length) h += `<div class="tfil"><span class="hint">Récemment :</span>${TOR.hist.map(q => `<button class="chip" data-thq="${esc(q)}">${esc(q)}</button>`).join('')}</div>`;
-    h += `<div class="tfil">${chips('kind', [['all', 'Tout'], ['movie', 'Films'], ['series', 'Séries']])}<span class="tsep"></span>${chips('qual', [['all', 'Toutes qualités'], ['4K', '4K'], ['1080p', '1080p'], ['720p', '720p']])}<span class="tsep"></span>${chips('sort', [['best', 'Meilleur choix'], ['seed', 'Plus de sources'], ['date', 'Plus récents'], ['size', 'Plus lourds']])}</div>`;
-    h += '<div id="torRes">' + torResHtml() + '</div>';
-  }
-  h += `<details class="padd"><summary>Lien magnet ou fichier .torrent</summary>
-    <p class="hint" style="margin:0 0 10px">La vidéo démarre pendant le téléchargement ; comme tout client torrent, l'appli repartage les morceaux reçus tant que le torrent est ouvert.</p>
-    <div class="row" style="gap:8px;flex-wrap:wrap"><input class="field" id="torMag" placeholder="magnet:?xt=urn:btih:…" autocomplete="off" spellcheck="false" style="flex:1;min-width:220px;margin:0"><button class="btn primary" data-tmag>Ouvrir</button><button class="btn" data-tfile>Choisir un fichier .torrent…</button><input type="file" id="torFile" accept=".torrent,application/x-bittorrent" hidden></div></details>`;
-  if (c) h += `<div class="vrow" style="margin-top:14px"><small class="hint">Prowlarr · ${esc(c.url)}</small> <button class="chip" data-prwout>Changer de Prowlarr</button></div>`;
-  return h + '</div>';
-}
 /* Résultats des indexeurs rattachés aux fiches TMDB : les publications (« Dune.Part.Two.2024.MULTi.2160p… ») sont regroupées
    par titre, retrouvées sur TMDB (affiche, résumé, note, distribution) et affichées comme le reste du catalogue ; la fiche
    (dans la page) liste les versions disponibles. Sans clé TMDB : regroupement par titre, sans affiche. */
@@ -1598,7 +1579,7 @@ function torResHtml() {
   const score = g => { const l = torRel(g); return TOR.sort === 'date' ? Math.max(...l.map(x => Date.parse(x.publishDate) || 0)) : TOR.sort === 'size' ? Math.max(...l.map(x => x.size || 0)) : l.reduce((s, x) => s + (x.seeders || 0), 0); };
   gs.sort((a, b) => score(b) - score(a));
   const nk = !LS.get('pref.tmdb', '') ? '<p class="hint">Ajoutez la clé TMDB (Films & séries › Accueil, en bas) pour voir les affiches et les fiches des titres.</p>' : '';
-  return `<div class="vrow"><h3>Résultats<small>${gs.length} titre${gs.length > 1 ? 's' : ''} · ${TOR.res.length} publications${TOR.qual !== 'all' ? ' · ' + TOR.qual : ''}</small></h3></div>${nk}`
+  return `<p class="hint" style="margin:-6px 2px 0">${gs.length} titre${gs.length > 1 ? 's' : ''} · ${TOR.res.length} publications</p>${nk}`
     + (gs.length ? `<div class="vgrid">${gs.map(g => torPosterHtml(g, TOR.groups.indexOf(g))).join('')}</div>` : '<div class="empty">Aucun résultat dans cette qualité.</div>');
 }
 // Fiche d'un titre trouvé dans les indexeurs : infos TMDB, lien vers l'abonnement s'il l'a, versions disponibles
@@ -1607,7 +1588,7 @@ function torFicheHtml(g) {
   l.forEach(x => { x._best = false; }); const bx = torBest(l, g); if (bx) bx._best = true;
   const img = (p, w) => p ? 'https://image.tmdb.org/t/p/' + w + p : '';
   let h = `<div class="tfiche">${tm && tm.back ? `<div class="tbk" style="background-image:url('${esc(img(tm.back, 'w1280'))}')"></div>` : ''}
-    <button class="chip" data-tback style="position:relative">‹ Tous les résultats</button>
+    <button class="chip" data-tback style="position:relative">‹ Résultats des indexeurs</button>
     <div class="tfd">${tm && tm.poster ? `<img class="cv" src="${esc(img(tm.poster, 'w342'))}" alt="" referrerpolicy="no-referrer">` : `<div class="cv">${esc(g.title)}</div>`}
     <div style="min-width:0"><h2>${esc(tm ? tm.name : g.title)}</h2>
     <div class="mt" id="torMeta">${esc([(tm && tm.year) || g.year, g.kind === 'series' ? 'Série' : 'Film', tm && tm.rating ? '★ ' + tm.rating.toFixed(1) : '', tm && tm.orig && tnK(tm.orig) !== tnK(tm.name) ? tm.orig : ''].filter(Boolean).join(' · '))}</div>
@@ -1640,39 +1621,14 @@ async function torFicheMore(g) {
   const m = $('#torMeta'); if (m) m.textContent = [tm.year || g.year, (d.genres || []).map(x => x.name).slice(0, 3).join(', '), run, tm.rating ? '★ ' + tm.rating.toFixed(1) : ''].filter(Boolean).join(' · ');
   const c = $('#torCrew'); if (c) c.innerHTML = (dir.length ? `<div>${g.kind === 'series' ? 'Création' : 'Réalisation'} : ${esc(dir.join(', '))}</div>` : '') + (cast.length ? `<div>Avec : ${esc(cast.join(', '))}</div>` : '');
 }
-// Torrent ouvert : avancement et vidéos, en haut de l'onglet
-function torCurHtml() {
-  if (TOR.curBusy) return '<div class="tcur"><div class="spin" style="margin:6px auto"></div><p class="hint" style="text-align:center;margin:6px 0 0">Recherche des sources du torrent…</p></div>';
-  if (TOR.curErr) return `<div class="tcur"><p class="err" style="margin:0">Torrent : ${esc(TOR.curErr)}</p><button class="chip" data-tclose style="margin-top:8px">Fermer</button></div>`;
-  const j = TOR.cur; if (!j) return '';
-  const vids = j.files.filter(f => f.video).sort((a, b) => a.name.localeCompare(b.name, 'fr', { numeric: true })), i = TOR.info;
-  const pct = i ? Math.round(i.progress * 100) : 0;
-  return `<div class="tcur"><div class="tch"><div style="min-width:0;flex:1"><b class="ttl">${esc((TOR.ctx && TOR.ctx.tm && TOR.ctx.tm.name) || (i && i.name) || j.name || 'Torrent')}</b>
-    <div class="hint">${i ? `${i.peers} source${i.peers > 1 ? 's' : ''} connectée${i.peers > 1 ? 's' : ''}${i.known != null ? ' (' + i.known + ' trouvée' + (i.known > 1 ? 's' : '') + ')' : ''} · ${pct} % reçu · ${(i.down / 1e6).toFixed(1).replace('.', ',')} Mo/s` : 'Connexion aux sources…'}</div>
-    ${i && !i.peers && i.known == null ? '<div class="hint" style="color:var(--gold)">Mettez à jour l\'appli Windows (1.22 et plus) : les anciennes versions perdent leurs sources juste après l\'ouverture du torrent.</div>' : ''}
-    ${i && !i.peers && (i.err || i.warn) ? `<div class="hint" style="color:var(--gold)">${esc(i.err || i.warn)}</div>` : ''}</div><button class="chip" data-tclose title="Fermer le torrent et supprimer ses morceaux">Fermer</button></div>
-    <div class="tpb"><i style="width:${pct}%"></i></div>
-    ${vids.length ? `<div class="chs" style="padding:0;margin-top:8px">${vids.map(f => `<button class="chr" data-tfi="${f.i}"><span class="lg">▶</span><span class="m"><span class="l">${esc(torName(f))}</span><span class="e">${esc(f.name)} · ${torMo(f.size)}</span></span></button>`).join('')}</div>` : '<p class="hint">Aucune vidéo dans ce torrent.</p>'}</div>`;
-}
-const torPaint = id => { const el = $('#' + id); if (el) el.innerHTML = id === 'torCur' ? torCurHtml() : torResHtml(); };
-async function torGo(q) {
-  q = (q || '').trim(); if (!q) return;
-  TOR.q = q; TOR.busy = true; TOR.err = ''; TOR.res = null; TOR.groups = null; TOR.open = null;
-  TOR.hist = [q].concat(TOR.hist.filter(x => x.toLowerCase() !== q.toLowerCase())).slice(0, 8); LS.set('dev.prwhist', TOR.hist);
-  if ($('#torRes')) torPaint('torRes'); else { V.tab = 'tor'; V.q = ''; renderVod(); }
-  try { TOR.res = await prwSearch(q, TOR.kind); } catch (e) { TOR.err = e.message; }
-  TOR.busy = false; if (TOR.q !== q) return;
-  if (TOR.res && TOR.res.length) torResolve(q); else torPaint('torRes');
-}
-// ouverture d'un torrent (lien magnet, .torrent en base64 ou adresse d'un .torrent) : affiché en haut de l'onglet
+const torPaint = id => { const el = $('#' + id); if (el) el.innerHTML = torResHtml(); };
 // Titre d'une vidéo du torrent ouvert : celui de la fiche TMDB (plus « S01E03 » pour un épisode), sinon le nom du fichier nettoyé
 function torName(f) {
   const tm = TOR.ctx && TOR.ctx.tm, file = cleanTitle(f.name.replace(/\.[^.]+$/, ''));
   if (!tm) return file;
   const p = torParse(f.name), two = n => String(n).padStart(2, '0');
   if (TOR.ctx.kind === 'series' && p.season != null && p.ep != null) return tm.name + ' · S' + two(p.season) + 'E' + two(p.ep);
-  const vids = TOR.cur ? TOR.cur.files.filter(x => x.video) : [];
-  return vids.length > 1 ? tm.name + ' · ' + file : tm.name;
+  return tm.name;                                    // film : le titre de la fiche (le torrent peut contenir un extrait, un bonus…)
 }
 // fiche du titre (TMDB) : celle de la fiche ouverte, sinon retrouvée d'après le nom de la publication
 async function torCtx(x) {
@@ -1680,26 +1636,29 @@ async function torCtx(x) {
   const g = torGroup([x])[0]; if (g && LS.get('pref.tmdb', '')) g.tm = await torTmdb(g).catch(() => null);
   return g || null;
 }
-async function openTorrent(src, x) {
-  TOR.ctx = null;
-  if (x) torCtx(x).then(g => { TOR.ctx = g; if ($('#torCur')) torPaint('torCur'); });
-  if (V.tab !== 'tor' || V.q || !$('#torPage')) { V.tab = 'tor'; V.q = ''; await renderVod(); }
-  torStop();
-  TOR.curBusy = true; TOR.curErr = ''; TOR.cur = null; TOR.info = null; torPaint('torCur');
-  $('#vod').scrollTo({ top: 0, behavior: 'smooth' });
-  const base = window.desktop.remux, r = await fetch(base + '/torrent/add', { method: 'POST', body: src }).catch(() => null);
-  let j = !r ? { error: 'module de l\'appli injoignable' } : r.status === 404 ? { error: 'mettez à jour l\'appli Windows (1.20 et plus)' } : await r.json().catch(() => ({ error: 'réponse illisible' }));
-  TOR.curBusy = false;
-  if (j.error) TOR.curErr = j.error; else { TOR.cur = j; torPoll(); }
-  torPaint('torCur');
-}
-function torPoll() {
-  clearInterval(TOR.t);
-  TOR.t = setInterval(async () => {
-    if (!TOR.cur) return clearInterval(TOR.t);
-    const i = await fetch(window.desktop.remux + '/torrent/info?id=' + TOR.cur.id).then(r => r.json()).catch(() => null);
-    if (i && !i.error) { TOR.info = i; if ($('#torCur')) torPaint('torCur'); }
-  }, 1500);
+/* Lecture d'un torrent des indexeurs (appli Windows) : la vidéo principale démarre pendant le téléchargement, sous le titre
+   et l'affiche de la fiche TMDB */
+const toastLong = t => { toast(t); clearTimeout(toast.t); toast.t = setTimeout(() => $('#toast').classList.remove('show'), 7000); };
+async function torPlay(x, g, b) {
+  const src = x.magnetUrl || x.downloadUrl; if (!src || TOR.busyPlay) return;
+  TOR.busyPlay = true;
+  const lab = b ? b.innerHTML : ''; if (b) { b.disabled = true; b.textContent = 'Connexion…'; }
+  toast('Connexion aux sources du torrent…');
+  try {
+    const ctx = g && g.tm ? g : await torCtx(x);
+    torStop();
+    const r = await fetch(window.desktop.remux + '/torrent/add', { method: 'POST', body: src }).catch(() => null);
+    const j = !r ? { error: 'module de l\'appli injoignable' } : r.status === 404 ? { error: 'mettez à jour l\'appli Windows (1.20 et plus)' } : await r.json().catch(() => ({ error: 'réponse illisible' }));
+    if (j.error) { toastLong('Torrent : ' + j.error); return; }
+    TOR.cur = j; TOR.ctx = ctx;
+    const vids = j.files.filter(f => f.video);
+    // film : le plus gros fichier vidéo ; série : le premier épisode
+    const f = ctx && ctx.kind === 'series' ? vids.sort((a, c) => a.name.localeCompare(c.name, 'fr', { numeric: true }))[0] : vids.sort((a, c) => c.size - a.size)[0];
+    if (!f) { toastLong('Aucune vidéo dans ce torrent'); return; }
+    const tm = ctx && ctx.tm;
+    closeModals();
+    play({ name: torName(f), url: window.desktop.remux + '/torrent/file/' + j.id + '/' + f.i + '/' + encodeURIComponent(f.name), group: 'Torrent', logo: tm && tm.poster ? 'https://image.tmdb.org/t/p/w342' + tm.poster : '', n: 0, chno: '', vod: true, key: '' });
+  } finally { TOR.busyPlay = false; if (b && b.isConnected) { b.disabled = false; b.innerHTML = lab; } }
 }
 function torStop() {
   clearInterval(TOR.t);
@@ -1708,59 +1667,68 @@ function torStop() {
   TOR.cur = null; TOR.info = null; TOR.curErr = '';
 }
 function torClick(e) {
-  if (!e.target.closest('#torPage, #xprw')) return false;
-  const g = sel => e.target.closest(sel);
+  if (!e.target.closest('#xprw, #vodTor')) return false;
+  const g = sel => e.target.closest(sel), inFiche = !!g('#vodTor');
   let b;
-  if (g('[data-prwsave]')) {
-    (async () => {
-      const url = $('#prwUrl').value.trim().replace(/\/+$/, ''), key = $('#prwKey').value.trim(), err = $('#prwErr'); LS.set('dev.prwurl', url);
-      err.textContent = 'Connexion…';
-      const r = await fetch(url + '/api/v1/system/status', { headers: { 'X-Api-Key': key } }).catch(() => null);
-      if (!r) return err.textContent = 'Prowlarr injoignable (démarré ? adresse ?)';
-      if (!r.ok) return err.textContent = r.status === 401 ? 'clé d\'API refusée' : 'Prowlarr répond ' + r.status;
-      LS.set('dev.prowlarr', { url, key }); renderVod();
-    })();
-    return true;
-  }
-  if (g('[data-prwout]')) { LS.set('dev.prowlarr', null); TOR.res = null; renderVod(); return true; }
-  if (g('[data-tgo]')) { torGo($('#torQ').value); return true; }
-  if ((b = g('[data-thq]'))) { torGo(b.dataset.thq); return true; }
-  if ((b = g('[data-tf]'))) {
-    const k = b.dataset.tf, ch = TOR[k] !== b.dataset.tv; TOR[k] = b.dataset.tv;
-    b.parentNode.querySelectorAll(`[data-tf="${k}"]`).forEach(x => x.classList.toggle('on', x === b));
-    if (k === 'kind' && ch && TOR.q && TOR.res) torGo(TOR.q); else torPaint('torRes');
-    return true;
-  }
-  if ((b = g('[data-tg]'))) { TOR.open = +b.dataset.tg; TOR.scroll = $('#vod').scrollTop; torPaint('torRes'); const r = $('#torRes'); if (r) $('#vod').scrollTop = Math.max(0, r.offsetTop - 70); return true; }
-  if (g('[data-tback]')) { TOR.open = null; torPaint('torRes'); $('#vod').scrollTop = TOR.scroll || 0; return true; }
+  if ((b = g('[data-tg]'))) { TOR.open = +b.dataset.tg; torPaint('torRes'); const r = $('#torRes'); if (r) r.scrollIntoView({ block: 'start' }); return true; }
+  if (g('[data-tback]')) { TOR.open = null; torPaint('torRes'); const r = $('#xprw'); if (r) r.scrollIntoView({ block: 'start' }); return true; }
   if ((b = g('[data-tsub]'))) { openVod(V.shown[+b.dataset.tsub]); return true; }
-  const list = g('#xprw') ? TOR.xs : TOR.shown;
-  if ((b = g('[data-tpl]'))) { const x = list[+b.dataset.tpl]; if (x) openTorrent(x.magnetUrl || x.downloadUrl, x); return true; }
+  const list = inFiche ? VT.list : TOR.shown, grp = inFiche ? VT.g : TOR.groups && TOR.groups[TOR.open];
+  if ((b = g('[data-tpl]'))) { const x = list[+b.dataset.tpl]; if (x) torPlay(x, grp, b); return true; }
   if ((b = g('[data-tpa]'))) { const x = list[+b.dataset.tpa]; if (x) torQbt(x, b.dataset.c, b); return true; }
-  if ((b = g('[data-txall]'))) { torGo(V.q); return true; }
-  if ((b = g('[data-tfi]'))) {
-    const j = TOR.cur, f = j && j.files[+b.dataset.tfi]; if (!f) return true;
-    const tm = TOR.ctx && TOR.ctx.tm;
-    play({ name: torName(f), url: window.desktop.remux + '/torrent/file/' + j.id + '/' + f.i + '/' + encodeURIComponent(f.name), group: 'Torrent', logo: tm && tm.poster ? 'https://image.tmdb.org/t/p/w342' + tm.poster : '', n: 0, chno: '', vod: true, key: '' });
-    return true;
-  }
-  if (g('[data-tclose]')) { torStop(); torPaint('torCur'); return true; }
-  if (g('[data-tmag]')) { const v = $('#torMag').value.trim(); if (/^magnet:\?/i.test(v) || /^https?:\/\//i.test(v)) openTorrent(v); else toast('Un lien magnet commence par « magnet:? »'); return true; }
-  if (g('[data-tfile]')) { $('#torFile').click(); return true; }
   return false;
 }
-$('#vodInner').addEventListener('keydown', e => {
-  if (e.key !== 'Enter') return;
-  if (e.target.id === 'torQ') torGo(e.target.value);
-  else if (e.target.id === 'torMag') $('[data-tmag]').click();
-  else if (e.target.id === 'prwKey') $('[data-prwsave]').click();
+/* Fiche d'un film (abonnement) : meilleure version trouvée dans les indexeurs (mêmes règles que torScore), à lire pendant
+   le téléchargement ou à ajouter à Ma médiathèque ; les autres versions dépliables dessous */
+const VT = { it: null, g: null, list: [] };
+async function vodTorLoad(it) {
+  const box = $('#vodTor'); if (!box || !torOk() || !prwConf() || it.kind !== 'movie') return;
+  VT.it = it; VT.g = null; VT.list = [];
+  box.innerHTML = '<h4 class="vdh">Meilleur torrent</h4><p class="hint">Recherche dans vos indexeurs…</p>';
+  const ti = await tmdbInfo(it).catch(() => null), d = (ti && ti.d) || {};
+  const name = d.title || it.name, orig = d.original_title || '', year = it.year || +String(d.release_date || '').slice(0, 4) || 0;
+  const qs = [...new Set([name, orig, it.name].filter(Boolean).map(t => t.trim()))].slice(0, 3);
+  const seen = new Set(), all = [];
+  for (const l of await Promise.all(qs.map(q => prwSearch(q, 'movie').catch(() => null)))) (l || []).forEach(x => { const k = (x.infoHash || x.title || '').toLowerCase(); if (!seen.has(k)) { seen.add(k); all.push(x); } });
+  if (!V.open || V.open.it !== it || !$('#vodTor')) return;
+  // publications de ce film : même titre (français, original ou celui de l'abonnement), même année à un an près
+  const keys = new Set(qs.map(tnK));
+  const rel = all.filter(x => { const p = x._p = x._p || torParse(x.title); return !p.series && keys.has(tnK(p.title)) && (!year || !p.year || Math.abs(p.year - year) <= 1); });
+  const g = VT.g = { kind: 'movie', title: name, year, rel, tm: { id: ti && ti.id, name, orig, year, poster: d.poster_path || '', lang: d.original_language || it.ol || '' } };
+  const el = $('#vodTor');
+  if (!rel.length) { el.innerHTML = '<h4 class="vdh">Meilleur torrent</h4><p class="hint">Aucune version de ce film dans vos indexeurs.</p>'; return; }
+  const l = VT.list = rel.slice().sort((a, c) => torScore(c, g) - torScore(a, g));
+  l.forEach(x => { x._best = false; }); const bx = torBest(l, g); if (bx) bx._best = true;
+  const w4 = torWhyNot4k(l, g, bx), rest = l.filter(x => x !== bx);
+  el.innerHTML = `<h4 class="vdh">Meilleur torrent <small class="hint" style="font-weight:500">${esc(torWhy(bx, g))}</small></h4>${w4 ? `<p class="hint" style="margin:-4px 0 8px">${esc(w4)}</p>` : ''}
+    <div class="tlist">${torRowHtml(bx, l.indexOf(bx))}</div>
+    ${rest.length ? `<details class="xtbox" style="margin-top:8px"><summary>${rest.length} autre${rest.length > 1 ? 's' : ''} version${rest.length > 1 ? 's' : ''}</summary><div class="tlist">${rest.map(x => torRowHtml(x, l.indexOf(x))).join('')}</div></details>` : ''}`;
+}
+$('#vodDetail').addEventListener('click', e => { if (torClick(e)) e.stopPropagation(); }, true);
+/* Paramètres › Appareils (appli Windows) : Prowlarr (indexeurs) et connexion à YouTube (bandes-annonces) */
+function prwSettings() {
+  const box = $('#prwBox'); if (!box) return;
+  if (!torOk()) { box.hidden = true; $('#prwH').hidden = true; return; }
+  box.hidden = false; $('#prwH').hidden = false;
+  const c = prwConf();
+  box.innerHTML = (c ? `<div class="lrow"><span style="flex:1">Prowlarr relié · <span class="hint">${esc(c.url)}</span></span><button class="chip" data-prwout>Changer</button></div>`
+    : `<p class="hint" style="margin:0 0 8px">Prowlarr regroupe vos indexeurs : le meilleur torrent de chaque film s'affiche dans sa fiche. Clé d'API : Prowlarr › Settings › General › API Key.</p>
+      <div class="row" style="gap:8px;flex-wrap:wrap"><input class="field" id="prwUrl" value="${esc(LS.get('dev.prwurl', 'http://localhost:9696'))}" style="flex:1;min-width:160px;margin:0" spellcheck="false"><input class="field" id="prwKey" placeholder="Clé d'API" style="flex:1;min-width:160px;margin:0" spellcheck="false" autocomplete="off"><button class="btn primary" data-prwsave>Enregistrer</button></div><p class="err" id="prwErr"></p>`)
+    + (window.desktop.ytLogin ? `<div class="lrow" style="margin-top:10px"><span style="flex:1">YouTube (bandes-annonces) <span class="hint">· à faire si YouTube demande de se connecter, souvent à cause d'un VPN</span></span><button class="chip" data-ytlogin>Se connecter à YouTube</button></div>` : '');
+}
+$('#prwBox') && $('#prwBox').addEventListener('click', async e => {
+  if (e.target.closest('[data-ytlogin]')) { window.desktop.ytLogin(); return; }
+  if (e.target.closest('[data-prwout]')) { LS.set('dev.prowlarr', null); prwSettings(); return; }
+  if (!e.target.closest('[data-prwsave]')) return;
+  const url = $('#prwUrl').value.trim().replace(/\/+$/, ''), key = $('#prwKey').value.trim(), err = $('#prwErr'); LS.set('dev.prwurl', url);
+  err.textContent = 'Connexion…';
+  const r = await fetch(url + '/api/v1/system/status', { headers: { 'X-Api-Key': key } }).catch(() => null);
+  if (!r) return err.textContent = 'Prowlarr injoignable (démarré ? adresse ?)';
+  if (!r.ok) return err.textContent = r.status === 401 ? 'clé d\'API refusée' : 'Prowlarr répond ' + r.status;
+  LS.set('dev.prowlarr', { url, key }); prwSettings(); toast('Prowlarr relié');
 });
-$('#vodInner').addEventListener('change', async e => {
-  if (e.target.id !== 'torFile') return;
-  const f = e.target.files[0]; if (!f) return;
-  const b = new Uint8Array(await f.arrayBuffer()); let bin = ''; for (let i = 0; i < b.length; i += 8192) bin += String.fromCharCode.apply(null, b.subarray(i, i + 8192));
-  openTorrent(btoa(bin));
-});
+$('#prwBox') && $('#prwBox').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'prwKey') $('[data-prwsave]').click(); });
+prwSettings();
 /* ---------- Ma médiathèque : serveur Jellyfin (bibliothèque personnelle) ----------
    Connexion par identifiant et mot de passe (jeton gardé sur l'appareil, dev.jf). Appli Windows : fichier lu tel quel par
    le convertisseur habituel ; navigateur : flux HLS préparé par Jellyfin. Position de lecture envoyée à Jellyfin (reprise
@@ -1873,8 +1841,9 @@ async function xSearch(q0) {
     const el0 = $('#xprw'); if (el0) el0.innerHTML = '<div class="vrow"><h3>Dans mes indexeurs</h3><div class="spin" style="margin:10px 0"></div></div>';
     const l = await prwSearch(q0).catch(() => null), el = $('#xprw'); if (!el || V.q !== q0) return;
     if (!l || !l.length) { el.innerHTML = ''; return; }
-    TOR.xs = l.sort((a, b) => (b.seeders || 0) - (a.seeders || 0)).slice(0, 6);
-    el.innerHTML = `<div class="vrow"><h3>Dans mes indexeurs<small>Prowlarr · ${l.length} résultat${l.length > 1 ? 's' : ''}</small><button class="chip" data-txall style="margin-left:auto">Tout voir et filtrer ›</button></h3><div class="tlist">${TOR.xs.map(torRowHtml).join('')}</div></div>`;
+    TOR.q = q0; TOR.res = l; TOR.err = ''; TOR.busy = false; TOR.open = null; TOR.qual = 'all'; TOR.sort = 'best';
+    el.innerHTML = '<div class="vrow"><h3>Dans mes indexeurs<small>Prowlarr</small></h3></div><div id="torRes"></div>';
+    torResolve(q0);
   }
 }
 /* Fiche d'un film de l'abonnement : même film dans Ma médiathèque (identifiant TMDB, sinon titre et année) ? Les versions
@@ -3251,7 +3220,7 @@ async function renderVod() {
   const all = D.items.filter(it => langVisible(it) && qualVisible(it)), movies = all.filter(i => i.kind === 'movie'), series = all.filter(i => i.kind === 'series');
   const yr = new Date().getFullYear(), byAdded = (a, b) => b.added - a.added, byRate = (a, b) => b.rating - a.rating || b.added - a.added;
   let h = `<div class="vtop">
-    ${['home:Accueil', 'movie:Films', 'series:Séries', 'cats:Catégories', 'hist:Historique', 'jf:Ma médiathèque'].concat(torOk() ? ['tor:Indexeurs'] : []).map(t => { const [k, l] = t.split(':'); return `<button class="chip${V.tab === k && !V.q ? ' on' : ''}" data-tab="${k}">${l}</button>`; }).join('')}
+    ${['home:Accueil', 'movie:Films', 'series:Séries', 'hist:Historique', 'jf:Ma médiathèque'].map(t => { const [k, l] = t.split(':'); return `<button class="chip${V.tab === k && !V.q ? ' on' : ''}" data-tab="${k}">${l}</button>`; }).join('')}
     <button class="chip" data-reload title="Recharger les catalogues depuis le serveur">↻</button>
     <label class="searchbar"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input id="vodQ" type="search" placeholder="Titre d'un film ou d'une série" value="${esc(V.q)}" autocomplete="off"></label></div>`;
   if (!all.length) { box.innerHTML = h + '<div class="empty">Aucun film ni série en français trouvé sur ce serveur.</div>'; return; }
@@ -3268,8 +3237,6 @@ async function renderVod() {
     setTimeout(() => xSearch(V.q), 0);
   } else if (V.tab === 'jf') {
     h += await jfRender();
-  } else if (V.tab === 'tor') {
-    h += torRender();
   } else if (V.tab === 'hist') {
     // Historique : regroupé par jour, le plus récent d'abord
     const l = seenAll().map(e => ({ e, it: itemByKey(e.k) })).filter(x => x.it);
@@ -3509,6 +3476,12 @@ async function trailerFor0(it) {
 }
 // Bande-annonce vue dans l'aperçu au survol : la fiche la reprend là où elle en était (si c'était il y a moins d'une minute)
 const TR_POS = new Map();
+// panneau posé sur la bande-annonce : YouTube refuse de la lire (demande de connexion, « Vidéo non disponible »)
+function trLoginBox(box, err) {
+  if (!box || box.querySelector('.trlogin') || !(window.desktop && window.desktop.ytLogin)) return;
+  box.insertAdjacentHTML('beforeend', `<div class="trlogin"><b>${err ? 'YouTube refuse de lire cette bande-annonce' : 'YouTube demande de vous connecter'}</b><span>Souvent à cause d'un VPN : connecté à votre compte YouTube, elle passe en général. Connexion une seule fois, gardée dans l'appli.</span><button class="btn primary">Se connecter à YouTube</button></div>`);
+  box.querySelector('.trlogin .btn').onclick = () => window.desktop.ytLogin();
+}
 /* Appli Windows : lecteur YouTube normal (il utilise le compte YouTube connecté dans l'appli : derrière un VPN, YouTube
    demande souvent de se connecter) ; ailleurs, version sans cookies. Après la connexion, la bande-annonce est relancée. */
 const YT_EMBED = window.desktop && window.desktop.ytLogin ? 'https://www.youtube.com' : 'https://www.youtube-nocookie.com';
@@ -3532,11 +3505,7 @@ async function showTrailer(it) {
   ytListen(box.querySelector('iframe'));
   // Appli Windows : lecteur YouTube muet au bout de 7 s = page « Connectez-vous pour confirmer que vous n'êtes pas un robot »
   // (VPN) ; ses boutons ne sont pas cliquables ici (lecteur sans commandes) : bouton de connexion de l'appli par-dessus
-  if (window.desktop && window.desktop.ytLogin) setTimeout(() => {
-    const f = box.querySelector('iframe'); if (!box.isConnected || !f || f.dataset.alive || box.querySelector('.trlogin')) return;
-    box.insertAdjacentHTML('beforeend', '<div class="trlogin"><b>YouTube demande de vous connecter</b><span>Souvent à cause d\'un VPN. Connexion une seule fois : elle reste gardée dans l\'appli.</span><button class="btn primary">Se connecter à YouTube</button></div>');
-    box.querySelector('.trlogin .btn').onclick = () => window.desktop.ytLogin();
-  }, 7000);
+  if (window.desktop && window.desktop.ytLogin) setTimeout(() => { const f = box.querySelector('iframe'); if (box.isConnected && f && !f.dataset.alive) trLoginBox(box, false); }, 7000);
   const pb = box.querySelector('.trplay');
   if (bare) { const cl = document.createElement('div'); cl.className = 'trclick'; cl.title = 'Pause / lecture'; cl.onclick = () => pb && pb.click(); box.appendChild(cl); }
   if (pb) pb.onclick = () => { const paused = !pb.classList.contains('off'); pb.classList.toggle('off', paused);
@@ -3829,11 +3798,12 @@ async function openVod(it) {
       return `<button class="ep" data-epk="${k}" data-epn="${x.n}"><span class="epi" ${img ? `style="background-image:url('${esc(img)}')"` : ''}><span class="n">${esc(x.n)}</span>${pct ? `<i style="width:${pct}%"></i>` : ''}</span><span class="ept"><b>${esc(cleanTitle(x.e.title || 'Épisode ' + x.n).replace(/^.*?S\d+\s*E\d+\s*[-:·]?\s*/i, '') || 'Épisode ' + x.n)}</b><span class="d">${esc([fmtDur(d.duration_secs) || d.duration, pos > 60 ? 'vu jusqu\'à ' + fmtDur(pos) : ''].filter(Boolean).join(' · '))}</span><span class="eppl">${esc(d.plot || '')}</span></span></button>`; }).join('');
     h += '</div>';
   }
-  h += `<div class="cr" id="vodLangs">${esc(langLine(it))}</div><div id="vodCast"></div><div id="vodSimilar"></div>`;
+  h += `<div class="cr" id="vodLangs">${esc(langLine(it))}</div><div id="vodTor"></div><div id="vodCast"></div><div id="vodSimilar"></div>`;
   $('#vodDetail').innerHTML = h + '</div></div>';
   showTrailer(it);
   V.open = { it, eps, cover, flat };
   vodEnrich(it);
+  vodTorLoad(it).catch(() => {});
   // appli Windows, rien en lecture : langues de ce film lues tout de suite si on ne les connaît pas
   if (window.desktop && window.desktop.remux && !LANG()[itemKey(it)] && !document.body.classList.contains('playing') && !LCHK.busy) {
     LCHK.busy = true; langProbe(it).then(() => { const l = $('#vodLangs'); if (l && V.open && V.open.it === it) l.textContent = langLine(it) || (langState(it) === 'fr' ? '' : 'Langues : non lues'); LCHK.dirty = true; }).finally(() => { LCHK.busy = false; });
@@ -4582,7 +4552,9 @@ window.addEventListener('message', e => {
   if (!/youtube(-nocookie)?\.com$/.test((() => { try { return new URL(e.origin).hostname; } catch (er) { return ''; } })())) return;
   let d; try { d = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch (er) { return; }
   // le lecteur YouTube de la fiche répond : il marche (pas de demande de connexion)
-  document.querySelectorAll('#vodTrailer iframe').forEach(f => { if (f.contentWindow === e.source && !f.dataset.alive) { f.dataset.alive = '1'; const o = $('#vodTrailer .trlogin'); if (o) o.remove(); } });
+  document.querySelectorAll('#vodTrailer iframe').forEach(f => { if (f.contentWindow !== e.source) return;
+    if (d && d.event === 'onError') { f.dataset.alive = 'err'; trLoginBox(f.closest('#vodTrailer'), true); return; }   // « Vidéo non disponible »
+    if (!f.dataset.alive) { f.dataset.alive = '1'; const o = $('#vodTrailer .trlogin'); if (o) o.remove(); } });
   // position de la bande-annonce de l'aperçu (reprise au même endroit dans la fiche)
   if (d && d.info && typeof d.info.currentTime === 'number') document.querySelectorAll('.hovc iframe, .poster .xpv iframe').forEach(f => { if (f.contentWindow === e.source && f.dataset.k) TR_POS.set(f.dataset.k, { t: d.info.currentTime, at: Date.now() }); });
   if (d && d.info && d.info.playerState === 1) YT_PLAY.forEach((cb, f) => { if (f.contentWindow === e.source) { YT_PLAY.delete(f); cb(); } });
