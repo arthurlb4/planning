@@ -186,6 +186,13 @@ video{width:100%;height:100%;object-fit:contain;background:#000;outline:none}
 /* Fenêtres */
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;z-index:50;padding:16px}
 .modal.open{display:flex}
+/* Paramètres : une page comme TV ou Films & séries (sous la barre du haut, toute la fenêtre), contenu centré */
+#plModal{top:var(--hdrH,58px);padding:0;background:var(--bg0);z-index:45;align-items:stretch}
+#plModal .sheet{max-width:none;width:100%;max-height:none;height:100%;border:0;border-radius:0;box-shadow:none;background:var(--bg0);padding:22px 24px 60px}
+#plModal .sheet>*{max-width:820px;margin-left:auto;margin-right:auto}
+#plModal .sheet>h2{font-size:22px;margin-bottom:16px}
+body:has(#plModal.open) #managePl{background:var(--bg4)}
+@media (max-width:700px){#plModal .sheet{padding:16px 16px 60px}}
 .sheet{background:var(--bg2);border:.5px solid var(--border);border-radius:20px;width:100%;max-width:520px;max-height:calc(100dvh - 32px);overflow:auto;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,.4)}
 .sheet h2{font-size:18px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between}
 .sheet h3{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);margin:18px 0 8px}
@@ -5189,10 +5196,19 @@ function moveSel(d) {
 }
 
 /* ---------- Gestion des listes ---------- */
-function openModal(id) { if (id === 'plModal' && typeof ptab === 'function') ptab(); $('#' + id).classList.add('open'); }
+function openModal(id) {
+  if (id === 'plModal') { if (typeof ptab === 'function') ptab(); document.documentElement.style.setProperty('--hdrH', $('header').offsetHeight + 'px'); }
+  $('#' + id).classList.add('open');
+}
 function closeModals() { pmClose(); document.querySelectorAll('.modal.open').forEach(m => m.classList.remove('open')); document.querySelectorAll('#vodTrailer').forEach(f => f.remove()); $('#vodModal .sheet').classList.remove('hastr'); }
 document.querySelectorAll('.modal').forEach(m => m.addEventListener('click', e => { if (e.target === m || e.target.closest('[data-close]')) closeModals(); }));
-$('#managePl').onclick = () => { $('#addErr').textContent = ''; openModal('plModal'); };
+$('#managePl').onclick = () => {
+  if ($('#plModal').classList.contains('open')) { $('#plModal').classList.remove('open'); return; }   // second clic : retour à la page
+  $('#addErr').textContent = ''; openModal('plModal');
+};
+window.addEventListener('resize', () => { if ($('#plModal').classList.contains('open')) document.documentElement.style.setProperty('--hdrH', $('header').offsetHeight + 'px'); });
+// Paramètres ouverts en page : les autres boutons de la barre du haut (TV, Agenda, Films & séries…) les quittent
+$('header').addEventListener('click', e => { const b = e.target.closest('button'); if (b && b.id !== 'managePl') $('#plModal').classList.remove('open'); }, true);
 
 // Export d'une liste en fichier .m3u : pour l'ajouter ailleurs avec « Importer un fichier » (ex. iPhone quand le serveur
 // refuse le relais) ; le fichier contient les identifiants de l'abonnement, à garder pour soi
