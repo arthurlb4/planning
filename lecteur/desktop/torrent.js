@@ -100,10 +100,52 @@ function sendFile(t, f, req, res) {
   st.pipe(res);
 }
 
+// Envoi à qBittorrent (interface web locale, réglée par l'installateur de la médiathèque : port 8085, sans mot de passe
+// depuis ce PC). qBittorrent n'est pas un service Windows : s'il n'est pas lancé, l'appli le démarre et attend son
+// interface web ; s'il demande une connexion, elle se connecte avec le mot de passe gardé par l'installateur.
+const QBT_EXE = [path.join(process.env.ProgramFiles || 'C:\\Program Files', 'qBittorrent', 'qbittorrent.exe'),
+  path.join(process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)', 'qBittorrent', 'qbittorrent.exe'),
+  path.join(process.env.LOCALAPPDATA || '', 'Programs', 'qBittorrent', 'qbittorrent.exe')];
+let qbtCookie = '';
+const pause = ms => new Promise(r => setTimeout(r, ms));
+async function qbtUp(base) { try { await fetch(base + '/api/v2/app/version', { signal: AbortSignal.timeout(3000) }); return true; } catch (e) { return false; } }
+async function qbtLogin(base) {
+  const mdp = ['C:\\Mediatheque\\qbittorrent-mdp.txt'].map(f => { try { return fs.readFileSync(f, 'utf8').trim(); } catch (e) { return ''; } }).find(Boolean);
+  if (!mdp) throw new Error('qBittorrent demande une connexion : Outils › Options › Interface web, cochez « Ignorer l\'authentification pour les clients sur l\'hôte local »');
+  const r = await fetch(base + '/api/v2/auth/login', { method: 'POST', body: new URLSearchParams({ username: 'admin', password: mdp }) });
+  const c = (r.headers.get('set-cookie') || '').match(/SID=[^;]+/);
+  if (!r.ok || !c) throw new Error('qBittorrent refuse la connexion (identifiant admin et mot de passe de C:\\Mediatheque\\qbittorrent-mdp.txt)');
+  qbtCookie = c[0];
+}
+async function qbtAdd(url, category, port) {
+  const base = 'http://127.0.0.1:' + port;
+  if (!(await qbtUp(base))) {
+    const exe = QBT_EXE.find(f => { try { return fs.existsSync(f); } catch (e) { return false; } });
+    if (!exe) throw new Error('qBittorrent n\'est pas installé sur ce PC (installateur de la médiathèque, ou qbittorrent.org)');
+    require('child_process').spawn(exe, [], { detached: true, stdio: 'ignore' }).unref();
+    let up = false; for (let k = 0; k < 20 && !up; k++) { await pause(1000); up = await qbtUp(base); }
+    if (!up) throw new Error('qBittorrent est lancé mais son interface web ne répond pas sur le port ' + port + ' : Outils › Options › Interface web, activez-la sur le port ' + port);
+  }
+  const send = () => fetch(base + '/api/v2/torrents/add', { method: 'POST', body: new URLSearchParams({ urls: url, category }), headers: qbtCookie ? { Cookie: qbtCookie } : {} });
+  let r = await send();
+  if (r.status === 403 || r.status === 401) { await qbtLogin(base); r = await send(); }
+  const t = (await r.text()).trim();
+  if (!r.ok || /fail/i.test(t)) throw new Error('qBittorrent répond ' + r.status + (t ? ' ' + t.slice(0, 120) : '') + (/fail/i.test(t) ? ' (torrent déjà présent, ou lien refusé)' : ''));
+}
 // Renvoie true si la requête concernait les torrents
 module.exports = function handleTorrent(req, res, u) {
   if (!u.pathname.startsWith('/torrent/')) return false;
   const json = (o, code) => { res.writeHead(code || 200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(o)); };
+  // envoi à qBittorrent : sans le module torrent de l'appli
+  if (u.pathname === '/torrent/qbt' && req.method === 'POST') {
+    const parts = []; req.on('data', b => parts.push(b));
+    req.on('end', async () => {
+      let o; try { o = JSON.parse(Buffer.concat(parts).toString() || '{}'); } catch (e) { return json({ error: 'demande illisible' }, 400); }
+      if (!/^(magnet:\?|https?:\/\/)/i.test(o.url || '')) return json({ error: 'lien attendu' }, 400);
+      try { await qbtAdd(o.url, String(o.category || ''), +o.port || 8085); json({ ok: true }); } catch (e) { json({ error: e.message }, 502); }
+    });
+    return true;
+  }
   let c;
   try { c = getClient(); } catch (e) { json({ error: 'module torrent indisponible : ' + e.message }, 500); return true; }
   if (u.pathname === '/torrent/add' && req.method === 'POST') {
@@ -111,21 +153,6 @@ module.exports = function handleTorrent(req, res, u) {
     req.on('end', () => {
       const body = Buffer.concat(parts).toString().trim();
       fromBody(body).then(src => add(src)).then(i => json(i), e => json({ error: e.message || String(e) }, 504));
-    });
-    return true;
-  }
-  if (u.pathname === '/torrent/qbt' && req.method === 'POST') {
-    const parts = []; req.on('data', b => parts.push(b));
-    req.on('end', async () => {
-      try {
-        const o = JSON.parse(Buffer.concat(parts).toString() || '{}');
-        if (!/^(magnet:\?|https?:\/\/)/i.test(o.url || '')) return json({ error: 'lien attendu' }, 400);
-        const body = new URLSearchParams({ urls: o.url, category: String(o.category || '') });
-        const r = await fetch('http://127.0.0.1:' + (+o.port || 8085) + '/api/v2/torrents/add', { method: 'POST', body });
-        const t = (await r.text()).trim();
-        if (!r.ok || /fail/i.test(t)) return json({ error: r.status === 403 ? 'qBittorrent demande une connexion (cochez « Ignorer l\'authentification pour les clients locaux »)' : 'qBittorrent répond ' + r.status + ' ' + t }, 502);
-        json({ ok: true });
-      } catch (e) { json({ error: 'qBittorrent injoignable (lancé ? interface web activée ?)' }, 502); }
     });
     return true;
   }

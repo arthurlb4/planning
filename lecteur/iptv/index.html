@@ -1454,10 +1454,11 @@ function torRowHtml(x, i) {
     <div class="tac"><button class="btn primary sm" data-tpl="${i}">▶ Lire</button><button class="chip" data-tpa="${i}" data-c="${cat >= 5000 && cat < 6000 ? 'series' : 'films'}" title="Télécharger en entier avec qBittorrent et ranger dans Ma médiathèque">＋ ${cat >= 5000 && cat < 6000 ? 'Séries' : 'Films'}</button></div></div>`;
 }
 async function torQbt(x, cat, b) {
-  if (b) b.disabled = true;
+  if (b) { b.disabled = true; b.textContent = 'Envoi…'; }
   const j = await fetch(window.desktop.remux + '/torrent/qbt', { method: 'POST', body: JSON.stringify({ url: x.magnetUrl || x.downloadUrl, category: cat }) }).then(r => r.status === 404 ? { error: 'mettez à jour l\'appli Windows (1.21 et plus)' } : r.json()).catch(() => ({ error: 'module de l\'appli injoignable' }));
   toast(j.ok ? 'Envoyé à qBittorrent (' + (cat === 'films' ? 'Films' : 'Séries') + ') : rangé dans la médiathèque une fois téléchargé' : 'qBittorrent : ' + j.error);
-  if (b) { b.disabled = false; if (j.ok) { b.textContent = '✓ Envoyé'; b.classList.add('on'); } }
+  if (b) { b.disabled = false; b.textContent = j.ok ? '✓ Envoyé' : '＋ ' + (cat === 'films' ? 'Films' : 'Séries'); if (j.ok) b.classList.add('on'); }
+  if (!j.ok) { clearTimeout(toast.t); toast.t = setTimeout(() => $('#toast').classList.remove('show'), 7000); }   // message d'erreur : le temps de le lire
 }
 // Onglet « Indexeurs » : rendu dans la page Films & séries
 function torRender() {
