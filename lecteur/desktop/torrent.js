@@ -6,7 +6,7 @@
 //                          téléchargement de Prowlarr, qui peut aussi renvoyer vers un lien magnet) → { id, name, files }
 //   GET  /torrent/info?id= avancement (progression, pairs, débit)
 //   GET  /torrent/file/<id>/<i>/<nom>   la vidéo (avec Range)
-//   GET  /torrent/stop?id= fermeture du torrent et suppression de ses morceaux
+//   GET  /torrent/stop?id= fermeture du torrent (fichiers gardés une semaine après la dernière lecture, 80 Go au plus)
 //   POST /torrent/qbt      { url, category } : envoi à qBittorrent (téléchargement complet, rangé ensuite par Radarr / Sonarr) ;
 //                          fait ici et non par la page : qBittorrent refuse les requêtes venues d'un autre site
 const path = require('path');
@@ -29,8 +29,42 @@ function getClient() {
   }
   return client;
 }
-// à la fermeture de l'appli : torrents fermés, morceaux supprimés
-process.on('exit', () => { try { if (client) client.destroy(); } catch (e) {} try { fs.rmSync(DIR, { recursive: true, force: true }); } catch (e) {} });
+/* Fichiers gardés une semaine après leur dernière lecture (relire le même film repart des morceaux déjà reçus, sans
+   retélécharger), puis supprimés ; au-delà de 80 Go en tout, les plus anciens partent d'abord. Suivi dans .index.json :
+   { infoHash: { name, size, at } } (at : dernière ouverture ou lecture). */
+const KEEP = 7 * 864e5, MAXB = 80e9, IDX = path.join(DIR, '.index.json');
+const idxRead = () => { try { return JSON.parse(fs.readFileSync(IDX, 'utf8')) || {}; } catch (e) { return {}; } };
+const idxWrite = o => { try { fs.mkdirSync(DIR, { recursive: true }); fs.writeFileSync(IDX, JSON.stringify(o)); } catch (e) {} };
+// bf : morceaux reçus (pour ne pas tout relire et recontrôler à la réouverture : ~1 min pour un film 4K) ; mt : date des fichiers
+function idxTouch(t) {
+  if (!t || !t.infoHash || !t.name) return; const o = idxRead(), e = { name: t.name, size: t.length || 0, at: Date.now() };
+  if (t.ready && t.bitfield && t.bitfield.buffer) { e.bf = Buffer.from(t.bitfield.buffer).toString('base64'); e.np = t.pieces.length; e.mt = fileTimes(t); }
+  o[t.infoHash] = e; idxWrite(o);
+}
+const fileTimes = t => t.files.map(f => { try { return Math.round(fs.statSync(path.join(DIR, f.path)).mtimeMs); } catch (e) { return 0; } }).join(',');
+// réouverture d'un torrent déjà lu : morceaux reçus repris de l'index si les fichiers n'ont pas bougé, sans tout recontrôler
+function fastResume(t) {
+  t.once('metadata', () => {
+    const e = idxRead()[t.infoHash];
+    if (!e || !e.bf || e.np !== t.pieces.length || e.mt !== fileTimes(t)) return;
+    const bf = Buffer.from(e.bf, 'base64');
+    t._verifyPieces = cb => { for (let i = 0; i < t.pieces.length; i++) if (bf[i >> 3] & (128 >> (i % 8))) t._markVerified(i); queueMicrotask(() => cb(null)); };
+  });
+}
+function cleanup() {
+  const o = idxRead(), open = new Set(client ? client.torrents.map(t => t.infoHash) : []);
+  const rm = h => { const e = o[h]; if (e && e.name && !/[\\/]|^\.\.?$/.test(e.name)) try { fs.rmSync(path.join(DIR, e.name), { recursive: true, force: true }); } catch (er) {} delete o[h]; };
+  Object.keys(o).forEach(h => { if (!open.has(h) && Date.now() - o[h].at > KEEP) rm(h); });
+  let tot = Object.values(o).reduce((a, e) => a + (e.size || 0), 0);
+  Object.keys(o).filter(h => !open.has(h)).sort((a, b) => o[a].at - o[b].at).forEach(h => { if (tot > MAXB) { tot -= o[h].size || 0; rm(h); } });
+  // fichiers d'avant le suivi (anciennes versions) : supprimés s'ils datent de plus d'une semaine
+  const known = new Set(Object.values(o).map(e => e.name));
+  try { fs.readdirSync(DIR).forEach(n => { if (n === '.index.json' || known.has(n)) return; const f = path.join(DIR, n); try { if (Date.now() - fs.statSync(f).mtimeMs > KEEP) fs.rmSync(f, { recursive: true, force: true }); } catch (e) {} }); } catch (e) {}
+  idxWrite(o);
+}
+setTimeout(cleanup, 30e3); setInterval(cleanup, 6 * 3600e3);
+// à la fermeture de l'appli : torrents fermés, fichiers gardés (supprimés une semaine après leur dernière lecture)
+process.on('exit', () => { try { if (client) client.torrents.forEach(idxTouch); } catch (e) {} try { if (client) client.destroy(); } catch (e) {} });
 
 // progression : celle du fichier en lecture (sinon du plus gros fichier vidéo) ; « known » = pairs trouvés par les trackers
 // et le DHT, pas encore forcément connectés
@@ -47,7 +81,7 @@ function add(src) {
     let done = false;
     const timer = setTimeout(() => { if (done) return; done = true; try { const t = c.get(src); if (t) t.destroy(); } catch (e) {} reject(new Error('aucun pair trouvé en 90 s (torrent sans source en ligne ?)' + (clientErr ? ' · ' + clientErr : ''))); }, 90000);
     try {
-      const opts = { path: DIR, destroyStoreOnDestroy: true };
+      const opts = { path: DIR, destroyStoreOnDestroy: false };
       if (typeof src === 'string') opts.announce = TRACKERS;
       const t = c.add(src, opts, t => {
         if (done) return; done = true; clearTimeout(timer);
@@ -56,8 +90,10 @@ function add(src) {
         t.deselect(0, t.pieces.length - 1, false);
         t.files.forEach(f => f.deselect());
         const f = mainFile(t); if (f) f.select();
+        idxTouch(t);
         resolve(info(t));
       });
+      fastResume(t);
       t.on('warning', e => { t._lastWarn = String((e && e.message) || e).slice(0, 200); });
       t.on('error', e => { if (done) return; done = true; clearTimeout(timer); reject(e); });
     } catch (e) { done = true; clearTimeout(timer); reject(e); }
@@ -161,10 +197,11 @@ module.exports = function handleTorrent(req, res, u) {
     return true;
   }
   if (u.pathname === '/torrent/info') { const t = c.get(u.searchParams.get('id') || ''); json(t ? info(t) : { error: 'torrent fermé' }, t ? 200 : 404); return true; }
-  if (u.pathname === '/torrent/stop') { const t = c.get(u.searchParams.get('id') || ''); if (t) t.destroy({ destroyStore: true }); json({ ok: true }); return true; }
+  if (u.pathname === '/torrent/stop') { const t = c.get(u.searchParams.get('id') || ''); if (t) { idxTouch(t); t.destroy({ destroyStore: false }); } json({ ok: true }); return true; }   // fichiers gardés une semaine
   const m = /^\/torrent\/file\/([0-9a-f]{40})\/(\d+)\//i.exec(u.pathname);
   if (m) { const t = c.get(m[1]), f = t && t.files[+m[2]]; if (!f) { res.statusCode = 404; res.end(); return true; }
     // fichier lu : c'est lui qui est demandé aux pairs (et plus le précédent, pour un épisode suivant)
+    if (!t._idxAt || Date.now() - t._idxAt > 3600e3) { t._idxAt = Date.now(); idxTouch(t); }   // dernière lecture
     if (t._playing !== +m[2]) { const p = t._playing != null ? t.files[t._playing] : mainFile(t); if (p && p !== f) p.deselect(); f.select(); t._playing = +m[2]; }
     sendFile(t, f, req, res); return true; }
   res.statusCode = 404; res.end(); return true;

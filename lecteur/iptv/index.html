@@ -3272,7 +3272,13 @@ async function frNotes(tmdbId, kind) {
 /* Note des affiches : SensCritique, sinon IMDb (même source que la fiche, « What's on? API » : 200 demandes par jour sans clé).
    Chargée seulement pour les affiches visibles, gardée 14 jours ; au plus 150 nouvelles notes par jour et par appareil. */
 const NOTES = new Map();                                   // clé du titre → { sc, im }
-const noteOf = n => n && n.sc ? 'SC ' + n.sc.toFixed(1).replace('.', ',') : n && n.im ? 'IMDb ' + n.im.toFixed(1).replace('.', ',') : '';
+const noteOf = n => n && n.sc ? 'SC ' + n.sc.toFixed(1).replace('.', ',') : n && n.im ? 'IMDb ' + n.im.toFixed(1).replace('.', ',') : n && n.tm ? 'TMDB ' + n.tm.toFixed(1).replace('.', ',') : '';
+// note TMDB (secours quand SensCritique et IMDb n'en ont pas) : au moins 20 votes ; gardée 14 jours
+async function tmdbVote(id, kind) {
+  const ck = 'tva1:' + kind + id, c = await DB.cacheGet(ck); if (c && Date.now() - c.at < 14 * 864e5) return c.data;
+  const d = await tmdb('/' + kind + '/' + id).catch(() => null); if (!d) return 0;
+  const v = d.vote_count >= 20 ? +d.vote_average || 0 : 0; DB.cachePut({ id: ck, at: Date.now(), data: v }); return v;
+}
 const noteTxt = it => { try { return noteOf(NOTES.get(itemKey(it))); } catch (e) { return ''; } };
 const noteBadge = it => { const t = noteTxt(it); return t ? `<span class="rt">${esc(t)}</span>` : ''; };
 const NQ = { q: [], run: 0, seen: new Set() };
@@ -3297,8 +3303,10 @@ async function noteLoad(it) {
     LS.set('dev.wobud', { d: day, n: used + 1 });
     n = await frNotes(id, kind).catch(() => null);
   }
-  if (!n || !(n.sc || n.im)) return;
-  NOTES.set(key, { sc: n.sc, im: n.im });
+  if (!n) return;                                           // service des notes pas joint (limite du jour) : rien pour l'instant
+  const tm = n.sc || n.im ? 0 : await tmdbVote(id, kind);
+  if (!(n.sc || n.im || tm)) return;
+  NOTES.set(key, { sc: n.sc, im: n.im, tm });
   const t = noteOf(NOTES.get(key));
   document.querySelectorAll('#vod .poster[data-v]').forEach(p => { const x = V.shown[+p.dataset.v]; if (!x || itemKey(x) !== key) return;
     const im = p.querySelector('.im'), old = im && im.querySelector('.rt'); if (old) old.textContent = t; else if (im) im.insertAdjacentHTML('beforeend', `<span class="rt">${esc(t)}</span>`); });
@@ -3313,10 +3321,10 @@ const noteIO = 'IntersectionObserver' in window ? new IntersectionObserver(es =>
 }), { rootMargin: '200px' }) : null;
 if (noteIO) { let t0; new MutationObserver(() => { clearTimeout(t0); t0 = setTimeout(() => document.querySelectorAll('#vod .poster[data-v]:not([data-nq])').forEach(p => { p.dataset.nq = '1'; noteIO.observe(p); }), 200); }).observe($('#vodInner'), { childList: true, subtree: true }); }
 // note de la fiche : SensCritique (spectateurs), sinon IMDb
-function frNotesHtml(n) {
-  if (!n) return '';
+function frNotesHtml(n, tm) {
+  if (!n && !tm) return ''; n = n || {};
   const f = (v, d) => v.toFixed(d).replace('.', ','), k = v => v >= 1000 ? Math.round(v / 1000) + ' k' : String(v);
-  const x = n.sc ? `<span><b>SensCritique</b> ${f(n.sc, 1)}/10${n.scn ? ' <small>' + k(n.scn) + ' notes</small>' : ''}</span>` : n.im ? `<span><b>IMDb</b> ${f(n.im, 1)}/10</span>` : '';
+  const x = n.sc ? `<span><b>SensCritique</b> ${f(n.sc, 1)}/10${n.scn ? ' <small>' + k(n.scn) + ' notes</small>' : ''}</span>` : n.im ? `<span><b>IMDb</b> ${f(n.im, 1)}/10</span>` : tm ? `<span><b>TMDB</b> ${f(tm, 1)}/10</span>` : '';
   return x ? '<div class="frn">' + x + '</div>' : '';
 }
 // Titres TMDB → titres du catalogue (identifiant TMDB si le serveur le donne, sinon titre + année à un an près)
@@ -4060,7 +4068,7 @@ async function vodEnrich(it) {
   else { const fr = ((d.content_ratings || {}).results || []).find(r => r.iso_3166_1 === 'FR'); cert = fr && fr.rating || ''; }
   const genres = (d.genres || []).map(g => g.name).slice(0, 3).join(', '), run = ti.kind === 'movie' ? (d.runtime ? fmtDur(d.runtime * 60) : '') : (d.number_of_seasons ? d.number_of_seasons + ' saison' + (d.number_of_seasons > 1 ? 's' : '') : '');
   const certTxt = cert && cert !== 'U' && cert !== 'TP' && cert !== 'Tous publics' ? '-' + String(cert).replace(/^-/, '') : cert ? 'Tous publics' : '';
-  frNotes(ti.id, ti.kind).then(n => { if (n && (n.sc || n.im)) NOTES.set(itemKey(it), { sc: n.sc, im: n.im }); const h = frNotesHtml(n), mt = $('#vodMeta'); if (h && mt && V.open && V.open.it === it && !$('#vodDetail .frn')) mt.insertAdjacentHTML('afterend', h); }).catch(() => {});
+  frNotes(ti.id, ti.kind).then(n => { const tv = d.vote_count >= 20 ? +d.vote_average || 0 : 0; if (n && (n.sc || n.im)) NOTES.set(itemKey(it), { sc: n.sc, im: n.im }); else if (n && tv) NOTES.set(itemKey(it), { tm: tv }); const h = frNotesHtml(n, n && (n.sc || n.im) ? 0 : tv), mt = $('#vodMeta'); if (h && mt && V.open && V.open.it === it && !$('#vodDetail .frn')) mt.insertAdjacentHTML('afterend', h); }).catch(() => {});
   const m = $('#vodMeta'); if (m) m.textContent = [it.year || (d.release_date || d.first_air_date || '').slice(0, 4), genres || it.genre, run, certTxt, it.services.join(', ')].filter(Boolean).join(' · ');
   const cr = d.credits || {}, dir = (cr.crew || []).filter(c => c.job === 'Director').map(c => c.name).slice(0, 2).join(', ') || (d.created_by || []).map(c => c.name).slice(0, 2).join(', ');
   const crew = $('#vodCrew'); if (crew && dir) crew.innerHTML = `<div class="cr">${ti.kind === 'movie' ? 'Réalisation' : 'Création'} : ${esc(dir)}</div>`;
@@ -5291,6 +5299,25 @@ async function listFromShare(lk) {
   const text = await listGunz(await r.arrayBuffer(), r.headers.get('X-List-Enc') || '');
   return { text, at: +(r.headers.get('X-List-At') || 0) };
 }
+/* Appli Windows : listes de plus de 24 h retéléchargées chez le fournisseur (directement, sans le relais), au lancement puis
+   toutes les 6 h ; la copie partagée suit. Liste en cours : rechargée tout de suite si rien n'est en lecture, sinon au
+   prochain lancement. Échec : nouvel essai 6 h plus tard. */
+async function listAutoRefresh() {
+  if (!window.desktop) return;
+  const F = LS.get('dev.lrefail', {});
+  for (const p of S.playlists.filter(x => !x.extra && x.url && !x.fromShare)) {
+    if (Date.now() - (p.updated || 0) < 864e5 || (F[p.id] && Date.now() < F[p.id])) continue;
+    try {
+      const text = await fetchPlaylist(p.url), n = parseM3U(text).channels.length; if (!n) throw new Error('liste vide');
+      const np = Object.assign({}, p, { text, count: n, updated: Date.now() }); delete np.fromShare;
+      await DB.put(np); const i = S.playlists.indexOf(p); if (i >= 0) S.playlists[i] = np;
+      if (S.pl === p && !document.body.classList.contains('playing')) usePlaylist(np.id);
+      delete F[p.id]; listShare(np, true).catch(() => {});
+    } catch (e) { F[p.id] = Date.now() + 6 * 3600e3; }
+    LS.set('dev.lrefail', F);
+  }
+}
+setTimeout(() => listAutoRefresh().catch(() => {}), 60e3); setInterval(() => listAutoRefresh().catch(() => {}), 6 * 3600e3);
 // listes de cet appareil : dépôt de leur copie, ou remplacement par une copie partagée plus récente
 async function listShareTick() {
   if (!LS.get('sync.code')) return;
