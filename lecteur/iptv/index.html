@@ -288,6 +288,14 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 .qsug .qi{flex:none;width:30px;text-align:center;color:var(--text3);font-size:15px}
 .qsug .qm{min-width:0;display:flex;flex-direction:column}.qsug .ql{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.qsug .qd{font-size:12px;color:var(--text3)}
 .qsug .qclr{justify-content:center;font-size:12px;color:var(--text3);padding:8px}
+.fbrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.fbb{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:999px;background:var(--bg3);border:.5px solid var(--border);color:var(--text2);font-size:13px}
+.fbb svg,.fbi svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.fbb.on{background:var(--text);color:var(--bg);border-color:transparent}
+.fbb[data-fb="no"].on{background:#8a2a26;color:#fff}
+.hfb{display:inline-flex;gap:4px;margin-left:4px}
+.fbi{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:rgba(0,0,0,.55);border:.5px solid rgba(255,255,255,.35);color:#fff;cursor:pointer}
+.fbi.on{background:#fff;color:#111}.fbi[data-fb="no"].on{background:#8a2a26;color:#fff}
 .pmenu{position:fixed;z-index:95;min-width:250px;max-width:340px;max-height:60vh;overflow:auto;background:rgba(30,30,29,.98);border:.5px solid var(--border);border-radius:14px;padding:6px;box-shadow:0 14px 40px rgba(0,0,0,.6);animation:updIn .15s ease}
 .pmenu .pi{display:flex;align-items:center;gap:10px;width:100%;min-width:0;padding:10px 12px;border-radius:10px;color:var(--text);text-align:left;font-size:14px}
 .pmenu .pi:hover:not(:disabled){background:var(--bg3)}.pmenu .pi:disabled{opacity:.55;cursor:default}
@@ -3100,7 +3108,7 @@ function hovInline(poster, it) {
       if (poster.closest('.vgrid')) { const g = poster.closest('.vgrid').getBoundingClientRect(), a = poster.getBoundingClientRect(), over = a.left + w - g.right;
         if (over > 0) poster.style.marginLeft = -Math.min(over, a.left - g.left) + 'px'; }
       if (LS.get('pref.hoverSound', false)) setTimeout(() => { try { f.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unMute', args: [] }), '*'); } catch (e) {} }, 250);
-      poster.insertAdjacentHTML('beforeend', `<span class="xpb"><span class="bt"><span class="btn primary" data-hplay>▶ ${it.kind === 'series' ? 'Épisodes' : 'Lecture'}</span><span class="btn" data-hinfo>Plus d'infos</span></span>
+      poster.insertAdjacentHTML('beforeend', `<span class="xpb"><span class="bt"><span class="btn primary" data-hplay>▶ ${it.kind === 'series' ? 'Épisodes' : 'Lecture'}</span><span class="btn" data-hinfo>Plus d'infos</span><span class="hfb">${fbButtons(it, 'fbi').replace(/<button /g, '<span ').replace(/<\/button>/g, '</span>')}</span></span>
         <span class="mt">${esc([noteTxt(it), (it.services || []).join(', ')].filter(Boolean).join(' · '))}</span></span>`);
       setTimeout(() => { const sc = poster.closest('.vscroll'); if (!sc || HOV.el !== poster) return; const a = poster.getBoundingClientRect(), bb = sc.getBoundingClientRect();
         if (a.right > bb.right - 8) { HOV.auto = Date.now(); sc.scrollBy({ left: a.right - bb.right + 16, behavior: 'smooth' }); } }, 320);
@@ -3116,6 +3124,13 @@ document.addEventListener('click', e => {
     e.stopPropagation(); e.preventDefault();
     const sb = e.target.closest('[data-hsnd]'), on = !sb.classList.contains('on'); sb.classList.toggle('on', on); LS.set('pref.hoverSound', on);
     const f = p.querySelector('iframe'); if (f) f.contentWindow.postMessage(JSON.stringify({ event: 'command', func: on ? 'unMute' : 'mute', args: [] }), '*');
+    return;
+  }
+  const fb = e.target.closest('.hfb [data-fb]');
+  if (fb) {
+    e.stopPropagation(); e.preventDefault();
+    const on = fbSet(it, fb.dataset.fb); fb.parentNode.innerHTML = fbButtons(it, 'fbi').replace(/<button /g, '<span ').replace(/<\/button>/g, '</span>');
+    if (on && fb.dataset.fb === 'no') { hovClose(true); p.style.transition = 'opacity .3s'; p.style.opacity = '0'; setTimeout(() => p.remove(), 300); }
     return;
   }
   if (e.target.closest('[data-hplay]') && it.kind === 'movie' && !it.tor) {
@@ -3186,8 +3201,14 @@ function vodDedupe(box) {
   box.querySelectorAll('.vrow').forEach(row => {
     const ps = [...row.querySelectorAll('.poster[data-v]')]; if (!ps.length) return;
     const dd = row.dataset.dd === 'dedupe', key = p => { const it = V.shown[+p.dataset.v]; return it ? itemKey(it) : ''; };
-    const left = dd ? ps.filter(p => { const k = key(p); if (k && seen.has(k)) { p.remove(); return false; } return true; }) : ps;
+    const pers = /^(Reprendre|Ma liste)/.test((row.querySelector('h3') || {}).textContent || '');
+    const left = ps.filter(p => {
+      const it = V.shown[+p.dataset.v], f = it && !pers ? fbOf(it) : null, k = key(p);
+      if ((f && f.no) || (dd && f && f.seen) || (dd && k && seen.has(k))) { p.remove(); return false; }
+      return true;
+    });
     if (dd && left.length < 4) { row.remove(); return; }
+    if (!left.length) { row.remove(); return; }
     left.forEach(p => { const k = key(p); if (k) seen.add(k); });
   });
 }
@@ -3463,6 +3484,15 @@ async function forYou(kinds) {
     seeds.set(e.k, { it, w: Math.pow(0.5, (now - (e.at || now)) / 864e5 / 45) * (e.f ? 1 : 0.6), vu: true });
   });
   myList().forEach((k, i) => { const it = itemByKey(k); if (it && !seeds.has(k)) seeds.set(k, { it, w: 0.6 * Math.pow(0.9, i), vu: false }); });
+  // avis : « j'aime » (point de départ le plus fort, même vu ailleurs), « déjà vu » ; titres hors catalogue retrouvés par TMDB
+  const FB = fbAll(), fbIt = (g, e) => { if (!e.tmdb) return null; const id = (e.kind === 'series' ? 's' : 'm') + e.tmdb; return popMatch(id, popIndex(V.data.items), { [id]: { k: id[0], t: e.n, y: e.y } }) || virtItem(id, { t: e.n, y: e.y }); };
+  Object.entries(FB).sort((a, b) => b[1].at - a[1].at).forEach(([g, e]) => {
+    if (!(e.like || e.seen) || e.no) return; const it = fbIt(g, e); if (!it) return; const k = itemKey(it);
+    const w = (e.like ? 1.5 : 0.7) * Math.pow(0.5, (now - (e.at || now)) / 864e5 / 90);
+    const o = seeds.get(k); if (!o || o.w < w) seeds.set(k, { it, w, vu: true });
+  });
+  // « ne pas recommander » : ses titres semblables pénalisés (5 derniers avis)
+  const noIts = Object.entries(FB).filter(([, e]) => e.no).sort((a, b) => b[1].at - a[1].at).slice(0, 5).map(([g, e]) => fbIt(g, e)).filter(Boolean);
   const top = [...seeds.values()].sort((a, b) => b.w - a.w).slice(0, 8);
   if (!top.length) return null;
   const datas = await Promise.all(top.map(x => recSeed(x.it).catch(() => null)));
@@ -3476,11 +3506,14 @@ async function forYou(kinds) {
       const add = x.w * (1 - j / 50); c.s += add; c.by[i] += add;
     });
   });
+  const noData = await Promise.all(noIts.map(it => recSeed(it).catch(() => null)));
+  noData.forEach(d => { if (d) d.recs.forEach((r, j) => { const c = cand.get(r.k); if (c) c.s -= 0.5 * (1 - j / 50) * Math.max(...top.map(x => x.w)); }); });
   const smax = Math.max(1e-9, ...[...cand.values()].map(c => c.s));
   const pool = [];
   for (const c of cand.values()) {
     if (!kinds.includes(c.k[0])) continue;
     const it = popMatch(c.k, P, meta); if (!it || seeds.has(itemKey(it)) || pool.some(p => p.it === it)) continue;
+    const f = fbOf(it); if (f && (f.no || f.seen) || c.s <= 0) continue;
     const genre = c.g.length ? c.g.reduce((a, g) => a + (gw[g] || 0), 0) / gmax / c.g.length : 0;
     const qual = Math.max(0, Math.min(1, (c.v - 5) / 3.5)) * (c.n >= 30 ? 1 : 0.5);
     pool.push({ it, sc: 0.65 * c.s / smax + 0.25 * genre + 0.1 * qual, from: c.by.indexOf(Math.max(...c.by)) });
@@ -3976,6 +4009,25 @@ function playVod(it, url, ep, next) {
 /* Historique de ce qui a été vu (vod.seen, synchronisé) : chaque film ou série regardé au moins 5 minutes, avec la date,
    l'épisode, et « vu en entier ». Gardé même une fois fini (contrairement à « Reprendre »), sert aussi à « Pour vous ». */
 const seenAll = () => { const h = LS.get('vod.seen', []); return Array.isArray(h) ? h : []; };
+/* Avis sur un titre : 👍 j'aime, ✓ déjà vu, 🚫 ne pas recommander. Rangés par fiche TMDB (gKey : valable d'un serveur à
+   l'autre, et pour les titres hors abonnement), synchronisés (vod.fb). Servent à « Pour vous » (j'aime et déjà vu : points
+   de départ ; ne pas recommander : écarté, et les titres qui lui ressemblent pénalisés) et aux rangées de l'accueil. */
+const fbAll = () => { const o = LS.get('vod.fb', {}); return o && typeof o === 'object' ? o : {}; };
+const fbOf = it => { try { return fbAll()[gKey(it)] || null; } catch (e) { return null; } };
+function fbSet(it, k) {
+  const o = fbAll(), g = gKey(it), cur = o[g] || {}, on = !cur[k], e = Object.assign({}, cur, { [k]: on, at: Date.now(), n: it.name, kind: it.kind, tmdb: it.tmdb || 0, y: it.year || 0 });
+  if (on && k === 'like') e.no = false; if (on && k === 'no') e.like = false;
+  if (!e.like && !e.seen && !e.no) delete o[g]; else o[g] = e;
+  const keys = Object.keys(o); if (keys.length > 800) keys.sort((a, b) => o[a].at - o[b].at).slice(0, keys.length - 800).forEach(x => delete o[x]);
+  LS.set('vod.fb', o);
+  if (k === 'seen' && on && !it.tor) seenPut(itemKey(it), '', true);       // titre de l'abonnement : aussi dans l'historique des vus
+
+  toast({ like: on ? 'Noté : vous aimez' : 'Avis retiré', seen: on ? 'Marqué comme déjà vu' : 'Retiré des déjà vus', no: on ? 'Ne sera plus recommandé' : 'De nouveau recommandable' }[k]);
+  return on;
+}
+const FB_ICON = { like: '<svg viewBox="0 0 24 24"><path d="M7 11v9H4v-9zM7 11l4-7c1.5 0 2.5 1 2.2 2.6L12.6 10H19a2 2 0 0 1 2 2.3l-1.2 6A2 2 0 0 1 17.8 20H7"/></svg>', seen: '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>', no: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M6 6l12 12"/></svg>' };
+const FB_LAB = { like: 'J\'aime', seen: 'Déjà vu', no: 'Ne pas recommander' };
+const fbButtons = (it, cls) => { const f = fbOf(it) || {}; return ['like', 'seen', 'no'].map(k => `<button class="${cls}${f[k] ? ' on' : ''}" data-fb="${k}" title="${FB_LAB[k]}">${FB_ICON[k]}${cls === 'fbb' ? '<span>' + FB_LAB[k] + '</span>' : ''}</button>`).join(''); };
 function seenPut(k, lab, fin) {
   const l = seenAll(), o = l.find(x => x.k === k);
   if (o && l[0] === o && o.lab === lab && (o.f || !fin) && Date.now() - o.at < 30 * 60e3) return;   // déjà à jour : pas d'écriture toutes les 5 s
@@ -4190,7 +4242,7 @@ async function openVod(it) {
       return `<button class="ep" data-epk="${k}" data-epn="${x.n}"><span class="epi" ${img ? `style="background-image:url('${esc(img)}')"` : ''}><span class="n">${esc(x.n)}</span>${pct ? `<i style="width:${pct}%"></i>` : ''}</span><span class="ept"><b>${esc(cleanTitle(x.e.title || 'Épisode ' + x.n).replace(/^.*?S\d+\s*E\d+\s*[-:·]?\s*/i, '') || 'Épisode ' + x.n)}</b><span class="d">${esc([fmtDur(d.duration_secs) || d.duration, pos > 60 ? 'vu jusqu\'à ' + fmtDur(pos) : ''].filter(Boolean).join(' · '))}</span><span class="eppl">${esc(d.plot || '')}</span></span></button>`; }).join('');
     h += '</div>';
   }
-  h += `<div class="cr" id="vodLangs">${esc(langLine(it))}</div><div id="vodCast"></div><div id="vodSimilar"></div>`;
+  h += `<div class="fbrow">${fbButtons(it, 'fbb')}</div><div class="cr" id="vodLangs">${esc(langLine(it))}</div><div id="vodCast"></div><div id="vodSimilar"></div>`;
   $('#vodDetail').innerHTML = h + '</div></div>';
   showTrailer(it);
   V.open = { it, eps, cover, flat };
@@ -4276,6 +4328,11 @@ async function vodEnrich(it) {
     });
   }
 }
+$('#vodDetail').addEventListener('click', e => {
+  const b = e.target.closest('.fbrow [data-fb]'); if (!b || !V.open) return;
+  e.stopPropagation(); fbSet(V.open.it, b.dataset.fb);
+  b.closest('.fbrow').innerHTML = fbButtons(V.open.it, 'fbb');
+}, true);
 $('#vodDetail').addEventListener('change', e => { if (e.target.id === 'seasonSel') { LS.set('season.' + V.open.it.id, e.target.value); openVod(V.open.it); } });
 $('#vodDetail').addEventListener('click', e => {
   // Changement de version : seulement les boutons de lecture mis à jour (la fiche et la bande-annonce restent)
