@@ -395,6 +395,8 @@ body.hasmatch #nowScore{display:inline}
 #vodTrailer .trmute{position:absolute;right:10px;bottom:10px;width:38px;height:38px;border-radius:50%;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:2}
 #vodTrailer .trmute svg{width:20px;height:20px;stroke:#fff;stroke-width:2;fill:#fff;stroke-linecap:round;stroke-linejoin:round}
 #vodTrailer .trmute .im{display:none}#vodTrailer .trmute.off .iv{display:none}#vodTrailer .trmute.off .im{display:block}
+#vodTrailer .trlogin{position:absolute;inset:0;z-index:3;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:20px;text-align:center;background:rgba(10,10,10,.88);color:#fff}
+#vodTrailer .trlogin b{font-size:17px}#vodTrailer .trlogin span{font-size:13px;color:var(--text3);max-width:420px}
 #vodTrailer .trtag{position:absolute;left:10px;top:10px;font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px;background:rgba(0,0,0,.7);color:#fff;pointer-events:none}
 body.homeview #channels,body.homeview #player{display:none}
 .hsec h2,#agenda h2{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--text3);margin:22px 2px 12px;font-weight:700}
@@ -2912,7 +2914,7 @@ function hovOpen(poster) {
     if (!tr || HOV.it !== it || !HOV.el) return;
     const cc = tr.cc ? '&cc_load_policy=1&cc_lang_pref=fr&hl=fr' : '';
     const f = document.createElement('iframe');
-    f.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(tr.key)}?autoplay=1&mute=1&controls=0&disablekb=1&fs=0&iv_load_policy=3&rel=0&modestbranding=1&playsinline=1&enablejsapi=1${cc}`;
+    f.src = `${YT_EMBED}/embed/${encodeURIComponent(tr.key)}?autoplay=1&mute=1&controls=0&disablekb=1&fs=0&iv_load_policy=3&rel=0&modestbranding=1&playsinline=1&enablejsapi=1${cc}`;
     f.allow = 'autoplay; encrypted-media'; f.tabIndex = -1; f.title = 'Bande-annonce'; f.dataset.k = tr.key;
     f.onload = () => ytOnPlay(f, () => { f.classList.add('on'); if (LS.get('pref.hoverSound', false)) try { f.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unMute', args: [] }), '*'); } catch (e) {} }, 4000);
     ytListen(f); el.querySelector('.md').prepend(f);
@@ -2929,7 +2931,7 @@ function hovInline(poster, it) {
     const v = poster.querySelector('.xpv'), cc = tr.cc ? '&cc_load_policy=1&cc_lang_pref=fr&hl=fr' : '';
     const f = document.createElement('iframe');
     // toujours sans le son pendant le chargement en coulisse : le son (si choisi) ne vient qu'avec l'image, à l'ouverture
-    f.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(tr.key)}?autoplay=1&mute=1&controls=0&disablekb=1&fs=0&iv_load_policy=3&rel=0&modestbranding=1&playsinline=1&enablejsapi=1${cc}`;
+    f.src = `${YT_EMBED}/embed/${encodeURIComponent(tr.key)}?autoplay=1&mute=1&controls=0&disablekb=1&fs=0&iv_load_policy=3&rel=0&modestbranding=1&playsinline=1&enablejsapi=1${cc}`;
     f.allow = 'autoplay; encrypted-media'; f.tabIndex = -1; f.title = 'Bande-annonce'; f.dataset.k = tr.key;
     f.onload = () => ytOnPlay(f, () => {                 // la vidéo joue vraiment : on ouvre, puis le son
       if (HOV.el !== poster || !document.body.contains(poster)) return;
@@ -3506,6 +3508,14 @@ async function trailerFor0(it) {
 }
 // Bande-annonce vue dans l'aperçu au survol : la fiche la reprend là où elle en était (si c'était il y a moins d'une minute)
 const TR_POS = new Map();
+/* Appli Windows : lecteur YouTube normal (il utilise le compte YouTube connecté dans l'appli : derrière un VPN, YouTube
+   demande souvent de se connecter) ; ailleurs, version sans cookies. Après la connexion, la bande-annonce est relancée. */
+const YT_EMBED = window.desktop && window.desktop.ytLogin ? 'https://www.youtube.com' : 'https://www.youtube-nocookie.com';
+if (window.desktop && window.desktop.onYtLogin) window.desktop.onYtLogin(st => {
+  const it = V.open && V.open.it; if (!it || !$('#vodModal').classList.contains('open')) return;
+  document.querySelectorAll('#vodTrailer').forEach(f => f.remove()); $('#vodModal .sheet').classList.remove('hastr');
+  if (st && st.ok) toast('Connecté à YouTube'); showTrailer(it);
+});
 async function showTrailer(it) {
   const tr = await trailerFor(it).catch(() => null);
   if (!$('#vodModal').classList.contains('open') || !V.open || V.open.it !== it) return;
@@ -3516,9 +3526,16 @@ async function showTrailer(it) {
   // YouTube normal et sans le son (le téléphone refuse la lecture automatique avec le son)
   const bare = !MOBILE, p = bare ? 'mute=0&controls=0&disablekb=1&fs=0&iv_load_policy=3' : 'mute=1';
   const tp = TR_POS.get(tr.key), st = tp && Date.now() - tp.at < 60000 && tp.t > 1 ? '&start=' + Math.floor(tp.t) : '';
-  box.innerHTML = `<iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(tr.key)}?autoplay=1&${p}${st}&rel=0&modestbranding=1&playsinline=1&enablejsapi=1${cc}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" title="Bande-annonce"${bare ? ' class="bare" tabindex="-1"' : ''}></iframe>${bare ? '<button class="trplay" title="Pause / lecture"><svg viewBox="0 0 24 24"><path class="ip" d="M7 4v16l13-8z"/><path class="ipa" d="M7 4h3.5v16H7zM13.5 4H17v16h-3.5z"/></svg></button>' : ''}${bare ? '<button class="trmute" title="Couper / remettre le son"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="iv" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" fill="none"/><path class="im" d="M16 9l5 6M21 9l-5 6" fill="none"/></svg></button>' : ''}`;
+  box.innerHTML = `<iframe src="${YT_EMBED}/embed/${encodeURIComponent(tr.key)}?autoplay=1&${p}${st}&rel=0&modestbranding=1&playsinline=1&enablejsapi=1${cc}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" title="Bande-annonce"${bare ? ' class="bare" tabindex="-1"' : ''}></iframe>${bare ? '<button class="trplay" title="Pause / lecture"><svg viewBox="0 0 24 24"><path class="ip" d="M7 4v16l13-8z"/><path class="ipa" d="M7 4h3.5v16H7zM13.5 4H17v16h-3.5z"/></svg></button>' : ''}${bare ? '<button class="trmute" title="Couper / remettre le son"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="iv" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" fill="none"/><path class="im" d="M16 9l5 6M21 9l-5 6" fill="none"/></svg></button>' : ''}`;
   $('#vodDetail').prepend(box); $('#vodModal .sheet').classList.add('hastr');
   ytListen(box.querySelector('iframe'));
+  // Appli Windows : lecteur YouTube muet au bout de 7 s = page « Connectez-vous pour confirmer que vous n'êtes pas un robot »
+  // (VPN) ; ses boutons ne sont pas cliquables ici (lecteur sans commandes) : bouton de connexion de l'appli par-dessus
+  if (window.desktop && window.desktop.ytLogin) setTimeout(() => {
+    const f = box.querySelector('iframe'); if (!box.isConnected || !f || f.dataset.alive || box.querySelector('.trlogin')) return;
+    box.insertAdjacentHTML('beforeend', '<div class="trlogin"><b>YouTube demande de vous connecter</b><span>Souvent à cause d\'un VPN. Connexion une seule fois : elle reste gardée dans l\'appli.</span><button class="btn primary">Se connecter à YouTube</button></div>');
+    box.querySelector('.trlogin .btn').onclick = () => window.desktop.ytLogin();
+  }, 7000);
   const pb = box.querySelector('.trplay');
   if (bare) { const cl = document.createElement('div'); cl.className = 'trclick'; cl.title = 'Pause / lecture'; cl.onclick = () => pb && pb.click(); box.appendChild(cl); }
   if (pb) pb.onclick = () => { const paused = !pb.classList.contains('off'); pb.classList.toggle('off', paused);
@@ -4563,6 +4580,8 @@ video.addEventListener('timeupdate', () => {
 window.addEventListener('message', e => {
   if (!/youtube(-nocookie)?\.com$/.test((() => { try { return new URL(e.origin).hostname; } catch (er) { return ''; } })())) return;
   let d; try { d = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch (er) { return; }
+  // le lecteur YouTube de la fiche répond : il marche (pas de demande de connexion)
+  document.querySelectorAll('#vodTrailer iframe').forEach(f => { if (f.contentWindow === e.source && !f.dataset.alive) { f.dataset.alive = '1'; const o = $('#vodTrailer .trlogin'); if (o) o.remove(); } });
   // position de la bande-annonce de l'aperçu (reprise au même endroit dans la fiche)
   if (d && d.info && typeof d.info.currentTime === 'number') document.querySelectorAll('.hovc iframe, .poster .xpv iframe').forEach(f => { if (f.contentWindow === e.source && f.dataset.k) TR_POS.set(f.dataset.k, { t: d.info.currentTime, at: Date.now() }); });
   if (d && d.info && d.info.playerState === 1) YT_PLAY.forEach((cb, f) => { if (f.contentWindow === e.source) { YT_PLAY.delete(f); cb(); } });

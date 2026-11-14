@@ -113,13 +113,35 @@ function createWindow() {
   });
 
   // Liens vers d'autres sites : dans le navigateur habituel
-  win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
+  // (sauf connexion à Google / YouTube : dans une fenêtre de l'appli, pour que les bandes-annonces utilisent le compte)
+  win.webContents.setWindowOpenHandler(({ url }) => { if (GLOGIN.test(url)) ytLogin(win, url); else shell.openExternal(url); return { action: 'deny' }; });
+  // une bande-annonce qui voudrait emmener toute la page vers la connexion Google : fenêtre de connexion à la place
+  win.webContents.on('will-navigate', (e, url) => { if (GLOGIN.test(url)) { e.preventDefault(); ytLogin(win, url); } });
+  ipcMain.removeAllListeners('yt-login'); ipcMain.on('yt-login', () => ytLogin(win));
 
   // Page en ligne (toujours à jour) ; sans connexion au site, la copie livrée avec l'appli
   // (page redemandée au site à chaque lancement : jamais une ancienne copie gardée en cache)
   win.loadURL(PAGE, { extraHeaders: 'Cache-Control: no-cache\nPragma: no-cache\n' }).catch(() => win.loadFile(path.join(__dirname, 'index.html')));
 }
 
+/* Connexion à YouTube (bandes-annonces) : derrière un VPN, YouTube demande souvent de se connecter pour prouver qu'on n'est
+   pas un robot. Page de connexion Google dans une fenêtre de l'appli (même session : le compte sert ensuite aux lecteurs
+   YouTube de la page) ; fenêtre fermée et page prévenue une fois revenu sur YouTube. */
+const GLOGIN = /^https:\/\/(accounts\.google\.[a-z.]+|accounts\.youtube\.com)\/|^https:\/\/(www\.|m\.)?youtube\.com\/(signin|ServiceLogin)/i;
+let ytWin = null;
+function ytLogin(parent, url) {
+  if (ytWin && !ytWin.isDestroyed()) { ytWin.focus(); return; }
+  ytWin = new BrowserWindow({ width: 500, height: 720, parent, title: 'Connexion à YouTube', autoHideMenuBar: true, backgroundColor: '#ffffff',
+    webPreferences: { contextIsolation: true, sandbox: true } });
+  const start = 'https://accounts.google.com/ServiceLogin?service=youtube&hl=fr&continue=' + encodeURIComponent('https://www.youtube.com/signin?action_handle_signin=true&app=desktop&hl=fr&next=%2F');
+  ytWin.loadURL(url && /accounts\.google\./.test(url) ? url : start);
+  let ok = false;
+  const check = (e, u) => { if (!ok && /^https:\/\/(www|m)\.youtube\.com\/?(\?|#|$|feed\/|index)/i.test(u)) { ok = true; setTimeout(() => { try { ytWin.close(); } catch (er) {} }, 300); } };
+  ytWin.webContents.on('did-navigate', check);
+  ytWin.webContents.on('did-redirect-navigation', (e) => check(e, e.url));
+  ytWin.webContents.setWindowOpenHandler(({ url: u }) => { ytWin.loadURL(u); return { action: 'deny' }; });
+  ytWin.on('closed', () => { ytWin = null; try { if (!parent.isDestroyed()) parent.webContents.send('yt-login', { ok }); } catch (e) {} });
+}
 // Identité de navigateur ordinaire (Chrome), sans « Electron » ni le nom de l'appli : le lecteur YouTube des bandes-annonces
 // se méfie d'Electron (« Connectez-vous pour confirmer que vous n'êtes pas un robot »)
 app.userAgentFallback = app.userAgentFallback.replace(/\s(Electron|lecteur-iptv|Lecteur IPTV)\/[\w.-]+/gi, '');
