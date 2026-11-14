@@ -1713,7 +1713,7 @@ async function torFindMovie(titles, year) {
   return all.filter(x => { const p = x._p = x._p || torParse(x.title); return !p.series && keys.has(tnK(p.title)) && (!year || !p.year || Math.abs(p.year - year) <= 1); });
 }
 /* Recommandations (Netflix, Wikipédia, BetaSeries, Trakt, TMDB…) : un film absent de l'abonnement est cherché dans les
-   indexeurs ; s'il y a une version jouable (3 sources au moins, pas de CAM), il entre dans la rangée (étiquette TORRENT).
+   indexeurs ; s'il y a une version jouable (3 sources au moins, pas de CAM), il entre dans la rangée (sans étiquette : sa fiche indique « trouvé dans vos indexeurs »).
    Résultats gardés 24 h (dev.ix) ; 2 recherches à la fois (chaque recherche interroge tous les indexeurs), 60 au plus par
    lancement. Arrêt dès que Prowlarr signale un problème : indexeur mis en pause pendant nos recherches (erreurs, limite
    atteinte), avertissement de limite, ou refus (429) ; plus de recherche pendant 1 h. Une fois les recherches finies,
@@ -3125,7 +3125,7 @@ function posterHtml(it, i, rank, prog) {
   const ls = langState(it), lb = ls === 'vo' ? '<span class="lgb vo">VO</span>' : ls === '?' ? '<span class="lgb">VO ?</span>' : '';
   const pg = prog ? `<span class="pgb"><i style="width:${Math.max(3, Math.min(100, prog.pct || 0))}%"></i></span>${prog.lab ? `<span class="pgl">${esc(prog.lab)}</span>` : ''}` : '';
   if (!coverOf(it)) setTimeout(() => coverWatch(i), 0);
-  return `<button class="poster" data-v="${i}"><div class="im">${esc(it.name)}${coverOf(it) ? `<img src="${esc(posterUrl(coverOf(it)))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="coverMiss(this)">` : ''}${r}${it.kind === 'series' ? '<span class="kd">SÉRIE</span>' : ''}${it.tor ? `<span class="kd tor">TORRENT${it.tor.q ? ' ' + it.tor.q : ''}</span>` : ''}${vfOnly(it) ? '<span class="vfo" title="Film étranger proposé seulement en français (pas de VO)">VF seule</span>' : ''}${rank ? `<span class="rk">${rank}</span>` : ''}${pg}${lb}</div><div class="pt">${esc(it.name)}</div><div class="py">${it.year || ''}</div></button>`;
+  return `<button class="poster" data-v="${i}"><div class="im">${esc(it.name)}${coverOf(it) ? `<img src="${esc(posterUrl(coverOf(it)))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="coverMiss(this)">` : ''}${r}${it.kind === 'series' ? '<span class="kd">SÉRIE</span>' : ''}${vfOnly(it) ? '<span class="vfo" title="Film étranger proposé seulement en français (pas de VO)">VF seule</span>' : ''}${rank ? `<span class="rk">${rank}</span>` : ''}${pg}${lb}</div><div class="pt">${esc(it.name)}</div><div class="py">${it.year || ''}</div></button>`;
 }
 // keep : rangée toujours complète (classement, rangée personnelle) ; sinon rangée de découverte, sans les titres déjà
 // affichés plus haut (voir vodDedupe)
@@ -3244,6 +3244,31 @@ async function scTop(kind) {
       if (!x.id || !v || n < 300) return;
       const id = k0 + x.id, img = String(x.image || ''), pp = (img.match(/\/t\/p\/[^/]+(\/[^/?]+)$/) || [])[1] || (img[0] === '/' ? img : '');
       meta[id] = { k: k0, t: x.title || '', o: x.original_title || '', y: +String(x.release_date || '').slice(0, 4) || yr, p: pp, sc: v };
+      if (!out.includes(id)) out.push(id);
+    });
+    if (l.length < 20) break;
+  }
+  out.sort((a, b) => meta[b].sc - meta[a].sc);
+  const data = { ids: out, meta };
+  if (out.length) DB.cachePut({ id: ck, at: Date.now(), data });
+  return data;
+}
+/* Top SensCritique par plateforme : films et séries disponibles sur la plateforme (« What's on? API »), triés par note des
+   membres de SensCritique, 1 000 notes au moins ; 2 pages de 20, gardé 24 h */
+const SC_PLAT = { 'Netflix': 'Netflix', 'Prime Video': 'Prime Video', 'Disney+': 'Disney', 'Apple TV+': 'Apple TV', 'Canal+': 'Canal', 'Max': 'Max', 'Paramount+': 'Paramount', 'Crunchyroll': 'Crunchyroll' };
+async function scTopPlat(svc, types) {
+  const ck = 'scplat1:' + svc + ':' + types, c = await DB.cacheGet(ck).catch(() => null);
+  if (c && Date.now() - c.at < 864e5) return c.data;
+  const out = [], meta = {};
+  for (let page = 1; page <= 2; page++) {
+    const r = await fetch('https://whatson-api.onrender.com/?item_type=' + types + '&platforms=' + encodeURIComponent(SC_PLAT[svc] || svc) + '&is_active=true,false&ratings_filters=senscritique_users&sort_by=ratings&order=desc&limit=20&page=' + page).catch(() => null);
+    if (!r || !r.ok) break;
+    const j = await r.json().catch(() => null), l = (j && (j.results || (Array.isArray(j) ? j : null))) || [];
+    l.forEach(x => {
+      const sc = x.senscritique || {}, n = +sc.users_rating_count || 0, v = +sc.users_rating || 0;
+      if (!x.id || !v || n < 1000) return;
+      const k0 = x.item_type === 'tvshow' ? 's' : 'm', id = k0 + x.id, img = String(x.image || ''), pp = (img.match(/\/t\/p\/[^/]+(\/[^/?]+)$/) || [])[1] || (img[0] === '/' ? img : '');
+      meta[id] = { k: k0, t: x.title || '', o: x.original_title || '', y: +String(x.release_date || '').slice(0, 4) || 0, p: pp, sc: v };
       if (!out.includes(id)) out.push(id);
     });
     if (l.length < 20) break;
@@ -3621,7 +3646,16 @@ async function renderVod() {
       }
       prix.forEach(p => { h += vodRow(p.n, 'films primés présents dans votre catalogue, du plus récent au plus ancien · Wikidata', p.l.slice(0, 40), false, true); });
       h += vodRow('Tendances mondiales de la semaine', 'popularité dans le monde · TMDB', popList(POP.trend, P, POP.meta, kinds).slice(0, 30), true);
+      const scTypes = kinds.length === 2 ? 'movie,tvshow' : kinds[0] === 'm' ? 'movie' : 'tvshow';
+      const SCP = await Promise.race([Promise.all(TMDB_SVC.map(([svc]) => scTopPlat(svc, scTypes).catch(() => null))), new Promise(r => setTimeout(() => r([]), 8000))]);
       for (const [svc] of TMDB_SVC) {
+        const T = SCP[TMDB_SVC.findIndex(x => x[0] === svc)];
+        if (T && T.ids.length) {
+          Object.entries(T.meta).forEach(([k, m]) => { POP.meta[k] = POP.meta[k] || m; });
+          const tl = popList(T.ids, P, POP.meta, kinds);
+          tl.forEach(it => { const id = T.ids.find(x => popMatch(x, P, POP.meta) === it || (it.tor && 'm' + it.tmdb === x)); const sc = id && T.meta[id].sc; if (sc && !NOTES.has(itemKey(it))) NOTES.set(itemKey(it), { sc }); });
+          if (tl.length >= 3) h += vodRow('Top SensCritique · ' + svc, 'les mieux notés par les membres de SensCritique, disponibles sur ' + svc, tl.slice(0, 30), true);
+        }
         const S2 = POP.svc[svc]; if (!S2) continue;
         const mix = X => kinds.length === 2 ? X.m.map((x, i) => [x, i]).concat(X.s.map((x, i) => [x, i])).sort((a, b) => a[1] - b[1]).map(x => x[0]) : kinds[0] === 'm' ? X.m : X.s;
         const top = svc === 'Netflix' && NF && NF.list.length;   // Netflix : déjà le vrai top France en tête
