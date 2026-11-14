@@ -1796,6 +1796,7 @@ async function torPlay(x, g, b, opts) {
     if (!f) { toastLong(opts.pick ? 'Épisode introuvable dans ce torrent' : 'Aucune vidéo dans ce torrent'); return; }
     const tm = ctx && ctx.tm;
     closeModals();
+    if (opts.remember) torLastSave(opts.remember, x, j, f);
     play(Object.assign({ name: torName(f), url: window.desktop.remux + '/torrent/file/' + j.id + '/' + f.i + '/' + encodeURIComponent(f.name), group: 'Torrent', logo: tm && tm.poster ? 'https://image.tmdb.org/t/p/w342' + tm.poster : '', n: 0, chno: '', vod: true, key: '' }, opts.extra ? opts.extra(j, f) : {}));
   } finally { TOR.busyPlay = false; if (b && b.isConnected) { b.disabled = false; b.innerHTML = lab; } }
 }
@@ -1875,6 +1876,26 @@ function vodTorEp(n) {
     }
   });
   const x = VTS.epRel[n]; if (x) return torPlay(x, g, null, { extra: () => ({ name: lab(n), it, ep: { s, n } }) });
+}
+/* Torrent déjà commencé pour un film : retenu par fiche TMDB (vod.torlast, synchronisé), reproposé en tête du menu Lecture
+   et par « Reprendre » ; relu à l'identique (même torrent, même fichier : morceaux gardés une semaine sur le PC, position
+   reprise). */
+const torLastAll = () => { const o = LS.get('vod.torlast', {}); return o && typeof o === 'object' ? o : {}; };
+const torLast = it => { try { return torLastAll()[gKey(it)] || null; } catch (e) { return null; } };
+function torLastSave(it, x, j, f) {
+  if (!it || !x || !j || !f) return;
+  const o = torLastAll(), src = x.magnetUrl || x.downloadUrl; if (!src) return;
+  o[gKey(it)] = { src, title: x.title || '', q: torQ(x), size: x.size || 0, sd: x.seeders || 0, id: j.id, fi: f.i, fname: f.name, at: Date.now() };
+  const k = Object.keys(o); if (k.length > 100) k.sort((a, b) => o[a].at - o[b].at).slice(0, k.length - 100).forEach(z => delete o[z]);
+  LS.set('vod.torlast', o);
+}
+const torLastUrl = r => window.desktop && r ? window.desktop.remux + '/torrent/file/' + r.id + '/' + r.fi + '/' + encodeURIComponent(r.fname) : '';
+// relecture du torrent retenu : même torrent rouvert, même fichier
+function torPlayLast(it, b) {
+  const r = torLast(it); if (!r || !torOk()) return Promise.resolve();
+  const x = { magnetUrl: /^magnet:/i.test(r.src) ? r.src : '', downloadUrl: /^magnet:/i.test(r.src) ? '' : r.src, title: r.title, size: r.size, seeders: r.sd };
+  const g = VT.it === it && VT.g ? VT.g : { kind: 'movie', tm: { name: it.name, poster: '' } };
+  return torPlay(x, g, b, { pick: vids => vids.find(v => v.i === r.fi) || vids.find(v => v.name === r.fname) || null, extra: () => ({ it, name: it.name }) });
 }
 function torStop() {
   clearInterval(TOR.t);
@@ -2009,7 +2030,9 @@ function pmHtml() {
     if (!others.length && !tor.length) h += '<p class="hint" style="margin:6px 12px">Pas d\'autre version.</p>';
     return h;
   }
-  let h = it.tor ? '' : `<button class="pi" data-pmi="iptv:${pick.id}"><b>IPTV</b>${pos > 60 ? `<small>reprise à ${fmtDur(pos)}</small>` : ''}${qTag(vodLbl(pick))}</button>`;
+  const tr = torOn ? torLast(it) : null, tp = tr ? LS.get(posK(torLastUrl(tr)), 0) : 0;
+  let h = tr ? `<button class="pi" data-pmi="tlast"><b>Reprendre le torrent</b><small>${tp > 60 ? 'à ' + fmtDur(tp) + ' · ' : ''}${esc(torMo(tr.size))}</small>${qTag(tr.q)}</button>` : '';
+  h += it.tor ? '' : `<button class="pi" data-pmi="iptv:${pick.id}"><b>IPTV</b>${pos > 60 ? `<small>reprise à ${fmtDur(pos)}</small>` : ''}${qTag(vodLbl(pick))}</button>`;
   if (torOn) h += VT.state === 'loading' && VT.it === it ? '<button class="pi" disabled><b>Torrent</b><small>recherche…</small></button>'
     : bx ? `<button class="pi" data-pmi="tor:${tl.indexOf(bx)}"><b>Torrent</b><small>${esc(torMo(bx.size))} · ${torSd(bx)}</small>${qTag(torQ(bx))}</button><button class="pi pdl" data-pmq="${tl.indexOf(bx)}"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><b>Télécharger dans Ma médiathèque</b></button>`
     : '<button class="pi" disabled><b>Torrent</b><small>aucune version</small></button>';
@@ -2043,7 +2066,8 @@ document.addEventListener('click', e => {
   if (!(b = e.target.closest('[data-pmi]')) || !it) return;
   const [k, v] = b.dataset.pmi.split(':');
   if (k === 'iptv') { LS.set('vver.' + it.id, +v); const pk = vodPick(it); pmClose(); closeModals(); playVod(it, vodUrl('movie', pk.id, pk.ext), null, null); }
-  else if (k === 'tor') { const x = VT.list[+v]; if (x) { b.disabled = true; b.querySelector('small') ? b.querySelector('small').textContent = 'connexion…' : b.insertAdjacentHTML('beforeend', '<small>connexion…</small>'); torPlay(x, VT.g, null).finally(pmClose); } }
+  else if (k === 'tlast') { b.disabled = true; b.querySelector('small').textContent = 'connexion…'; torPlayLast(it).finally(pmClose); }
+  else if (k === 'tor') { const x = VT.list[+v]; if (x) { b.disabled = true; b.querySelector('small') ? b.querySelector('small').textContent = 'connexion…' : b.insertAdjacentHTML('beforeend', '<small>connexion…</small>'); torPlay(x, VT.g, null, { remember: it, extra: () => ({ it, name: it.name }) }).finally(pmClose); } }
   else if (k === 'jf' && JF.link) { pmClose(); closeModals(); jfPlay(JF.link); }
 }, true);
 document.addEventListener('keydown', e => { if (PM.el && e.key === 'Escape') { e.stopPropagation(); pmClose(); } }, true);
@@ -4462,6 +4486,7 @@ async function vodSearchMore(q0, already) {
 // « Reprendre » : relance directement le film ou l'épisode à la position retenue (série : épisodes relus pour le suivant)
 async function resumeHist(k) {
   const e = histAll().find(x => x.k === k), it = itemByKey(k); if (!e || !it) return;
+  if (it.kind === 'movie' && /\/torrent\/file\//.test(e.url || '') && torLast(it)) return torPlayLast(it);
   if (it.kind === 'movie') { const pk = vodPick(it); return playVod(it, e.url || vodUrl('movie', pk.id, pk.ext), null, null); }
   let fl = [];
   try { const j = await xget('&action=get_series_info&series_id=' + it.id); fl = epFlat(j.episodes || {}); } catch (err) {}
