@@ -236,6 +236,7 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 .tlist{display:flex;flex-direction:column;gap:6px;max-width:1100px}
 .trow{display:flex;align-items:center;gap:14px;padding:10px 12px;border-radius:14px;background:var(--bg2);border:.5px solid var(--border);transition:background .15s}
 .trow:hover{background:var(--bg3)}
+.trow.tbest{border-color:rgba(226,184,79,.55);background:linear-gradient(90deg,rgba(226,184,79,.10),var(--bg2) 60%)}
 .tsd{flex:none;width:56px;display:flex;flex-direction:column;align-items:center;line-height:1.1}
 .tsd b{font-size:18px;font-variant-numeric:tabular-nums}.tsd small{font-size:10px;color:var(--text3)}
 .tsd.hi b{color:var(--green)}.tsd.md b{color:var(--gold)}.tsd.lo b{color:var(--red)}
@@ -1419,7 +1420,7 @@ function askText(msg, opt) {
    Recherche dans les indexeurs que l'utilisateur a mis dans son Prowlarr : « Lire » (pendant le téléchargement, appli
    Windows 1.20 et plus) ou « ＋ Films / ＋ Séries » (envoi à qBittorrent, rangé par Radarr / Sonarr). Lien magnet ou fichier
    .torrent fourni par l'utilisateur. L'appli ne contient aucune source : seulement ce que Prowlarr renvoie. */
-const TOR = { q: '', kind: 'all', qual: 'all', sort: 'seed', res: null, err: '', busy: false, cur: null, curErr: '', curBusy: false, info: null, t: 0, hist: LS.get('dev.prwhist', []) };
+const TOR = { q: '', kind: 'all', qual: 'all', sort: 'best', res: null, err: '', busy: false, cur: null, curErr: '', curBusy: false, info: null, t: 0, hist: LS.get('dev.prwhist', []) };
 const prwConf = () => { const c = LS.get('dev.prowlarr', null); return c && c.url && c.key ? c : null; };
 const torOk = () => !!(window.desktop && window.desktop.remux);
 const torMo = n => !n ? '' : n >= 1e9 ? (n / 1e9).toFixed(1).replace('.', ',') + ' Go' : Math.round(n / 1e6) + ' Mo';
@@ -1448,8 +1449,8 @@ function torRowHtml(x, i) {
   const g = x._t || torTags(x.title), s = x.seeders || 0, cat = (x.categories || []).map(c => c.id).find(Boolean) || 0;
   const badge = (t, cls) => t ? `<span class="tbg${cls ? ' ' + cls : ''}">${t}</span>` : '';
   const meta = [torMo(x.size), torAge(x.publishDate), x.indexer].filter(Boolean).map(esc).join(' · ');
-  return `<div class="trow" data-ti="${i}"><div class="tsd ${s >= 20 ? 'hi' : s >= 5 ? 'md' : 'lo'}" title="${s} source${s > 1 ? 's' : ''}, ${x.leechers || 0} en téléchargement"><b>${s}</b><small>sources</small></div>
-    <div class="tmn"><div class="ttl">${esc(x.title || '')}</div><div class="tmt">${badge(g.q, g.q === '4K' ? 'k4' : '')}${badge(g.l, g.l === 'VOSTFR' ? 'vo' : 'vf')}${g.hdr ? badge('HDR') : ''}${g.hevc ? badge('HEVC') : ''}${g.remux ? badge('REMUX') : ''}${g.cam ? badge('CAM', 'cam') : ''}<span>${meta}</span></div></div>
+  return `<div class="trow${x._best ? ' tbest' : ''}" data-ti="${i}"><div class="tsd ${s >= 20 ? 'hi' : s >= 5 ? 'md' : 'lo'}" title="${s} source${s > 1 ? 's' : ''}, ${x.leechers || 0} en téléchargement"><b>${s}</b><small>sources</small></div>
+    <div class="tmn"><div class="ttl">${esc(x.title || '')}</div><div class="tmt">${x._best ? '<span class="tbg k4">★ MEILLEUR CHOIX</span>' : ''}${badge(g.q, g.q === '4K' ? 'k4' : '')}${badge(g.l, g.l === 'VOSTFR' ? 'vo' : 'vf')}${g.hdr ? badge('HDR') : ''}${g.hevc ? badge('HEVC') : ''}${g.remux ? badge('REMUX') : ''}${g.cam ? badge('CAM', 'cam') : ''}<span>${meta}</span></div></div>
     <div class="tac"><button class="btn primary sm" data-tpl="${i}">▶ Lire</button><button class="chip" data-tpa="${i}" data-c="${cat >= 5000 && cat < 6000 ? 'series' : 'films'}" title="Télécharger en entier avec qBittorrent et ranger dans Ma médiathèque">＋ ${cat >= 5000 && cat < 6000 ? 'Séries' : 'Films'}</button></div></div>`;
 }
 async function torQbt(x, cat, b) {
@@ -1471,7 +1472,7 @@ function torRender() {
     const chips = (k, opts) => opts.map(([v, l]) => `<button class="chip${TOR[k] === v ? ' on' : ''}" data-tf="${k}" data-tv="${v}">${l}</button>`).join('');
     h += `<div class="tsearch"><label class="searchbar tbig"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input id="torQ" type="search" placeholder="Chercher un film ou une série dans mes indexeurs" value="${esc(TOR.q)}" autocomplete="off" spellcheck="false"></label><button class="btn primary" data-tgo>Chercher</button></div>`;
     if (!TOR.res && !TOR.busy && TOR.hist.length) h += `<div class="tfil"><span class="hint">Récemment :</span>${TOR.hist.map(q => `<button class="chip" data-thq="${esc(q)}">${esc(q)}</button>`).join('')}</div>`;
-    h += `<div class="tfil">${chips('kind', [['all', 'Tout'], ['movie', 'Films'], ['series', 'Séries']])}<span class="tsep"></span>${chips('qual', [['all', 'Toutes qualités'], ['4K', '4K'], ['1080p', '1080p'], ['720p', '720p']])}<span class="tsep"></span>${chips('sort', [['seed', 'Plus de sources'], ['date', 'Plus récents'], ['size', 'Plus lourds']])}</div>`;
+    h += `<div class="tfil">${chips('kind', [['all', 'Tout'], ['movie', 'Films'], ['series', 'Séries']])}<span class="tsep"></span>${chips('qual', [['all', 'Toutes qualités'], ['4K', '4K'], ['1080p', '1080p'], ['720p', '720p']])}<span class="tsep"></span>${chips('sort', [['best', 'Meilleur choix'], ['seed', 'Plus de sources'], ['date', 'Plus récents'], ['size', 'Plus lourds']])}</div>`;
     h += '<div id="torRes">' + torResHtml() + '</div>';
   }
   h += `<details class="padd"><summary>Lien magnet ou fichier .torrent</summary>
@@ -1537,14 +1538,31 @@ async function torResolve(q) {
 }
 const torRel = g => g.rel.filter(x => TOR.qual === 'all' || x._t.q === TOR.qual);
 const torBestQ = l => ['4K', '1080p', '720p', 'SD'].find(q => l.some(x => x._t.q === q)) || '';
-function torSort(l) {
+/* Meilleure publication à télécharger : langue (MULTI d'abord ; titre étranger d'après TMDB : VOSTFR ensuite, la VF seule
+   en dernier ; titre français : VF autant que MULTI), qualité (4K d'abord), nombre de sources (peu de sources : lecture
+   qui saccade ou n'avance pas). CAM écartées ; moins de 3 sources seulement s'il n'y a rien d'autre. Séries : saison
+   complète préférée à un épisode seul. */
+function torScore(x, g) {
+  const t = x._t || torTags(x.title), s = x.seeders || 0, lang = g && g.tm ? g.tm.lang : '', fr = lang === 'fr';
+  const L = t.l === 'MULTI' ? 3 : t.l === 'VF' ? (fr ? 3 : lang ? 1.5 : 2) : t.l === 'VOSTFR' ? (fr ? 0 : 2.2) : 0.8;
+  const Q = { '4K': 4, '1080p': 3, '720p': 2, 'SD': 1 }[t.q] || 1.5;
+  let v = L * 30 + Q * 20 + Math.min(Math.log2(s + 1), 7) * 6 + (t.hdr ? 2 : 0) + (t.hevc ? 1 : 0);
+  if (t.cam) v -= 500; if (s < 3) v -= 200;
+  if (g && g.kind === 'series' && x._p && x._p.ep != null) v -= 25;
+  return v;
+}
+const torBest = (l, g) => l.length ? l.reduce((a, b) => torScore(b, g) > torScore(a, g) ? b : a) : null;
+const torWhy = (x, g) => { const t = x._t, fr = g.tm && g.tm.lang === 'fr', s = x.seeders || 0;
+  return [t.q || 'qualité non indiquée', t.l ? t.l + (t.l === 'VOSTFR' && g.tm && !fr ? ' (VO sous-titrée)' : t.l === 'VF' && g.tm && !fr ? ' (pas de VO)' : '') : 'langue non indiquée', s + ' source' + (s > 1 ? 's' : ''), torMo(x.size)].filter(Boolean).join(' · '); };
+function torSort(l, g) {
+  if (TOR.sort === 'best') return l.slice().sort((a, b) => torScore(b, g) - torScore(a, g));
   const k = { seed: (a, b) => (b.seeders || 0) - (a.seeders || 0), size: (a, b) => (b.size || 0) - (a.size || 0), date: (a, b) => (Date.parse(b.publishDate) || 0) - (Date.parse(a.publishDate) || 0) }[TOR.sort];
   return l.slice().sort(k);
 }
 function torPosterHtml(g, i) {
   const l = torRel(g), tm = g.tm, img = tm && tm.poster ? 'https://image.tmdb.org/t/p/w342' + tm.poster : '';
-  const seeds = Math.max(0, ...l.map(x => x.seeders || 0)), q = torBestQ(l);
-  return `<button class="poster" data-tg="${i}"><div class="im">${esc(tm ? tm.name : g.title)}${img ? `<img src="${esc(img)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}${tm && tm.rating ? `<span class="rt">★ ${tm.rating.toFixed(1)}</span>` : ''}${g.kind === 'series' ? '<span class="kd">SÉRIE</span>' : ''}${q ? `<span class="vfo"${q === '4K' ? '' : ' style="background:rgba(0,0,0,.7)"'}>${q}</span>` : ''}</div>
+  const seeds = Math.max(0, ...l.map(x => x.seeders || 0)), bx = torBest(l, g), q = bx ? [bx._t.q, bx._t.l].filter(Boolean).join(' ') : torBestQ(l);
+  return `<button class="poster" data-tg="${i}"><div class="im">${esc(tm ? tm.name : g.title)}${img ? `<img src="${esc(img)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}${tm && tm.rating ? `<span class="rt">★ ${tm.rating.toFixed(1)}</span>` : ''}${g.kind === 'series' ? '<span class="kd">SÉRIE</span>' : ''}${q ? `<span class="vfo"${/4K/.test(q) ? '' : ' style="background:rgba(0,0,0,.7)"'} title="Meilleur choix">${esc(q)}</span>` : ''}</div>
     <div class="pt">${esc(tm ? tm.name : g.title)}</div><div class="py">${[(tm && tm.year) || g.year || '', l.length + ' version' + (l.length > 1 ? 's' : ''), seeds + ' src'].filter(Boolean).join(' · ')}</div></button>`;
 }
 function torResHtml() {
@@ -1562,7 +1580,8 @@ function torResHtml() {
 }
 // Fiche d'un titre trouvé dans les indexeurs : infos TMDB, lien vers l'abonnement s'il l'a, versions disponibles
 function torFicheHtml(g) {
-  const tm = g.tm, l = torSort(torRel(g)); TOR.shown = l;
+  const tm = g.tm, l = torSort(torRel(g), g); TOR.shown = l;
+  l.forEach(x => { x._best = false; }); const bx = torBest(l, g); if (bx) bx._best = true;
   const img = (p, w) => p ? 'https://image.tmdb.org/t/p/' + w + p : '';
   let h = `<div class="tfiche">${tm && tm.back ? `<div class="tbk" style="background-image:url('${esc(img(tm.back, 'w1280'))}')"></div>` : ''}
     <button class="chip" data-tback style="position:relative">‹ Tous les résultats</button>
@@ -1570,11 +1589,12 @@ function torFicheHtml(g) {
     <div style="min-width:0"><h2>${esc(tm ? tm.name : g.title)}</h2>
     <div class="mt" id="torMeta">${esc([(tm && tm.year) || g.year, g.kind === 'series' ? 'Série' : 'Film', tm && tm.rating ? '★ ' + tm.rating.toFixed(1) : '', tm && tm.orig && tnK(tm.orig) !== tnK(tm.name) ? tm.orig : ''].filter(Boolean).join(' · '))}</div>
     <div class="plot">${esc(tm ? tm.plot : '')}</div><div id="torCrew" class="cr"></div><div id="torSub" class="row" style="margin-top:12px;gap:8px"></div></div></div></div>`;
+  if (bx) h += `<div class="vrow"><h3>Meilleur choix<small>${esc(torWhy(bx, g))}</small></h3><div class="tlist">${torRowHtml(bx, l.indexOf(bx))}</div></div>`;
   // séries : versions rangées par saison (saison complète, puis épisodes)
   if (g.kind === 'series') {
     const ss = new Map(); l.forEach(x => { const s = x._p.season; const k = s == null ? 'Intégrale ou saisons multiples' : 'Saison ' + s; if (!ss.has(k)) ss.set(k, []); ss.get(k).push(x); });
     const keys = [...ss.keys()].sort((a, b) => (parseInt(a.replace(/\D+/g, '')) || 0) - (parseInt(b.replace(/\D+/g, '')) || 0));
-    keys.forEach(k => { const r = ss.get(k).sort((a, b) => (a._p.ep == null ? -1 : a._p.ep) - (b._p.ep == null ? -1 : b._p.ep));
+    keys.forEach(k => { const r = TOR.sort === 'best' ? ss.get(k) : ss.get(k).sort((a, b) => (a._p.ep == null ? -1 : a._p.ep) - (b._p.ep == null ? -1 : b._p.ep));
       h += `<div class="vrow"><h3>${esc(k)}<small>${r.length} version${r.length > 1 ? 's' : ''}</small></h3><div class="tlist">${r.map(x => torRowHtml(x, l.indexOf(x))).join('')}</div></div>`; });
   } else h += `<div class="vrow"><h3>Versions disponibles<small>${l.length}</small></h3><div class="tlist">${l.map(torRowHtml).join('')}</div></div>`;
   setTimeout(() => torFicheMore(g), 0);
