@@ -120,6 +120,9 @@ function createWindow() {
   win.loadURL(PAGE, { extraHeaders: 'Cache-Control: no-cache\nPragma: no-cache\n' }).catch(() => win.loadFile(path.join(__dirname, 'index.html')));
 }
 
+// Identité de navigateur ordinaire (Chrome), sans « Electron » ni le nom de l'appli : le lecteur YouTube des bandes-annonces
+// se méfie d'Electron (« Connectez-vous pour confirmer que vous n'êtes pas un robot »)
+app.userAgentFallback = app.userAgentFallback.replace(/\s(Electron|lecteur-iptv|Lecteur IPTV)\/[\w.-]+/gi, '');
 // Identité Windows de l'appli : épinglage à la barre des tâches et regroupement des fenêtres
 app.setAppUserModelId('com.franceinfoplanning.iptv');
 // Mise à jour automatique : nouvelle version cherchée sur GitHub au lancement puis toutes les 6 h, téléchargée en arrière-plan,
