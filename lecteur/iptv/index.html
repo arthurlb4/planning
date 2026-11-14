@@ -286,7 +286,10 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 .pmenu .pi:hover:not(:disabled){background:var(--bg3)}.pmenu .pi:disabled{opacity:.55;cursor:default}
 .pmenu .pi b{flex:1;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pmenu .pi small{color:var(--text3);font-size:12px;white-space:nowrap}
 .pmenu .q{flex:none;font-size:11px;font-weight:800;padding:2px 7px;border-radius:6px;background:var(--bg4);color:var(--text2)}.pmenu .q.k4{background:#b8860b;color:#fff}
-.pmenu .pirow{display:flex;align-items:center;gap:2px}.pmenu .pq{flex:none;width:34px;height:34px;border-radius:9px;color:var(--text3);font-size:16px}.pmenu .pq:hover{background:var(--bg3);color:var(--text)}
+.pmenu .pirow{display:flex;align-items:center;gap:2px}
+.pmenu .pi.pdl{padding:4px 12px 10px 12px;margin-top:-4px;font-size:13px;color:var(--text2);gap:8px}.pmenu .pi.pdl b{font-weight:500}
+.pmenu svg{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.pmenu .pq{display:flex;align-items:center;justify-content:center}.pmenu .pq{flex:none;width:34px;height:34px;border-radius:9px;color:var(--text3);font-size:16px}.pmenu .pq:hover{background:var(--bg3);color:var(--text)}
 .pmenu h5{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin:10px 12px 4px}
 .pmenu hr{border:0;border-top:.5px solid var(--border);margin:4px 6px}.pmenu .back{color:var(--text2)}
 .btn .chev{width:16px;height:16px;margin-left:2px;margin-right:-4px;fill:none;stroke:currentColor;stroke-width:2.2}
@@ -1480,6 +1483,7 @@ async function torQbt(x, cat, b) {
   toast(j.ok ? 'Envoyé à qBittorrent (' + (cat === 'films' ? 'Films' : 'Séries') + ') : rangé dans la médiathèque une fois téléchargé' : 'qBittorrent : ' + j.error);
   if (b) { b.disabled = false; b.textContent = j.ok ? '✓ Envoyé' : '＋ ' + (cat === 'films' ? 'Films' : 'Séries'); if (j.ok) b.classList.add('on'); }
   if (!j.ok) { clearTimeout(toast.t); toast.t = setTimeout(() => $('#toast').classList.remove('show'), 7000); }   // message d'erreur : le temps de le lire
+  return !!j.ok;
 }
 // Onglet « Indexeurs » : rendu dans la page Films & séries
 /* Résultats des indexeurs rattachés aux fiches TMDB : les publications (« Dune.Part.Two.2024.MULTi.2160p… ») sont regroupées
@@ -1793,13 +1797,13 @@ function pmHtml() {
     const others = it.tor ? [] : vs.slice().reverse().filter(x => x !== pick);
     if (others.length) h += '<h5>IPTV</h5>' + others.map(x => `<button class="pi" data-pmi="iptv:${x.id}"><b>${esc(String(x.cat || 'Abonnement').replace(/[ᴬ-ᵡ⁰-⁹ᴴᴰᴿᴮʸᵁᴵᴼᴾ]+/g, '').trim().slice(0, 28) || 'Abonnement')}</b>${qTag(vodLbl(x))}</button>`).join('');
     const tor = tl.filter(x => x !== bx);
-    if (tor.length) h += '<h5>Torrent</h5>' + tor.map(x => `<span class="pirow"><button class="pi" data-pmi="tor:${tl.indexOf(x)}"><b>${esc(torMo(x.size))}</b>${qTag(torQ(x))}</button><button class="pq" data-pmq="${tl.indexOf(x)}" title="Télécharger dans Ma médiathèque (qBittorrent)">＋</button></span>`).join('');
+    if (tor.length) h += '<h5>Torrent</h5>' + tor.map(x => `<span class="pirow"><button class="pi" data-pmi="tor:${tl.indexOf(x)}"><b>${esc(torMo(x.size))}</b>${qTag(torQ(x))}</button><button class="pq" data-pmq="${tl.indexOf(x)}" title="Télécharger dans Ma médiathèque (qBittorrent)"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></button></span>`).join('');
     if (!others.length && !tor.length) h += '<p class="hint" style="margin:6px 12px">Pas d\'autre version.</p>';
     return h;
   }
   let h = it.tor ? '' : `<button class="pi" data-pmi="iptv:${pick.id}"><b>IPTV</b>${pos > 60 ? `<small>reprise à ${fmtDur(pos)}</small>` : ''}${qTag(vodLbl(pick))}</button>`;
   if (torOn) h += VT.state === 'loading' && VT.it === it ? '<button class="pi" disabled><b>Torrent</b><small>recherche…</small></button>'
-    : bx ? `<span class="pirow"><button class="pi" data-pmi="tor:${tl.indexOf(bx)}"><b>Torrent</b><small>${esc(torMo(bx.size))}</small>${qTag(torQ(bx))}</button><button class="pq" data-pmq="${tl.indexOf(bx)}" title="Télécharger dans Ma médiathèque (qBittorrent)">＋</button></span>`
+    : bx ? `<button class="pi" data-pmi="tor:${tl.indexOf(bx)}"><b>Torrent</b><small>${esc(torMo(bx.size))}</small>${qTag(torQ(bx))}</button><button class="pi pdl" data-pmq="${tl.indexOf(bx)}"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><b>Télécharger dans Ma médiathèque</b></button>`
     : '<button class="pi" disabled><b>Torrent</b><small>aucune version</small></button>';
   if (jf) h += `<button class="pi" data-pmi="jf"><b>Ma médiathèque</b>${qTag(JF.lab)}</button>`;
   if ((!it.tor && vs.length > 1) || tl.length > 1) h += '<hr><button class="pi" data-pmsub><b>⋯ Autres versions</b></button>';
@@ -1821,7 +1825,12 @@ document.addEventListener('click', e => {
   const it = V.open && V.open.it; let b;
   if (e.target.closest('[data-pmsub]')) { PM.sub = true; pmRefresh(); return; }
   if (e.target.closest('[data-pmback]')) { PM.sub = false; pmRefresh(); return; }
-  if ((b = e.target.closest('[data-pmq]'))) { const x = VT.list[+b.dataset.pmq]; if (x) torQbt(x, 'films', null); return; }
+  if ((b = e.target.closest('[data-pmq]'))) {
+    const x = VT.list[+b.dataset.pmq]; if (!x || b.disabled) return;
+    const lab = b.querySelector('b'); b.disabled = true; if (lab) lab.textContent = 'Envoi à qBittorrent…';
+    torQbt(x, 'films', null).then(ok => { if (lab) lab.textContent = ok ? 'Envoyé à qBittorrent ✓' : 'Télécharger dans Ma médiathèque'; b.disabled = !!ok; if (!lab && ok) b.classList.add('on'); });
+    return;
+  }
   if (!(b = e.target.closest('[data-pmi]')) || !it) return;
   const [k, v] = b.dataset.pmi.split(':');
   if (k === 'iptv') { LS.set('vver.' + it.id, +v); const pk = vodPick(it); pmClose(); closeModals(); playVod(it, vodUrl('movie', pk.id, pk.ext), null, null); }
