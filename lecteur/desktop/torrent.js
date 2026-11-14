@@ -129,8 +129,12 @@ async function qbtAdd(url, category, port) {
   const send = () => fetch(base + '/api/v2/torrents/add', { method: 'POST', body: new URLSearchParams({ urls: url, category }), headers: qbtCookie ? { Cookie: qbtCookie } : {} });
   let r = await send();
   if (r.status === 403 || r.status === 401) { await qbtLogin(base); r = await send(); }
+  // qBittorrent 5.1 et plus : 202 et compte rendu JSON (success_count, failure_count, pending_count) ; avant : « Ok. » ou « Fails. »
   const t = (await r.text()).trim();
-  if (!r.ok || /fail/i.test(t)) throw new Error('qBittorrent répond ' + r.status + (t ? ' ' + t.slice(0, 120) : '') + (/fail/i.test(t) ? ' (torrent déjà présent, ou lien refusé)' : ''));
+  if (!r.ok) throw new Error('qBittorrent répond ' + r.status + (t ? ' ' + t.slice(0, 120) : ''));
+  let j = null; try { j = JSON.parse(t); } catch (e) {}
+  const failed = j && typeof j === 'object' ? !(j.success_count > 0 || j.pending_count > 0 || (j.added_torrent_ids || []).length) && j.failure_count > 0 : /^fails/i.test(t);
+  if (failed) throw new Error('torrent refusé par qBittorrent (déjà dans sa liste, ou lien invalide)');
 }
 // Renvoie true si la requête concernait les torrents
 module.exports = function handleTorrent(req, res, u) {
