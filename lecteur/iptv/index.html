@@ -5041,6 +5041,8 @@ async function xtreamToM3U(x) {
 async function fetchPlaylist(url) {
   try { return await fetchText(url); }
   catch (e) {
+    // « trop de demandes » (429) : la connexion Xtream ferait 3 demandes de plus au même serveur et prolongerait le blocage
+    if (/\b429\b|trop de demandes/i.test(e.message)) throw e;
     const x = xtreamParts(url); if (!x) throw e;
     try { return await xtreamToM3U(x); }
     catch (e2) { throw new Error('Liste M3U : ' + e.message + ' Connexion Xtream : ' + e2.message); }
@@ -5289,13 +5291,23 @@ async function applyRemote(sk, val, t) {
     const key = sk.slice(5), p = S.playlists.find(x => listKey(x) === key);
     if (val === null) { if (p) { await DB.del(p.id); S.playlists = S.playlists.filter(x => x !== p); if (S.pl === p) { S.pl = null; S.channels = []; } } }
     else if (!p && val.url) {
+      // Liste venue d'un autre appareil, à télécharger ici. Après un échec : pas de nouvel essai avant 1 h (puis 2, 4… jusqu'à
+      // 24 h ; 6 h au moins après un refus « trop de demandes ») — avant, chaque synchro (toutes les 3 min, et à chaque retour
+      // sur la page) redemandait la liste au fournisseur, qui restait bloqué en 429
+      const F = LS.get('dev.listfail', {}), f = F[sk];
+      if (f && Date.now() < f.next) return;
       try {
         const text = await fetchPlaylist(val.url), np = { id: key === 'builtin' ? 'builtin' : 'p' + Date.now().toString(36), name: val.name || guessName(val.url), url: val.url, text, added: key === 'builtin' ? 0 : Date.now() };
         const { channels } = parseM3U(text); if (!channels.length) return;
         np.count = channels.length; np.updated = Date.now(); await DB.put(np); S.playlists.push(np);
         toast('Liste « ' + np.name + ' » ajoutée depuis un autre appareil');
         if (!S.pl) usePlaylist(np.id);
-      } catch (e) { return; }
+        delete F[sk]; LS.set('dev.listfail', F);
+      } catch (e) {
+        const n = ((f && f.n) || 0) + 1, wait = Math.max(Math.min(3600e3 * 2 ** (n - 1), 24 * 3600e3), /\b429\b|trop de demandes/i.test(e.message) ? 6 * 3600e3 : 0);
+        F[sk] = { n, next: Date.now() + wait, err: String(e.message || e).slice(0, 200) }; LS.set('dev.listfail', F);
+        return;
+      }
     }
     st[sk] = t; localStorage.setItem('iptv.sync.stamps', JSON.stringify(st));
     return;
