@@ -1624,12 +1624,12 @@ function torCurHtml() {
   const j = TOR.cur; if (!j) return '';
   const vids = j.files.filter(f => f.video).sort((a, b) => a.name.localeCompare(b.name, 'fr', { numeric: true })), i = TOR.info;
   const pct = i ? Math.round(i.progress * 100) : 0;
-  return `<div class="tcur"><div class="tch"><div style="min-width:0;flex:1"><b class="ttl">${esc((i && i.name) || j.name || 'Torrent')}</b>
+  return `<div class="tcur"><div class="tch"><div style="min-width:0;flex:1"><b class="ttl">${esc((TOR.ctx && TOR.ctx.tm && TOR.ctx.tm.name) || (i && i.name) || j.name || 'Torrent')}</b>
     <div class="hint">${i ? `${i.peers} source${i.peers > 1 ? 's' : ''} connectée${i.peers > 1 ? 's' : ''}${i.known != null ? ' (' + i.known + ' trouvée' + (i.known > 1 ? 's' : '') + ')' : ''} · ${pct} % reçu · ${(i.down / 1e6).toFixed(1).replace('.', ',')} Mo/s` : 'Connexion aux sources…'}</div>
     ${i && !i.peers && i.known == null ? '<div class="hint" style="color:var(--gold)">Mettez à jour l\'appli Windows (1.22 et plus) : les anciennes versions perdent leurs sources juste après l\'ouverture du torrent.</div>' : ''}
     ${i && !i.peers && (i.err || i.warn) ? `<div class="hint" style="color:var(--gold)">${esc(i.err || i.warn)}</div>` : ''}</div><button class="chip" data-tclose title="Fermer le torrent et supprimer ses morceaux">Fermer</button></div>
     <div class="tpb"><i style="width:${pct}%"></i></div>
-    ${vids.length ? `<div class="chs" style="padding:0;margin-top:8px">${vids.map(f => `<button class="chr" data-tfi="${f.i}"><span class="lg">▶</span><span class="m"><span class="l">${esc(cleanTitle(f.name.replace(/\.[^.]+$/, '')))}</span><span class="e">${esc(f.name)} · ${torMo(f.size)}</span></span></button>`).join('')}</div>` : '<p class="hint">Aucune vidéo dans ce torrent.</p>'}</div>`;
+    ${vids.length ? `<div class="chs" style="padding:0;margin-top:8px">${vids.map(f => `<button class="chr" data-tfi="${f.i}"><span class="lg">▶</span><span class="m"><span class="l">${esc(torName(f))}</span><span class="e">${esc(f.name)} · ${torMo(f.size)}</span></span></button>`).join('')}</div>` : '<p class="hint">Aucune vidéo dans ce torrent.</p>'}</div>`;
 }
 const torPaint = id => { const el = $('#' + id); if (el) el.innerHTML = id === 'torCur' ? torCurHtml() : torResHtml(); };
 async function torGo(q) {
@@ -1642,7 +1642,24 @@ async function torGo(q) {
   if (TOR.res && TOR.res.length) torResolve(q); else torPaint('torRes');
 }
 // ouverture d'un torrent (lien magnet, .torrent en base64 ou adresse d'un .torrent) : affiché en haut de l'onglet
-async function openTorrent(src) {
+// Titre d'une vidéo du torrent ouvert : celui de la fiche TMDB (plus « S01E03 » pour un épisode), sinon le nom du fichier nettoyé
+function torName(f) {
+  const tm = TOR.ctx && TOR.ctx.tm, file = cleanTitle(f.name.replace(/\.[^.]+$/, ''));
+  if (!tm) return file;
+  const p = torParse(f.name), two = n => String(n).padStart(2, '0');
+  if (TOR.ctx.kind === 'series' && p.season != null && p.ep != null) return tm.name + ' · S' + two(p.season) + 'E' + two(p.ep);
+  const vids = TOR.cur ? TOR.cur.files.filter(x => x.video) : [];
+  return vids.length > 1 ? tm.name + ' · ' + file : tm.name;
+}
+// fiche du titre (TMDB) : celle de la fiche ouverte, sinon retrouvée d'après le nom de la publication
+async function torCtx(x) {
+  if (TOR.open != null && TOR.groups && TOR.groups[TOR.open] && TOR.groups[TOR.open].rel.includes(x)) return TOR.groups[TOR.open];
+  const g = torGroup([x])[0]; if (g && LS.get('pref.tmdb', '')) g.tm = await torTmdb(g).catch(() => null);
+  return g || null;
+}
+async function openTorrent(src, x) {
+  TOR.ctx = null;
+  if (x) torCtx(x).then(g => { TOR.ctx = g; if ($('#torCur')) torPaint('torCur'); });
   if (V.tab !== 'tor' || V.q || !$('#torPage')) { V.tab = 'tor'; V.q = ''; await renderVod(); }
   torStop();
   TOR.curBusy = true; TOR.curErr = ''; TOR.cur = null; TOR.info = null; torPaint('torCur');
@@ -1695,12 +1712,13 @@ function torClick(e) {
   if (g('[data-tback]')) { TOR.open = null; torPaint('torRes'); $('#vod').scrollTop = TOR.scroll || 0; return true; }
   if ((b = g('[data-tsub]'))) { openVod(V.shown[+b.dataset.tsub]); return true; }
   const list = g('#xprw') ? TOR.xs : TOR.shown;
-  if ((b = g('[data-tpl]'))) { const x = list[+b.dataset.tpl]; if (x) openTorrent(x.magnetUrl || x.downloadUrl); return true; }
+  if ((b = g('[data-tpl]'))) { const x = list[+b.dataset.tpl]; if (x) openTorrent(x.magnetUrl || x.downloadUrl, x); return true; }
   if ((b = g('[data-tpa]'))) { const x = list[+b.dataset.tpa]; if (x) torQbt(x, b.dataset.c, b); return true; }
   if ((b = g('[data-txall]'))) { torGo(V.q); return true; }
   if ((b = g('[data-tfi]'))) {
     const j = TOR.cur, f = j && j.files[+b.dataset.tfi]; if (!f) return true;
-    play({ name: cleanTitle(f.name.replace(/\.[^.]+$/, '')), url: window.desktop.remux + '/torrent/file/' + j.id + '/' + f.i + '/' + encodeURIComponent(f.name), group: 'Torrent', logo: '', n: 0, chno: '', vod: true, key: '' });
+    const tm = TOR.ctx && TOR.ctx.tm;
+    play({ name: torName(f), url: window.desktop.remux + '/torrent/file/' + j.id + '/' + f.i + '/' + encodeURIComponent(f.name), group: 'Torrent', logo: tm && tm.poster ? 'https://image.tmdb.org/t/p/w342' + tm.poster : '', n: 0, chno: '', vod: true, key: '' });
     return true;
   }
   if (g('[data-tclose]')) { torStop(); torPaint('torCur'); return true; }
