@@ -1992,7 +1992,7 @@ async function torPlayBest(it, b) {
   if (b && b.dataset.lab) { b.disabled = false; b.innerHTML = b.dataset.lab; }
   if (VT.it !== it) return;
   const bx = VT.list.length ? torBest(VT.list, VT.g) : null;
-  if (!bx) { toastLong('Aucune version de « ' + it.name + ' » dans vos indexeurs'); return; }
+  if (!bx) { toastLong('Aucune version de « ' + it.name + ' » dans vos indexeurs'); if (it.tor) ixNone(it); return; }
   return torPlay(bx, VT.g, b, { remember: it, extra: () => ({ it, name: it.name, torAlts: movieAlts(it, bx) }) });
 }
 function torStop() {
@@ -2052,13 +2052,17 @@ async function ixCheck() {
   return true;
 }
 const ixGet = () => { const o = LS.get('dev.ix', {}); return o && typeof o === 'object' ? o : {}; };
+/* Titre TMDB absent de l'abonnement (appli Windows avec Prowlarr) : proposé directement, comme dans un catalogue TMDB dont
+   les titres se lisent en torrent ; le meilleur torrent est cherché au moment de la lecture. Écarté une semaine seulement
+   si une recherche n'a rien donné. */
 function ixVirtual(id, m) {
-  if (!ixOn() || !/^[ms]/.test(id) || !m || !m.t) return null;
+  if (!torOk() || !prwConf() || !/^[ms]/.test(id) || !m || !m.t) return null;
   const c = ixGet()[id];
-  if (!c || Date.now() - c.at > 864e5) { ixQueue(id, m); return null; }
-  if (!c.ok) return null;
-  return virtItem(id, m, { q: c.q, s: c.s });
+  if (c && !c.ok && Date.now() - c.at < 7 * 864e5) return null;
+  return virtItem(id, m, c && c.ok ? { q: c.q, s: c.s } : {});
 }
+// rien trouvé dans les indexeurs pour ce titre : retenu (il n'est plus proposé pendant une semaine)
+function ixNone(it) { if (!it || !it.tmdb) return; const o = ixGet(); o[(it.kind === 'series' ? 's' : 'm') + it.tmdb] = { ok: 0, at: Date.now() }; LS.set('dev.ix', o); }
 // titre hors abonnement (fiche TMDB) : « tor » marque qu'il ne vient pas du serveur IPTV
 function virtItem(id, m, tor) {
   let v = IX.virt.get(id);
