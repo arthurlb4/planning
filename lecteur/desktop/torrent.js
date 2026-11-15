@@ -54,13 +54,13 @@ function fastResume(t) {
 }
 function cleanup() {
   const o = idxRead(), open = new Set(client ? client.torrents.map(t => t.infoHash) : []);
-  const rm = h => { const e = o[h]; if (e && e.name && !/[\\/]|^\.\.?$/.test(e.name)) try { fs.rmSync(path.join(DIR, e.name), { recursive: true, force: true }); } catch (er) {} delete o[h]; };
+  const rm = h => { const e = o[h]; if (e && e.name && !/[\\/]|^\.\.?$/.test(e.name)) try { fs.rmSync(path.join(DIR, e.name), { recursive: true, force: true }); } catch (er) {} try { fs.rmSync(path.join(META, h + '.torrent'), { force: true }); } catch (er) {} delete o[h]; };
   Object.keys(o).forEach(h => { if (!open.has(h) && Date.now() - o[h].at > KEEP) rm(h); });
   let tot = Object.values(o).reduce((a, e) => a + (e.size || 0), 0);
   Object.keys(o).filter(h => !open.has(h)).sort((a, b) => o[a].at - o[b].at).forEach(h => { if (tot > MAXB) { tot -= o[h].size || 0; rm(h); } });
   // fichiers d'avant le suivi (anciennes versions) : supprimés s'ils datent de plus d'une semaine
   const known = new Set(Object.values(o).map(e => e.name));
-  try { fs.readdirSync(DIR).forEach(n => { if (n === '.index.json' || known.has(n)) return; const f = path.join(DIR, n); try { if (Date.now() - fs.statSync(f).mtimeMs > KEEP) fs.rmSync(f, { recursive: true, force: true }); } catch (e) {} }); } catch (e) {}
+  try { fs.readdirSync(DIR).forEach(n => { if (n === '.index.json' || n === '.meta' || known.has(n)) return; const f = path.join(DIR, n); try { if (Date.now() - fs.statSync(f).mtimeMs > KEEP) fs.rmSync(f, { recursive: true, force: true }); } catch (e) {} }); } catch (e) {}
   idxWrite(o);
 }
 setTimeout(cleanup, 30e3); setInterval(cleanup, 6 * 3600e3);
@@ -75,23 +75,39 @@ const info = t => { const f = t.ready && mainFile(t);
     progress: f ? f.progress : t.progress, peers: t.numPeers, known: t._peersLength || 0, down: t.downloadSpeed, up: t.uploadSpeed,
     warn: t._lastWarn || '', err: clientErr }; };
 
+/* Description du torrent (.torrent) gardée sur le disque dès qu'elle est connue : un torrent déjà ouvert une fois se rouvre
+   tout de suite, sans redemander sa description aux pairs (plusieurs secondes, parfois plus) */
+const META = path.join(DIR, '.meta');
+function btih(src) {
+  const m = /xt=urn:btih:([0-9a-z]+)/i.exec(String(src)); if (!m) return '';
+  let h = m[1];
+  if (h.length === 32) {                                     // base 32 → hexadécimal
+    const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567'; let bits = '';
+    for (const ch of h.toUpperCase()) { const v = A.indexOf(ch); if (v < 0) return ''; bits += v.toString(2).padStart(5, '0'); }
+    h = bits.match(/.{4}/g).map(b => parseInt(b, 2).toString(16)).join('');
+  }
+  return /^[0-9a-f]{40}$/i.test(h) ? h.toLowerCase() : '';
+}
+function metaSave(t) { try { if (t && t.infoHash && t.torrentFile) { fs.mkdirSync(META, { recursive: true }); const f = path.join(META, t.infoHash + '.torrent'); if (!fs.existsSync(f)) fs.writeFileSync(f, t.torrentFile); } } catch (e) {} }
+function metaLoad(src) { try { const h = typeof src === 'string' ? btih(src) : ''; const f = h && path.join(META, h + '.torrent'); return f && fs.existsSync(f) ? fs.readFileSync(f) : null; } catch (e) { return null; } }
 function add(src) {
   return new Promise((resolve, reject) => {
     const c = getClient(), old = c.get(src);
+    const saved = !old ? metaLoad(src) : null; if (saved) { const t0 = c.get(btih(src)); if (t0 && t0.ready) return resolve(info(t0)); }
     if (old && old.ready) return resolve(info(old));
     let done = false;
     const timer = setTimeout(() => { if (done) return; done = true; try { const t = c.get(src); if (t) t.destroy(); } catch (e) {} reject(new Error('aucun pair trouvé en 90 s (torrent sans source en ligne ?)' + (clientErr ? ' · ' + clientErr : ''))); }, 90000);
     try {
       const opts = { path: DIR, destroyStoreOnDestroy: false };
-      if (typeof src === 'string') opts.announce = TRACKERS;
-      const t = c.add(src, opts, t => {
+      if (typeof src === 'string' || saved) opts.announce = TRACKERS;
+      const t = c.add(saved || src, opts, t => {
         if (done) return; done = true; clearTimeout(timer);
         // Seul le fichier vidéo principal est demandé (pas les bonus, sous-titres…), dans l'ordre ; il ne faut pas tout
         // désélectionner : sans rien à demander, l'appli n'intéresse plus les pairs, qui coupent la connexion (0 source)
         t.deselect(0, t.pieces.length - 1, false);
         t.files.forEach(f => f.deselect());
         const f = mainFile(t); if (f) f.select();
-        idxTouch(t);
+        idxTouch(t); metaSave(t);
         resolve(info(t));
       });
       fastResume(t);

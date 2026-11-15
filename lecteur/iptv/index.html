@@ -456,7 +456,9 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 .vd .plot{line-height:1.5;color:var(--text2);font-size:14px}
 .vd .cr{color:var(--text3);font-size:12px;margin-top:8px;line-height:1.45}
 .eps{margin-top:14px}
-.tsea{display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 10px}.tsea .chip{height:32px}
+.tsea{display:flex;gap:8px;flex-wrap:wrap;margin:4px 0 10px}.tsea .chip{height:32px;display:inline-flex;align-items:center;gap:6px}
+.tsea .tsdl{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;margin-right:-6px;border-radius:50%;background:rgba(255,255,255,.12)}.tsea .tsdl:hover{background:rgba(255,255,255,.25)}
+.tsea .tsdl svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}.tsea .tsdl.on{background:#2e9e4f;color:#fff}.tsea .tsdl.busy{opacity:.5}
 .tsbest{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:12px;background:var(--bg);border:.5px solid var(--border)}
 .tsbest span{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}.tsbest small{color:var(--text3);font-size:12.5px}
 .ep:disabled{opacity:.45;cursor:default}.ep:disabled:hover{background:none}
@@ -838,7 +840,7 @@ h1,h2,h3,h4,h5,h6,b,strong,th,summary{font-weight:500}
         <button class="vb" id="vbFwd" title="Avancer de 10 s"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.4-5.7M20 4v4h-4" fill="none"/><text x="12" y="15.5" text-anchor="middle">10</text></svg></button>
         <button class="vb vep" id="vbEpPrev" title="Épisode précédent"><svg viewBox="0 0 24 24"><path d="M6 5v14"/><path d="M19 5l-10 7 10 7z"/></svg></button>
         <button class="vb vep" id="vbEpNext" title="Épisode suivant"><svg viewBox="0 0 24 24"><path d="M18 5v14"/><path d="M5 5l10 7-10 7z"/></svg></button>
-        <button class="vb vep" id="vbEps" title="Épisodes et saisons"><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M7 20h10"/></svg></button>
+        <button class="vb vep" id="vbEps" title="Épisodes et saisons"><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="8" width="15" height="12" rx="2"/><path d="M7 4.5h11.5a2.5 2.5 0 0 1 2.5 2.5v9"/></svg></button>
         <span class="tm" id="vbCur">0:00</span>
         <input type="range" id="vbRange" min="0" max="100" step="0.1" value="0" aria-label="Position">
         <span class="tm" id="vbDur">0:00</span>
@@ -2007,6 +2009,28 @@ async function vodTorSeries(it) {
   box.innerHTML = `<h4 class="vdh">Torrent</h4><div class="tsea">${seasons.map(x => `<button class="chip" data-tsea="${x.season_number}">Saison ${x.season_number}</button>`).join('')}</div><div id="vodTorSB"></div>`;
   vodTorSeason(it, seasons.some(x => x.season_number === +s0) ? +s0 : seasons[0].season_number);
 }
+// recherche d'une saison dans les indexeurs (gardée pour la session) : meilleures saisons complètes, meilleur torrent par épisode
+function torSeasonR(it, tm, s, g) {
+  const ck = tm.id + ':' + s, R = VTS.cache.get(ck) || { p: null, done: false };
+  if (!R.p) { R.p = torFindSeason([tm.name, tm.orig, it.name], s).catch(() => []).then(rel => {
+    const ok = rel.filter(x => (x.seeders || 0) >= 1 && !(x._t || torTags(x.title)).cam);
+    const packs = ok.filter(x => x._p.ep == null).sort((a, b) => torScore(b, g) - torScore(a, g));
+    const epRel = {}, epAll = {}; ok.filter(x => x._p.ep != null).forEach(x => { const n = x._p.ep; (epAll[n] = epAll[n] || []).push(x); if (!epRel[n] || torScore(x, g) > torScore(epRel[n], g)) epRel[n] = x; });
+    Object.values(epAll).forEach(l => l.sort((a, b) => torScore(b, g) - torScore(a, g)));
+    Object.assign(R, { done: true, packs, bp: packs[0] || null, epRel, epAll }); return R;
+  }); VTS.cache.set(ck, R); }
+  return R;
+}
+// épisode d'une autre saison, choisi dans le lecteur : saison cherchée si besoin, meilleur torrent lancé
+async function torSeasonPlay(c, s, n) {
+  const A = c && c.torAlts; if (!A || !A.g || !A.g.tm) return;
+  const R = torSeasonR(A.it, A.g.tm, s, A.g);
+  if (!R.done) { toast('Recherche de la saison ' + s + ' dans vos indexeurs…'); await R.p; }
+  const eps = (await tmdbSeason(A.g.tm.id, s).catch(() => null)) || [];
+  const x = R.bp || R.epRel[n]; if (!x) { toastLong('S' + pad2(s) + 'E' + pad2(n) + ' introuvable dans vos indexeurs'); return; }
+  const cur = S.current; if (cur && curPos() > 30) { LS.set(posK(cur.url), Math.floor(curPos())); try { histTrack(cur); } catch (e) {} }
+  torEpPlay({ it: A.it, s, g: A.g, eplist: eps, R }, x, n, 0);
+}
 async function vodTorSeason(it, s) {
   const ti = VTS.ti, body = $('#vodTorSB'); if (!body || !ti) return;
   VTS.s = s; LS.set('tseason.' + ti.id, s);
@@ -2014,29 +2038,25 @@ async function vodTorSeason(it, s) {
   const d = ti.d, name = d.name || it.name, orig = d.original_name || '', ck = ti.id + ':' + s;
   const g = { kind: 'series', tm: { id: ti.id, name, orig, poster: d.poster_path || '', lang: d.original_language || it.ol || '' } };
   // épisodes d'après TMDB tout de suite ; la recherche dans les indexeurs continue derrière (un clic l'attend si besoin)
-  const R = VTS.cache.get(ck) || { p: null, done: false };
-  if (!R.p) { R.p = torFindSeason([name, orig, it.name], s).catch(() => []).then(rel => {
-    const ok = rel.filter(x => (x.seeders || 0) >= 1 && !(x._t || torTags(x.title)).cam);
-    const packs = ok.filter(x => x._p.ep == null).sort((a, b) => torScore(b, g) - torScore(a, g));
-    const epRel = {}, epAll = {}; ok.filter(x => x._p.ep != null).forEach(x => { const n = x._p.ep; (epAll[n] = epAll[n] || []).push(x); if (!epRel[n] || torScore(x, g) > torScore(epRel[n], g)) epRel[n] = x; });
-    Object.values(epAll).forEach(l => l.sort((a, b) => torScore(b, g) - torScore(a, g)));
-    Object.assign(R, { done: true, packs, bp: packs[0] || null, epRel, epAll }); return R;
-  }); VTS.cache.set(ck, R); }
+  const R = torSeasonR(it, g.tm, s, g);
   VTS.g = g; VTS.R = R;
   const eps = await tmdbSeason(ti.id, s).catch(() => null);
   if (!V.open || V.open.it !== it || VTS.s !== s || !$('#vodTorSB')) return;
   VTS.eplist = eps || [];
   const desc = x => [torQ(x), torMo(x.size), torSd(x)].filter(Boolean).join(' · ');
   const head = () => !R.done ? '<p class="hint tshead">Recherche dans vos indexeurs… les épisodes se lisent déjà : le meilleur torrent sera lancé.</p>'
-    : R.bp ? `<div class="tsbest tshead"><span><b>Saison ${s} complète</b><small>${esc(desc(R.bp))}${R.packs.length > 1 ? ' · ' + (R.packs.length - 1) + ' autre' + (R.packs.length > 2 ? 's' : '') + ' version' + (R.packs.length > 2 ? 's' : '') : ''}</small></span><button class="btn" data-tsdl>⤓ Télécharger la saison</button></div>`
+    : R.bp ? `<p class="hint tshead">Saison ${s} complète · ${esc(desc(R.bp))}${R.packs.length > 1 ? ' · ' + (R.packs.length - 1) + ' autre' + (R.packs.length > 2 ? 's' : '') + ' version' + (R.packs.length > 2 ? 's' : '') : ''}</p>`
     : `<p class="hint tshead">${Object.keys(R.epRel).length ? 'Pas de saison complète : épisodes seuls.' : 'Rien pour la saison ' + s + ' dans vos indexeurs.'}</p>`;
   const src = n => !R.done ? '' : R.bp ? 'saison complète' : R.epRel[n] ? desc(R.epRel[n]) : 'introuvable';
   const list = (eps && eps.length ? eps : []).slice().sort((a, b) => a.n - b.n);
   const epHtml = e => `<button class="ep" data-tse="${e.n}"${R.done && !R.bp && !R.epRel[e.n] ? ' disabled' : ''}><span class="epi" ${e.img ? `style="background-image:url('https://image.tmdb.org/t/p/w300${esc(e.img)}')"` : ''}><span class="n">${e.n}</span></span><span class="ept"><b>${esc(e.t || 'Épisode ' + e.n)}</b><span class="d">${esc([e.run ? e.run + ' min' : '', src(e.n)].filter(Boolean).join(' · '))}</span>${e.o ? `<span class="o">${esc(e.o)}</span>` : ''}</span></button>`;
+  const dlIcon = () => { document.querySelectorAll('#vodTorS .tsdl').forEach(x => x.remove()); const ch = document.querySelector(`#vodTorS [data-tsea="${s}"]`);
+    if (R.bp && ch) ch.insertAdjacentHTML('beforeend', `<span class="tsdl" data-tsdl title="Télécharger la saison ${s} entière avec qBittorrent (Ma médiathèque)"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></span>`); };
+  if (R.done) dlIcon();
   body.innerHTML = head() + (list.length ? '<div class="eps">' + list.map(epHtml).join('') + '</div>' : '<p class="hint">Épisodes inconnus de TMDB pour cette saison.</p>');
   if (!R.done) R.p.then(() => {
     if (!V.open || V.open.it !== it || VTS.s !== s || !$('#vodTorSB')) return;
-    const hd = body.querySelector('.tshead'); if (hd) hd.outerHTML = head();
+    const hd = body.querySelector('.tshead'); if (hd) hd.outerHTML = head(); dlIcon();
     body.querySelectorAll('[data-tse]').forEach(b => { const n = +b.dataset.tse; if (b.classList.contains('busy')) return; b.disabled = !R.bp && !R.epRel[n]; const d0 = b.querySelector('.d'); const e = list.find(x => x.n === n); if (d0 && e) d0.textContent = [e.run ? e.run + ' min' : '', src(n)].filter(Boolean).join(' · '); });
   });
 }
@@ -5028,9 +5048,12 @@ $('#vodDetail').addEventListener('click', e => {
   closeModals(); V.q = b.dataset.pname; document.body.classList.remove('drawer'); setHomeView(true, true, 'vod'); $('#vod').scrollTop = 0;
 }, true);
 $('#vodDetail').addEventListener('click', e => {
+  const dl0 = e.target.closest('#vodTorS [data-tsdl]');
+  if (dl0) { e.stopPropagation(); if (dl0.classList.contains('busy') || !VTS.R || !VTS.R.bp) return; dl0.classList.add('busy'); dl0.title = 'Envoi à qBittorrent…';
+    torQbt(VTS.R.bp, 'series', null).then(ok => { dl0.classList.remove('busy'); dl0.classList.toggle('on', !!ok); dl0.title = ok ? 'Saison envoyée à qBittorrent ✓' : 'Télécharger la saison entière avec qBittorrent'; }); return; }
   const sb = e.target.closest('#vodTorS [data-tsea]'); if (sb) { e.stopPropagation(); vodTorSeason(VTS.it, +sb.dataset.tsea); return; }
   const eb = e.target.closest('#vodTorS [data-tse]'); if (eb) { e.stopPropagation(); if (!eb.disabled && !eb.classList.contains('busy')) vodTorEp(+eb.dataset.tse, eb); return; }
-  const dl = e.target.closest('#vodTorS [data-tsdl]'); if (dl && VTS.R && VTS.R.bp) { e.stopPropagation(); dl.disabled = true; dl.textContent = 'Envoi…'; torQbt(VTS.R.bp, 'series', null).then(ok => { dl.textContent = ok ? 'Envoyée à qBittorrent ✓' : '⤓ Télécharger la saison'; dl.disabled = !!ok; }); }
+
 }, true);
 $('#vodDetail').addEventListener('change', e => { if (e.target.id === 'seasonSel') { LS.set('season.' + V.open.it.id, e.target.value); openVod(V.open.it); } });
 $('#vodDetail').addEventListener('click', e => {
@@ -5360,16 +5383,35 @@ $('#vbRange').addEventListener('pointermove', e => {
   const w = got ? 228 : 70; b.style.left = Math.max(8, Math.min(sc.width - w - 8, e.clientX - sc.left - w / 2)) + 'px';
   if (!got) return;
   const tk = Math.round(t / 5) * 5, key = c.url + '|' + tk, im = b.querySelector('.im');
+  VTH.hover = Date.now();
   if (VTH.key === key) return; VTH.key = key;
   const u = VTH.imgs.get(key); if (u) { im.style.backgroundImage = `url(${u})`; return; }
+  // en attendant l'image exacte : la plus proche déjà prête (préparées pendant la lecture)
+  let best = null, bd = 1e9; VTH.imgs.forEach((v, k) => { const i = k.lastIndexOf('|'); if (k.slice(0, i) !== c.url) return; const d = Math.abs(+k.slice(i + 1) - tk); if (d < bd) { bd = d; best = v; } });
+  if (best) im.style.backgroundImage = `url(${best})`;
   clearTimeout(VTH.t);
   VTH.t = setTimeout(() => fetch(window.desktop.remux + '/thumb?url=' + encodeURIComponent(c.url) + '&t=' + tk).then(r => r.status === 200 ? r.blob() : null).then(bl => {
     if (!bl) return; const ou = URL.createObjectURL(bl); VTH.imgs.set(key, ou);
-    if (VTH.imgs.size > 200) { const k0 = VTH.imgs.keys().next().value; URL.revokeObjectURL(VTH.imgs.get(k0)); VTH.imgs.delete(k0); }
+    if (VTH.imgs.size > 400) { const k0 = VTH.imgs.keys().next().value; URL.revokeObjectURL(VTH.imgs.get(k0)); VTH.imgs.delete(k0); }
     if (VTH.key === key) im.style.backgroundImage = `url(${ou})`;
-  }).catch(() => {}), 120);
+  }).catch(() => {}), 60);
 });
 $('#vbRange').addEventListener('pointerleave', vthHide);
+// Images préparées pendant la lecture d'un torrent : une centaine réparties sur le film, sur les passages déjà téléchargés,
+// une à la fois et jamais pendant un survol (l'image survolée passe d'abord)
+setInterval(() => {
+  const c = S.current; if (!c || !c.vod || !window.desktop || !/\/torrent\/file\//.test(c.url || '') || VTH.busy || Date.now() - (VTH.hover || 0) < 1500) return;
+  if (S.engine !== 'remux' && S.engine !== 'mpv') return;
+  const dur = S.engine === 'mpv' ? S.mpvSt.dur || 0 : S.remux && S.remux.info ? S.remux.info.duration || 0 : 0, map = TMAP.info && TMAP.info.map; if (!dur || !map) return;
+  const step = Math.max(10, Math.round(dur / 100 / 5) * 5); VTH.tried = VTH.tried || new Set();
+  for (let tk = 0; tk < dur; tk += step) {
+    const key = c.url + '|' + tk; if (VTH.imgs.has(key) || VTH.tried.has(key)) continue;
+    if (+map[Math.min(map.length - 1, Math.floor(tk / dur * map.length))] < 8) continue;
+    VTH.tried.add(key); VTH.busy = true;
+    fetch(window.desktop.remux + '/thumb?url=' + encodeURIComponent(c.url) + '&t=' + tk).then(r => r.status === 200 ? r.blob() : null).then(bl => { if (bl) VTH.imgs.set(key, URL.createObjectURL(bl)); }).catch(() => {}).finally(() => { VTH.busy = false; });
+    return;
+  }
+}, 700);
 $('#vbLive').onclick = () => { const w = liveWin(); if (w && !atLive(w)) video.currentTime = liveTarget(w); if (video.paused) video.play().catch(() => {}); vbarUpdate(); };
 const mpvOn = () => S.engine === 'mpv' && NAT;
 const mpvC = a => window.desktop.mpv.cmd(a);
@@ -5932,15 +5974,25 @@ function epUi() { const has = !!epNav(); if (document.body.classList.contains('h
 function renderEpMenu() {
   const m = $('#epMenu'); if (m.hidden) return;
   const N = epNav(), c = S.current; if (!N) { m.hidden = true; return; }
-  const seasons = [...new Set(N.l.map(x => x.s))]; if (!seasons.includes(EPM.s)) EPM.s = c.ep.s;
+  // torrent : toutes les saisons de la série (TMDB), une autre saison est cherchée dans les indexeurs au clic
+  const tvk = c.it && (c.it.tmdb || c.it.id);
+  if (N.tor && !(EPM.tv && EPM.tv.k === tvk)) { EPM.tv = { k: tvk, ns: 0 }; tvSeasons(c.it).then(T => { if (T && T.ns && EPM.tv.k === tvk) { EPM.tv.ns = T.ns; renderEpMenu(); } }).catch(() => {}); }
+  const seasons = N.tor ? (EPM.tv.ns ? Array.from({ length: EPM.tv.ns }, (_, i) => i + 1) : [c.ep.s]) : [...new Set(N.l.map(x => x.s))];
+  if (!seasons.includes(EPM.s)) EPM.s = c.ep.s;
   let h = '<h4>' + esc(c.it.name) + '</h4>';
   if (seasons.length > 1) h += '<div class="ssn">' + seasons.map(sn => `<button data-eps="${sn}"${sn === EPM.s ? ' class="on"' : ''}>Saison ${sn}</button>`).join('') + '</div>';
+  if (N.tor && EPM.s !== c.ep.s) {                     // autre saison en torrent : épisodes d'après TMDB
+    const tm = c.torAlts && c.torAlts.g && c.torAlts.g.tm, key = tm && tm.id + ':' + EPM.s, L = EPM.eps && EPM.eps[key];
+    if (!L && tm) { EPM.eps = EPM.eps || {}; EPM.eps[key] = 'ld'; tmdbSeason(tm.id, EPM.s).then(l => { EPM.eps[key] = l || []; renderEpMenu(); }).catch(() => { EPM.eps[key] = []; renderEpMenu(); }); }
+    h += '<div class="el">' + (!L || L === 'ld' ? '<div class="more">Chargement des épisodes…</div>' : !L.length ? '<div class="more">Épisodes inconnus</div>'
+      : L.map(e => `<button data-eps2="${e.n}"><span class="n">${e.n}</span><span class="t">${esc(e.t && !/^(episode|épisode)?\s*\d+$/i.test(e.t) ? e.t : 'Épisode ' + e.n)}</span></button>`).join('')) + '</div>';
+    m.innerHTML = h; return;
+  }
   h += '<div class="el">' + N.l.map((x, k) => {
     if (x.s !== EPM.s) return '';
     const on = x.s === c.ep.s && x.n === c.ep.n, pos = LS.get(posK(x.url), 0);
     return `<button data-epk="${k}"${on ? ' class="on"' : ''}><span class="n">${on ? '▶' : x.n}</span><span class="t">${esc(x.t && !/^(episode|épisode)?\s*\d+$/i.test(x.t) ? x.t : 'Épisode ' + x.n)}</span>${pos > 60 && !on ? '<span class="p" title="Commencé"></span>' : ''}</button>`;
   }).join('') + '</div>';
-  if (N.tor) h += '<div class="more">Autres saisons : depuis la fiche de la série (bouton retour)</div>';
   m.innerHTML = h;
   const cur = m.querySelector('.el button.on'); if (cur) cur.scrollIntoView({ block: 'nearest' });
 }
@@ -5954,6 +6006,7 @@ $('#vbEps').onclick = e => {
 $('#epMenu').addEventListener('click', e => {
   e.stopPropagation();
   const sb = e.target.closest('[data-eps]'); if (sb) { EPM.s = +sb.dataset.eps; renderEpMenu(); return; }
+  const e2 = e.target.closest('[data-eps2]'); if (e2) { $('#epMenu').hidden = true; torSeasonPlay(S.current, EPM.s, +e2.dataset.eps2); return; }
   const b = e.target.closest('[data-epk]'); if (!b) return;
   const N = epNav(); if (N) epGo(N, +b.dataset.epk);
 });

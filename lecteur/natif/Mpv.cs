@@ -124,14 +124,15 @@ public class Mpv
         int x2 = (int)Math.Ceiling(((double)r["x"]! + (double)r["w"]!) * k) + 2, y2 = (int)Math.Ceiling(((double)r["y"]! + (double)r["h"]!) * k) + 2;
         x = Math.Max(0, x); y = Math.Max(0, y); x2 = Math.Min(f.ClientSize.Width, x2); y2 = Math.Min(f.ClientSize.Height, y2);
         var b = new Rectangle(x, y, Math.Max(1, x2 - x), Math.Max(1, y2 - y));
-        if (f.Video.Bounds != b)
-        {
-            f.Video.Bounds = b;
-            // fenêtre de mpv dans le cadre : remise à la taille du cadre tout de suite (sinon bande noire après un changement de taille)
-            int w = b.Width, h = b.Height; var ph = f.Video.Handle;
-            Natif.EnumChildWindows(ph, (c, l) => { if (Natif.GetParent(c) == ph) Natif.SetWindowPos(c, IntPtr.Zero, 0, 0, w, h, 0x0014); return true; }, IntPtr.Zero);
-        }
+        if (f.Video.Bounds != b) { f.Video.Bounds = b; FitChild(); }
         if (!f.Video.Visible) f.Video.Visible = true;
+    }
+
+    // fenêtre de mpv dans le cadre : remise à la taille du cadre tout de suite (sinon bande noire après un changement de taille)
+    public void FitChild()
+    {
+        int w = f.Video.Width, h = f.Video.Height; var ph = f.Video.Handle;
+        Natif.EnumChildWindows(ph, (c, l) => { if (Natif.GetParent(c) == ph) Natif.SetWindowPos(c, IntPtr.Zero, 0, 0, w, h, 0x0014); return true; }, IntPtr.Zero);
     }
 
     public void Stop()

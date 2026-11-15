@@ -237,9 +237,18 @@ public class MainForm : Form
         Post(new JsonObject { ["t"] = "win", ["st"] = new JsonObject { ["max"] = WindowState == FormWindowState.Maximized, ["full"] = full } });
     }
 
+    Size lastClient;
     protected override void OnResize(EventArgs e)
     {
         base.OnResize(e);
+        // vidéo agrandie tout de suite dans la même proportion que la fenêtre (la page donne ensuite la zone exacte)
+        if (Video.Visible && lastClient.Width > 0 && lastClient.Height > 0 && ClientSize.Width > 0 && ClientSize != lastClient)
+        {
+            double kx = (double)ClientSize.Width / lastClient.Width, ky = (double)ClientSize.Height / lastClient.Height; var v = Video.Bounds;
+            Video.Bounds = new Rectangle((int)(v.X * kx), (int)(v.Y * ky), (int)Math.Ceiling(v.Width * kx), (int)Math.Ceiling(v.Height * ky));
+            mpv?.FitChild();
+        }
+        if (ClientSize.Width > 0) lastClient = ClientSize;
         if (comp != null) comp.Bounds = new Rectangle(Point.Empty, ClientSize);
         bool max = WindowState == FormWindowState.Maximized;
         if (max != wasMax) { wasMax = max; Post(new JsonObject { ["t"] = "win", ["st"] = new JsonObject { ["max"] = max, ["full"] = full } }); }
