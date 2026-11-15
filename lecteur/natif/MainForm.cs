@@ -236,6 +236,7 @@ public class MainForm : Form
         // pendant le changement : la vidéo est placée par la coque (plein écran : tout l'écran ; retour : sa place d'avant),
         // les positions envoyées par la page pendant sa nouvelle mise en page sont ignorées un instant
         mpv?.Hold(150);
+        if (mpv != null) { mpv.Full = on; mpv.ExitPending = !on; }
         if (on)
         {
             prevVideo = Video.Bounds; fullPrev = WindowState; normalBounds = Bounds;

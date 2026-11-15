@@ -114,7 +114,19 @@ public class Mpv
 
     // zone du lecteur donnée par la page (pixels CSS) → cadre vidéo (pixels de la fenêtre), débordant un peu sous les barres
     long lastRectAt;
-    public void Rect(JsonObject r) { if (rect == null || rect.ToJsonString() != r?.ToJsonString()) lastRectAt = Environment.TickCount64; rect = r; if (f.InvokeRequired) f.BeginInvoke(Place); else Place(); }
+    // plein écran : la vidéo occupe tout l'écran (le lecteur de la page aussi), placée par la coque sans attendre la page ;
+    // sortie : positions encore « plein écran » envoyées par la page (pas encore remise en page) ignorées jusqu'à la vraie
+    public bool Full, ExitPending;
+    bool FullSized(JsonObject r)
+    {
+        if (r == null || ((bool?)r["hidden"] ?? false)) return false;
+        double k = f.Scale; return (double)r["w"]! * k >= f.ClientSize.Width - 4 && (double)r["h"]! * k >= f.ClientSize.Height - 4;
+    }
+    public void Rect(JsonObject r)
+    {
+        if (ExitPending) { if (FullSized(r)) return; ExitPending = false; }
+        if (rect == null || rect.ToJsonString() != r?.ToJsonString()) lastRectAt = Environment.TickCount64;
+        rect = r; if (f.InvokeRequired) f.BeginInvoke(Place); else Place(); }
     long holdUntil;
     public bool Holding => Environment.TickCount64 < holdUntil;
     // la coque place elle-même la vidéo pendant ms millisecondes, puis reprend la position donnée par la page
@@ -129,7 +141,8 @@ public class Mpv
         {
             if (Holding) { t.Interval = 30; return; }
             long now = Environment.TickCount64;
-            if (now - lastRectAt < 100 && now - t0 < 1200) { t.Interval = 30; return; }
+            if (!Full && (ExitPending || now - lastRectAt < 100) && now - t0 < 1500) { t.Interval = 30; return; }
+            ExitPending = false;
             t.Stop(); t.Dispose(); Place(); Settled();
         };
         t.Start();
@@ -140,6 +153,7 @@ public class Mpv
         if (f.IsDisposed || Holding) return;
         var r = rect; bool on = proc != null && r != null && !((bool?)r["hidden"] ?? false);
         if (!on) { if (f.Video.Visible) f.Video.Visible = false; return; }
+        if (Full) { var fb = new Rectangle(Point.Empty, f.ClientSize); if (f.Video.Bounds != fb) { f.Video.Bounds = fb; FitChild(); } if (!f.Video.Visible) f.Video.Visible = true; return; }
         double k = f.Scale;
         int x = (int)Math.Floor((double)r["x"]! * k) - 2, y = (int)Math.Floor((double)r["y"]! * k) - 2;
         int x2 = (int)Math.Ceiling(((double)r["x"]! + (double)r["w"]!) * k) + 2, y2 = (int)Math.Ceiling(((double)r["y"]! + (double)r["h"]!) * k) + 2;
