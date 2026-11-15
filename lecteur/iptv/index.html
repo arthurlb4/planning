@@ -3847,17 +3847,17 @@ const BS_ENC = {"salt":"0cMLFcctzhONyJudE2rBnA==","iv":"9hWwAv28mEwo33u8","data"
 /* Top SensCritique de l'année (films, séries) : « What's on? API », titres sortis depuis le 1er janvier triés par note des
    membres de SensCritique, 300 notes au moins ; 3 pages de 20 par type, gardé 24 h (6 demandes par jour au plus). */
 /* Le vrai top SensCritique de l'année (page « Les meilleures séries de 2026 », lue par le relais), titres retrouvés sur
-   TMDB (40 premiers) ; gardé 24 h. Secours : « What's on? API » ci-dessous */
+   TMDB (les 100) ; gardé 24 h. Secours : « What's on? API » ci-dessous */
 const SCTOP_URL = 'https://planning-gcal.arthur-lebreton94.workers.dev/iptv/sctop';
 async function scTopSc(kind) {
-  const yr = new Date().getFullYear(), ck = 'sctop3:' + kind + ':' + yr, c = await DB.cacheGet(ck).catch(() => null);
+  const yr = new Date().getFullYear(), ck = 'sctop4:' + kind + ':' + yr, c = await DB.cacheGet(ck).catch(() => null);
   if (c && Date.now() - c.at < 864e5) return c.data;
   if (!LS.get('pref.tmdb', '')) return null;
   // appli Windows : lu depuis le PC (SensCritique refuse les serveurs du relais) ; sinon par le relais
   const qs = '?k=' + (kind === 'tvshow' ? 'series' : 'films') + '&y=' + yr, get = u => fetch(u).then(r => r.ok ? r.json() : null).catch(() => null);
   let j = window.desktop && window.desktop.remux ? await get(window.desktop.remux + '/sctop' + qs) : null;
   if (!j || !j.items || !j.items.length) j = await get(SCTOP_URL + qs);
-  const L = j && Array.isArray(j.items) ? j.items.slice(0, 40) : []; if (L.length < 5) return null;
+  const L = j && Array.isArray(j.items) ? j.items.slice(0, 100) : []; if (L.length < 5) return null;
   const tk = kind === 'tvshow' ? 'tv' : 'movie', k0 = kind === 'tvshow' ? 's' : 'm', ids = [], meta = {};
   const find = async x => {
     const y = +String(x.d || '').slice(0, 4) || 0, nm = t => tnorm(t || '');
@@ -3870,7 +3870,7 @@ async function scTopSc(kind) {
     return null;
   };
   const res = new Array(L.length);
-  for (let i = 0; i < L.length; i += 5) await Promise.all(L.slice(i, i + 5).map((x, k) => find(x).then(v => { res[i + k] = v; })));
+  for (let i = 0; i < L.length; i += 10) await Promise.all(L.slice(i, i + 10).map((x, k) => find(x).then(v => { res[i + k] = v; })));
   L.forEach((x, i) => { const v = res[i]; if (!v) return; const id = k0 + v.id; if (meta[id]) return;
     meta[id] = { k: k0, t: v.name || v.title || x.t, o: v.original_name || v.original_title || x.o || '', y: +String(v.first_air_date || v.release_date || x.d || '').slice(0, 4) || yr, p: v.poster_path || '', sc: x.r || 0 }; ids.push(id); });
   const data = { ids, meta };
@@ -4275,7 +4275,7 @@ async function renderVod() {
         if (!T) continue;
         Object.entries(T.meta).forEach(([k, m]) => { POP.meta[k] = POP.meta[k] || m; });
         const l = popList(T.ids, P, POP.meta, [kd]);
-        if (l.length >= 3) h += vodRow('Top SensCritique ' + new Date().getFullYear() + ' · ' + lab, 'le classement de l\'année des membres de SensCritique', l.slice(0, 30), true);
+        if (l.length >= 3) h += vodRow('Top SensCritique ' + new Date().getFullYear() + ' · ' + lab, 'le classement de l\'année des membres de SensCritique', l.slice(0, 100), true);
       }
       if (kinds.includes('m')) {
         const NP = await Promise.race([nowPlaying().catch(() => null), new Promise(r => setTimeout(() => r(null), 5000))]);
