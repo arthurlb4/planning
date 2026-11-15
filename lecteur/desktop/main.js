@@ -191,7 +191,7 @@ function mpvBounds() {
   if (MPV.under) {                                  // lecteur intégré : l'assistant place la fenêtre de mpv, juste sous l'appli
     const q = mpvScreenRect();
     if (!q) { if (!MPV.min) { MPV.min = true; mpvHelp('hide'); } return; }
-    const g = [q.x, q.y, q.width, q.height].join(' ');
+    const g = [q.x - 3, q.y - 3, q.width + 6, q.height + 6].join(' ');
     if (MPV.min) { MPV.min = false; mpvHelp('show'); MPV.geo = ''; }
     if (g !== MPV.geo) { MPV.geo = g; mpvHelp('place ' + g); }
     return;
@@ -318,7 +318,11 @@ ipcMain.handle('mpv-play', async (e, o) => {
   mpvStop(); MPV.page = page; MPV.rect = o.rect || null; MPV.st = {}; MPV.geo = ''; MPV.min = false; MPV.under = !!(NATIVE && o.under);
   if (!mpvHooked.has(page)) {
     mpvHooked.add(page);
-    const follow = () => mpvBounds();
+    let mt = 0;
+    const follow = () => {
+      if (MPV.under) { mpvSend({ moving: true }); clearTimeout(mt); mt = setTimeout(() => { mpvBounds(); setTimeout(() => mpvSend({ moving: false }), 120); }, 180); }
+      mpvBounds();
+    };
     ['move', 'resize', 'maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen', 'restore', 'minimize', 'show', 'hide'].forEach(ev => page.on(ev, follow));
     // au premier plan avec l'appli, mais pas par-dessus les autres programmes quand on change de fenêtre
     // (sans rattachement seulement) au premier plan avec l'appli, pas par-dessus les autres programmes
