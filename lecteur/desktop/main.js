@@ -191,7 +191,10 @@ function mpvBounds() {
   if (MPV.under) {                                  // lecteur intégré : l'assistant place la fenêtre de mpv, juste sous l'appli
     const q = mpvScreenRect();
     if (!q) { if (!MPV.min) { MPV.min = true; mpvHelp('hide'); } return; }
-    const g = [q.x - 3, q.y - 3, q.width + 6, q.height + 6].join(' ');
+    // débord de 3 px sous les barres de l'appli (pas de ligne qui laisse voir derrière), sans sortir de la fenêtre
+    let cw = MPV.page.getContentBounds(); try { cw = screen.dipToScreenRect(MPV.page, cw); } catch (e) {}
+    const x1 = Math.max(cw.x, q.x - 3), y1 = Math.max(cw.y, q.y - 3), x2 = Math.min(cw.x + cw.width, q.x + q.width + 3), y2 = Math.min(cw.y + cw.height, q.y + q.height + 3);
+    const g = [x1, y1, x2 - x1, y2 - y1].join(' ');
     if (MPV.min) { MPV.min = false; mpvHelp('show'); MPV.geo = ''; }
     if (g !== MPV.geo) { MPV.geo = g; mpvHelp('place ' + g); }
     return;
