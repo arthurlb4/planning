@@ -317,7 +317,6 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 .cast{display:flex;gap:12px;overflow-x:auto;padding-bottom:8px}
 .cast .ca{flex:none;width:84px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:3px;color:var(--text);cursor:pointer;padding:4px 0;border-radius:10px}
 .cast .ca:hover{background:var(--bg3)}
-.cast{scrollbar-width:thin}
 .cast .ph{width:72px;height:72px;border-radius:50%;background:var(--bg3) center/cover no-repeat;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:500;color:var(--text3)}
 .cast b{font-size:12px;line-height:1.2}.cast small{font-size:11px;color:var(--text3);line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 #vodSimilar .poster{width:120px}
@@ -392,9 +391,10 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 .vscroll.drag{cursor:grabbing;scroll-snap-type:none;user-select:none}
 @media (hover:hover) and (pointer:fine){.vscroll{scroll-snap-type:none}}
 .vscroll.drag .poster{pointer-events:none}
-/* Rangées des films et séries : barre toujours visible, flèches comme Netflix (gauche seulement une fois qu'on a avancé) */
-.vscroll::-webkit-scrollbar-thumb,.vscroll.scrolling::-webkit-scrollbar-thumb{background:rgba(255,255,255,.2)}
-.vscroll::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.4)}
+/* Rangées des films et séries (et distribution) : sans barre de défilement ; flèches comme Netflix (gauche seulement une
+   fois qu'on a avancé), glisser à la souris, molette */
+.vscroll{scrollbar-width:none}.vscroll::-webkit-scrollbar{display:none}
+.vscroll.drag .ca{pointer-events:none}
 .vwrap{position:relative}
 .varr{position:absolute;top:2px;bottom:12px;width:46px;z-index:3;display:flex;align-items:center;justify-content:center;color:#fff;opacity:0;transition:opacity .2s,background .2s;border-radius:10px}
 .varr svg{width:30px;height:30px;stroke:#fff;stroke-width:2.6;fill:none;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 2px 6px rgba(0,0,0,.6))}
@@ -4783,7 +4783,7 @@ async function vodEnrich(it) {
   const dirs = ti.kind === 'movie' ? (cr.crew || []).filter(c => c.job === 'Director').slice(0, 2).map(c => Object.assign({}, c, { character: 'Réalisation' }))
     : (d.created_by || []).slice(0, 2).map(c => Object.assign({}, c, { character: 'Création' }));
   const cast = dirs.concat((cr.cast || []).filter(c => !dirs.some(x => x.id === c.id)).slice(0, 20));
-  if (cast.length && $('#vodCast')) $('#vodCast').innerHTML = '<h4 class="vdh">Distribution</h4><div class="cast">' + cast.map(c => `<button class="ca" data-person="${c.id}" data-pname="${esc(c.name)}" title="Voir les titres avec ${esc(c.name)}"><span class="ph" ${c.profile_path ? `style="background-image:url('${img(c.profile_path, 'w185')}')"` : ''}>${c.profile_path ? '' : esc(initials(c.name))}</span><b>${esc(c.name)}</b><small>${esc(c.character || '')}</small></button>`).join('') + '</div>';
+  if (cast.length && $('#vodCast')) $('#vodCast').innerHTML = '<h4 class="vdh">Distribution</h4><div class="vwrap"><button class="varr l" data-arr="-1" aria-label="Précédents"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><div class="cast vscroll">' + cast.map(c => `<button class="ca" data-person="${c.id}" data-pname="${esc(c.name)}" title="Voir les titres avec ${esc(c.name)}"><span class="ph" ${c.profile_path ? `style="background-image:url('${img(c.profile_path, 'w185')}')"` : ''}>${c.profile_path ? '' : esc(initials(c.name))}</span><b>${esc(c.name)}</b><small>${esc(c.character || '')}</small></button>`).join('') + '</div><button class="varr r" data-arr="1" aria-label="Suivants"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button></div>'; if ($('#vodCast .vscroll')) varrState($('#vodCast .vscroll'));
   // Titres similaires présents dans le catalogue
   const recs = ((d.recommendations || {}).results || []).slice(0, 40), meta = {}, P = popIndex(V.data ? V.data.items : []);
   const ids = recs.map(r => { const k = ((r.media_type ? r.media_type === 'tv' : ti.kind === 'tv') ? 's' : 'm') + r.id; meta[k] = { k: k[0], t: r.title || r.name || '', o: r.original_title || r.original_name || '', y: +String(r.release_date || r.first_air_date || '').slice(0, 4) || 0, p: r.poster_path || '', l: r.original_language || '' }; return k; });
