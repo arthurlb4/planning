@@ -5042,6 +5042,26 @@ async function playRemux(c, t) {
   const pos = LS.get(posK(c.url), 0), dur = info.duration || 0;
   remuxStart(pos > 60 && (!dur || pos < dur - Math.min(120, dur * 0.1)) ? pos : 0, t);
   if (pos > 60) toast('Reprise à ' + fmtDur(pos));
+  if (!dur) remuxDurFix(R, c, t);
+}
+/* Durée inconnue au départ (torrent qui commence à peine à arriver, serveur lent) : durée de TMDB en attendant (film, ou
+   épisode d'après la saison), puis nouvelle lecture des informations du fichier toutes les 20 s, 5 fois au plus */
+function remuxDurFix(R, c, t) {
+  const it = c && c.it;
+  (async () => {
+    if (!it) return;
+    if (c.ep && c.torAlts && c.torAlts.eplist) { const e = c.torAlts.eplist.find(x => x.n === c.ep.n); if (e && e.run) R.durGuess = e.run * 60; }
+    if (!R.durGuess && it.kind === 'movie') { const ti = await tmdbInfo(it).catch(() => null); if (ti && ti.d && ti.d.runtime) R.durGuess = ti.d.runtime * 60; }
+  })().catch(() => {});
+  let n = 0;
+  const again = () => setTimeout(async () => {
+    if (S.remux !== R || t !== token || (R.info && R.info.duration)) return;
+    const j = await fetch(R.base + '/probe?url=' + encodeURIComponent(R.url)).then(r => r.json()).catch(() => null);
+    if (S.remux !== R) return;
+    if (j && j.duration) { R.info.duration = j.duration; if (j.chapters && !(R.info.chapters || []).length) R.info.chapters = j.chapters; vbarUpdate(); }
+    else if (++n < 5) again();
+  }, 20000);
+  again();
 }
 function remuxStart(ss, t, exact) {
   const R = S.remux; if (!R) return;
@@ -5110,9 +5130,10 @@ function vbarUpdate() {
   const R = S.remux, rem = S.engine === 'remux' && R, live = !S.current.vod;
   const rg = $('#vbRange'), drag = rg.matches(':active');
   if (rem) {
-    const dur = (R.info && R.info.duration) || 0, cur = curPos();
-    $('#vbCur').textContent = fmtT(cur); $('#vbDur').textContent = dur ? fmtT(dur) : '--:--';
-    rg.min = 0; rg.max = Math.max(1, Math.floor(dur)); if (!drag) rg.value = Math.floor(cur);
+    const known = (R.info && R.info.duration) || 0, dur = known || R.durGuess || 0, cur = curPos();
+    $('#vbCur').textContent = fmtT(cur); $('#vbDur').textContent = known ? fmtT(known) : dur ? '≈ ' + fmtT(dur) : '--:--';
+    // durée inconnue : barre à l'échelle d'une heure de plus que la position (et non pleine, comme un direct)
+    rg.min = 0; rg.max = Math.max(1, Math.floor(dur > cur ? dur : cur + 3600)); if (!drag) rg.value = Math.floor(cur);
   } else if (live) {
     const w = liveWin();
     if (w) { rg.min = w[0]; rg.max = w[1]; if (!drag) rg.value = video.currentTime; }
