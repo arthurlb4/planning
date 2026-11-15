@@ -212,7 +212,8 @@ module.exports = function startRemux(ffmpeg, findVlc) {
       // cœurs du processeur laissés libres (une conversion 4K en temps réel occupait tout le processeur et figeait le PC)
       if (enc) args.push('-vf', "scale='min(1920,iw)':-2", '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '21', '-pix_fmt', 'yuv420p', '-threads', String(Math.max(2, os.cpus().length - 2)));
       else { args.push('-c:v', 'copy'); if (hevc) args.push('-tag:v', 'hvc1'); }
-      args.push('-c:a', 'aac', '-ac', '2', '-b:a', '192k', '-f', 'mp4', '-movflags', 'frag_keyframe+empty_moov+default_base_moof', '-frag_duration', '1000000', 'pipe:1');
+      // son recalé sur l'image (dérive ou trous dans la piste d'origine : décalage du son)
+      args.push('-af', 'aresample=async=1:first_pts=0', '-c:a', 'aac', '-ac', '2', '-b:a', '192k', '-f', 'mp4', '-movflags', 'frag_keyframe+empty_moov+default_base_moof', '-frag_duration', '1000000', 'pipe:1');
       // Sous-titres intégrés : seconde sortie, en WebVTT dans un fichier temporaire lu par la page au fil de la lecture
       const sIdx = u.searchParams.get('s'), sid = u.searchParams.get('sid');
       let subFile = '';
