@@ -245,9 +245,14 @@ public static class LecteurU {
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);
   [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint f);
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+  [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr v);
+  [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr v);
   public static IntPtr Find(uint pid) { IntPtr r = IntPtr.Zero; EnumWindows((h, l) => { uint p; GetWindowThreadProcessId(h, out p); if (p == pid && IsWindowVisible(h)) { r = h; return false; } return true; }, IntPtr.Zero); return r; }
 }
 "@
+# positions en vrais pixels de l'écran (sinon, sur un écran agrandi à 150 %, 200 %, 300 %…, Windows les agrandit une seconde fois)
+try { [void][LecteurU]::SetProcessDpiAwarenessContext([IntPtr](-4)) } catch {}
+try { [void][LecteurU]::SetThreadDpiAwarenessContext([IntPtr](-4)) } catch {}
 $h = [IntPtr]::Zero; $page = [IntPtr][int64]$args[1]
 for ($i = 0; $i -lt 150 -and $h -eq [IntPtr]::Zero; $i++) { $h = [LecteurU]::Find([uint32]$args[0]); if ($h -eq [IntPtr]::Zero) { Start-Sleep -Milliseconds 100 } }
 if ($h -eq [IntPtr]::Zero) { exit 1 }
