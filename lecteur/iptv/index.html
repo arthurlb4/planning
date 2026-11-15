@@ -381,6 +381,7 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 .vrow h3 small{font-size:12px;color:var(--text3);font-weight:500}
 .vscroll{display:flex;align-items:flex-start;gap:12px;overflow-x:auto;padding:2px 2px 12px;scroll-snap-type:x proximity;cursor:grab}
 .vscroll.drag{cursor:grabbing;scroll-snap-type:none;user-select:none}
+@media (hover:hover) and (pointer:fine){.vscroll{scroll-snap-type:none}}
 .vscroll.drag .poster{pointer-events:none}
 /* Rangées des films et séries : barre toujours visible, flèches comme Netflix (gauche seulement une fois qu'on a avancé) */
 .vscroll::-webkit-scrollbar-thumb,.vscroll.scrolling::-webkit-scrollbar-thumb{background:rgba(255,255,255,.2)}
@@ -563,7 +564,7 @@ body.homeview #channels,body.homeview #player{display:none}
 #stats h4{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin:4px 0 6px;font-weight:500}
 #stats[hidden]{display:none}
 
-#stats table{border-collapse:collapse}#stats td{padding:2px 12px 2px 0;vertical-align:top}#stats td:first-child{color:var(--text3);white-space:nowrap}
+#stats table{border-collapse:collapse}#stats td{padding:2px 12px 2px 0;vertical-align:top}#stats td:first-child{color:var(--text3);white-space:nowrap;width:8.2em;min-width:8.2em}
 
 /* Score et statistiques du match : panneau à droite du lecteur (glisse avec la colonne) */
 #side{grid-column:3;grid-row:1;min-width:0;overflow:auto;background:var(--bg0);border-left:.5px solid var(--border);padding:0 16px 40px}
@@ -1324,6 +1325,7 @@ function renderHome() {
 // Pages (accueil, agenda) ; mini = la chaîne en cours continue dans un coin
 function setHomeView(on, mini, page) {
   if (typeof hovClose === 'function') hovClose(true);
+  if (on) S.lastPage = page || '';                        // page à retrouver avec Échap depuis le lecteur
   document.body.classList.toggle('homeview', !!on);
   document.body.classList.toggle('agenda', !!on && page === 'agenda');
   document.body.classList.toggle('vod', !!on && page === 'vod');
@@ -2858,7 +2860,7 @@ function refreshStats() {
   const lost = q && q.totalVideoFrames ? `${q.droppedVideoFrames} / ${q.totalVideoFrames} (${(q.droppedVideoFrames / q.totalVideoFrames * 100).toFixed(1)} %)` : '';
   el.innerHTML = `<h4>Image et son</h4><table>
     ${row('Chaîne', esc(S.current ? S.current.name : ''))}
-    ${row('Résolution', video.videoWidth ? `${video.videoWidth}×${video.videoHeight}${video.videoHeight >= 2000 ? ' (4K)' : video.videoHeight >= 1000 ? ' (Full HD)' : video.videoHeight >= 700 ? ' (HD)' : ' (SD)'}` : '')}
+    ${row('Résolution', video.videoWidth ? `${video.videoWidth}×${video.videoHeight}${video.videoHeight >= 2000 || video.videoWidth >= 3200 ? ' (4K)' : video.videoHeight >= 1000 || video.videoWidth >= 1800 ? ' (Full HD)' : video.videoHeight >= 700 || video.videoWidth >= 1200 ? ' (HD)' : ' (SD)'}` : '')}
     ${row('Images/s', (fps ? fps.toFixed(1) + ' mesurées' : '') + (declFps ? (fps ? ' · ' : '') + declFps + ' annoncées' : ''))}
     ${row('Vidéo', vc || '<span style="color:#7d7b76">non communiqué par ce lecteur</span>')}
     ${row('Son', ac)}
@@ -2901,21 +2903,38 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('scroll', e => { if (e.target.classList && e.target.classList.contains('vscroll')) varrState(e.target); }, true);
 new MutationObserver(() => document.querySelectorAll('.vscroll').forEach(varrState)).observe(document.getElementById('vod'), { childList: true, subtree: true });
-let vdrag = null;
+let vdrag = null, vglide = null;
 document.addEventListener('pointerdown', e => {
   const sc = e.pointerType === 'mouse' && e.button === 0 && e.target.closest('.vscroll'); if (!sc) return;
-  vdrag = { sc, x: e.clientX, left: sc.scrollLeft, moved: false, id: e.pointerId };
+  if (vglide) { cancelAnimationFrame(vglide.raf); vglide.sc.classList.remove('drag'); vglide = null; }
+  vdrag = { sc, x: e.clientX, left: sc.scrollLeft, moved: false, id: e.pointerId, pts: [[e.timeStamp, e.clientX]], raf: 0, to: sc.scrollLeft };
 });
 document.addEventListener('pointermove', e => {
   if (!vdrag || e.pointerId !== vdrag.id) return;
-  const dx = e.clientX - vdrag.x;
-  if (!vdrag.moved && Math.abs(dx) > 6) { vdrag.moved = true; vdrag.sc.classList.add('drag'); }
-  if (vdrag.moved) vdrag.sc.scrollLeft = vdrag.left - dx;
+  const d = vdrag, dx = e.clientX - d.x;
+  if (!d.moved && Math.abs(dx) > 6) { d.moved = true; d.sc.classList.add('drag'); if (typeof hovClose === 'function') hovClose(true); }
+  if (!d.moved) return;
+  d.pts.push([e.timeStamp, e.clientX]); if (d.pts.length > 8) d.pts.shift();
+  d.to = d.left - dx;
+  if (!d.raf) d.raf = requestAnimationFrame(() => { d.raf = 0; d.sc.scrollLeft = d.to; });
 });
 document.addEventListener('pointerup', e => {
   if (!vdrag) return;
   const d = vdrag; vdrag = null;
-  if (d.moved) { setTimeout(() => d.sc.classList.remove('drag'), 0); e.preventDefault(); }
+  if (!d.moved) return;
+  e.preventDefault(); if (d.raf) cancelAnimationFrame(d.raf); d.sc.scrollLeft = d.to;
+  // élan : vitesse des 100 dernières ms, freinée progressivement
+  const now = e.timeStamp, p = d.pts.filter(x => now - x[0] < 100), v0 = p.length > 1 ? (p[p.length - 1][1] - p[0][1]) / Math.max(1, p[p.length - 1][0] - p[0][0]) : 0;
+  const sc = d.sc; let v = -v0, last = performance.now();
+  if (Math.abs(v) < 0.15) { setTimeout(() => sc.classList.remove('drag'), 0); return; }
+  const g = vglide = { sc, raf: 0 };
+  const step = t => {
+    const dt = Math.min(40, t - last); last = t;
+    const before = sc.scrollLeft; sc.scrollLeft += v * dt; v *= Math.pow(0.94, dt / 16);
+    if (Math.abs(v) < 0.03 || sc.scrollLeft === before) { sc.classList.remove('drag'); if (vglide === g) vglide = null; return; }
+    g.raf = requestAnimationFrame(step);
+  };
+  g.raf = requestAnimationFrame(step);
 });
 // Barre de défilement montrée pendant le défilement, effacée 1,5 s après
 document.addEventListener('scroll', e => {
@@ -3305,7 +3324,7 @@ function hovOpen(poster) {
 // Aperçu dans une rangée : l'affiche elle-même s'élargit (les voisines glissent), bande-annonce et boutons dedans
 function hovInline(poster, it) {
   // La bande-annonce est d'abord chargée en coulisse ; l'affiche ne s'élargit qu'une fois la vidéo lancée (sinon rien)
-  HOV.el = poster;
+  HOV.el = poster; const sc0 = poster.closest('.vscroll'); HOV.sl = sc0 ? { el: sc0, x: sc0.scrollLeft } : null;
   trailerFor(it).then(tr => {
     if (!tr || HOV.it !== it || HOV.el !== poster) return;
     const im = poster.querySelector('.im'), snd = LS.get('pref.hoverSound', false);
@@ -3368,7 +3387,14 @@ document.addEventListener('mouseout', e => {
   clearTimeout(HOV.t);
   if (HOV.src === p) HOV.close = setTimeout(hovClose, 120);
 });
-document.addEventListener('scroll', e => { if (HOV.el && !(e.target.closest && e.target.closest('.hovc')) && !(HOV.auto && Date.now() - HOV.auto < 900)) hovClose(true); }, true);
+document.addEventListener('scroll', e => {
+  if (!HOV.el || (e.target.closest && e.target.closest('.hovc'))) return;
+  const t = e.target, sl = HOV.sl;
+  if (HOV.auto && Date.now() - HOV.auto < 900) { if (sl && sl.el === t) sl.x = t.scrollLeft; return; }
+  // en fin de rangée, l'arrivée de la bande-annonce décale la rangée d'un pixel : ce n'est pas l'utilisateur qui défile
+  if (sl && sl.el === t && Math.abs(t.scrollLeft - sl.x) < 8) return;
+  hovClose(true);
+}, true);
 /* Affiches manquantes (absentes ou cassées sur le serveur) : retrouvées sur TMDB quand l'affiche arrive à l'écran,
    et retenues sur l'appareil */
 const COV = (() => { try { const o = JSON.parse(localStorage.getItem('iptv.dev.cov') || '{}') || {};
@@ -3518,7 +3544,7 @@ const BS_ENC = {"salt":"0cMLFcctzhONyJudE2rBnA==","iv":"9hWwAv28mEwo33u8","data"
 /* Top SensCritique de l'année (films, séries) : « What's on? API », titres sortis depuis le 1er janvier triés par note des
    membres de SensCritique, 300 notes au moins ; 3 pages de 20 par type, gardé 24 h (6 demandes par jour au plus). */
 async function scTop(kind) {
-  const yr = new Date().getFullYear(), ck = 'sctop1:' + kind + ':' + yr, c = await DB.cacheGet(ck).catch(() => null);
+  const yr = new Date().getFullYear(), ck = 'sctop2:' + kind + ':' + yr, c = await DB.cacheGet(ck).catch(() => null);
   if (c && Date.now() - c.at < 864e5) return c.data;
   const out = [], meta = {}, k0 = kind === 'tvshow' ? 's' : 'm';
   for (let page = 1; page <= 3; page++) {
@@ -3527,7 +3553,7 @@ async function scTop(kind) {
     const j = await r.json().catch(() => null), l = (j && (j.results || (Array.isArray(j) ? j : null))) || [];
     l.forEach(x => {
       const sc = x.senscritique || {}, n = +sc.users_rating_count || 0, v = +sc.users_rating || 0;
-      if (!x.id || !v || n < 300) return;
+      if (!x.id || !v || n < (kind === 'tvshow' ? 40 : 300)) return;   // séries : bien moins notées que les films
       const id = k0 + x.id, img = String(x.image || ''), pp = (img.match(/\/t\/p\/[^/]+(\/[^/?]+)$/) || [])[1] || (img[0] === '/' ? img : '');
       meta[id] = { k: k0, t: x.title || '', o: x.original_title || '', y: +String(x.release_date || '').slice(0, 4) || yr, p: pp, sc: v };
       if (!out.includes(id)) out.push(id);
@@ -3592,10 +3618,10 @@ async function frNotes(tmdbId, kind) {
   DB.cachePut({ id, at: Date.now(), data });
   return data;
 }
-/* Note des affiches : SensCritique, sinon IMDb (même source que la fiche, « What's on? API » : 200 demandes par jour sans clé).
-   Chargée seulement pour les affiches visibles, gardée 14 jours ; au plus 150 nouvelles notes par jour et par appareil. */
+/* Note des affiches : TMDB, chargée seulement pour les affiches visibles, gardée 14 jours. */
 const NOTES = new Map();                                   // clé du titre → { sc, im }
-const noteOf = n => n && n.sc ? 'SC ' + n.sc.toFixed(1).replace('.', ',') : n && n.im ? 'IMDb ' + n.im.toFixed(1).replace('.', ',') : n && n.tm ? 'TMDB ' + n.tm.toFixed(1).replace('.', ',') : '';
+// une seule source partout (affiches, survol, fiche) : la note TMDB (au moins 20 votes)
+const noteOf = n => n && n.tm ? 'TMDB ' + n.tm.toFixed(1).replace('.', ',') : '';
 // note TMDB (secours quand SensCritique et IMDb n'en ont pas) : au moins 20 votes ; gardée 14 jours
 async function tmdbVote(id, kind) {
   const ck = 'tva1:' + kind + id, c = await DB.cacheGet(ck); if (c && Date.now() - c.at < 14 * 864e5) return c.data;
@@ -3618,18 +3644,8 @@ async function tmdbIdOf(it) {
 async function noteLoad(it) {
   const key = itemKey(it), kind = it.kind === 'series' ? 'tv' : 'movie';
   const id = await tmdbIdOf(it); if (!id) return;
-  const c = await DB.cacheGet('wo1:' + kind + id);
-  let n = c && Date.now() - c.at < 14 * 864e5 ? c.data : null;
-  if (!n) {
-    const day = new Date().toISOString().slice(0, 10), b = LS.get('dev.wobud', null), used = b && b.d === day ? b.n : 0;
-    if (used >= 150) return;
-    LS.set('dev.wobud', { d: day, n: used + 1 });
-    n = await frNotes(id, kind).catch(() => null);
-  }
-  if (!n) return;                                           // service des notes pas joint (limite du jour) : rien pour l'instant
-  const tm = n.sc || n.im ? 0 : await tmdbVote(id, kind);
-  if (!(n.sc || n.im || tm)) return;
-  NOTES.set(key, { sc: n.sc, im: n.im, tm });
+  const tm = await tmdbVote(id, kind); if (!tm) return;
+  NOTES.set(key, { tm });
   const t = noteOf(NOTES.get(key));
   document.querySelectorAll('#vod .poster[data-v]').forEach(p => { const x = V.shown[+p.dataset.v]; if (!x || itemKey(x) !== key) return;
     const im = p.querySelector('.im'), old = im && im.querySelector('.rt'); if (old) old.textContent = t; else if (im) im.insertAdjacentHTML('beforeend', `<span class="rt">${esc(t)}</span>`); });
@@ -3643,11 +3659,11 @@ const noteIO = 'IntersectionObserver' in window ? new IntersectionObserver(es =>
   const k = itemKey(it); if (NQ.seen.has(k) || NOTES.has(k)) return; NQ.seen.add(k); NQ.q.push(it); noteNext();
 }), { rootMargin: '200px' }) : null;
 if (noteIO) { let t0; new MutationObserver(() => { clearTimeout(t0); t0 = setTimeout(() => document.querySelectorAll('#vod .poster[data-v]:not([data-nq])').forEach(p => { p.dataset.nq = '1'; noteIO.observe(p); }), 200); }).observe($('#vodInner'), { childList: true, subtree: true }); }
-// note de la fiche : SensCritique (spectateurs), sinon IMDb
+// note de la fiche : TMDB
 function frNotesHtml(n, tm) {
   if (!n && !tm) return ''; n = n || {};
   const f = (v, d) => v.toFixed(d).replace('.', ','), k = v => v >= 1000 ? Math.round(v / 1000) + ' k' : String(v);
-  const x = n.sc ? `<span><b>SensCritique</b> ${f(n.sc, 1)}/10${n.scn ? ' <small>' + k(n.scn) + ' notes</small>' : ''}</span>` : n.im ? `<span><b>IMDb</b> ${f(n.im, 1)}/10</span>` : tm ? `<span><b>TMDB</b> ${f(tm, 1)}/10</span>` : '';
+  const x = tm ? `<span><b>TMDB</b> ${f(tm, 1)}/10${n.tmn ? ' <small>' + k(n.tmn) + ' votes</small>' : ''}</span>` : '';
   return x ? '<div class="frn">' + x + '</div>' : '';
 }
 // Titres TMDB → titres du catalogue (identifiant TMDB si le serveur le donne, sinon titre + année à un an près)
@@ -3826,7 +3842,7 @@ async function renderVod() {
     // Reprendre (films commencés, épisode en cours ou suivant de chaque série) et Ma liste
     const hist = histAll().map(e => ({ e, it: itemByKey(e.k) })).filter(x => x.it && kinds.includes(x.e.k[0]));
     if (hist.length) h += `<div class="vrow"><h3>Reprendre</h3><div class="vwrap"><div class="vscroll">${hist.slice(0, 20).map(({ e, it }) => posterHtml(it, V.shown.push(it) - 1, 0, { pct: e.dur ? e.pos / e.dur * 100 : 0, lab: e.lab || (e.dur ? 'reste ' + fmtDur(e.dur - e.pos) : '') }).replace('<button class="poster"', `<button class="poster" data-hist="${esc(e.k)}"`).replace('<div class="im">', `<div class="im"><span class="hxb"><span data-histv="${esc(e.k)}" title="Marquer comme vu">✓</span><span data-histx="${esc(e.k)}" title="Retirer de Reprendre">✕</span></span>`)).join('')}</div></div></div>`;
-    const ml = myList().map(itemByKey).filter(x => x && kinds.includes(itemKey(x)[0]));
+    const ml = myListItems(kinds);
     if (ml.length) h += vodRow('Ma liste', '', ml, false, true);
     let bc = '';
     if (POP) {
@@ -3860,7 +3876,6 @@ async function renderVod() {
         if (!T) continue;
         Object.entries(T.meta).forEach(([k, m]) => { POP.meta[k] = POP.meta[k] || m; });
         const l = popList(T.ids, P, POP.meta, [kd]);
-        l.forEach(it => { const id = T.ids.find(x => popMatch(x, P, POP.meta) === it || (it.tor && 'm' + it.tmdb === x)); const sc = id && T.meta[id].sc; if (sc && !NOTES.has(itemKey(it))) NOTES.set(itemKey(it), { sc }); });
         if (l.length >= 3) h += vodRow('Top SensCritique ' + new Date().getFullYear() + ' · ' + lab, 'les mieux notés par les membres de SensCritique, sortis cette année', l.slice(0, 30), true);
       }
       if (FRR) {
@@ -4206,8 +4221,25 @@ function myListRaw() {
   return l.filter(x => x && x.k);
 }
 const myList = () => myListRaw().map(x => x.k);
-const inMyList = it => myList().includes(itemKey(it));
-function toggleMyList(it) { const k = itemKey(it), l = myListRaw(), on = l.some(x => x.k === k); LS.set('vod.mylist2', on ? l.filter(x => x.k !== k) : [{ k, g: gKey(it) }].concat(l)); toast(on ? 'Retiré de Ma liste' : 'Ajouté à Ma liste'); }
+const inMyList = it => { const k = itemKey(it); let g = ''; try { g = gKey(it); } catch (e) {} return myListRaw().some(x => x.k === k || (g && x.g === g)); };
+// Ma liste (liste d'envies) : titres de l'abonnement et hors abonnement (fiche TMDB, lisibles en torrent) ; le titre, l'année
+// et l'affiche sont gardés pour l'afficher même sans la liste qui l'a fourni
+function toggleMyList(it) {
+  const k = itemKey(it), g = gKey(it), l = myListRaw(), on = l.some(x => x.k === k || x.g === g);
+  LS.set('vod.mylist2', on ? l.filter(x => x.k !== k && x.g !== g) : [{ k, g, n: it.name, kind: it.kind, tmdb: it.tmdb || 0, y: it.year || 0, p: it.cover || '', at: Date.now() }].concat(l));
+  return !on;
+}
+function myListItems(kinds) {
+  const seen = new Set(), out = [];
+  myListRaw().forEach(x => {
+    let it = itemByKey(x.k);
+    if (!it && x.g && V.data && V.data._gmap) it = V.data._gmap.get(x.g) || null;
+    if (!it && x.tmdb) { it = virtItem((x.kind === 'series' ? 's' : 'm') + x.tmdb, { t: x.n, y: x.y }); if (!it.cover && x.p) it.cover = x.p; }
+    if (!it || !kinds.includes(it.kind === 'series' ? 's' : 'm')) return;
+    const g = gKey(it); if (seen.has(g)) return; seen.add(g); out.push(it);
+  });
+  return out;
+}
 // Épisodes d'une série dans l'ordre (saisons puis numéros) : pour trouver le suivant
 function epFlat(eps) {
   const out = []; Object.keys(eps || {}).sort((a, b) => a - b).forEach(sn => (eps[sn] || []).slice().sort((a, b) => (+a.episode_num || 0) - (+b.episode_num || 0)).forEach(e => out.push({ s: +sn, n: +e.episode_num || 0, e })));
@@ -4230,6 +4262,7 @@ const seenAll = () => { const h = LS.get('vod.seen', []); return Array.isArray(h
 const fbAll = () => { const o = LS.get('vod.fb', {}); return o && typeof o === 'object' ? o : {}; };
 const fbOf = it => { try { return fbAll()[gKey(it)] || null; } catch (e) { return null; } };
 function fbSet(it, k) {
+  if (k === 'list') return toggleMyList(it);
   const o = fbAll(), g = gKey(it), cur = o[g] || {}, on = !cur[k], e = Object.assign({}, cur, { [k]: on, at: Date.now(), n: it.name, kind: it.kind, tmdb: it.tmdb || 0, y: it.year || 0 });
   if (on && k === 'like') e.no = false; if (on && k === 'no') e.like = false;
   if (!e.like && !e.seen && !e.no) delete o[g]; else o[g] = e;
@@ -4237,12 +4270,11 @@ function fbSet(it, k) {
   LS.set('vod.fb', o);
   if (k === 'seen' && on && !it.tor) seenPut(itemKey(it), '', true);       // titre de l'abonnement : aussi dans l'historique des vus
 
-  toast({ like: on ? 'Noté : vous aimez' : 'Avis retiré', seen: on ? 'Marqué comme déjà vu' : 'Retiré des déjà vus', no: on ? 'Ne sera plus recommandé' : 'De nouveau recommandable' }[k]);
   return on;
 }
-const FB_ICON = { like: '<svg viewBox="0 0 24 24"><path d="M7 11v9H4v-9zM7 11l4-7c1.5 0 2.5 1 2.2 2.6L12.6 10H19a2 2 0 0 1 2 2.3l-1.2 6A2 2 0 0 1 17.8 20H7"/></svg>', seen: '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>', no: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M6 6l12 12"/></svg>' };
-const FB_LAB = { like: 'J\'aime', seen: 'Déjà vu', no: 'Ne pas recommander' };
-const fbButtons = (it, cls) => { const f = fbOf(it) || {}; return ['like', 'seen', 'no'].map(k => `<button class="${cls}${f[k] ? ' on' : ''}" data-fb="${k}" title="${FB_LAB[k]}">${FB_ICON[k]}${cls === 'fbb' ? '<span>' + FB_LAB[k] + '</span>' : ''}</button>`).join(''); };
+const FB_ICON = { list: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>', listOn: '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>', like: '<svg viewBox="0 0 24 24"><path d="M7 11v9H4v-9zM7 11l4-7c1.5 0 2.5 1 2.2 2.6L12.6 10H19a2 2 0 0 1 2 2.3l-1.2 6A2 2 0 0 1 17.8 20H7"/></svg>', seen: '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>', no: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M6 6l12 12"/></svg>' };
+const FB_LAB = { list: 'Ma liste', like: 'J\'aime', seen: 'Déjà vu', no: 'Ne pas recommander' };
+const fbButtons = (it, cls) => { const f = Object.assign({}, fbOf(it) || {}, { list: inMyList(it) }); return ['list', 'like', 'seen', 'no'].map(k => `<button class="${cls}${f[k] ? ' on' : ''}" data-fb="${k}" title="${k === 'list' ? (f.list ? 'Retirer de Ma liste' : 'Ajouter à Ma liste') : FB_LAB[k]}">${k === 'list' && f.list ? FB_ICON.listOn : FB_ICON[k]}${cls === 'fbb' ? '<span>' + FB_LAB[k] + '</span>' : ''}</button>`).join(''); };
 function seenPut(k, lab, fin) {
   const l = seenAll(), o = l.find(x => x.k === k);
   if (o && l[0] === o && o.lab === lab && (o.f || !fin) && Date.now() - o.at < 30 * 60e3) return;   // déjà à jour : pas d'écriture toutes les 5 s
@@ -4438,7 +4470,7 @@ async function openVod(it) {
     <h3>${esc(it.name)}</h3><div class="mt" id="vodMeta">${esc(meta)}</div>
     <div class="plot">${esc(info.plot || info.description || it.plot || '')}</div>
     <div id="vodCrew">${info.director ? `<div class="cr">Réalisation : ${esc(info.director)}</div>` : ''}${info.cast || info.actors ? `<div class="cr">Avec : ${esc(info.cast || info.actors)}</div>` : ''}</div>`;
-  const listBtn = `<button class="btn" data-mylist>${mine ? '✓ Ma liste' : '＋ Ma liste'}</button>`;
+  const listBtn = '';
   const flat = it.kind === 'series' ? epFlat(eps) : [];
   if (it.kind === 'movie') {
     const vs = vodVars(it), pick = vodPick(it), url = it.tor ? '' : vodUrl('movie', pick.id, pick.ext), pos = url ? LS.get('pos.' + url, 0) : 0;
@@ -4532,7 +4564,7 @@ async function vodEnrich(it) {
   else { const fr = ((d.content_ratings || {}).results || []).find(r => r.iso_3166_1 === 'FR'); cert = fr && fr.rating || ''; }
   const genres = (d.genres || []).map(g => g.name).slice(0, 3).join(', '), run = ti.kind === 'movie' ? (d.runtime ? fmtDur(d.runtime * 60) : '') : (d.number_of_seasons ? d.number_of_seasons + ' saison' + (d.number_of_seasons > 1 ? 's' : '') : '');
   const certTxt = cert && cert !== 'U' && cert !== 'TP' && cert !== 'Tous publics' ? '-' + String(cert).replace(/^-/, '') : cert ? 'Tous publics' : '';
-  frNotes(ti.id, ti.kind).then(n => { const tv = d.vote_count >= 20 ? +d.vote_average || 0 : 0; if (n && (n.sc || n.im)) NOTES.set(itemKey(it), { sc: n.sc, im: n.im }); else if (n && tv) NOTES.set(itemKey(it), { tm: tv }); const h = frNotesHtml(n, n && (n.sc || n.im) ? 0 : tv), mt = $('#vodMeta'); if (h && mt && V.open && V.open.it === it && !$('#vodDetail .frn')) mt.insertAdjacentHTML('afterend', h); }).catch(() => {});
+  { const tv = d.vote_count >= 20 ? +d.vote_average || 0 : 0; if (tv) NOTES.set(itemKey(it), { tm: tv }); const h = frNotesHtml({ tmn: d.vote_count }, tv), mt = $('#vodMeta'); if (h && mt && V.open && V.open.it === it && !$('#vodDetail .frn')) mt.insertAdjacentHTML('afterend', h); }
   const m = $('#vodMeta'); if (m) m.textContent = [it.year || (d.release_date || d.first_air_date || '').slice(0, 4), genres || it.genre, run, certTxt, it.services.join(', ')].filter(Boolean).join(' · ');
   const cr = d.credits || {}, dir = (cr.crew || []).filter(c => c.job === 'Director').map(c => c.name).slice(0, 2).join(', ') || (d.created_by || []).map(c => c.name).slice(0, 2).join(', ');
   const crew = $('#vodCrew'); if (crew && dir) crew.innerHTML = `<div class="cr">${ti.kind === 'movie' ? 'Réalisation' : 'Création'} : ${esc(dir)}</div>`;
@@ -5325,7 +5357,16 @@ function ytOnPlay(f, cb, max) { let done = false; const go = () => { if (done) r
 // demande à YouTube de nous envoyer l'état de lecture (fin de la vidéo)
 function ytListen(f) { f.addEventListener('load', () => { try { f.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*'); } catch (e) {} ytVol(f); }); }
 // bandes-annonces au même volume que le lecteur (réglage du lecteur retenu : dev.vol, de 0 à 1)
-function ytVol(f) { try { const v = LS.get('dev.vol', 1); f.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'setVolume', args: [Math.round(Math.max(0, Math.min(1, +v || 0)) * 100)] }), '*'); } catch (e) {} }
+// volume des bandes-annonces = celui du lecteur ; mais c'est le bouton son de la bande-annonce qui décide : son activé avec le
+// lecteur coupé (volume à 0), elle joue quand même, à mi-volume
+function ytVol(f) {
+  try {
+    const v = Math.max(0, Math.min(1, +LS.get('dev.vol', 1) || 0)), box = f.closest('#vodTrailer'), mb = box && box.querySelector('.trmute');
+    const off = box ? !!(mb && mb.classList.contains('off')) : !LS.get('pref.hoverSound', false);
+    const send = (func, args) => f.contentWindow.postMessage(JSON.stringify({ event: 'command', func, args: args || [] }), '*');
+    send('setVolume', [Math.round((v < 0.05 ? 0.5 : v) * 100)]); send(off ? 'mute' : 'unMute');
+  } catch (e) {}
+}
 // Panneau de droite : score et statistiques du match en cours
 // Panneau de droite : stats du match ou programme de la chaîne (un seul à la fois)
 const SIDE = { mode: 'match' };
@@ -5385,7 +5426,7 @@ if (!NATIVE_CTRL()) video.controls = false;          // barre de l'appli : pas c
 $('#soloBtn').onclick = () => setSolo(true);
 $('#soloExit').onclick = () => setSolo(false);
 document.addEventListener('mousemove', () => { if (!document.body.classList.contains('solo')) return; document.body.classList.add('ui'); clearTimeout(soloT); soloT = setTimeout(() => document.body.classList.remove('ui'), 2500); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.body.classList.contains('solo') && !document.fullscreenElement) setSolo(false); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.body.classList.contains('solo') && !document.fullscreenElement) { e.preventDefault(); setSolo(false); } });
 video.addEventListener('dblclick', () => setSolo(!document.body.classList.contains('solo')));
 // Boutons sur l'image : estompés après 3 s sans mouvement pendant la lecture
 let idleT;
@@ -5481,6 +5522,12 @@ document.addEventListener('keydown', e => {
     return;
   }
   if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === 'Escape') {
+    if (e.defaultPrevented || document.fullscreenElement || document.body.classList.contains('homeview') || document.body.classList.contains('solo')) return;
+    if (document.body.classList.contains('vodplay') && V.back) $('#vodBack').click();
+    else setHomeView(true, true, S.lastPage || '');
+    return;
+  }
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); moveSel(e.key === 'ArrowDown' ? 1 : -1); }
   else if (e.key === 'Enter' && S.sel >= 0 && !e.target.closest('button,a,select,[data-play],[data-v],[data-ev]')) { e.preventDefault(); play(S.view[S.sel]); }
   else if (e.key === 'PageDown' || e.key === 'PageUp') { e.preventDefault(); step(e.key === 'PageDown' ? 1 : -1); }
