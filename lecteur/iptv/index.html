@@ -401,6 +401,7 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 .varr.l{left:0;background:linear-gradient(90deg,rgba(0,0,0,.75),transparent)}
 .varr.r{right:0;background:linear-gradient(270deg,rgba(0,0,0,.75),transparent)}
 .vwrap:hover .varr{opacity:.85}.vwrap .varr:hover{opacity:1}
+.vwrap.hov .varr{opacity:0!important;pointer-events:none}
 .vwrap:not(.moved) .varr.l,.vwrap.end .varr.r{display:none}
 @media (hover:none){.varr{display:none!important}}
 .poster{flex:none;width:150px;scroll-snap-align:start;cursor:pointer;border:0;background:none;color:var(--text);text-align:left;padding:0;transition:width .3s cubic-bezier(.2,.8,.2,1)}
@@ -3354,6 +3355,7 @@ function hovFrom(el, r) {
 function hovClose(fast) {
   clearTimeout(HOV.t); clearTimeout(HOV.close);
   const el = HOV.el, src = HOV.src; HOV.el = HOV.it = HOV.src = null;
+  document.querySelectorAll('.vwrap.hov').forEach(w => w.classList.remove('hov'));
   if (!el) return;
   if (el.classList.contains('poster')) {                // aperçu dans la rangée : l'affiche reprend sa taille
     // pendant la réduction la hauteur reste fixe (sinon l'affiche, encore large, grandirait en hauteur avec la rangée) ;
@@ -3425,6 +3427,7 @@ function hovInline(poster, it) {
   HOV.el = poster; const sc0 = poster.closest('.vscroll'); HOV.sl = sc0 ? { el: sc0, x: sc0.scrollLeft } : null;
   trailerFor(it).then(tr => {
     if (!tr || HOV.it !== it || HOV.el !== poster) return;
+    const vw = poster.closest('.vwrap'); if (vw) vw.classList.add('hov');
     const im = poster.querySelector('.im'), snd = LS.get('pref.hoverSound', false);
     im.insertAdjacentHTML('beforeend', `<span class="xpv" style="background-image:url('${esc(posterUrl(it.cover || ''))}')"><span class="snd${snd ? ' on' : ''}" data-hsnd title="Son"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="iv" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" fill="none"/><path class="im" d="M16 9l5 6M21 9l-5 6" fill="none"/></svg></span></span>`);
     const v = poster.querySelector('.xpv'), cc = tr.cc ? '&cc_load_policy=1&cc_lang_pref=fr&hl=fr' : '';
@@ -3473,6 +3476,7 @@ document.addEventListener('click', e => {
   hovClose(true);                                        // Plus d'infos, ou clic ailleurs : la fiche s'ouvre normalement
 }, true);
 document.addEventListener('mouseover', e => {
+  if (e.target.closest && e.target.closest('.varr')) { clearTimeout(HOV.t); return; }   // flèche de la rangée : pas d'aperçu dessous
   const p = e.target.closest && e.target.closest('#vod .poster[data-v]');
   if (!p || !canHover() || document.querySelector('.vscroll.drag') || $('#vodModal').classList.contains('open')) return;
   if (HOV.src === p) { clearTimeout(HOV.close); return; }
@@ -3586,7 +3590,8 @@ async function seenState(it) {
   return E0 >= (T.eps[S0] || 999) ? 'hide' : '';
 }
 async function vodSeenFilter(box) {
-  const rows = [...box.querySelectorAll('.vrow')].filter(r => !/^(Reprendre|Ma liste)/.test((r.querySelector('h3') || {}).textContent || ''));
+  // classements (tops, tendances…) et rangées personnelles : complets ; les déjà vus ne sont retirés que des listes de découverte
+  const rows = [...box.querySelectorAll('.vrow')].filter(r => r.dataset.dd !== 'keep');
   const memo = new Map();
   for (const row of rows) {
     for (const p of [...row.querySelectorAll('.poster[data-v]')]) {
