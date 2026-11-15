@@ -108,7 +108,16 @@ async function fromBody(body) {
   if (/^https?:\/\//i.test(body)) {
     let url = body;
     for (let k = 0; k < 5; k++) {
-      const r = await fetch(url, { redirect: 'manual' });
+      // « localhost » essayé d'abord en IPv6 (::1) par Node alors que Prowlarr n'écoute souvent qu'en IPv4 : 127.0.0.1 en secours ;
+      // erreur réseau : la cause précise (connexion refusée, délai, nom inconnu…) dans le message
+      const get = u => fetch(u, { redirect: 'manual', signal: AbortSignal.timeout(30000) });
+      let r;
+      try { r = await get(url); }
+      catch (e) {
+        const lh = /^(https?:\/\/)(localhost)([:/])/i.exec(url);
+        if (lh) { try { r = await get(url.replace(/^(https?:\/\/)localhost/i, '$1127.0.0.1')); } catch (e2) { e = e2; } }
+        if (!r) { const c = e && e.cause && (e.cause.code || e.cause.message) || (e && e.name === 'TimeoutError' ? 'délai dépassé' : ''); throw new Error('lien du torrent injoignable' + (c ? ' (' + c + ')' : '') + ' : ' + new URL(url).host + ' · Prowlarr démarré ? indexeur en ligne ?'); }
+      }
       const loc = r.headers.get('location');
       if (r.status >= 300 && r.status < 400 && loc) { if (/^magnet:\?/i.test(loc)) return loc; url = new URL(loc, url).href; continue; }
       if (!r.ok) throw new Error('le lien du torrent répond ' + r.status);
