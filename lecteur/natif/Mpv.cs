@@ -113,7 +113,8 @@ public class Mpv
     }
 
     // zone du lecteur donnée par la page (pixels CSS) → cadre vidéo (pixels de la fenêtre), débordant un peu sous les barres
-    public void Rect(JsonObject r) { rect = r; if (f.InvokeRequired) f.BeginInvoke(Place); else Place(); }
+    long lastRectAt;
+    public void Rect(JsonObject r) { if (rect == null || rect.ToJsonString() != r?.ToJsonString()) lastRectAt = Environment.TickCount64; rect = r; if (f.InvokeRequired) f.BeginInvoke(Place); else Place(); }
     long holdUntil;
     public bool Holding => Environment.TickCount64 < holdUntil;
     // la coque place elle-même la vidéo pendant ms millisecondes, puis reprend la position donnée par la page
@@ -121,7 +122,17 @@ public class Mpv
     {
         holdUntil = Math.Max(holdUntil, Environment.TickCount64 + ms);
         // fin du changement : vidéo replacée, puis la page retire son noir
-        var t = new System.Windows.Forms.Timer { Interval = ms + 10 }; t.Tick += (s, e) => { t.Stop(); t.Dispose(); Place(); Settled(); }; t.Start();
+        // puis attente que la position envoyée par la page ne bouge plus (0,1 s sans changement, 1,2 s au plus)
+        long t0 = Environment.TickCount64;
+        var t = new System.Windows.Forms.Timer { Interval = ms + 10 };
+        t.Tick += (s, e) =>
+        {
+            if (Holding) { t.Interval = 30; return; }
+            long now = Environment.TickCount64;
+            if (now - lastRectAt < 100 && now - t0 < 1200) { t.Interval = 30; return; }
+            t.Stop(); t.Dispose(); Place(); Settled();
+        };
+        t.Start();
     }
     void Settled() { var t2 = new System.Windows.Forms.Timer { Interval = 20 }; t2.Tick += (s, e) => { t2.Stop(); t2.Dispose(); if (!Holding) f.Post(Msg(new JsonObject { ["moving"] = false })); }; t2.Start(); }
     public void Place()
