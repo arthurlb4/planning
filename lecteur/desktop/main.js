@@ -115,7 +115,8 @@ function createWindow() {
   // Vers les serveurs IPTV : pas d'en-têtes propres aux pages web (Origin, Referer), comme une appli de lecture
   session.defaultSession.webRequest.onBeforeSendHeaders((d, cb) => {
     const h = d.requestHeaders;
-    if (!OWN.test(d.url) && !d.url.startsWith('file:')) { delete h.Origin; delete h.Referer; }
+    // serveurs IPTV : sans les en-têtes des pages web, et sous le vrai nom de l'appli (lecteur IPTV) plutôt qu'un navigateur
+    if (!OWN.test(d.url) && !d.url.startsWith('file:')) { delete h.Origin; delete h.Referer; if (!/^http:\/\/127\.0\.0\.1/.test(d.url) && /\/(get|player_api|xmltv|panel_api)\.php|\/(live|movie|series|timeshift)\/|\.m3u8?(\?|$)|\.ts(\?|$)/i.test(d.url)) h['User-Agent'] = 'LecteurIPTV/' + app.getVersion() + ' (Windows)'; }
     // Serveur de l'app (relais des listes) : il n'accepte que les demandes venant du site
     else if (/^https:\/\/planning-gcal\./.test(d.url)) h.Origin = 'https://franceinfoplanning.com';
     cb({ requestHeaders: h });

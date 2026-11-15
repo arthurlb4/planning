@@ -29,6 +29,8 @@ public class MainForm : Form
 {
     const string PAGE = "https://franceinfoplanning.com/iptv/";
     static readonly Regex OWN = new(@"^https?://(www\.)?franceinfoplanning\.com/|^https://cdn\.jsdelivr\.net/|^https://planning-gcal\.|^https://([a-z0-9-]+\.)*(youtube(-nocookie)?\.com|ytimg\.com|googlevideo\.com|google\.com|gstatic\.com)/", RegexOptions.IgnoreCase);
+    static readonly Regex IPTV = new(@"/(get|player_api|xmltv|panel_api)\.php|/(live|movie|series|timeshift)/|\.m3u8?(\?|$)|\.ts(\?|$)", RegexOptions.IgnoreCase);
+    static readonly string UA = "LecteurIPTV/" + Application.ProductVersion.Split('+')[0] + " (Windows)";
     static readonly string DataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LecteurIPTVNatif");
 
     IDCompositionDevice dcomp; IDCompositionTarget target; IDCompositionVisual root;
@@ -164,7 +166,12 @@ public class MainForm : Form
                 var u = a.Request.Uri;
                 // relais de l'appli : il n'accepte que les demandes venant du site (comme dans l'appli Electron)
                 if (u.StartsWith("https://planning-gcal.")) a.Request.Headers.SetHeader("Origin", "https://franceinfoplanning.com");
-                else if (!OWN.IsMatch(u) && !u.StartsWith("http://127.0.0.1")) { a.Request.Headers.RemoveHeader("Origin"); a.Request.Headers.RemoveHeader("Referer"); }
+                else if (!OWN.IsMatch(u) && !u.StartsWith("http://127.0.0.1"))
+                {
+                    a.Request.Headers.RemoveHeader("Origin"); a.Request.Headers.RemoveHeader("Referer");
+                    // serveurs IPTV : l'appli se présente sous son vrai nom (lecteur IPTV), pas comme un navigateur web
+                    if (IPTV.IsMatch(u)) a.Request.Headers.SetHeader("User-Agent", UA);
+                }
             }
             catch { }
         };
