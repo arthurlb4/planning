@@ -177,6 +177,7 @@ public class MainForm : Form
                 if (a == "min") WindowState = FormWindowState.Minimized;
                 else if (a == "max") WindowState = WindowState == FormWindowState.Maximized ? FormWindowState.Normal : FormWindowState.Maximized;
                 else if (a == "close") Close();
+                else if (a == "hold") mpv?.Hold(600);   // la page change de mise en page (plein écran) : la coque garde la vidéo en place
                 break;
             case "mpvPlay":
                 var id = (int)m["id"]!; var o = m["o"]!.AsObject();
@@ -228,12 +229,24 @@ public class MainForm : Form
     static void OpenExternal(string url) { try { if (Regex.IsMatch(url ?? "", "^https?://", RegexOptions.IgnoreCase)) Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); } catch { } }
 
     // ---------- plein écran (F11 ou double-clic sur le lecteur : demandé par la page)
-    bool full; Rectangle normalBounds; FormWindowState fullPrev;
+    bool full; Rectangle normalBounds, prevVideo; FormWindowState fullPrev;
     void SetFull(bool on)
     {
         if (on == full) return; full = on;
-        if (on) { fullPrev = WindowState; normalBounds = Bounds; WindowState = FormWindowState.Normal; Bounds = Screen.FromControl(this).Bounds; }
-        else { Bounds = normalBounds; WindowState = fullPrev; }
+        // pendant le changement : la vidéo est placée par la coque (plein écran : tout l'écran ; retour : sa place d'avant),
+        // les positions envoyées par la page pendant sa nouvelle mise en page sont ignorées un instant
+        mpv?.Hold(450);
+        if (on)
+        {
+            prevVideo = Video.Bounds; fullPrev = WindowState; normalBounds = Bounds;
+            WindowState = FormWindowState.Normal; Bounds = Screen.FromControl(this).Bounds;
+            if (Video.Visible) { Video.Bounds = new Rectangle(Point.Empty, ClientSize); mpv?.FitChild(); }
+        }
+        else
+        {
+            Bounds = normalBounds; WindowState = fullPrev;
+            if (Video.Visible && prevVideo.Width > 0) { Video.Bounds = prevVideo; mpv?.FitChild(); }
+        }
         Post(new JsonObject { ["t"] = "win", ["st"] = new JsonObject { ["max"] = WindowState == FormWindowState.Maximized, ["full"] = full } });
     }
 
@@ -242,7 +255,7 @@ public class MainForm : Form
     {
         base.OnResize(e);
         // vidéo agrandie tout de suite dans la même proportion que la fenêtre (la page donne ensuite la zone exacte)
-        if (Video.Visible && lastClient.Width > 0 && lastClient.Height > 0 && ClientSize.Width > 0 && ClientSize != lastClient)
+        if (Video.Visible && !(mpv?.Holding ?? false) && lastClient.Width > 0 && lastClient.Height > 0 && ClientSize.Width > 0 && ClientSize != lastClient)
         {
             double kx = (double)ClientSize.Width / lastClient.Width, ky = (double)ClientSize.Height / lastClient.Height; var v = Video.Bounds;
             Video.Bounds = new Rectangle((int)(v.X * kx), (int)(v.Y * ky), (int)Math.Ceiling(v.Width * kx), (int)Math.Ceiling(v.Height * ky));

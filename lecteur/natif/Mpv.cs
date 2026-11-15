@@ -114,9 +114,17 @@ public class Mpv
 
     // zone du lecteur donnée par la page (pixels CSS) → cadre vidéo (pixels de la fenêtre), débordant un peu sous les barres
     public void Rect(JsonObject r) { rect = r; if (f.InvokeRequired) f.BeginInvoke(Place); else Place(); }
+    long holdUntil;
+    public bool Holding => Environment.TickCount64 < holdUntil;
+    // la coque place elle-même la vidéo pendant ms millisecondes, puis reprend la position donnée par la page
+    public void Hold(int ms)
+    {
+        holdUntil = Environment.TickCount64 + ms;
+        var t = new System.Windows.Forms.Timer { Interval = ms + 30 }; t.Tick += (s, e) => { t.Stop(); t.Dispose(); Place(); }; t.Start();
+    }
     public void Place()
     {
-        if (f.IsDisposed) return;
+        if (f.IsDisposed || Holding) return;
         var r = rect; bool on = proc != null && r != null && !((bool?)r["hidden"] ?? false);
         if (!on) { if (f.Video.Visible) f.Video.Visible = false; return; }
         double k = f.Scale;
