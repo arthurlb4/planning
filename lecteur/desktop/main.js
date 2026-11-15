@@ -43,6 +43,14 @@ app.commandLine.appendSwitch('disable-features', 'BlockInsecurePrivateNetworkReq
 
 // Taille et position de la fenêtre gardées d'une fois sur l'autre (fichier dans le dossier de l'appli du profil Windows)
 const stateFile = () => path.join(app.getPath('userData'), 'fenetre.json');
+/* Lecteur intégré (essai) : la fenêtre de l'appli est transparente là où se trouve le lecteur, et mpv (même moteur que VLC)
+   affiche la vidéo juste sous elle ; la page et ses commandes restent par-dessus. Réglage lu au lancement (fenêtre créée
+   transparente ou non), changé depuis Paramètres › Lecture puis redémarrage. */
+const nativeFile = () => path.join(app.getPath('userData'), 'native.json');
+let NATIVE = false;
+try { NATIVE = !!JSON.parse(fs.readFileSync(nativeFile(), 'utf8')).on; } catch (e) {}
+ipcMain.on('native-get', e => { e.returnValue = NATIVE && process.platform === 'win32'; });
+ipcMain.on('native-set', (e, on) => { try { fs.writeFileSync(nativeFile(), JSON.stringify({ on: !!on })); } catch (er) {} app.relaunch(); app.exit(0); });
 function loadState() {
   try {
     const st = JSON.parse(fs.readFileSync(stateFile(), 'utf8')), b = st.bounds;
@@ -75,7 +83,8 @@ function createWindow() {
     width: 1400, height: 860, ...(st ? st.bounds : {}), minWidth: 360, minHeight: 500,
     // sans la barre de Windows : boutons réduire / agrandir / fermer dessinés par la page, en haut à droite
     frame: false,
-    show: false, backgroundColor: '#1c1c1e', title: 'Lecteur IPTV', autoHideMenuBar: true, icon: path.join(__dirname, 'icon.ico'),
+    ...(NATIVE && process.platform === 'win32' ? { transparent: true } : {}),
+    show: false, backgroundColor: NATIVE && process.platform === 'win32' ? '#00000000' : '#1c1c1e', title: 'Lecteur IPTV', autoHideMenuBar: true, icon: path.join(__dirname, 'icon.ico'),
     webPreferences: {
       webSecurity: false,                 // pas de blocage CORS : les serveurs IPTV n'autorisent pas les navigateurs
       allowRunningInsecureContent: true,  // flux en http depuis la page en https
@@ -169,13 +178,31 @@ function mpvGeo() {
   try { q = screen.dipToScreenRect(page, q); } catch (e) {}
   return q.width + 'x' + q.height + (q.x < 0 ? '-' : '+') + Math.abs(q.x) + (q.y < 0 ? '-' : '+') + Math.abs(q.y);
 }
+// position réelle à l'écran (pixels) de la zone du lecteur : { x, y, w, h } ou null
+function mpvScreenRect() {
+  const page = MPV.page, r = MPV.rect; if (!page || page.isDestroyed()) return null;
+  if (!r || r.hidden || r.w < 10 || r.h < 10 || page.isMinimized() || !page.isVisible()) return null;
+  const cb = page.getContentBounds(), z = page.webContents.getZoomFactor();
+  let q = { x: Math.round(cb.x + r.x * z), y: Math.round(cb.y + r.y * z), width: Math.round(r.w * z), height: Math.round(r.h * z) };
+  try { q = screen.dipToScreenRect(page, q); } catch (e) {}
+  return q;
+}
 function mpvBounds() {
+  if (MPV.under) {                                  // lecteur intégré : l'assistant place la fenêtre de mpv, juste sous l'appli
+    const q = mpvScreenRect();
+    if (!q) { if (!MPV.min) { MPV.min = true; mpvHelp('hide'); } return; }
+    const g = [q.x, q.y, q.width, q.height].join(' ');
+    if (MPV.min) { MPV.min = false; mpvHelp('show'); MPV.geo = ''; }
+    if (g !== MPV.geo) { MPV.geo = g; mpvHelp('place ' + g); }
+    return;
+  }
   if (!MPV.sock) return;
   const g = mpvGeo();
   if (!g) { if (!MPV.min) { MPV.min = true; mpvVis(false); } return; }
   if (MPV.min) { MPV.min = false; mpvVis(true); }
   if (g !== MPV.geo) { MPV.geo = g; mpvCmd(['set_property', 'geometry', g]); }
 }
+function mpvHelp(line) { const h = MPV.helper; if (h && MPV.ready) { try { h.stdin.write(line + '\n'); } catch (e) {} } else MPV.queue = line.startsWith('place') ? line : MPV.queue; }
 function mpvVis(show) {
   if (MPV.owned && MPV.helper) { try { MPV.helper.stdin.write(show ? 'show\n' : 'hide\n'); } catch (e) {} if (show) mpvCmd(['set_property', 'window-minimized', false]); }
   else mpvCmd(['set_property', 'window-minimized', !show]);
@@ -204,6 +231,56 @@ if ($h -eq [IntPtr]::Zero) { exit 1 }
 [Console]::Out.WriteLine('ok'); [Console]::Out.Flush()
 while ($null -ne ($l = [Console]::In.ReadLine())) { if ($l -eq 'hide') { [void][LecteurW]::ShowWindow($h, 0) } elseif ($l -eq 'show') { [void][LecteurW]::ShowWindow($h, 8) } }
 `;
+/* Lecteur intégré : fenêtre de mpv sans icône (fenêtre outil), placée et redimensionnée par l'assistant juste sous la fenêtre
+   de l'appli (jamais devant elle ni devant les autres programmes) ; l'appli garde le clavier et la souris. */
+const UNDER_PS = `Add-Type @"
+using System; using System.Runtime.InteropServices;
+public static class LecteurU {
+  public delegate bool EP(IntPtr h, IntPtr l);
+  [DllImport("user32.dll")] public static extern bool EnumWindows(EP f, IntPtr l);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint p);
+  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+  [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")] public static extern IntPtr GetWindowLongPtr(IntPtr h, int i);
+  [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] public static extern IntPtr SetWindowLongPtr(IntPtr h, int i, IntPtr v);
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);
+  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint f);
+  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+  public static IntPtr Find(uint pid) { IntPtr r = IntPtr.Zero; EnumWindows((h, l) => { uint p; GetWindowThreadProcessId(h, out p); if (p == pid && IsWindowVisible(h)) { r = h; return false; } return true; }, IntPtr.Zero); return r; }
+}
+"@
+$h = [IntPtr]::Zero; $page = [IntPtr][int64]$args[1]
+for ($i = 0; $i -lt 150 -and $h -eq [IntPtr]::Zero; $i++) { $h = [LecteurU]::Find([uint32]$args[0]); if ($h -eq [IntPtr]::Zero) { Start-Sleep -Milliseconds 100 } }
+if ($h -eq [IntPtr]::Zero) { exit 1 }
+[void][LecteurU]::ShowWindow($h, 0)
+$ex = [int64][LecteurU]::GetWindowLongPtr($h, -20); $ex = ($ex -bor 0x80 -bor 0x08000000) -band (-bnot 0x40000)
+[void][LecteurU]::SetWindowLongPtr($h, -20, [IntPtr]$ex)
+[void][LecteurU]::SetWindowPos($h, $page, 0, 0, 0, 0, 0x0013)
+[void][LecteurU]::ShowWindow($h, 4)
+[void][LecteurU]::SetForegroundWindow($page)
+[Console]::Out.WriteLine('ok'); [Console]::Out.Flush()
+while ($null -ne ($l = [Console]::In.ReadLine())) {
+  $a = $l.Split(' ')
+  if ($a[0] -eq 'place') { [void][LecteurU]::SetWindowPos($h, $page, [int]$a[1], [int]$a[2], [int]$a[3], [int]$a[4], 0x0010) }
+  elseif ($a[0] -eq 'below') { [void][LecteurU]::SetWindowPos($h, $page, 0, 0, 0, 0, 0x0013) }
+  elseif ($a[0] -eq 'hide') { [void][LecteurU]::ShowWindow($h, 0) }
+  elseif ($a[0] -eq 'show') { [void][LecteurU]::ShowWindow($h, 4); [void][LecteurU]::SetWindowPos($h, $page, 0, 0, 0, 0, 0x0013) }
+}
+`;
+function mpvUnder(proc, page) {
+  try {
+    const f = path.join(app.getPath('temp'), 'lecteur-mpv-under.ps1'); fs.writeFileSync(f, UNDER_PS);
+    const hb = page.getNativeWindowHandle(), ph = (hb.length >= 8 ? hb.readBigUInt64LE(0) : BigInt(hb.readUInt32LE(0))).toString();
+    const ps = spawn('powershell.exe', ['-NoProfile', '-NoLogo', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', f, String(proc.pid), ph], { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
+    MPV.helper = ps; MPV.ready = false;
+    ps.stdout.on('data', b => {
+      if (!/ok/.test(String(b)) || MPV.proc !== proc) return;
+      MPV.ready = true; MPV.geo = ''; MPV.min = false; mpvBounds();
+      if (!page.isDestroyed()) page.focus();
+    });
+    ps.on('exit', () => { if (MPV.helper === ps) { MPV.helper = null; MPV.ready = false; } });
+    ps.on('error', () => {});
+  } catch (e) {}
+}
 function mpvOwn(proc, page) {
   try {
     const f = path.join(app.getPath('temp'), 'lecteur-mpv-own.ps1'); fs.writeFileSync(f, OWN_PS);
@@ -224,7 +301,7 @@ function mpvStop() {
   const p = MPV.proc; MPV.proc = null;
   try { if (MPV.sock) MPV.sock.destroy(); } catch (e) {} MPV.sock = null;
   if (p) { try { p.kill(); } catch (e) {} }
-  const h = MPV.helper; MPV.helper = null; MPV.owned = false; if (h) { try { h.kill(); } catch (e) {} }
+  const h = MPV.helper; MPV.helper = null; MPV.owned = false; MPV.ready = false; if (h) { try { h.kill(); } catch (e) {} }
 }
 const mpvHooked = new WeakSet();
 ipcMain.on('mpv-stop', () => mpvStop());
@@ -233,29 +310,33 @@ ipcMain.on('mpv-cmd', (e, args) => { if (Array.isArray(args)) mpvCmd(args); });
 ipcMain.handle('mpv-play', async (e, o) => {
   const exe = mpvExe(); if (!exe) return { error: 'mpv absent' };
   const page = BrowserWindow.fromWebContents(e.sender); if (!page) return { error: 'fenêtre' };
-  mpvStop(); MPV.page = page; MPV.rect = o.rect || null; MPV.st = {}; MPV.geo = ''; MPV.min = false;
+  mpvStop(); MPV.page = page; MPV.rect = o.rect || null; MPV.st = {}; MPV.geo = ''; MPV.min = false; MPV.under = !!(NATIVE && o.under);
   if (!mpvHooked.has(page)) {
     mpvHooked.add(page);
     const follow = () => mpvBounds();
     ['move', 'resize', 'maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen', 'restore', 'minimize', 'show', 'hide'].forEach(ev => page.on(ev, follow));
     // au premier plan avec l'appli, mais pas par-dessus les autres programmes quand on change de fenêtre
     // (sans rattachement seulement) au premier plan avec l'appli, pas par-dessus les autres programmes
-    page.on('focus', () => { if (!MPV.owned) mpvCmd(['set_property', 'ontop', true]); });
-    page.on('blur', () => { if (!MPV.owned) mpvCmd(['set_property', 'ontop', false]); });
+    page.on('focus', () => { if (MPV.under) mpvHelp('below'); else if (!MPV.owned) mpvCmd(['set_property', 'ontop', true]); });
+    page.on('blur', () => { if (!MPV.under && !MPV.owned) mpvCmd(['set_property', 'ontop', false]); });
   }
-  const g0 = mpvGeo();
+  const g0 = MPV.under ? (q => q ? q.width + 'x' + q.height + (q.x < 0 ? '-' : '+') + Math.abs(q.x) + (q.y < 0 ? '-' : '+') + Math.abs(q.y) : '')(mpvScreenRect()) : mpvGeo();
   const pipe = '\\\\.\\pipe\\lecteur-mpv-' + process.pid + '-' + Date.now();
   const conf = path.join(app.getPath('temp'), 'lecteur-mpv-input.conf');
   try { fs.writeFileSync(conf, ['ESC script-message lecteur-back', 'BS script-message lecteur-back', 'q script-message lecteur-back', 'f script-message lecteur-fs', 'MBTN_LEFT_DBL script-message lecteur-fs'].join('\n')); } catch (er) {}
   const lang = { fr: 'fre,fra,fr,french', en: 'eng,en' }, al = lang[o.alang] || (o.alang ? o.alang : 'fre,fra,fr');
-  const args = [o.url, '--no-border', '--ontop', '--force-window=yes', '--auto-window-resize=no', '--keepaspect-window=no', '--show-in-taskbar=no', '--snap-window=no', '--title=Lecteur IPTV', g0 ? '--geometry=' + g0 : '--window-minimized=yes', '--input-ipc-server=' + pipe, '--input-conf=' + conf, '--force-media-title=' + String(o.title || '').slice(0, 200),
+  // lecteur intégré : pas de commandes de mpv (celles de la page sont par-dessus), pas de clavier ni de souris
+  const under = MPV.under ? ['--osc=no', '--osd-level=0', '--input-default-bindings=no', '--input-vo-keyboard=no', '--no-input-cursor', '--cursor-autohide=no', '--background=color', '--background-color=#000000']
+    .concat((Array.isArray(o.subArgs) ? o.subArgs : []).filter(a => /^--sub-[a-z-]+=[^\n\r]{0,80}$/.test(a))) : [];
+  const args = [o.url, '--no-border', ...(MPV.under ? [] : ['--ontop']), '--force-window=yes', '--auto-window-resize=no', '--keepaspect-window=no', '--show-in-taskbar=no', '--snap-window=no', '--title=Lecteur IPTV', g0 ? '--geometry=' + g0 : '--window-minimized=yes', '--input-ipc-server=' + pipe, '--input-conf=' + conf, '--force-media-title=' + String(o.title || '').slice(0, 200),
     '--hwdec=auto-safe', '--keep-open=yes', '--osc=yes', '--idle=no', '--cursor-autohide=1500', '--volume=' + Math.round(Math.max(0, Math.min(1, +o.vol || 0)) * 100),
     '--alang=' + al, o.slang && o.slang !== 'off' ? '--slang=' + (lang[o.slang] || o.slang) : '--sid=no', '--sub-auto=fuzzy', '--msg-level=all=no', '--no-terminal'];
   if (o.start > 1) args.push('--start=' + Math.floor(o.start));
+  if (MPV.under) { const i = args.indexOf('--osc=yes'); if (i >= 0) args.splice(i, 1); const j = args.indexOf('--cursor-autohide=1500'); if (j >= 0) args.splice(j, 1); args.push(...under); }
   let proc;
   try { proc = spawn(exe, args, { windowsHide: true, stdio: 'ignore' }); } catch (er) { return { error: String(er.message || er) }; }
   MPV.proc = proc;
-  mpvOwn(proc, page);
+  if (MPV.under) mpvUnder(proc, page); else mpvOwn(proc, page);
   proc.on('exit', () => { if (MPV.proc === proc) { MPV.proc = null; mpvSend({ exit: true, eof: !!MPV.st.eof, pos: MPV.st.pos || 0 }); } });
   // canal de commande : position, durée, pause, fin, et messages des raccourcis
   for (let k = 0; k < 40 && MPV.proc === proc && !MPV.sock; k++) {
@@ -264,13 +345,15 @@ ipcMain.handle('mpv-play', async (e, o) => {
   }
   if (!MPV.sock) { if (MPV.proc === proc) mpvStop(); return { error: 'mpv ne répond pas' }; }
   const sock = MPV.sock;
-  ['time-pos', 'duration', 'pause', 'eof-reached', 'aid', 'sid'].forEach((pr, i) => mpvCmd(['observe_property', i + 1, pr]));
+  ['time-pos', 'duration', 'pause', 'eof-reached', 'aid', 'sid', 'track-list', 'chapter-list', 'volume', 'mute', 'demuxer-cache-time'].forEach((pr, i) => mpvCmd(['observe_property', i + 1, pr]));
   sock.on('data', b => {
     MPV.buf += b; let n;
     while ((n = MPV.buf.indexOf('\n')) >= 0) {
       const line = MPV.buf.slice(0, n); MPV.buf = MPV.buf.slice(n + 1); let m; try { m = JSON.parse(line); } catch (er) { continue; }
       if (m.event === 'property-change') {
-        const key = { 'time-pos': 'pos', duration: 'dur', pause: 'paused', 'eof-reached': 'eof' }[m.name]; if (!key) continue;
+        if (m.name === 'track-list') { mpvSend({ tracks: (m.data || []).map(t => ({ id: t.id, type: t.type, lang: t.lang || '', title: t.title || '', codec: t.codec || '', ch: t['demux-channel-count'] || 0, sel: !!t.selected, forced: !!t.forced, ext: !!t.external, w: t['demux-w'] || 0, h: t['demux-h'] || 0 })) }); continue; }
+        if (m.name === 'chapter-list') { mpvSend({ chapters: (m.data || []).map(c => ({ start: c.time, title: c.title || '' })) }); continue; }
+        const key = { 'time-pos': 'pos', duration: 'dur', pause: 'paused', 'eof-reached': 'eof', aid: 'aid', sid: 'sid', volume: 'vol', mute: 'mute', 'demuxer-cache-time': 'cache' }[m.name]; if (!key) continue;
         MPV.st[key] = m.data;
         if (key !== 'pos' || Date.now() - MPV.last > 1000) { MPV.last = Date.now(); mpvSend(Object.assign({}, MPV.st)); }
         if (key === 'eof' && m.data) mpvSend({ eof: true, pos: MPV.st.pos || 0, dur: MPV.st.dur || 0 });
@@ -281,7 +364,7 @@ ipcMain.handle('mpv-play', async (e, o) => {
     }
   });
   sock.on('close', () => { if (MPV.sock === sock) MPV.sock = null; });
-  MPV.min = !g0; MPV.geo = g0; mpvBounds();
+  if (!MPV.under) { MPV.min = !g0; MPV.geo = g0; mpvBounds(); }
   if (MPV.owned) mpvCmd(['set_property', 'ontop', false]);
   return { ok: true };
 });
@@ -320,10 +403,18 @@ ipcMain.on('upd-state', e => { e.returnValue = updState; });
 ipcMain.on('win', (e, act) => {
   const w = BrowserWindow.fromWebContents(e.sender); if (!w) return;
   if (act === 'min') w.minimize();
-  else if (act === 'max') { if (w.isMaximized()) w.unmaximize(); else w.maximize(); }
+  else if (act === 'max') {
+    if (w._fakeMax) { w.setBounds(w._fakeMax); w._fakeMax = null; w.webContents.send('win-state', { max: false, full: w.isFullScreen() }); }
+    else if (w.isMaximized()) w.unmaximize();
+    else {
+      w.maximize();
+      // fenêtre transparente (lecteur intégré) : Windows ne l'agrandit pas toujours ; elle prend alors toute la zone de travail
+      setTimeout(() => { if (!w.isDestroyed() && !w.isMaximized()) { w._fakeMax = w.getBounds(); w.setBounds(screen.getDisplayMatching(w.getBounds()).workArea); w.webContents.send('win-state', { max: true, full: w.isFullScreen() }); } }, 150);
+    }
+  }
   else if (act === 'close') w.close();
 });
-ipcMain.on('win-max', e => { const w = BrowserWindow.fromWebContents(e.sender); e.returnValue = !!(w && w.isMaximized()); });
+ipcMain.on('win-max', e => { const w = BrowserWindow.fromWebContents(e.sender); e.returnValue = !!(w && (w.isMaximized() || w._fakeMax)); });
 
 app.whenReady().then(async () => {
   try { remuxBase = 'http://127.0.0.1:' + await startRemux(ffmpegPath(), findVlc); } catch (e) {}

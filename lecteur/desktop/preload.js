@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('desktop', Object.assign({}, base, {
   checkUpdate: () => ipcRenderer.send('upd-check'),
   openVlc: (url, name) => ipcRenderer.invoke('open-vlc', url, name),
   ytLogin: () => ipcRenderer.send('yt-login'),
+  native: ipcRenderer.sendSync('native-get'), setNative: on => ipcRenderer.send('native-set', !!on),
   vpn: pat => ipcRenderer.sendSync('vpn-state', pat || ''),
   mpv: ipcRenderer.sendSync('mpv-avail') ? {
     play: o => ipcRenderer.invoke('mpv-play', o), stop: () => ipcRenderer.send('mpv-stop'), rect: r => ipcRenderer.send('mpv-rect', r),

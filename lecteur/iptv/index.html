@@ -20,6 +20,12 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--bg:#161615;--bg0:#191918;--bg2:#222221;--bg3:#2c2b29;--bg4:#343331;--text:#f3f2ef;--text2:#d8d6d2;--text3:#a9a7a1;--blue:#62aadc;--green:#6a9878;--red:#d9715f;--gold:#e2b84f;--border:rgba(255,250,242,.11);--font:-apple-system,BlinkMacSystemFont,'SF Pro Text','Inter','Segoe UI',sans-serif;--row:60px}
+/* lecteur intégré : fond de la page partout sauf sur la zone du lecteur, où la vidéo de mpv passe (fond presque transparent,
+   pour que la souris reste sur la page) */
+html:has(body.nat),body.nat{background:transparent}
+html:has(body.nat){color-scheme:light}body.nat{color-scheme:dark}   /* sinon le navigateur peint un fond sombre sous la page */
+body.nat::before{content:'';position:fixed;inset:0;background:var(--bg);clip-path:var(--hole);z-index:-1;pointer-events:none}
+body.nat #player{background:transparent}body.nat #screen{background:rgba(0,0,0,.01)}body.nat video{visibility:hidden}
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font);font-size:15px}
 body{display:flex;flex-direction:column;height:100dvh;overflow:hidden;-webkit-tap-highlight-color:transparent}
 button,input,textarea,select{font:inherit;color:inherit}
@@ -2455,7 +2461,7 @@ function freezeFrame() {
 function unfreeze() { const cv = $('#vfreeze'); if (cv) cv.hidden = true; }
 function stopEngines() {
   attempt = null;
-  if (S.engine === 'mpv' && window.desktop && window.desktop.mpv) { window.desktop.mpv.stop(); document.body.classList.remove('mpv'); }
+  if (S.engine === 'mpv' && window.desktop && window.desktop.mpv) { window.desktop.mpv.stop(); document.body.classList.remove('mpv', 'nat'); }
   document.body.classList.remove('remux');
   if (hls) { try { hls.destroy(); } catch (e) {} hls = null; }
   if (mts) { try { mts.pause(); mts.unload(); mts.detachMediaElement(); mts.destroy(); } catch (e) {} mts = null; }
@@ -2695,7 +2701,7 @@ async function play(c, alts) {
 
 
   // Appli Windows avec mpv : films, épisodes et torrents lus par mpv (tout format, sans conversion) ; ancien lecteur en secours
-  if (c.vod && window.desktop && window.desktop.mpv && LS.get('pref.mpvwin', false) === true && S.noMpv !== c.url) return playMpv(c, t);
+  if (c.vod && window.desktop && window.desktop.mpv && (NAT || LS.get('pref.mpvwin', false) === true) && S.noMpv !== c.url) return playMpv(c, t);
   // Appli Windows : film MKV (ou autre format que Chromium ne lit pas) converti à la volée par ffmpeg
   if (c.vod && window.desktop && window.desktop.remux && /\.(mkv|avi|wmv|flv|mov|m2ts|vob|divx|xvid)$/i.test(c.url.split('?')[0])) return playRemux(c, t);
   // Appli Windows : chaîne dont le son (Dolby) n'est pas lu par Chromium, repérée avant → son converti tout de suite
@@ -5070,28 +5076,52 @@ const curPos = () => S.engine === 'mpv' ? (S.mpvSt.pos || 0) : S.remux && S.engi
    une page, une fiche ou les Paramètres passent devant. Position retenue pour la reprise et l'historique, épisode suivant
    enchaîné à la fin, retour à la fiche par Échap. */
 S.mpvSt = {};
+/* Lecteur intégré (appli Windows, réglage « Lecteur intégré ») : la fenêtre de l'appli est transparente sur la zone du
+   lecteur et mpv affiche la vidéo juste dessous ; la page (commandes, menus, fiches) reste par-dessus. Le fond de la page
+   est dessiné partout sauf dans ce « trou ». */
+const NAT = !!(window.desktop && window.desktop.native && window.desktop.mpv);
+function natHole(r) {
+  const on = NAT && S.engine === 'mpv' && r && !r.hidden;
+  document.body.classList.toggle('nat', on);
+  if (on) { const x1 = Math.round(r.x), y1 = Math.round(r.y), x2 = Math.round(r.x + r.w), y2 = Math.round(r.y + r.h);
+    document.body.style.setProperty('--hole', `polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ${x1}px ${y1}px, ${x2}px ${y1}px, ${x2}px ${y2}px, ${x1}px ${y2}px, ${x1}px ${y1}px)`); }
+}
+// apparence des sous-titres (Paramètres › Lecture) traduite en réglages de mpv
+function mpvSubArgs() {
+  const p = subPref(), sz = [0.8, 1, 1.25, 1.55][p.size] || 1, col = (SUBST.color[p.color] || SUBST.color[0])[1].replace('#', '').toUpperCase();
+  const font = ['Segoe UI', 'Arial', 'Verdana', 'Trebuchet MS', 'Georgia', 'Courier New'][p.font] || 'Segoe UI';
+  const a = ['--sub-scale=' + sz, '--sub-color=#' + col, '--sub-font=' + font];
+  const bg = [0, 0x73, 0xcc][p.bg] || 0;
+  if (bg) a.push('--sub-border-style=background-box', '--sub-back-color=#' + bg.toString(16).padStart(2, '0').toUpperCase() + '000000');
+  a.push(...([['--sub-border-size=0', '--sub-shadow-offset=0'], ['--sub-border-size=0', '--sub-shadow-offset=2'], ['--sub-border-size=2', '--sub-shadow-offset=0'], ['--sub-border-size=4', '--sub-shadow-offset=1']][p.edge] || []));
+  return a;
+}
 async function playMpv(c, t) {
   const M = window.desktop.mpv;
   stopEngines(); S.engine = 'mpv'; S.mpvSt = {}; S.playUrl = c.url; document.body.classList.add('mpv');
   const pos = LS.get(posK(c.url), 0), start = pos > 60 ? pos : 0;
   setStatus('load', '<span class="hint">Ouverture dans le lecteur intégré…</span>');
-  const r = await M.play({ url: c.url, title: c.name, start, vol: video.muted ? 0 : video.volume, alang: LS.get('pref.audio', 'fr'), slang: LS.get('pref.sub', 'off'), rect: mpvRect() }).catch(e => ({ error: e.message }));
+  const r = await M.play({ url: c.url, title: c.name, start, vol: video.muted ? 0 : video.volume, alang: LS.get('pref.audio', 'fr'), slang: LS.get('pref.sub', 'off'), rect: mpvRect(), under: NAT, subArgs: NAT ? mpvSubArgs() : [] }).catch(e => ({ error: e.message }));
   if (t !== token) return;
-  if (!r || r.error) { document.body.classList.remove('mpv'); S.engine = ''; S.noMpv = c.url; toast('Lecteur intégré indisponible (' + ((r && r.error) || '?') + ') : ancien lecteur'); return play(c); }
+  if (!r || r.error) { document.body.classList.remove('mpv', 'nat'); S.engine = ''; S.noMpv = c.url; toast('Lecteur intégré indisponible (' + ((r && r.error) || '?') + ') : ancien lecteur'); return play(c); }
   setStatus(null); if (start > 60) toast('Reprise à ' + fmtDur(start));
-  mpvSync();
+  mpvSync(); if (NAT) vbarUpdate();
 }
 // zone du lecteur, ou masquée si une page, une fiche, un menu ou les Paramètres sont devant
 function mpvRect() {
   const b = document.body.classList, el = $('#screen');
+  // lecteur intégré : la page passe par-dessus la vidéo (menus, fiches) ; masquée seulement hors lecture
+  if (NAT) { if (!el || !b.contains('playing') || (b.contains('homeview') && !b.contains('mini'))) return { hidden: true }; const r = el.getBoundingClientRect(); return r.width < 10 ? { hidden: true } : { x: r.left, y: r.top, w: r.width, h: r.height }; }
   if (!el || b.contains('homeview') || document.querySelector('.modal.open') || !b.contains('playing')) return { hidden: true };
   const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height };
 }
 let mpvRT = 0;
-function mpvSync() { if (S.engine !== 'mpv' || !window.desktop.mpv) return; cancelAnimationFrame(mpvRT); mpvRT = requestAnimationFrame(() => window.desktop.mpv.rect(mpvRect())); }
+function mpvSync() { if (S.engine !== 'mpv' || !window.desktop.mpv) { natHole(null); return; } cancelAnimationFrame(mpvRT); mpvRT = requestAnimationFrame(() => { const r = mpvRect(); natHole(r); window.desktop.mpv.rect(r); }); }
+// animations (mini-lecteur, panneaux) : la vidéo suit la zone du lecteur à chaque image pendant 600 ms après un changement
+function mpvFollow() { if (!NAT || S.engine !== 'mpv') return; const t0 = performance.now(); const f = () => { mpvSync(); if (performance.now() - t0 < 600) requestAnimationFrame(f); }; requestAnimationFrame(f); }
 if (window.desktop && window.desktop.mpv) {
   window.addEventListener('resize', mpvSync);
-  new MutationObserver(mpvSync).observe(document.body, { attributes: true, attributeFilter: ['class'], subtree: false });
+  new MutationObserver(() => { mpvSync(); mpvFollow(); }).observe(document.body, { attributes: true, attributeFilter: ['class'], subtree: false });
   document.querySelectorAll('.modal').forEach(m => new MutationObserver(mpvSync).observe(m, { attributes: true, attributeFilter: ['class'] }));
   if (window.ResizeObserver && $('#screen')) new ResizeObserver(mpvSync).observe($('#screen'));
   window.desktop.mpv.on(st => {
@@ -5099,6 +5129,7 @@ if (window.desktop && window.desktop.mpv) {
     Object.assign(S.mpvSt, st);
     const c = S.current; if (!c) return;
     if (st.back) { mpvBack(); return; }
+    if (NAT) { if (st.tracks) renderTrackMenu(); vodTick(); if (!st.tracks && !st.chapters) vbarUpdate(); }
     if (st.eof || st.exit) {
       if (S.mpvSt.pos > 30) { LS.set(posK(c.url), st.eof ? 0 : Math.floor(S.mpvSt.pos)); try { histTrack(c, !!st.eof); } catch (e) {} }
       if (st.eof && c.next && c.it) { nextEpGo(); return; }                        // épisode suivant
@@ -5253,6 +5284,15 @@ const atLive = w => !w || video.currentTime >= liveTarget(w) - 6;
 function vbarUpdate() {
   if (!S.current) return;
   epUi(); srcUi();
+  if (S.engine === 'mpv' && NAT) {
+    const M = S.mpvSt, rg = $('#vbRange'), dur = M.dur || 0, cur = M.pos || 0;
+    $('#vbCur').textContent = fmtT(cur); $('#vbDur').textContent = dur ? fmtT(dur) : '--:--';
+    rg.min = 0; rg.max = Math.max(1, Math.floor(dur || cur + 3600)); if (!rg.matches(':active')) rg.value = Math.floor(cur);
+    [rg, $('#vbVol')].forEach(r => { const a = +r.min || 0, b = +r.max || 1; r.style.setProperty('--p', Math.max(0, Math.min(100, ((+r.value - a) / (b - a || 1)) * 100)) + '%'); });
+    $('#vbPlay').classList.toggle('on', !M.paused); $('#vbMute').classList.toggle('off', video.muted || !video.volume);
+    if (!$('#vbVol').matches(':active')) $('#vbVol').value = video.muted ? 0 : video.volume;
+    return;
+  }
   const R = S.remux, rem = S.engine === 'remux' && R, live = !S.current.vod;
   const rg = $('#vbRange'), drag = rg.matches(':active');
   if (rem) {
@@ -5277,6 +5317,7 @@ function vbarUpdate() {
 setInterval(vbarUpdate, 500);
 ['play', 'pause', 'volumechange', 'seeked', 'loadedmetadata'].forEach(ev => video.addEventListener(ev, vbarUpdate));
 function seekBy(d) {
+  if (mpvOn()) { mpvC(['seek', d, 'relative']); return; }
   if (S.engine === 'remux') return remuxStart(curPos() + d);
   if (S.current && !S.current.vod) {
     const w = liveWin(); if (!w) { toast('Pas de retour possible sur ce direct'); return; }
@@ -5289,8 +5330,8 @@ function seekBy(d) {
 }
 $('#vbBack').onclick = () => seekBy(-10);
 $('#vbFwd').onclick = () => seekBy(10);
-$('#vbRange').addEventListener('input', e => { if (S.engine !== 'remux') video.currentTime = +e.target.value; });
-$('#vbRange').addEventListener('change', e => { if (S.engine === 'remux') remuxStart(+e.target.value); });
+$('#vbRange').addEventListener('input', e => { if (S.engine !== 'remux' && !mpvOn()) video.currentTime = +e.target.value; });
+$('#vbRange').addEventListener('change', e => { if (S.engine === 'remux') remuxStart(+e.target.value); else if (mpvOn()) mpvC(['seek', +e.target.value, 'absolute']); });
 /* Survol de la barre de lecture : moment visé, et pour un torrent (appli Windows) l'image à cet endroit quand ce passage
    est déjà téléchargé. Pas d'image pour l'abonnement IPTV : il faudrait une seconde connexion au serveur, que la plupart
    des abonnements refusent (le film en cours serait coupé). */
@@ -5320,12 +5361,15 @@ $('#vbRange').addEventListener('pointermove', e => {
 });
 $('#vbRange').addEventListener('pointerleave', vthHide);
 $('#vbLive').onclick = () => { const w = liveWin(); if (w && !atLive(w)) video.currentTime = liveTarget(w); if (video.paused) video.play().catch(() => {}); vbarUpdate(); };
-$('#vbPlay').onclick = () => { video.paused ? video.play() : video.pause(); vbarUpdate(); };
-$('#vbMute').onclick = () => { if (video.muted || !video.volume) { video.muted = false; if (!video.volume) video.volume = 0.5; } else video.muted = true; vbarUpdate(); };
+const mpvOn = () => S.engine === 'mpv' && NAT;
+const mpvC = a => window.desktop.mpv.cmd(a);
+function mpvVol() { if (mpvOn()) { mpvC(['set_property', 'volume', Math.round((video.muted ? 0 : video.volume) * 100)]); } }
+$('#vbPlay').onclick = () => { if (mpvOn()) { mpvC(['cycle', 'pause']); return; } video.paused ? video.play() : video.pause(); vbarUpdate(); };
+$('#vbMute').onclick = () => { if (video.muted || !video.volume) { video.muted = false; if (!video.volume) video.volume = 0.5; } else video.muted = true; mpvVol(); vbarUpdate(); };
 $('#vbRange').addEventListener('input', vbarFill);
 function vbarFill() { [$('#vbRange'), $('#vbVol')].forEach(r => { const a = +r.min || 0, b = +r.max || 1; r.style.setProperty('--p', Math.max(0, Math.min(100, ((+r.value - a) / (b - a || 1)) * 100)) + '%'); }); }
 $('#vbVol').addEventListener('input', vbarFill);
-$('#vbVol').addEventListener('input', e => { video.volume = +e.target.value; video.muted = !video.volume; LS.set('dev.vol', video.volume); document.querySelectorAll('#vodTrailer iframe, .hovc iframe, .poster .xpv iframe').forEach(ytVol); });
+$('#vbVol').addEventListener('input', e => { video.volume = +e.target.value; video.muted = !video.volume; LS.set('dev.vol', video.volume); mpvVol(); document.querySelectorAll('#vodTrailer iframe, .hovc iframe, .poster .xpv iframe').forEach(ytVol); });
 $('#vbFull').onclick = () => setSolo(!isFull());
 $('#vbWin').onclick = () => isWin() ? setSolo(false) : setSolo(true, true);
 try { const v0 = LS.get('dev.vol', 1); if (v0 >= 0 && v0 <= 1) video.volume = v0; } catch (e) {}
@@ -5353,6 +5397,14 @@ function trackLabel(t, n) {
 }
 function trackLists() {
   const A = [], T = [];
+  if (mpvOn()) {
+    (S.mpvSt.tracks || []).forEach(t => {
+      if (t.type === 'audio') A.push({ i: t.id, lang: t.lang, name: t.title || (t.codec || '').toUpperCase(), ch: t.ch ? String(t.ch) : '', on: t.sel });
+      else if (t.type === 'sub') T.push({ i: 'm' + t.id, lang: t.lang, name: t.title || (t.forced ? 'Forcés' : ''), on: t.sel });
+    });
+    if (S.extCues) T.push({ i: 'f', lang: '', name: 'Fichier : ' + S.extName, on: false });
+    return { A, T };
+  }
   if (S.engine === 'remux' && S.remux && S.remux.info) (S.remux.info.audio || []).forEach(t => A.push({ i: t.i, lang: t.lang, name: t.title || t.codec.toUpperCase(), ch: /5\.1/.test(t.ch) ? '6' : /stereo/.test(t.ch) ? '2' : '', on: t.i === S.remux.a }));
   else if (S.engine === 'hls' && hls && hls.audioTracks && hls.audioTracks.length) hls.audioTracks.forEach((t, i) => A.push({ i, lang: t.lang, name: t.name, ch: t.attrs && t.attrs.CHANNELS, on: hls.audioTrack === i }));
   else if (video.audioTracks && video.audioTracks.length) for (let i = 0; i < video.audioTracks.length; i++) { const t = video.audioTracks[i]; A.push({ i, lang: t.language, name: t.label, on: t.enabled }); }
@@ -5362,6 +5414,7 @@ function trackLists() {
   return { A, T };
 }
 function setAudio(i, remember) {
+  if (mpvOn()) { const t = (S.mpvSt.tracks || []).find(x => x.type === 'audio' && x.id === i); mpvC(['set_property', 'aid', i]); if (remember && t) LS.set('pref.audio', lang2(t.lang) || t.title || ''); setTimeout(renderTrackMenu, 300); return; }
   const { A } = trackLists(), t = A.find(x => x.i === i); if (!t) return;
   if (S.engine === 'remux') { if (S.remux.a !== i) { S.remux.a = i; remuxStart(curPos()); } }
   else if (S.engine === 'hls' && hls && hls.audioTracks && hls.audioTracks.length) hls.audioTrack = i;
@@ -5370,6 +5423,12 @@ function setAudio(i, remember) {
   renderTrackMenu();
 }
 function setSub(i, remember) {
+  if (mpvOn() && i !== 'f') {
+    const id = typeof i === 'string' && i[0] === 'm' ? +i.slice(1) : -1, t = (S.mpvSt.tracks || []).find(x => x.type === 'sub' && x.id === id);
+    mpvC(['set_property', 'sid', id >= 0 ? id : 'no']);
+    if (remember) { LS.set('pref.sub', t ? (lang2(t.lang) || t.title || 'on') : 'off'); if (t) LS.set('pref.sublast', { lang: lang2(t.lang) || '', name: t.title || '', i: String(i) }); }
+    setTimeout(renderTrackMenu, 300); return;
+  }
   const { T } = trackLists(), t = T.find(x => x.i === i);
   for (let j = 0; j < video.textTracks.length; j++) { const tt = video.textTracks[j]; if (tt.kind === 'metadata' || tt.kind === 'chapters' || /^__/.test(tt.label)) continue; tt.mode = j === i ? 'showing' : 'disabled'; }
   subT('f').mode = i === 'f' ? 'showing' : 'disabled';
@@ -5406,7 +5465,7 @@ function renderTrackMenu() {
     h += `<div class="no subofs">Décalage du son <button data-adofs="-100">−0,1 s</button><b>${ad > 0 ? '+' : ''}${(ad / 1000).toFixed(1).replace('.', ',')} s</b><button data-adofs="100">+0,1 s</button></div><div class="no" style="font-size:12px">+ : son plus tard (il arrive avant les lèvres) · − : son plus tôt · touches J / K</div>`; }
   // Choix du lecteur vidéo : utile quand le son ou l'image ne passent pas avec l'un des deux
   const eng = LS.get('dev.engine', 'tv');
-  h += `<h4>Lecteur vidéo</h4><button data-eng="tv">${ck(eng !== 'js')}${window.PREFER_NATIVE ? 'Lecteur de la télé (4K, Dolby)' : 'Automatique'}</button><button data-eng="js">${ck(eng === 'js')}Lecteur web (hls.js / mpegts.js)</button>`;
+  if (!mpvOn()) h += `<h4>Lecteur vidéo</h4><button data-eng="tv">${ck(eng !== 'js')}${window.PREFER_NATIVE ? 'Lecteur de la télé (4K, Dolby)' : 'Automatique'}</button><button data-eng="js">${ck(eng === 'js')}Lecteur web (hls.js / mpegts.js)</button>`;
   h += '<h4>Sous-titres</h4>' + `<button data-sub="-1">${ck(!T.some(t => t.on))}Désactivés</button>` + (T.length ? T.map((t, n) => `<button data-sub="${t.i}">${ck(t.on)}${trackLabel(t, n + 1)}</button>`).join('') : '<div class="no">Aucun sous-titre fourni</div>')
     + (S.current && S.current.vod && S.current.it ? `<button data-ost><span class="ck">⌕</span>${S.ost && S.ost.k === itemKey(S.current.it) + (S.current.ep ? 'e' + S.current.ep.s + 'x' + S.current.ep.n : '') && S.extName === 'OpenSubtitles' ? 'Autres sous-titres français (OpenSubtitles)' : 'Chercher des sous-titres français (OpenSubtitles)'}</button>` : '')
     + '<button data-subfile><span class="ck">＋</span>Ajouter un fichier de sous-titres (.srt, .vtt)…</button>'
@@ -5558,6 +5617,14 @@ video.addEventListener('click', e => {
   clearTimeout(clickT); clickT = setTimeout(() => { video.paused ? video.play() : video.pause(); }, 220);
 });
 video.addEventListener('dblclick', () => clearTimeout(clickT));
+$('#screen').addEventListener('click', e => {
+  if (!mpvOn() || e.target !== $('#screen') && e.target !== video) return;
+  if (document.body.classList.contains('mini')) { setHomeView(false); return; }
+  const menus = ['#trackMenu', '#qualMenu', '#epMenu', '#srcMenu'].map(q => $(q)).filter(m => m && !m.hidden);
+  if (menus.length) { menus.forEach(m => { m.hidden = true; }); return; }
+  clearTimeout(clickT); clickT = setTimeout(() => mpvC(['cycle', 'pause']), 220);
+});
+$('#screen').addEventListener('dblclick', e => { if (!mpvOn() || e.target !== $('#screen') && e.target !== video) return; clearTimeout(clickT); setSolo(!document.body.classList.contains('solo')); });
 
 /* ---------- Statistiques du match en cours : ESPN (site.api.espn.com, données publiques, en anglais). Le match est repéré
    d'après l'agenda (guide TV) ou le programme de la chaîne ; les noms français sont traduits pour retrouver les équipes. ---------- */
@@ -5918,14 +5985,16 @@ function nextEpEnd() { const c = S.current; if (c && c.next && NXT.url !== c.url
    « Générique », « Intro », « Opening »…) ; sinon l'épisode suivant est proposé 40 s avant la fin */
 const CH_END = /\b(end ?)?(credits?|cr[ée]dits?|g[ée]n[ée]rique(s)?( de fin)?|outro|ending|fin)\b/i, CH_INTRO = /\b(intro|opening|ouverture|g[ée]n[ée]rique( de d[ée]but)?|op)\b/i;
 function chapMarks() {
-  const R = S.remux, ch = S.engine === 'remux' && R && R.info && R.info.chapters || [], dur = (R && R.info && R.info.duration) || 0;
+  const R = S.remux, mp = S.engine === 'mpv', ch = mp ? S.mpvSt.chapters || [] : S.engine === 'remux' && R && R.info && R.info.chapters || [], dur = mp ? S.mpvSt.dur || 0 : (R && R.info && R.info.duration) || 0;
+  if (mp) ch.forEach((c, k) => { if (c.end == null) c.end = (ch[k + 1] && ch[k + 1].start) || dur; });
   if (!ch.length || !dur) return {};
   const end = ch.find(x => x.start > dur * 0.6 && CH_END.test(x.title || '')), intro = ch.find(x => x.start < dur * 0.3 && x.end - x.start < 240 && CH_INTRO.test(x.title || '') && !CH_END.test(x.title || '') || x.start < dur * 0.3 && x.end - x.start < 240 && /^(intro|opening|générique|generique)$/i.test(x.title || ''));
   return { end: end ? end.start : 0, intro: intro ? [intro.start, intro.end] : null };
 }
-video.addEventListener('timeupdate', () => {
+video.addEventListener('timeupdate', () => vodTick());
+function vodTick() {
   const c = S.current; if (!c || !c.vod) return;
-  const dur = (S.engine === 'remux' && S.remux && S.remux.info && S.remux.info.duration) || (isFinite(video.duration) ? video.duration : 0), pos = curPos(), M = chapMarks();
+  const dur = S.engine === 'mpv' ? S.mpvSt.dur || 0 : (S.engine === 'remux' && S.remux && S.remux.info && S.remux.info.duration) || (isFinite(video.duration) ? video.duration : 0), pos = curPos(), M = chapMarks();
   // Passer l'intro
   let sk = $('#skipIntro');
   const inIntro = M.intro && pos >= M.intro[0] && pos < M.intro[1] - 2;
@@ -5933,7 +6002,7 @@ video.addEventListener('timeupdate', () => {
   else if (!inIntro && sk) sk.remove();
   if (!c.next || $('#nextBox') || NXT.url === c.url) return;
   if (M.end ? pos >= M.end && dur - pos > 1 : dur > 300 && dur - pos < 40 && dur - pos > 1) nextEpBox(false);
-});
+}
 // Bandes-annonces en boucle sans l'écran de fin de YouTube : on écoute leur état et on repart du début à la fin
 window.addEventListener('message', e => {
   if (!/youtube(-nocookie)?\.com$/.test((() => { try { return new URL(e.origin).hostname; } catch (er) { return ''; } })())) return;
@@ -6139,9 +6208,9 @@ document.addEventListener('keydown', e => {
   else if ((e.key === 'c' || e.key === 'C') && S.current) toggleSubs();
   else if ((e.key === 'k' || e.key === 'K') && S.engine === 'remux') audioShift(100);
   else if ((e.key === 'j' || e.key === 'J') && S.engine === 'remux') audioShift(-100);
-  else if (e.key === 'm' || e.key === 'M') video.muted = !video.muted;
+  else if (e.key === 'm' || e.key === 'M') { video.muted = !video.muted; mpvVol(); }
   else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && S.current && !e.target.closest('input,textarea,select')) { e.preventDefault(); seekBy(e.key === 'ArrowLeft' ? -10 : 10); }
-  else if (e.key === ' ' && S.current) { e.preventDefault(); video.paused ? video.play() : video.pause(); }
+  else if (e.key === ' ' && S.current) { e.preventDefault(); if (mpvOn()) mpvC(['cycle', 'pause']); else video.paused ? video.play() : video.pause(); }
   else if (/^\d$/.test(e.key)) {
     digits += e.key; toast('Chaîne ' + digits); clearTimeout(dT);
     dT = setTimeout(() => {
@@ -6757,9 +6826,11 @@ function newSyncCode() {
 // Lecture › Chaînes : volume égalisé (appli Windows)
 function renderNormBox() {
   const b = $('#normBox'); if (!b) return;
-  const mp = window.desktop && window.desktop.mpv ? srow('Lire les films et séries avec mpv', 'Dans une fenêtre posée sur le lecteur : lit tout sans conversion (Dolby Vision, DTS…), mais sans mini-lecteur ni animations ni commandes de l\'appli. Désactivé : lecteur de l\'appli (image lue telle quelle, seul le son est converti)', swi('id="mpvChk"', LS.get('pref.mpvwin', false) === true)) : '';
-  b.innerHTML = window.desktop ? '<div class="dlbox" style="margin-top:8px">' + mp + srow('Volume égalisé entre les chaînes', 'Chaînes trop fortes ou trop faibles ramenées au même niveau', swi('id="normChk"', normWanted())) + '</div>' : '';
+  const nat = window.desktop && window.desktop.mpv && window.desktop.setNative ? srow('Lecteur intégré (essai)', 'Films, séries et torrents lus par mpv (même moteur que VLC) sous la page : tous les formats, son et image calés comme dans VLC, commandes de l\'appli par-dessus. Redémarre l\'appli.', swi('id="natChk"', !!window.desktop.native)) : '';
+  const mp = NAT ? '' : window.desktop && window.desktop.mpv ? srow('Lire les films et séries avec mpv', 'Dans une fenêtre posée sur le lecteur : lit tout sans conversion (Dolby Vision, DTS…), mais sans mini-lecteur ni animations ni commandes de l\'appli. Désactivé : lecteur de l\'appli (image lue telle quelle, seul le son est converti)', swi('id="mpvChk"', LS.get('pref.mpvwin', false) === true)) : '';
+  b.innerHTML = window.desktop ? '<div class="dlbox" style="margin-top:8px">' + nat + mp + srow('Volume égalisé entre les chaînes', 'Chaînes trop fortes ou trop faibles ramenées au même niveau', swi('id="normChk"', normWanted())) + '</div>' : '';
   const mc = $('#mpvChk'); if (mc) mc.onchange = e => LS.set('pref.mpvwin', e.target.checked);
+  const nc = $('#natChk'); if (nc) nc.onchange = e => { if (confirm('L\'appli va redémarrer pour ' + (e.target.checked ? 'activer' : 'désactiver') + ' le lecteur intégré.')) window.desktop.setNative(e.target.checked); else e.target.checked = !e.target.checked; };
   const c = $('#normChk'); if (c) c.onchange = e => { LS.set('pref.norm', e.target.checked); normSetup(); normRoute(); normReset(S.current); };
 }
 /* Sources › Films et séries : TMDB (popularité, affiches, bandes-annonces), BetaSeries, Trakt et OpenSubtitles (clés de
