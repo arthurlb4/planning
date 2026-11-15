@@ -56,6 +56,7 @@ static class Natif
     public delegate bool EnumProc(IntPtr h, IntPtr l);
     [DllImport("user32.dll")] public static extern bool EnumChildWindows(IntPtr parent, EnumProc f, IntPtr l);
     [DllImport("user32.dll")] public static extern bool IsWindowEnabled(IntPtr h);
+    [DllImport("user32.dll")] public static extern IntPtr GetParent(IntPtr h);
     [DllImport("dwmapi.dll")] public static extern int DwmExtendFrameIntoClientArea(IntPtr h, ref MARGINS m);
     [StructLayout(LayoutKind.Sequential)] public struct MARGINS { public int l, r, t, b; }
 

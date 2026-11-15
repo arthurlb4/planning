@@ -160,7 +160,8 @@ public class MainForm : Form
         web.WebResourceRequested += (s, a) => { try { if (!OWN.IsMatch(a.Request.Uri) && !a.Request.Uri.StartsWith("http://127.0.0.1")) { a.Request.Headers.RemoveHeader("Origin"); a.Request.Headers.RemoveHeader("Referer"); } } catch { } };
         web.NewWindowRequested += (s, a) => { a.Handled = true; OpenExternal(a.Uri); };
         web.ContainsFullScreenElementChanged += (s, a) => SetFull(web.ContainsFullScreenElement);
-        web.Navigate(PAGE);
+        // page redemandée au site à chaque lancement (jamais une ancienne copie gardée en cache)
+        web.NavigateWithWebResourceRequest(env.CreateWebResourceRequest(PAGE, "GET", null, "Cache-Control: no-cache\r\nPragma: no-cache"));
         comp.MoveFocus(CoreWebView2MoveFocusReason.Programmatic);
     }
 
