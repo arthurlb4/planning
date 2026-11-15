@@ -1,0 +1,75 @@
+name: Appli Windows native (Lecteur IPTV)
+
+# Fabrique l'appli native (lecteur/natif : page dans WebView2, vidéo par mpv dans la même fenêtre) sur un serveur Windows,
+# avec le serveur local de l'appli Electron (Node, torrents, conversion), et la met en téléchargement (version « iptv-natif »).
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'lecteur/natif/**'
+      - 'lecteur/desktop/remux.js'
+      - 'lecteur/desktop/torrent.js'
+      - 'lecteur/desktop/torrent-proc.js'
+      - 'lecteur/desktop/backend.js'
+      - '.github/workflows/natif.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: iptv-natif
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Appli (C#)
+        run: dotnet publish lecteur/natif/LecteurNatif.csproj -c Release -r win-x64 --self-contained true -o build/app
+
+      - name: Serveur local (Node, torrents, conversion)
+        shell: bash
+        run: |
+          mkdir -p build/app/backend build/app/node
+          cp lecteur/desktop/{remux,torrent,torrent-proc,backend}.js build/app/backend/
+          cd build/app/backend
+          echo '{"name":"lecteur-backend","private":true,"dependencies":{"webtorrent":"1.9.7","ffmpeg-static":"5.2.0"}}' > package.json
+          npm install --omit=dev --no-audit --no-fund
+          cp "$(which node)" ../node/node.exe
+          ls ../node
+
+      - name: mpv
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          a=$(gh release view --repo shinchiro/mpv-winbuild-cmake --json assets -q '.assets[].name' | grep -E '^mpv-x86_64-[0-9]{8}-git-[0-9a-f]+\.7z$' | head -1)
+          gh release download --repo shinchiro/mpv-winbuild-cmake -p "$a" -D mpvdl
+          7z x "mpvdl/$a" -obuild/app/mpv -y > /dev/null
+          test -f build/app/mpv/mpv.exe
+
+      - name: Installateur
+        shell: pwsh
+        run: |
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) { choco install innosetup -y --no-progress | Out-Null; $env:Path += ";C:\Program Files (x86)\Inno Setup 6" }
+          $env:APP_VERSION = "0.1.$env:GITHUB_RUN_NUMBER"
+          iscc lecteur/natif/installer.iss
+          Get-ChildItem build/*.exe
+
+      - name: Mettre en téléchargement
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view iptv-natif >/dev/null 2>&1 || gh release create iptv-natif --prerelease --title "Lecteur IPTV pour Windows (natif, essai)" --notes "Version native en essai : la page de l'appli et la vidéo (mpv) dans la même fenêtre. Télécharger Lecteur-IPTV-Natif-Installation.exe ci-dessous et l'ouvrir."
+          gh release upload iptv-natif build/Lecteur-IPTV-Natif-Installation.exe --clobber
