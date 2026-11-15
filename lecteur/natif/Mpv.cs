@@ -21,7 +21,7 @@ public class Mpv
     {
         if (!Available) return new JsonObject { ["error"] = "mpv absent" };
         Stop();
-        rect = o["rect"] as JsonObject;
+        rect = o["rect"] as JsonObject; aspect = 0;
         Place();
         string name = "lecteur-mpv-" + Environment.ProcessId + "-" + Environment.TickCount64;
         var lang = new Dictionary<string, string> { ["fr"] = "fre,fra,fr,french", ["en"] = "eng,en" };
@@ -49,7 +49,7 @@ public class Mpv
         if (proc != p) return new JsonObject { ["error"] = "remplacé" };
         if (pipe == null) { Stop(); return new JsonObject { ["error"] = "mpv ne répond pas" }; }
         wr = new StreamWriter(pipe, new UTF8Encoding(false)) { AutoFlush = true, NewLine = "\n" };
-        string[] props = { "time-pos", "duration", "pause", "eof-reached", "aid", "sid", "track-list", "chapter-list", "volume", "mute", "demuxer-cache-time" };
+        string[] props = { "time-pos", "duration", "pause", "eof-reached", "aid", "sid", "track-list", "chapter-list", "volume", "mute", "demuxer-cache-time", "video-params/aspect" };
         for (int i = 0; i < props.Length; i++) Cmd(new JsonArray("observe_property", i + 1, props[i]));
         var pp = pipe; new Thread(() => Read(pp)) { IsBackground = true }.Start();
         _ = MuteMouse(p);
@@ -82,6 +82,7 @@ public class Mpv
                 JsonObject m; try { m = JsonNode.Parse(line) as JsonObject; } catch { continue; }
                 if (m == null || (string)m["event"] != "property-change") continue;
                 string n = (string)m["name"]; var d = m["data"]?.DeepClone();
+                if (n == "video-params/aspect") { double a = 0; try { a = (double?)d ?? 0; } catch { } if (a > 0.2 && a < 5) { aspect = a; f.BeginInvoke(FitChild); } continue; }
                 if (n == "track-list")
                 {
                     var tr = new JsonArray();
@@ -164,10 +165,18 @@ public class Mpv
     }
 
     // fenêtre de mpv dans le cadre : remise à la taille du cadre tout de suite (sinon bande noire après un changement de taille)
+    // fenêtre de mpv au format exact de la vidéo, centrée dans le cadre (bandes noires autour) : même pendant un
+    // redimensionnement, où Windows étire un instant la dernière image, l'image garde ses proportions
+    double aspect;
     public void FitChild()
     {
-        int w = f.Video.Width, h = f.Video.Height; var ph = f.Video.Handle;
-        Natif.EnumChildWindows(ph, (c, l) => { if (Natif.GetParent(c) == ph) Natif.SetWindowPos(c, IntPtr.Zero, 0, 0, w, h, 0x0014); return true; }, IntPtr.Zero);
+        if (f.IsDisposed) return;
+        int W = f.Video.Width, H = f.Video.Height, x = 0, y = 0, w = W, h = H; var ph = f.Video.Handle;
+        if (aspect > 0 && W > 0 && H > 0)
+        {
+            if ((double)W / H > aspect) { w = (int)Math.Round(H * aspect); x = (W - w) / 2; } else { h = (int)Math.Round(W / aspect); y = (H - h) / 2; }
+        }
+        Natif.EnumChildWindows(ph, (c, l) => { if (Natif.GetParent(c) == ph) Natif.SetWindowPos(c, IntPtr.Zero, x, y, w, h, 0x0014); return true; }, IntPtr.Zero);
     }
 
     public void Stop()
