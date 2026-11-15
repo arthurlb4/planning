@@ -6432,14 +6432,18 @@ async function xtreamToM3U(x) {
   }
   return out.join('\n');
 }
+/* Abonnement Xtream (lien get.php?username=…&password=…) : chaînes demandées d'abord par l'API Xtream (player_api.php : compte,
+   catégories, chaînes), comme les applis IPTV et comme le recommandent les fournisseurs ; le téléchargement de la liste M3U
+   complète, bien plus limité par les serveurs (erreur 429), n'est plus qu'un secours. Erreur 429 : on s'arrête là (chaque
+   nouvel essai relance le blocage). */
 async function fetchPlaylist(url) {
-  try { return await fetchText(url); }
-  catch (e) {
-    // « trop de demandes » (429) : la connexion Xtream ferait 3 demandes de plus au même serveur et prolongerait le blocage
-    if (/\b429\b|trop de demandes/i.test(e.message)) throw e;
-    const x = xtreamParts(url); if (!x) throw e;
-    try { return await xtreamToM3U(x); }
-    catch (e2) { throw new Error('Liste M3U : ' + e.message + ' Connexion Xtream : ' + e2.message); }
+  const x = xtreamParts(url), busy = m => /\b429\b|trop de demandes/i.test(m || '');
+  if (!x) return fetchText(url);
+  try { return await xtreamToM3U(x); }
+  catch (e2) {
+    if (busy(e2.message) || /Identifiants refusés|Abonnement « /.test(e2.message)) throw new Error('Connexion Xtream : ' + e2.message);
+    try { return await fetchText(url); }
+    catch (e) { throw new Error('Connexion Xtream : ' + e2.message + ' Liste M3U : ' + e.message); }
   }
 }
 async function savePlaylist(p) {
