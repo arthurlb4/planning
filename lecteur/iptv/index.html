@@ -433,7 +433,7 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 .poster .rk{position:absolute;left:6px;bottom:2px;z-index:1;font-size:46px;font-weight:900;line-height:1;color:#111;-webkit-text-stroke:2px #f3f2ef;letter-spacing:-.04em;text-shadow:0 2px 8px rgba(0,0,0,.6)}
 .poster .vfo{position:absolute;right:7px;bottom:7px;font-size:10px;font-weight:600;padding:2px 6px;border-radius:6px;background:#b8860b;color:#fff;z-index:1;letter-spacing:.02em}
 .tmdbbox{margin-top:16px;padding:14px;border-radius:14px;background:var(--bg2);border:.5px solid var(--border)}
-.poster .pt{font-size:13px;font-weight:500;margin-top:7px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.3}
+.poster .pt{font-size:13px;font-weight:500;margin-top:7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3}
 .poster .py{font-size:12px;color:var(--text3)}
 .vgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:18px 14px;margin-top:14px}
 .vgrid .poster{width:auto}
@@ -5114,7 +5114,7 @@ function mpvBack() {
   if (V.back) $('#vodBack').click(); else { stopAll(); setHomeView(true, true, 'vod'); }
 }
 async function playRemux(c, t) {
-  const base = window.desktop.remux, R = S.remux = { base, url: c.url, ss: 0, a: 0, enc: false, info: null };
+  const base = window.desktop.remux, R = S.remux = { base, url: c.url, ss: 0, a: 0, enc: false, info: null, ad: +LS.get(adKey(c), 0) || 0 };
   let info = null, local = '';
   try { info = await (await fetch(base + '/probe?url=' + encodeURIComponent(c.url))).json(); } catch (e) { local = e && e.message || String(e); }
   if (t !== token) return;
@@ -5148,7 +5148,7 @@ async function playRemux(c, t) {
   const pos = LS.get(posK(c.url), 0), dur = info.duration || 0;
   remuxStart(pos > 60 && (!dur || pos < dur - Math.min(120, dur * 0.1)) ? pos : 0, t);
   if (pos > 60) toast('Reprise à ' + fmtDur(pos));
-  if (!dur) remuxDurFix(R, c, t);
+  if (!dur || !(info.subs || []).length) remuxDurFix(R, c, t);
 }
 /* Durée inconnue au départ (torrent qui commence à peine à arriver, serveur lent) : durée de TMDB en attendant (film, ou
    épisode d'après la saison), puis nouvelle lecture des informations du fichier toutes les 20 s, 5 fois au plus */
@@ -5159,15 +5159,35 @@ function remuxDurFix(R, c, t) {
     if (c.ep && c.torAlts && c.torAlts.eplist) { const e = c.torAlts.eplist.find(x => x.n === c.ep.n); if (e && e.run) R.durGuess = e.run * 60; }
     if (!R.durGuess && it.kind === 'movie') { const ti = await tmdbInfo(it).catch(() => null); if (ti && ti.d && ti.d.runtime) R.durGuess = ti.d.runtime * 60; }
   })().catch(() => {});
-  let n = 0;
+  // sous-titres intégrés absents de la première lecture du fichier (torrent pas encore assez reçu) : relus aussi, puis la
+  // langue préférée est mise d'elle-même
+  let n = 0, subTry = (R.info.subs || []).length ? 0 : 2;
   const again = () => setTimeout(async () => {
-    if (S.remux !== R || t !== token || (R.info && R.info.duration)) return;
+    if (S.remux !== R || t !== token) return;
+    const needDur = !(R.info && R.info.duration); if (!needDur && subTry <= 0) return;
     const j = await fetch(R.base + '/probe?url=' + encodeURIComponent(R.url)).then(r => r.json()).catch(() => null);
     if (S.remux !== R) return;
-    if (j && j.duration) { R.info.duration = j.duration; if (j.chapters && !(R.info.chapters || []).length) R.info.chapters = j.chapters; vbarUpdate(); }
-    else if (++n < 5) again();
+    if (j && j.duration && needDur) { R.info.duration = j.duration; if (j.chapters && !(R.info.chapters || []).length) R.info.chapters = j.chapters; vbarUpdate(); }
+    if (subTry > 0) {
+      subTry--;
+      if (j && (j.subs || []).length && !(R.info.subs || []).length) {
+        R.info.subs = j.subs; subTry = 0; if (!(R.info.audio || []).length && j.audio) R.info.audio = j.audio;
+        const ps = LS.get('pref.sub', 'off'), au = R.info.audio[R.a] || {};
+        const sp = ps === 'off' ? j.subs.find(x => x.forced && lang2(x.lang) === lang2(au.lang)) : j.subs.find(x => lang2(x.lang) === ps && !x.forced) || j.subs.find(x => lang2(x.lang) === ps);
+        if (sp && R.s < 0) { toast('Sous-titres trouvés dans le fichier'); setSub('r' + sp.i); } else renderTrackMenu();
+      }
+    }
+    if ((!(R.info && R.info.duration) || subTry > 0) && ++n < 5) again();
   }, 20000);
   again();
+}
+// décalage du son retenu par film ou par série (même réglage d'un épisode à l'autre)
+const adKey = c => 'ad.' + (c && c.it ? (() => { try { return gKey(c.it); } catch (e) { return c.url; } })() : c ? c.url : '');
+function audioShift(d) {
+  const R = S.remux; if (S.engine !== 'remux' || !R) return;
+  R.ad = Math.max(-10000, Math.min(10000, Math.round(((R.ad || 0) + d) / 50) * 50)); LS.set(adKey(S.current), R.ad);
+  renderTrackMenu(); toast('Son ' + (R.ad > 0 ? 'retardé de ' : R.ad < 0 ? 'avancé de ' : 'calé : décalage ') + Math.abs(R.ad / 1000).toFixed(2).replace('.', ',') + ' s');
+  clearTimeout(audioShift.t); audioShift.t = setTimeout(() => { if (S.remux === R) remuxStart(curPos()); }, 1200);   // plusieurs clics : une seule reprise
 }
 function remuxStart(ss, t, exact) {
   const R = S.remux; if (!R) return;
@@ -5207,7 +5227,7 @@ function remuxStart(ss, t, exact) {
     failRemux(S.current, video.error ? 'erreur ' + video.error.code + (video.error.message ? ' · ' + video.error.message : '') : 'rien reçu en 30 s');
   };
   attempt = { ok, ko };
-  video.src = R.base + '/remux?url=' + encodeURIComponent(R.url) + '&ss=' + R.seek + '&a=' + R.a + '&hevc=' + hevc + (R.enc ? '&v=enc' : '') + (R.via ? '&via=vlc&al=' + encodeURIComponent((R.info.audio[R.a] || {}).lang || '') : '') + (R.s >= 0 ? '&s=' + R.s + '&sid=' + R.sid + '&kf=' + R.ss : '');
+  video.src = R.base + '/remux?url=' + encodeURIComponent(R.url) + '&ss=' + R.seek + '&a=' + R.a + '&hevc=' + hevc + (R.enc ? '&v=enc' : '') + (R.via ? '&via=vlc&al=' + encodeURIComponent((R.info.audio[R.a] || {}).lang || '') : '') + (R.s >= 0 ? '&s=' + R.s + '&sid=' + R.sid + '&kf=' + R.ss : '') + (R.ad ? '&ad=' + R.ad : '');
   loadFileCues();
   const p = video.play(); if (p && p.catch) p.catch(() => {});
 }
@@ -5382,6 +5402,8 @@ function renderTrackMenu() {
   let h = '<h4>Audio</h4>';
   h += A.length > 1 ? A.map((t, n) => `<button data-aud="${t.i}">${ck(t.on)}${trackLabel(t, n + 1)}</button>`).join('')
     : `<div class="no">${A.length ? trackLabel(A[0], 1) + ' (seule piste)' : 'Une seule piste'}${S.engine === 'mpegts' ? ' · ce format ne permet pas le choix' : ''}</div>`;
+  if (S.engine === 'remux' && S.remux) { const ad = S.remux.ad || 0;
+    h += `<div class="no subofs">Décalage du son <button data-adofs="-100">−0,1 s</button><b>${ad > 0 ? '+' : ''}${(ad / 1000).toFixed(1).replace('.', ',')} s</b><button data-adofs="100">+0,1 s</button></div><div class="no" style="font-size:12px">+ : son plus tard (il arrive avant les lèvres) · − : son plus tôt · touches J / K</div>`; }
   // Choix du lecteur vidéo : utile quand le son ou l'image ne passent pas avec l'un des deux
   const eng = LS.get('dev.engine', 'tv');
   h += `<h4>Lecteur vidéo</h4><button data-eng="tv">${ck(eng !== 'js')}${window.PREFER_NATIVE ? 'Lecteur de la télé (4K, Dolby)' : 'Automatique'}</button><button data-eng="js">${ck(eng === 'js')}Lecteur web (hls.js / mpegts.js)</button>`;
@@ -5398,6 +5420,7 @@ $('#trackMenu').addEventListener('click', e => {
   if (en) { LS.set('dev.engine', en.dataset.eng); $('#trackMenu').hidden = true; toast(en.dataset.eng === 'js' ? 'Lecteur web' : 'Lecteur par défaut'); if (S.current) play(S.current, S.alts); return; }
   if (e.target.closest('[data-subfile]')) { $('#subFile').click(); return; }
   if (e.target.closest('[data-ost]')) { $('#trackMenu').hidden = true; ostFind(); return; }
+  const ao = e.target.closest('[data-adofs]'); if (ao) { audioShift(+ao.dataset.adofs); return; }
   const so = e.target.closest('[data-subofs]');
   if (so) { S.extOfs = Math.round(((S.extOfs || 0) + +so.dataset.subofs) * 10) / 10; loadFileCues(); renderTrackMenu(); return; }
   const a = e.target.closest('[data-aud]'), t = e.target.closest('[data-sub]');
@@ -5429,6 +5452,7 @@ function parseSubs(text) {
 }
 function loadFileCues() {
   if (!S.extCues) return;
+  if (S.current && S.extFor && S.extFor !== S.current.url) { S.extCues = null; clearCues(subT('f')); return; }   // sous-titres d'un autre film ou épisode
   const t = subT('f'), off = (S.engine === 'remux' && S.remux ? S.remux.ss : 0) - (S.extOfs || 0);   // + décalage choisi
   clearCues(t);
   S.extCues.forEach(c => { if (c.end - off > 0) try { t.addCue(new VTTCue(Math.max(0, c.start - off), c.end - off, c.text)); } catch (e) {} });
@@ -5439,7 +5463,7 @@ $('#subFile').addEventListener('change', async e => {
   let txt; try { txt = new TextDecoder('utf-8', { fatal: true }).decode(buf); } catch (er) { txt = new TextDecoder('windows-1252').decode(buf); }   // anciens .srt en Windows-1252
   const cues = parseSubs(txt.replace(/^﻿/, ''));
   if (!cues.length) { toast('Fichier de sous-titres illisible'); return; }
-  S.extCues = cues; S.extName = f.name.replace(/\.[^.]+$/, ''); S.extOfs = 0;
+  S.extCues = cues; S.extName = f.name.replace(/\.[^.]+$/, ''); S.extOfs = 0; S.extFor = S.current ? S.current.url : '';
   loadFileCues(); setSub('f'); $('#trackMenu').hidden = true; toast(cues.length + ' sous-titres chargés');
 });
 /* Sous-titres français trouvés sur OpenSubtitles (film ou épisode, retrouvé par son identifiant TMDB). Seulement à la
@@ -5477,7 +5501,10 @@ async function ostFind() {
       const q = ti.kind === 'tv' ? (c.ep ? `episode_number=${c.ep.n}&languages=fr&parent_tmdb_id=${ti.id}&season_number=${c.ep.s}` : null) : `languages=fr&tmdb_id=${ti.id}&type=movie`;
       if (!q) throw new Error('épisode inconnu');
       const j = await ostCall('/subtitles?' + q);
+      const fd = a => a.feature_details || {};
       const l = (j.data || []).map(x => x.attributes).filter(a => a && a.language === 'fr' && !a.ai_translated && !a.machine_translated && a.files && a.files[0])
+        // série : OpenSubtitles renvoie parfois les autres épisodes ; seulement celui-ci
+        .filter(a => !c.ep || ((fd(a).episode_number == null || +fd(a).episode_number === c.ep.n) && (fd(a).season_number == null || +fd(a).season_number === c.ep.s)))
         .sort((a, b) => (a.hearing_impaired - b.hearing_impaired) || (b.download_count - a.download_count));
       O = S.ost = { k, l, i: -1 };
     }
@@ -5494,7 +5521,7 @@ async function ostFind() {
     if (t !== token || S.current !== c) return;
     const cues = parseSubs(txt.replace(/^\uFEFF/, ''));
     if (!cues.length) throw new Error('fichier illisible');
-    S.extCues = cues; S.extName = 'OpenSubtitles'; S.extOfs = 0;
+    S.extCues = cues; S.extName = 'OpenSubtitles'; S.extOfs = 0; S.extFor = c.url;
     loadFileCues(); setSub('f');
     toast(`Sous-titres français chargés (${O.i + 1}/${O.l.length}${a.release ? ' · ' + a.release.slice(0, 40) : ''})${O.l.length > 1 ? ' · décalés ? menu › Autres sous-titres' : ''}`);
   } catch (e) { toast('Sous-titres : ' + (e.message || e)); }
@@ -6110,6 +6137,8 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'f' || e.key === 'F') setSolo(!isFull());
   else if ((e.key === 'w' || e.key === 'W') && S.current) isWin() ? setSolo(false) : setSolo(true, true);
   else if ((e.key === 'c' || e.key === 'C') && S.current) toggleSubs();
+  else if ((e.key === 'k' || e.key === 'K') && S.engine === 'remux') audioShift(100);
+  else if ((e.key === 'j' || e.key === 'J') && S.engine === 'remux') audioShift(-100);
   else if (e.key === 'm' || e.key === 'M') video.muted = !video.muted;
   else if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && S.current && !e.target.closest('input,textarea,select')) { e.preventDefault(); seekBy(e.key === 'ArrowLeft' ? -10 : 10); }
   else if (e.key === ' ' && S.current) { e.preventDefault(); video.paused ? video.play() : video.pause(); }
