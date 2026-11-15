@@ -142,6 +142,85 @@ function ytLogin(parent, url) {
   ytWin.webContents.setWindowOpenHandler(({ url: u }) => { ytWin.loadURL(u); return { action: 'deny' }; });
   ytWin.on('closed', () => { ytWin = null; try { if (!parent.isDestroyed()) parent.webContents.send('yt-login', { ok }); } catch (e) {} });
 }
+/* ---------- mpv : lecteur vidéo intégré (films, épisodes, torrents) ----------
+   Lit tout directement (Dolby, DTS, MKV, H.265, HDR), sans conversion par ffmpeg. mpv dessine dans une petite fenêtre sans
+   bord posée exactement sur la zone du lecteur de la page (la page envoie sa position) ; piloté par son canal de commande
+   (position, pause, fin), relayé à la page. Échap ou Retour arrière : retour ; F ou double-clic : plein écran. Absent
+   (mpv/mpv.exe) : la page garde l'ancien lecteur. */
+const net = require('net');
+const MPV = { proc: null, win: null, sock: null, buf: '', rect: null, page: null, st: {}, last: 0 };
+const mpvExe = () => { const p = path.join(process.resourcesPath || '', 'mpv', 'mpv.exe'); return process.platform === 'win32' && fs.existsSync(p) ? p : ''; };
+ipcMain.on('mpv-avail', e => { e.returnValue = !!mpvExe(); });
+function mpvBounds() {
+  const page = MPV.page, w = MPV.win; if (!page || page.isDestroyed() || !w || w.isDestroyed()) return;
+  const r = MPV.rect; if (!r || r.hidden || r.w < 10 || r.h < 10) { if (w.isVisible()) w.hide(); return; }
+  const cb = page.getContentBounds(), z = page.webContents.getZoomFactor();
+  w.setBounds({ x: Math.round(cb.x + r.x * z), y: Math.round(cb.y + r.y * z), width: Math.round(r.w * z), height: Math.round(r.h * z) });
+  if (!w.isVisible()) w.showInactive();
+}
+function mpvSend(o) { try { if (MPV.page && !MPV.page.isDestroyed()) MPV.page.webContents.send('mpv', o); } catch (e) {} }
+function mpvCmd(args) { try { if (MPV.sock) MPV.sock.write(JSON.stringify({ command: args }) + '\n'); } catch (e) {} }
+function mpvStop() {
+  const p = MPV.proc; MPV.proc = null;
+  try { if (MPV.sock) MPV.sock.destroy(); } catch (e) {} MPV.sock = null;
+  if (p) { try { p.kill(); } catch (e) {} }
+  if (MPV.win && !MPV.win.isDestroyed()) MPV.win.hide();
+}
+ipcMain.on('mpv-stop', () => mpvStop());
+ipcMain.on('mpv-rect', (e, r) => { MPV.rect = r; mpvBounds(); });
+ipcMain.on('mpv-cmd', (e, args) => { if (Array.isArray(args)) mpvCmd(args); });
+ipcMain.handle('mpv-play', async (e, o) => {
+  const exe = mpvExe(); if (!exe) return { error: 'mpv absent' };
+  const page = BrowserWindow.fromWebContents(e.sender); if (!page) return { error: 'fenêtre' };
+  mpvStop(); MPV.page = page; MPV.rect = o.rect || null; MPV.st = {};
+  if (!MPV.win || MPV.win.isDestroyed()) {
+    MPV.win = new BrowserWindow({ parent: page, frame: false, show: false, backgroundColor: '#000000', skipTaskbar: true, resizable: false, minimizable: false, maximizable: false, fullscreenable: false, hasShadow: false, webPreferences: { sandbox: true } });
+    MPV.win.loadURL('about:blank');
+    const follow = () => mpvBounds();
+    ['move', 'resize', 'maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen', 'restore'].forEach(ev => page.on(ev, follow));
+  }
+  mpvBounds();
+  const h = MPV.win.getNativeWindowHandle(), wid = (h.length >= 8 ? h.readBigUInt64LE(0) : BigInt(h.readUInt32LE(0))).toString();
+  const pipe = '\\\\.\\pipe\\lecteur-mpv-' + process.pid + '-' + Date.now();
+  const conf = path.join(app.getPath('temp'), 'lecteur-mpv-input.conf');
+  try { fs.writeFileSync(conf, ['ESC script-message lecteur-back', 'BS script-message lecteur-back', 'q script-message lecteur-back', 'f script-message lecteur-fs', 'MBTN_LEFT_DBL script-message lecteur-fs'].join('\n')); } catch (er) {}
+  const lang = { fr: 'fre,fra,fr,french', en: 'eng,en' }, al = lang[o.alang] || (o.alang ? o.alang : 'fre,fra,fr');
+  const args = [o.url, '--wid=' + wid, '--input-ipc-server=' + pipe, '--input-conf=' + conf, '--force-media-title=' + String(o.title || '').slice(0, 200),
+    '--hwdec=auto-safe', '--keep-open=yes', '--osc=yes', '--idle=no', '--cursor-autohide=1500', '--volume=' + Math.round(Math.max(0, Math.min(1, +o.vol || 0)) * 100),
+    '--alang=' + al, o.slang && o.slang !== 'off' ? '--slang=' + (lang[o.slang] || o.slang) : '--sid=no', '--sub-auto=fuzzy', '--msg-level=all=no', '--no-terminal'];
+  if (o.start > 1) args.push('--start=' + Math.floor(o.start));
+  let proc;
+  try { proc = spawn(exe, args, { windowsHide: true, stdio: 'ignore' }); } catch (er) { return { error: String(er.message || er) }; }
+  MPV.proc = proc;
+  proc.on('exit', () => { if (MPV.proc === proc) { MPV.proc = null; if (MPV.win && !MPV.win.isDestroyed()) MPV.win.hide(); mpvSend({ exit: true, eof: !!MPV.st.eof, pos: MPV.st.pos || 0 }); } });
+  // canal de commande : position, durée, pause, fin, et messages des raccourcis
+  for (let k = 0; k < 40 && MPV.proc === proc && !MPV.sock; k++) {
+    await new Promise(r => setTimeout(r, 150));
+    await new Promise(res => { const c = net.connect(pipe, () => { MPV.sock = c; res(); }); c.on('error', () => res()); });
+  }
+  if (!MPV.sock) { if (MPV.proc === proc) mpvStop(); return { error: 'mpv ne répond pas' }; }
+  const sock = MPV.sock;
+  ['time-pos', 'duration', 'pause', 'eof-reached', 'aid', 'sid'].forEach((pr, i) => mpvCmd(['observe_property', i + 1, pr]));
+  sock.on('data', b => {
+    MPV.buf += b; let n;
+    while ((n = MPV.buf.indexOf('\n')) >= 0) {
+      const line = MPV.buf.slice(0, n); MPV.buf = MPV.buf.slice(n + 1); let m; try { m = JSON.parse(line); } catch (er) { continue; }
+      if (m.event === 'property-change') {
+        const key = { 'time-pos': 'pos', duration: 'dur', pause: 'paused', 'eof-reached': 'eof' }[m.name]; if (!key) continue;
+        MPV.st[key] = m.data;
+        if (key !== 'pos' || Date.now() - MPV.last > 1000) { MPV.last = Date.now(); mpvSend(Object.assign({}, MPV.st)); }
+        if (key === 'eof' && m.data) mpvSend({ eof: true, pos: MPV.st.pos || 0, dur: MPV.st.dur || 0 });
+      } else if (m.event === 'client-message' && m.args) {
+        if (m.args[0] === 'lecteur-back') mpvSend({ back: true, pos: MPV.st.pos || 0 });
+        else if (m.args[0] === 'lecteur-fs' && !page.isDestroyed()) page.setFullScreen(!page.isFullScreen());
+      }
+    }
+  });
+  sock.on('close', () => { if (MPV.sock === sock) MPV.sock = null; });
+  MPV.win.focus();
+  return { ok: true };
+});
+app.on('before-quit', () => mpvStop());
 // Identité de navigateur ordinaire (Chrome), sans « Electron » ni le nom de l'appli : le lecteur YouTube des bandes-annonces
 // se méfie d'Electron (« Connectez-vous pour confirmer que vous n'êtes pas un robot »)
 app.userAgentFallback = app.userAgentFallback.replace(/\s(Electron|lecteur-iptv|Lecteur IPTV)\/[\w.-]+/gi, '');

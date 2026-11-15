@@ -33,6 +33,22 @@ jobs:
         run: copy lecteur\iptv\index.html lecteur\desktop\index.html
         shell: cmd
 
+      # mpv : lecteur vidéo intégré à l'appli (films, épisodes, torrents), dernière compilation Windows 64 bits de
+      # shinchiro/mpv-winbuild-cmake ; en cas d'échec l'installateur est fait quand même (l'appli garde l'ancien lecteur)
+      - name: mpv (lecteur vidéo intégré)
+        shell: bash
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p lecteur/desktop/mpv
+          a=$(gh release view --repo shinchiro/mpv-winbuild-cmake --json assets -q '.assets[].name' | grep -E '^mpv-x86_64-[0-9]{8}-git-[0-9a-f]+\.7z$' | head -1)
+          echo "mpv : $a"
+          gh release download --repo shinchiro/mpv-winbuild-cmake -p "$a" -D mpvdl
+          7z x "mpvdl/$a" -olecteur/desktop/mpv -y > /dev/null
+          ls -la lecteur/desktop/mpv | head -20
+          test -f lecteur/desktop/mpv/mpv.exe
+
       - name: Fabriquer l'exe
         working-directory: lecteur/desktop
         run: |
