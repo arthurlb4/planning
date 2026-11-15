@@ -3495,7 +3495,8 @@ const COV = (() => { try { const o = JSON.parse(localStorage.getItem('iptv.dev.c
   // une fois : les « rien sur TMDB » notés jusqu'ici l'étaient aussi après une simple erreur ; ils sont recherchés à nouveau
   if (!localStorage.getItem('iptv.dev.covfix1')) { Object.keys(o).forEach(k => { if (o[k] === '') delete o[k]; }); localStorage.setItem('iptv.dev.cov', JSON.stringify(o)); localStorage.setItem('iptv.dev.covfix1', '1'); }
   return o; } catch (e) { return {}; } })();
-const coverOf = it => (it._covBad ? '' : it.cover) || (COV[itemKey(it)] ? 'https://image.tmdb.org/t/p/w342' + COV[itemKey(it)] : '');
+// affiche retrouvée sur TMDB (retenue sur l'appareil) d'abord : elle remplace une affiche du serveur déjà vue cassée
+const coverOf = it => (COV[itemKey(it)] ? 'https://image.tmdb.org/t/p/w342' + COV[itemKey(it)] : '') || (it._covBad ? '' : it.cover);
 const COVQ = { io: null, busy: 0 };
 function coverWatch(i) {
   const el = document.querySelector(`#vod .poster[data-v="${i}"], #vodDetail .poster[data-v="${i}"]`); if (!el || !LS.get('pref.tmdb', '')) return;
@@ -3518,7 +3519,13 @@ async function coverFetch(el) {
   document.querySelectorAll(`.poster[data-v]`).forEach(p => { if (V.shown[+p.dataset.v] === it && !p.querySelector('.im img')) p.querySelector('.im').insertAdjacentHTML('afterbegin', `<img src="${esc(posterUrl('https://image.tmdb.org/t/p/w342' + pp))}" alt="" decoding="async">`); });
 }
 // Affiche du serveur cassée : retirée, puis cherchée sur TMDB
-function coverMiss(img) { const p = img.closest('.poster'), it = p && V.shown[+p.dataset.v]; img.remove(); if (it && !it._covBad) { it._covBad = true; if (!COV[itemKey(it)]) coverWatch(+p.dataset.v); } }
+function coverMiss(img) {
+  const p = img.closest('.poster'), it = p && V.shown[+p.dataset.v]; if (!it) { img.remove(); return; }
+  const k = itemKey(it), tm = COV[k] ? 'https://image.tmdb.org/t/p/w342' + COV[k] : '';
+  // affiche du serveur cassée (serveur lent, limite, VPN…) : celle de TMDB si on l'a déjà, sinon recherchée
+  if (tm && !img.src.includes(COV[k])) { img.src = posterUrl(tm); return; }
+  img.remove(); if (!it._covBad) { it._covBad = true; if (!COV[k]) coverWatch(+p.dataset.v); }
+}
 function posterHtml(it, i, rank, prog) {
   const r = noteBadge(it);
   const lb = '';                                         // plus d'étiquette de langue (VO, VO ?) sur les affiches
