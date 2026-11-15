@@ -20,7 +20,8 @@ const VIDEO = /\.(mkv|mp4|avi|mov|m4v|webm|ts|m2ts|wmv|flv|mpg|mpeg|ogv)$/i;
 const TRACKERS = ['udp://tracker.opentrackr.org:1337/announce', 'udp://open.stealth.si:80/announce', 'udp://tracker.torrent.eu.org:451/announce',
   'udp://exodus.desync.com:6969/announce', 'udp://open.demonii.com:1337/announce', 'udp://tracker.openbittorrent.com:6969/announce',
   'https://tracker.tamersunion.org:443/announce', 'udp://explodie.org:6969/announce'];
-let client = null, clientErr = '';
+let client = null, clientErr = '', blocked = false;
+const VPN_MSG = 'VPN inactif : connectez CyberGhost (torrents et indexeur bloqués sans VPN)';
 function getClient() {
   if (!client || client.destroyed) {
     const WebTorrent = require('webtorrent');
@@ -176,6 +177,13 @@ async function qbtAdd(url, category, port) {
 module.exports = function handleTorrent(req, res, u) {
   if (!u.pathname.startsWith('/torrent/')) return false;
   const json = (o, code) => { res.writeHead(code || 200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(o)); };
+  // blocage sans VPN (décidé par la page) : torrents en pause, connexions coupées, aucun nouveau torrent
+  if (u.pathname === '/torrent/guard') {
+    blocked = u.searchParams.get('block') === '1';
+    if (client && !client.destroyed) client.torrents.forEach(t => { try { if (blocked) { t.pause(); (t.wires || []).slice().forEach(w => w.destroy()); } else t.resume(); } catch (e) {} });
+    json({ ok: true, blocked }); return true;
+  }
+  if (blocked && (u.pathname === '/torrent/add' || u.pathname === '/torrent/qbt')) { json({ error: VPN_MSG }, 403); return true; }
   // envoi à qBittorrent : sans le module torrent de l'appli
   if (u.pathname === '/torrent/qbt' && req.method === 'POST') {
     const parts = []; req.on('data', b => parts.push(b));

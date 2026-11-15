@@ -148,6 +148,14 @@ function ytLogin(parent, url) {
    (position, pause, fin), relayé à la page. Échap ou Retour arrière : retour ; F ou double-clic : plein écran. Absent
    (mpv/mpv.exe) : la page garde l'ancien lecteur. */
 const net = require('net');
+// VPN actif ? : une carte réseau de VPN (CyberGhost, WireGuard, OpenVPN…) allumée avec une adresse ; motif choisi possible
+const VPN_RE = /cyberghost|wireguard|wintun|openvpn|tap-windows|\btap\b|\btun\b|vpn|nordlynx|proton|mullvad|surfshark/i;
+ipcMain.on('vpn-state', (e, pat) => {
+  let re = VPN_RE; if (pat) { try { re = new RegExp(String(pat).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'); } catch (er) {} }
+  const all = [], hit = [];
+  try { Object.entries(require('os').networkInterfaces()).forEach(([n, l]) => { if (!(l || []).some(a => !a.internal)) return; all.push(n); if (re.test(n)) hit.push(n); }); } catch (er) {}
+  e.returnValue = { on: hit.length > 0, name: hit[0] || '', all };
+});
 const MPV = { proc: null, sock: null, buf: '', rect: null, page: null, st: {}, last: 0, geo: '', min: false };
 const mpvExe = () => { const p = path.join(process.resourcesPath || '', 'mpv', 'mpv.exe'); return process.platform === 'win32' && fs.existsSync(p) ? p : ''; };
 ipcMain.on('mpv-avail', e => { e.returnValue = !!mpvExe(); });

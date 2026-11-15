@@ -1577,14 +1577,29 @@ function torTags(t) {
 const torAge = d => { const t = Date.parse(d || ''); if (!t) return ''; const n = Math.floor((Date.now() - t) / 864e5);
   return n < 1 ? 'aujourd\'hui' : n < 2 ? 'hier' : n < 31 ? 'il y a ' + n + ' j' : n < 365 ? 'il y a ' + Math.round(n / 30) + ' mois' : 'il y a ' + Math.round(n / 365) + ' an' + (n >= 730 ? 's' : ''); };
 const PRW_DIAG = {};
+// Blocage sans VPN (appli Windows) : ni recherche dans l'indexeur, ni torrent tant que le VPN n'est pas connecté
+// (Prowlarr ne rate plus sa connexion avec l'indexeur et ne le met plus en pause)
+const VPN_MSG = 'VPN inactif : connectez CyberGhost (indexeur et torrents bloqués sans VPN)';
+const vpnGuard = () => !!(window.desktop && window.desktop.vpn) && LS.get('pref.vpnguard', true) !== false;
+const vpnSt = () => { const n = Date.now(); if (!vpnSt.c || n - vpnSt.t > 2000) { try { vpnSt.c = window.desktop.vpn(LS.get('pref.vpnif', '')) || { on: true }; } catch (e) { vpnSt.c = { on: true }; } vpnSt.t = n; } return vpnSt.c; };
+const vpnOk = () => !vpnGuard() || vpnSt().on;
+// VPN coupé en cours de route : torrents de l'appli mis en pause (connexions coupées), repris au retour du VPN
+setInterval(() => {
+  if (!window.desktop || !window.desktop.vpn || !window.desktop.remux) return;
+  const off = !vpnOk();
+  if (off || vpnGuard.was) fetch(window.desktop.remux + '/torrent/guard?block=' + (off ? 1 : 0)).catch(() => {});
+  if (off && !vpnGuard.was && TOR.cur) toastLong('VPN coupé : torrent mis en pause, il reprendra dès que le VPN sera reconnecté');
+  vpnGuard.was = off;
+}, 4000);
 // indexeurs actifs dans Prowlarr (diagnostic d'une recherche sans résultat)
 async function prwIndexers() {
-  const c = prwConf(); if (!c) return null;
+  const c = prwConf(); if (!c || !vpnOk()) return null;
   const l = await fetch(c.url + '/api/v1/indexer', { headers: { 'X-Api-Key': c.key } }).then(r => r.ok ? r.json() : null).catch(() => null);
   return Array.isArray(l) ? l.filter(x => x.enable).map(x => x.name + (x.protocol && x.protocol !== 'torrent' ? ' (' + x.protocol + ')' : '')) : null;
 }
 async function prwSearch(q, kind) {
   const c = prwConf(); if (!c) return null;
+  if (!vpnOk()) throw new Error(VPN_MSG);
   const cats = kind === 'movie' ? '&categories=2000' : kind === 'series' ? '&categories=5000' : '';
   // sans accents ni ponctuation : beaucoup d'indexeurs ne trouvent pas « deuxième » ou « L'Amour » tels quels
   q = String(q || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w\s-]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -1606,6 +1621,7 @@ function torRowHtml(x, i) {
     <div class="tac"><button class="btn primary sm" data-tpl="${i}">▶ Lire</button><button class="chip" data-tpa="${i}" data-c="${ser ? 'series' : 'films'}" title="Télécharger en entier avec qBittorrent et ranger dans Ma médiathèque">＋ ${ser ? 'Séries' : 'Films'}</button></div></div>`;
 }
 async function torQbt(x, cat, b) {
+  if (!vpnOk()) { toastLong(VPN_MSG); return false; }
   if (b) { b.disabled = true; b.textContent = 'Envoi…'; }
   const j = await fetch(window.desktop.remux + '/torrent/qbt', { method: 'POST', body: JSON.stringify({ url: x.magnetUrl || x.downloadUrl, category: cat }) }).then(r => r.status === 404 ? { error: 'mettez à jour l\'appli Windows (1.21 et plus)' } : r.json()).catch(() => ({ error: 'module de l\'appli injoignable' }));
   toast(j.ok ? 'Envoyé à qBittorrent (' + (cat === 'films' ? 'Films' : 'Séries') + ') : rangé dans la médiathèque une fois téléchargé' : 'qBittorrent : ' + j.error);
@@ -1783,6 +1799,7 @@ const toastLong = t => { toast(t); clearTimeout(toast.t); toast.t = setTimeout((
 async function torPlay(x, g, b, opts) {
   opts = opts || {};
   const src = x.magnetUrl || x.downloadUrl; if (!src || TOR.busyPlay) return;
+  if (!vpnOk()) { toastLong(VPN_MSG); return; }
   TOR.busyPlay = true;
   const lab = b ? b.innerHTML : ''; if (b) { b.disabled = true; b.textContent = 'Connexion…'; }
   toast('Connexion aux sources du torrent…');
@@ -1936,11 +1953,11 @@ async function torFindMovie(titles, year) {
    l'accueil est redessiné à la même place. */
 const IX = { q: [], run: 0, n: 0, found: 0, queued: new Set(), virt: new Map(), base: null, checking: null };
 const IX_MAX = 60;
-const ixOn = () => torOk() && !!prwConf() && !(LS.get('dev.ixstop', 0) > Date.now());
+const ixOn = () => torOk() && !!prwConf() && vpnOk() && !(LS.get('dev.ixstop', 0) > Date.now());
 function ixHalt(why) { LS.set('dev.ixstop', Date.now() + 3600e3); IX.q.length = 0; console.warn('Recommandations torrent arrêtées 1 h : ' + why); }
 // état des indexeurs dans Prowlarr : ceux en pause, et les avertissements de limite
 async function ixState() {
-  const c = prwConf(); if (!c) return null;
+  const c = prwConf(); if (!c || !vpnOk()) return null;
   const get = path => fetch(c.url + path, { headers: { 'X-Api-Key': c.key } }).then(r => r.ok ? r.json() : null).catch(() => null);
   const [st, he] = await Promise.all([get('/api/v1/indexerstatus'), get('/api/v1/health')]);
   if (!st && !he) return null;
@@ -5661,11 +5678,23 @@ function vpnHosts() {
 function renderVpnBox() {
   const b = $('#vpnBox'); if (!b) return;
   const { lists, seen } = vpnHosts(), chips = l => l.map(h => `<code class="vh">${esc(h)}</code>`).join(' ');
-  b.innerHTML = srow('Serveurs à exclure du VPN', 'À ajouter dans CyberGhost › Smart Rules › exceptions (nom seul, sans http://), puis reconnecter le VPN : l\'IPTV passe alors sans VPN, le reste reste protégé.'
+  let g = '';
+  if (window.desktop && window.desktop.vpn) {
+    vpnSt.t = 0; const v = vpnSt();
+    g = srow('Bloquer l\'indexeur et les torrents sans VPN', 'Aucune recherche dans Prowlarr ni torrent tant que le VPN n\'est pas connecté ; un torrent en cours se met en pause si le VPN tombe. '
+      + (v.on ? '<br>✓ VPN détecté : <code class="vh">' + esc(v.name) + '</code>' : '<br>✗ Aucun VPN détecté pour l\'instant. Cartes réseau actives : ' + (v.all && v.all.length ? chips(v.all) : 'aucune'))
+      + '<br>Carte du VPN (si elle n\'est pas reconnue, son nom ou une partie) : <input id="vpnIf" class="field" style="width:180px;margin:4px 0 0" placeholder="automatique" value="' + esc(LS.get('pref.vpnif', '')) + '">',
+      swi('id="vpnGuardChk"', LS.get('pref.vpnguard', true) !== false));
+  }
+  b.innerHTML = g + srow('Serveurs à exclure du VPN', 'À ajouter dans CyberGhost › Smart Rules › exceptions (nom seul, sans http://), puis reconnecter le VPN : l\'IPTV passe alors sans VPN, le reste reste protégé.'
     + '<br><b style="font-weight:500;color:var(--text2)">Listes :</b> ' + (lists.length ? chips(lists) : 'aucune liste chargée (« Mon abonnement » : déverrouillez-le d\'abord)')
     + '<br><b style="font-weight:500;color:var(--text2)">Serveurs vidéo vus pendant la lecture :</b> ' + (seen.length ? chips(seen) : 'aucun pour l\'instant : regardez quelques chaînes, puis revenez ici'),
     (lists.length || seen.length ? '<button class="btn" data-vpncopy>Copier</button>' : '') + (seen.length ? '<button class="btn" data-vpnclr>Effacer</button>' : ''));
 }
+$('#vpnBox').addEventListener('change', e => {
+  if (e.target.id === 'vpnGuardChk') { LS.set('pref.vpnguard', e.target.checked); vpnSt.t = 0; }
+  if (e.target.id === 'vpnIf') { LS.set('pref.vpnif', e.target.value.trim()); vpnSt.t = 0; renderVpnBox(); }
+});
 $('#vpnBox').addEventListener('click', e => {
   if (e.target.closest('[data-vpnclr]')) { LS.set('dev.vpnhosts', {}); renderVpnBox(); return; }
   if (!e.target.closest('[data-vpncopy]')) return;
