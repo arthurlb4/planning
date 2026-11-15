@@ -120,8 +120,10 @@ public class Mpv
     public void Hold(int ms)
     {
         holdUntil = Environment.TickCount64 + ms;
-        var t = new System.Windows.Forms.Timer { Interval = ms + 30 }; t.Tick += (s, e) => { t.Stop(); t.Dispose(); Place(); }; t.Start();
+        // fin du changement : vidéo replacée, puis la page retire son noir
+        var t = new System.Windows.Forms.Timer { Interval = ms + 30 }; t.Tick += (s, e) => { t.Stop(); t.Dispose(); Place(); Settled(); }; t.Start();
     }
+    void Settled() { var t2 = new System.Windows.Forms.Timer { Interval = 80 }; t2.Tick += (s, e) => { t2.Stop(); t2.Dispose(); if (!Holding) f.Post(Msg(new JsonObject { ["moving"] = false })); }; t2.Start(); }
     public void Place()
     {
         if (f.IsDisposed || Holding) return;

@@ -250,7 +250,7 @@ public class MainForm : Form
         Post(new JsonObject { ["t"] = "win", ["st"] = new JsonObject { ["max"] = WindowState == FormWindowState.Maximized, ["full"] = full } });
     }
 
-    Size lastClient;
+    Size lastClient, moveSize;
     protected override void OnResize(EventArgs e)
     {
         base.OnResize(e);
@@ -262,6 +262,7 @@ public class MainForm : Form
             mpv?.FitChild();
         }
         if (ClientSize.Width > 0) lastClient = ClientSize;
+        if (Video.Visible && !full && WindowState != FormWindowState.Minimized && ClientSize != moveSize) { moveSize = ClientSize; Post(new JsonObject { ["t"] = "mpv", ["st"] = new JsonObject { ["moving"] = true } }); mpv?.Hold(220); }
         if (comp != null) comp.Bounds = new Rectangle(Point.Empty, ClientSize);
         bool max = WindowState == FormWindowState.Maximized;
         if (max != wasMax) { wasMax = max; Post(new JsonObject { ["t"] = "win", ["st"] = new JsonObject { ["max"] = max, ["full"] = full } }); }
