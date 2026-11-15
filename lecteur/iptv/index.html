@@ -3472,8 +3472,18 @@ function hovFrom(el, r) {
   const b = el.getBoundingClientRect();
   return `translate(${r.left - b.left}px,${r.top - b.top}px) scale(${r.width / b.width},${r.height / b.height})`;
 }
+/* Bande-annonce continue de l'aperçu à la fiche : le lecteur YouTube de l'aperçu est déplacé tel quel dans la fiche, sans être
+   rechargé (moveBefore, moteurs récents : appli native) : ni coupure du son ni saut. Ailleurs, la fiche reprend au même moment. */
+const TRK = { f: null, at: 0 };
+function trKeep(el) {
+  if (!el || !Element.prototype.moveBefore) return;
+  const f = el.querySelector('iframe.on, iframe'); if (!f || !f.dataset.k) return;
+  let h = $('#trKeep'); if (!h) { h = document.createElement('div'); h.id = 'trKeep'; h.style.cssText = 'position:fixed;left:-10000px;top:0;width:480px;height:270px;pointer-events:none'; document.body.appendChild(h); }
+  try { h.moveBefore(f, null); TRK.f = f; TRK.at = Date.now(); setTimeout(() => { if (TRK.f === f && f.parentNode === h) { f.remove(); TRK.f = null; } }, 4000); } catch (e) {}
+}
 function hovClose(fast) {
   clearTimeout(HOV.t); clearTimeout(HOV.close);
+  if (HOV.keep) { HOV.keep = false; trKeep(HOV.el); }
   const el = HOV.el, src = HOV.src; HOV.el = HOV.it = HOV.src = null;
   document.querySelectorAll('.vwrap.hov').forEach(w => w.classList.remove('hov'));
   if (!el) return;
@@ -3520,8 +3530,8 @@ function hovOpen(poster) {
   requestAnimationFrame(() => { el.style.transform = 'none'; el.style.opacity = '1'; });
   el.addEventListener('mouseenter', () => clearTimeout(HOV.close));
   el.addEventListener('mouseleave', () => { HOV.close = setTimeout(hovClose, 120); });
-  el.querySelector('[data-hinfo]').onclick = () => { hovClose(true); openVod(it); };
-  el.querySelector('.md').addEventListener('click', ev => { if (!ev.target.closest('.snd')) { hovClose(true); openVod(it); } });
+  el.querySelector('[data-hinfo]').onclick = () => { HOV.keep = true; hovClose(true); openVod(it); };
+  el.querySelector('.md').addEventListener('click', ev => { if (!ev.target.closest('.snd')) { HOV.keep = true; hovClose(true); openVod(it); } });
   el.querySelector('[data-hplay]').onclick = () => {
     hovClose(true);
     if (it.kind !== 'movie' || it.tor) return openVod(it);
@@ -3593,7 +3603,7 @@ document.addEventListener('click', e => {
     const pk = vodPick(it); playVod(it, vodUrl('movie', pk.id, pk.ext), null, null);
     return;
   }
-  hovClose(true);                                        // Plus d'infos, ou clic ailleurs : la fiche s'ouvre normalement
+  HOV.keep = true; hovClose(true);                       // Plus d'infos, ou clic ailleurs : la fiche s'ouvre normalement
 }, true);
 document.addEventListener('mouseover', e => {
   if (e.target.closest && e.target.closest('.varr')) { clearTimeout(HOV.t); return; }   // flèche de la rangée : pas d'aperçu dessous
@@ -4550,7 +4560,13 @@ async function showTrailer(it) {
   const st = trStart(tr.key);
   box.innerHTML = `<iframe src="${YT_EMBED}/embed/${encodeURIComponent(tr.key)}?autoplay=1&${p}${st}&rel=0&modestbranding=1&playsinline=1&enablejsapi=1${cc}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin" title="Bande-annonce"${bare ? ' class="bare" tabindex="-1"' : ''}></iframe>${bare ? '<button class="trplay" title="Pause / lecture"><svg viewBox="0 0 24 24"><path class="ip" d="M7 4v16l13-8z"/><path class="ipa" d="M7 4h3.5v16H7zM13.5 4H17v16h-3.5z"/></svg></button>' : ''}${bare ? '<button class="trmute" title="Couper / remettre le son"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="iv" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" fill="none"/><path class="im" d="M16 9l5 6M21 9l-5 6" fill="none"/></svg></button>' : ''}`;
   $('#vodDetail').prepend(box); $('#vodModal .sheet').classList.add('hastr');
-  ytListen(box.querySelector('iframe'));
+  // même bande-annonce déjà en cours dans l'aperçu : son lecteur prend la place du nouveau, sans rechargement
+  const kept = TRK.f && TRK.f.dataset.k === tr.key && Date.now() - TRK.at < 4000 ? TRK.f : null;
+  if (kept && bare) {
+    const nf = box.querySelector('iframe'); TRK.f = null;
+    try { box.moveBefore(kept, nf); nf.remove(); kept.className = 'bare'; kept.removeAttribute('style'); kept.tabIndex = -1; kept.dataset.alive = '1';
+      kept.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unMute', args: [] }), '*'); ytVol(kept); } catch (e) {}
+  } else ytListen(box.querySelector('iframe'));
   // Appli Windows : lecteur YouTube muet au bout de 7 s = page « Connectez-vous pour confirmer que vous n'êtes pas un robot »
   // (VPN) ; ses boutons ne sont pas cliquables ici (lecteur sans commandes) : bouton de connexion de l'appli par-dessus
   if (window.desktop && window.desktop.ytLogin) setTimeout(() => { const f = box.querySelector('iframe'); if (box.isConnected && f && !f.dataset.alive) trLoginBox(box, false); }, 7000);
