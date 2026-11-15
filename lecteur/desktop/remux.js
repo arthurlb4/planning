@@ -9,7 +9,13 @@ const http = require('http');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { spawn } = require('child_process');
+const cp = require('child_process');
+// processus lancés en priorité basse (ffmpeg, VLC) : une conversion lourde ne fige plus le PC
+function spawn(cmd, args, opts) {
+  const p = cp.spawn(cmd, args, opts);
+  try { if (p.pid) os.setPriority(p.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch (e) {}
+  return p;
+}
 const TEXT_SUBS = /^(subrip|srt|ass|ssa|mov_text|webvtt|text)$/i;   // sous-titres texte (les sous-titres en images ne se convertissent pas)
 const SUBS = new Map();                                        // jeton → fichier WebVTT en cours d'écriture
 
@@ -117,6 +123,36 @@ function viaVlc(ff, vlc) {
   ff.on('exit', () => vlc.stop()); vlc.on('exit', () => { try { ff.stdin.end(); } catch (e) {} });
 }
 
+/* Client torrent dans un processus à part (Node d'Electron, priorité basse) : son travail (connexions, disque, contrôle des
+   morceaux) ne peut plus figer la fenêtre de l'appli ni le PC. Il sert /torrent/… sur son propre port, relayé ici ;
+   relancé s'il s'arrête. */
+const TP = { port: 0, child: null, wait: null };
+function torrentProc() {
+  if (TP.port && TP.child && TP.child.exitCode === null) return Promise.resolve(TP.port);
+  if (TP.wait) return TP.wait;
+  TP.wait = new Promise((resolve, reject) => {
+    const child = cp.fork(path.join(__dirname, 'torrent-proc.js'), [], { stdio: ['ignore', 'ignore', 'ignore', 'ipc'], windowsHide: true, env: Object.assign({}, process.env, { ELECTRON_RUN_AS_NODE: '1' }) });
+    try { os.setPriority(child.pid, os.constants.priority.PRIORITY_BELOW_NORMAL); } catch (e) {}
+    const t = setTimeout(() => { TP.wait = null; reject(new Error('module torrent : pas de réponse')); }, 20000);
+    child.on('message', m => { if (m && m.port) { clearTimeout(t); TP.port = m.port; TP.child = child; TP.wait = null; resolve(m.port); } });
+    child.on('exit', () => { if (TP.child === child) { TP.child = null; TP.port = 0; } TP.wait = null; clearTimeout(t); });
+    child.on('error', e => { TP.wait = null; clearTimeout(t); reject(e); });
+  });
+  return TP.wait;
+}
+process.on('exit', () => { try { if (TP.child) TP.child.kill(); } catch (e) {} });
+function torrentProxy(req, res) {
+  torrentProc().then(port => {
+    const up = http.request({ host: '127.0.0.1', port, path: req.url, method: req.method, headers: req.headers }, r => {
+      const h = Object.assign({}, r.headers, { 'access-control-allow-origin': '*' });
+      res.writeHead(r.statusCode, h); r.pipe(res);
+    });
+    up.on('error', () => { if (!res.headersSent) { res.writeHead(502, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'module torrent injoignable' })); } else res.destroy(); });
+    res.on('close', () => up.destroy());
+    req.pipe(up);
+  }, e => { res.writeHead(502, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: e.message })); });
+}
+
 module.exports = function startRemux(ffmpeg, findVlc) {
   return new Promise(resolve => {
     const srv = http.createServer((req, res) => {
@@ -132,7 +168,7 @@ module.exports = function startRemux(ffmpeg, findVlc) {
         res.setHeader('Content-Type', 'text/vtt; charset=utf-8'); res.setHeader('Cache-Control', 'no-store');
         return fs.readFile(f || '', (e, b) => res.end(e ? 'WEBVTT\n' : b));
       }
-      if (u.pathname.startsWith('/torrent/')) return require('./torrent')(req, res, u);   // torrents fournis par l'utilisateur
+      if (u.pathname.startsWith('/torrent/')) return torrentProxy(req, res);   // torrents fournis par l'utilisateur (processus séparé)
       if (u.pathname === '/vlcinfo') { Promise.resolve(findVlc ? findVlc() : '').then(p => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ ok: !!p })); }); return; }
       const src = u.searchParams.get('url') || '';
       if (!/^https?:\/\//i.test(src)) { res.statusCode = 400; return res.end(); }
@@ -172,7 +208,9 @@ module.exports = function startRemux(ffmpeg, findVlc) {
       // par VLC, l'ordre des pistes audio peut changer d'une fois à l'autre : piste choisie par sa langue quand elle est connue
       const al = (u.searchParams.get('al') || '').toLowerCase();
       args.push('-map', '0:v:0', '-map', vlcPath && /^[a-z]{2,3}$/.test(al) ? '0:a:m:language:' + al + '?' : '0:a:' + a + '?', '-sn', '-dn');
-      if (enc) args.push('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '21', '-pix_fmt', 'yuv420p');
+      // image reconvertie (carte graphique qui ne lit pas le format, souvent du H.265 4K) : ramenée à 1080p au plus, et deux
+      // cœurs du processeur laissés libres (une conversion 4K en temps réel occupait tout le processeur et figeait le PC)
+      if (enc) args.push('-vf', "scale='min(1920,iw)':-2", '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '21', '-pix_fmt', 'yuv420p', '-threads', String(Math.max(2, os.cpus().length - 2)));
       else { args.push('-c:v', 'copy'); if (hevc) args.push('-tag:v', 'hvc1'); }
       args.push('-c:a', 'aac', '-ac', '2', '-b:a', '192k', '-f', 'mp4', '-movflags', 'frag_keyframe+empty_moov+default_base_moof', '-frag_duration', '1000000', 'pipe:1');
       // Sous-titres intégrés : seconde sortie, en WebVTT dans un fichier temporaire lu par la page au fil de la lecture

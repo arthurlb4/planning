@@ -24,7 +24,7 @@ let client = null, clientErr = '';
 function getClient() {
   if (!client || client.destroyed) {
     const WebTorrent = require('webtorrent');
-    client = new WebTorrent({ utp: false, maxConns: 80 });   // pas de module natif à compiler
+    client = new WebTorrent({ utp: false, maxConns: 50 });   // pas de module natif à compiler
     client.on('error', e => { clientErr = e.message || String(e); });
   }
   return client;
