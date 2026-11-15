@@ -172,9 +172,51 @@ function mpvGeo() {
 function mpvBounds() {
   if (!MPV.sock) return;
   const g = mpvGeo();
-  if (!g) { if (!MPV.min) { MPV.min = true; mpvCmd(['set_property', 'window-minimized', true]); } return; }
-  if (MPV.min) { MPV.min = false; mpvCmd(['set_property', 'window-minimized', false]); }
+  if (!g) { if (!MPV.min) { MPV.min = true; mpvVis(false); } return; }
+  if (MPV.min) { MPV.min = false; mpvVis(true); }
   if (g !== MPV.geo) { MPV.geo = g; mpvCmd(['set_property', 'geometry', g]); }
+}
+function mpvVis(show) {
+  if (MPV.owned && MPV.helper) { try { MPV.helper.stdin.write(show ? 'show\n' : 'hide\n'); } catch (e) {} if (show) mpvCmd(['set_property', 'window-minimized', false]); }
+  else mpvCmd(['set_property', 'window-minimized', !show]);
+}
+/* Fenêtre de mpv rattachée à celle de l'appli (fenêtre « possédée », comme une boîte de dialogue) : pas d'icône à part dans la
+   barre des tâches, toujours juste au-dessus de l'appli et jamais devant les autres programmes, réduite avec elle.
+   Petit assistant PowerShell (appels Windows standard) qui reste ouvert pendant la lecture pour masquer / montrer la fenêtre. */
+const OWN_PS = `Add-Type @"
+using System; using System.Runtime.InteropServices;
+public static class LecteurW {
+  public delegate bool EP(IntPtr h, IntPtr l);
+  [DllImport("user32.dll")] public static extern bool EnumWindows(EP f, IntPtr l);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint p);
+  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
+  [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")] public static extern IntPtr SetWindowLongPtr(IntPtr h, int i, IntPtr v);
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);
+  public static IntPtr Find(uint pid) { IntPtr r = IntPtr.Zero; EnumWindows((h, l) => { uint p; GetWindowThreadProcessId(h, out p); if (p == pid && IsWindowVisible(h)) { r = h; return false; } return true; }, IntPtr.Zero); return r; }
+}
+"@
+$h = [IntPtr]::Zero
+for ($i = 0; $i -lt 150 -and $h -eq [IntPtr]::Zero; $i++) { $h = [LecteurW]::Find([uint32]$args[0]); if ($h -eq [IntPtr]::Zero) { Start-Sleep -Milliseconds 100 } }
+if ($h -eq [IntPtr]::Zero) { exit 1 }
+[void][LecteurW]::ShowWindow($h, 0)
+[void][LecteurW]::SetWindowLongPtr($h, -8, [IntPtr][int64]$args[1])
+[void][LecteurW]::ShowWindow($h, 8)
+[Console]::Out.WriteLine('ok'); [Console]::Out.Flush()
+while ($null -ne ($l = [Console]::In.ReadLine())) { if ($l -eq 'hide') { [void][LecteurW]::ShowWindow($h, 0) } elseif ($l -eq 'show') { [void][LecteurW]::ShowWindow($h, 8) } }
+`;
+function mpvOwn(proc, page) {
+  try {
+    const f = path.join(app.getPath('temp'), 'lecteur-mpv-own.ps1'); fs.writeFileSync(f, OWN_PS);
+    const hb = page.getNativeWindowHandle(), owner = (hb.length >= 8 ? hb.readBigUInt64LE(0) : BigInt(hb.readUInt32LE(0))).toString();
+    const ps = spawn('powershell.exe', ['-NoProfile', '-NoLogo', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', f, String(proc.pid), owner], { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
+    MPV.helper = ps;
+    ps.stdout.on('data', b => {
+      if (!/ok/.test(String(b)) || MPV.proc !== proc) return;
+      MPV.owned = true; mpvCmd(['set_property', 'ontop', false]); mpvVis(!MPV.min);
+    });
+    ps.on('exit', () => { if (MPV.helper === ps) { MPV.helper = null; if (MPV.owned) { MPV.owned = false; mpvCmd(['set_property', 'ontop', true]); } } });
+    ps.on('error', () => {});
+  } catch (e) {}
 }
 function mpvSend(o) { try { if (MPV.page && !MPV.page.isDestroyed()) MPV.page.webContents.send('mpv', o); } catch (e) {} }
 function mpvCmd(args) { try { if (MPV.sock) MPV.sock.write(JSON.stringify({ command: args }) + '\n'); } catch (e) {} }
@@ -182,6 +224,7 @@ function mpvStop() {
   const p = MPV.proc; MPV.proc = null;
   try { if (MPV.sock) MPV.sock.destroy(); } catch (e) {} MPV.sock = null;
   if (p) { try { p.kill(); } catch (e) {} }
+  const h = MPV.helper; MPV.helper = null; MPV.owned = false; if (h) { try { h.kill(); } catch (e) {} }
 }
 const mpvHooked = new WeakSet();
 ipcMain.on('mpv-stop', () => mpvStop());
@@ -196,8 +239,9 @@ ipcMain.handle('mpv-play', async (e, o) => {
     const follow = () => mpvBounds();
     ['move', 'resize', 'maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen', 'restore', 'minimize', 'show', 'hide'].forEach(ev => page.on(ev, follow));
     // au premier plan avec l'appli, mais pas par-dessus les autres programmes quand on change de fenêtre
-    page.on('focus', () => mpvCmd(['set_property', 'ontop', true]));
-    page.on('blur', () => mpvCmd(['set_property', 'ontop', false]));
+    // (sans rattachement seulement) au premier plan avec l'appli, pas par-dessus les autres programmes
+    page.on('focus', () => { if (!MPV.owned) mpvCmd(['set_property', 'ontop', true]); });
+    page.on('blur', () => { if (!MPV.owned) mpvCmd(['set_property', 'ontop', false]); });
   }
   const g0 = mpvGeo();
   const pipe = '\\\\.\\pipe\\lecteur-mpv-' + process.pid + '-' + Date.now();
@@ -211,6 +255,7 @@ ipcMain.handle('mpv-play', async (e, o) => {
   let proc;
   try { proc = spawn(exe, args, { windowsHide: true, stdio: 'ignore' }); } catch (er) { return { error: String(er.message || er) }; }
   MPV.proc = proc;
+  mpvOwn(proc, page);
   proc.on('exit', () => { if (MPV.proc === proc) { MPV.proc = null; mpvSend({ exit: true, eof: !!MPV.st.eof, pos: MPV.st.pos || 0 }); } });
   // canal de commande : position, durée, pause, fin, et messages des raccourcis
   for (let k = 0; k < 40 && MPV.proc === proc && !MPV.sock; k++) {
@@ -237,6 +282,7 @@ ipcMain.handle('mpv-play', async (e, o) => {
   });
   sock.on('close', () => { if (MPV.sock === sock) MPV.sock = null; });
   MPV.min = !g0; MPV.geo = g0; mpvBounds();
+  if (MPV.owned) mpvCmd(['set_property', 'ontop', false]);
   return { ok: true };
 });
 app.on('before-quit', () => mpvStop());
