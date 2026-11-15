@@ -3568,14 +3568,21 @@ function hovInline(poster, it) {
     f.onload = () => ytOnPlay(f, () => {                 // la vidéo joue vraiment : on ouvre, puis le son
       if (HOV.el !== poster || !document.body.contains(poster)) return;
       const h = im.offsetHeight, w = Math.round(h * 16 / 9);
+      // rangée : affiche trop près du bord droit pour s'agrandir vers la droite → elle grandit vers la gauche en poussant les
+      // précédentes (son bord droit reste en place pendant l'animation)
+      const sc0 = poster.closest('.vscroll'), a0 = poster.getBoundingClientRect(), b0 = sc0 && sc0.getBoundingClientRect();
+      const pin = sc0 && a0.left + w > b0.right - 8 ? a0.right : 0;
       poster.style.setProperty('--ph', h + 'px'); poster.style.width = w + 'px'; poster.classList.add('xp'); f.classList.add('on');
+      if (pin) { const t0 = performance.now(); HOV.pinned = true;
+        const keep = () => { if (HOV.el !== poster) return; HOV.auto = Date.now(); const d = poster.getBoundingClientRect().right - pin; if (Math.abs(d) >= 0.5) sc0.scrollLeft += d; if (HOV.sl && HOV.sl.el === sc0) HOV.sl.x = sc0.scrollLeft; if (performance.now() - t0 < 450) requestAnimationFrame(keep); };
+        requestAnimationFrame(keep); } else HOV.pinned = false;
       // grille (recherche) : l'affiche s'élargit par-dessus ses voisines ; au bord droit, elle s'élargit vers la gauche
       if (poster.closest('.vgrid')) { const g = poster.closest('.vgrid').getBoundingClientRect(), a = poster.getBoundingClientRect(), over = a.left + w - g.right;
         if (over > 0) poster.style.marginLeft = -Math.min(over, a.left - g.left) + 'px'; }
       if (LS.get('pref.hoverSound', false)) setTimeout(() => { try { f.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unMute', args: [] }), '*'); } catch (e) {} }, 250);
       poster.insertAdjacentHTML('beforeend', `<span class="xpb"><span class="bt"><span class="btn primary" data-hplay>▶ ${it.kind === 'series' ? 'Épisodes' : 'Lecture'}</span><span class="btn" data-hinfo>Plus d'infos</span><span class="hfb">${fbButtons(it, 'fbi').replace(/<button /g, '<span ').replace(/<\/button>/g, '</span>')}</span></span>
         <span class="mt">${esc([noteTxt(it), (it.services || []).join(', ')].filter(Boolean).join(' · '))}</span></span>`);
-      setTimeout(() => { const sc = poster.closest('.vscroll'); if (!sc || HOV.el !== poster) return; const a = poster.getBoundingClientRect(), bb = sc.getBoundingClientRect();
+      setTimeout(() => { const sc = poster.closest('.vscroll'); if (!sc || HOV.el !== poster || HOV.pinned) return; const a = poster.getBoundingClientRect(), bb = sc.getBoundingClientRect();
         if (a.right > bb.right - 8) { HOV.auto = Date.now(); sc.scrollBy({ left: a.right - bb.right + 16, behavior: 'smooth' }); } }, 320);
     }, 4000);
     ytListen(f); v.prepend(f);
