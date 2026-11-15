@@ -510,9 +510,11 @@ async function iptvScTop(request, url, ctx) {
     var q = k === 'films' ? 'meilleurs films de ' + y : 'meilleures séries de ' + y;
     var sr = await fetch('https://www.senscritique.com/search?query=' + encodeURIComponent(q), { headers: UA });
     var st = await sr.text(), m = new RegExp('/top/resultats/' + slug + '/(\\d+)').exec(st);
+    out.dbg = 'search ' + sr.status + ' ' + st.length + ' ' + st.slice(0, 120).replace(/\s+/g, ' ');
     if (m) {
       out.url = 'https://www.senscritique.com/top/resultats/' + slug + '/' + m[1];
       var pr = await fetch(out.url, { headers: UA }), html = await pr.text();
+      out.dbg += ' | top ' + pr.status + ' ' + html.length;
       var nd = /<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/.exec(html);
       var ap = nd ? ((JSON.parse(nd[1]).props || {}).pageProps || {}).__APOLLO_STATE__ || {} : {};
       var poll = ap['Poll:' + m[1]] || {}, refs = poll.minimalProducts || poll.products || [];
