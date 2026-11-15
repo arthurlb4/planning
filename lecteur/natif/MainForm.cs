@@ -157,7 +157,17 @@ public class MainForm : Form
         web.WebMessageReceived += (s, a) => { try { OnMessage(a.TryGetWebMessageAsString()); } catch { } };
         // vers les serveurs IPTV : sans les en-têtes propres aux pages web (Origin, Referer), comme une appli de lecture
         web.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
-        web.WebResourceRequested += (s, a) => { try { if (!OWN.IsMatch(a.Request.Uri) && !a.Request.Uri.StartsWith("http://127.0.0.1")) { a.Request.Headers.RemoveHeader("Origin"); a.Request.Headers.RemoveHeader("Referer"); } } catch { } };
+        web.WebResourceRequested += (s, a) =>
+        {
+            try
+            {
+                var u = a.Request.Uri;
+                // relais de l'appli : il n'accepte que les demandes venant du site (comme dans l'appli Electron)
+                if (u.StartsWith("https://planning-gcal.")) a.Request.Headers.SetHeader("Origin", "https://franceinfoplanning.com");
+                else if (!OWN.IsMatch(u) && !u.StartsWith("http://127.0.0.1")) { a.Request.Headers.RemoveHeader("Origin"); a.Request.Headers.RemoveHeader("Referer"); }
+            }
+            catch { }
+        };
         web.NewWindowRequested += (s, a) => { a.Handled = true; OpenExternal(a.Uri); };
         web.ContainsFullScreenElementChanged += (s, a) => SetFull(web.ContainsFullScreenElement);
         // page redemandée au site à chaque lancement (jamais une ancienne copie gardée en cache)
