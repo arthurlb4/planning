@@ -263,7 +263,7 @@ public class MainForm : Form
             mpv?.FitChild();
         }
         if (ClientSize.Width > 0) lastClient = ClientSize;
-        if (Video.Visible && !full && WindowState != FormWindowState.Minimized && ClientSize != moveSize) { moveSize = ClientSize; Post(new JsonObject { ["t"] = "mpv", ["st"] = new JsonObject { ["moving"] = true } }); mpv?.Hold(160); }
+
         if (comp != null) comp.Bounds = new Rectangle(Point.Empty, ClientSize);
         bool max = WindowState == FormWindowState.Maximized;
         if (max != wasMax) { wasMax = max; Post(new JsonObject { ["t"] = "win", ["st"] = new JsonObject { ["max"] = max, ["full"] = full } }); }
