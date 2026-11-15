@@ -689,8 +689,11 @@ body.vtools #prevBtn,body.vtools #nextBtn,body.vtools #soloBtn,body.vtools #solo
 #vbar input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:#fff;border:0}
 #vbar button:focus,#vbar input:focus{outline:none}
 #vbRange{flex:1;min-width:60px}
+#vbar input[type=range]{height:22px;background-size:100% 4px;background-position:0 50%;background-repeat:no-repeat}
+#vbar input[type=range]::-webkit-slider-runnable-track{height:22px}
+#vbar input[type=range]::-webkit-slider-thumb{margin-top:5px}
 /* Torrent en lecture : morceaux reçus dans la barre de lecture, comme une zone tamponnée (fresque à la qBittorrent) */
-#vbar #vbRange.tbuf{background:linear-gradient(90deg,#fff var(--p,0%),transparent var(--p,0%)),var(--tbuf) 0 0/100% 100% no-repeat,rgba(255,255,255,.18)}
+#vbar #vbRange.tbuf{background:linear-gradient(90deg,#fff var(--p,0%),transparent var(--p,0%)) 0 50%/100% 4px no-repeat,var(--tbuf) 0 50%/100% 4px no-repeat,linear-gradient(rgba(255,255,255,.18),rgba(255,255,255,.18)) 0 50%/100% 4px no-repeat}
 #vbVol{width:80px;flex:none}
 #vbar .live{display:none;height:24px;padding:0 9px 0 20px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:.06em;color:#fff;background:rgba(255,255,255,.12);position:relative}
 #vbar .live::before{content:'';position:absolute;left:9px;top:50%;width:6px;height:6px;margin-top:-3px;border-radius:50%;background:#9d9b95}
@@ -5134,6 +5137,7 @@ if (window.desktop && window.desktop.mpv) {
     const c = S.current; if (!c) return;
     if (st.back) { mpvBack(); return; }
     if (st.moving != null) { document.body.classList.toggle('natmove', !!st.moving); return; }
+    if (st.paused === true) { clearTimeout(idleT); idleSet(false); } else if (st.paused === false) wake();
     if (NAT && st.pos > 0 && !document.body.classList.contains('natready')) setTimeout(() => { if (S.engine === 'mpv') document.body.classList.add('natready'); }, 250);
     if (NAT) { if (st.tracks) renderTrackMenu(); vodTick(); if (!st.tracks && !st.chapters) vbarUpdate(); }
     if (st.eof || st.exit) {
@@ -5346,11 +5350,11 @@ function vthHide() { const b = $('#vbThumb'); if (b) b.hidden = true; clearTimeo
 $('#vbRange').addEventListener('pointermove', e => {
   const rg = e.currentTarget, c = S.current; if (!c || !c.vod) return vthHide();
   const r = rg.getBoundingClientRect(), f = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
-  const dur = S.engine === 'remux' && S.remux && S.remux.info ? S.remux.info.duration || 0 : isFinite(video.duration) ? video.duration : 0; if (!dur) return vthHide();
+  const dur = S.engine === 'mpv' ? S.mpvSt.dur || 0 : S.engine === 'remux' && S.remux && S.remux.info ? S.remux.info.duration || 0 : isFinite(video.duration) ? video.duration : 0; if (!dur) return vthHide();
   const t = f * dur, sc = $('#screen').getBoundingClientRect();
   let b = $('#vbThumb'); if (!b) { b = document.createElement('div'); b.id = 'vbThumb'; b.innerHTML = '<div class="im"></div><span></span>'; $('#screen').appendChild(b); }
   b.hidden = false; b.querySelector('span').textContent = fmtT(t);
-  const tor = window.desktop && S.engine === 'remux' && /\/torrent\/file\//.test(c.url || ''), map = TMAP.info && TMAP.info.map;
+  const tor = window.desktop && (S.engine === 'remux' || S.engine === 'mpv') && /\/torrent\/file\//.test(c.url || ''), map = TMAP.info && TMAP.info.map;
   const got = tor && map && +map[Math.min(map.length - 1, Math.floor(f * map.length))] >= 8;
   b.classList.toggle('img', !!got);
   const w = got ? 228 : 70; b.style.left = Math.max(8, Math.min(sc.width - w - 8, e.clientX - sc.left - w / 2)) + 'px';
@@ -6108,7 +6112,8 @@ video.addEventListener('dblclick', () => setSolo(!document.body.classList.contai
 let idleT;
 // (en plein écran, le titre et les boutons du haut aussi)
 const idleSet = on => { $('#screen').classList.toggle('idle', on); document.body.classList.toggle('vidle', on); };
-function wake() { idleSet(false); clearTimeout(idleT); idleT = setTimeout(() => { if (!video.paused && !$('#trackMenu:not([hidden])') && !$('#stats:not([hidden])')) idleSet(true); }, 3000); }
+const isPlayingNow = () => S.engine === 'mpv' ? !S.mpvSt.paused : !video.paused;
+function wake() { idleSet(false); clearTimeout(idleT); idleT = setTimeout(() => { if (isPlayingNow() && !$('#trackMenu:not([hidden])') && !$('#stats:not([hidden])') && !$('#epMenu:not([hidden])') && !$('#srcMenu:not([hidden])')) idleSet(true); }, 3000); }
 ['mousemove', 'touchstart', 'click'].forEach(ev => $('#player').addEventListener(ev, wake, { passive: true }));
 document.addEventListener('keydown', wake);
 video.addEventListener('pause', () => { clearTimeout(idleT); idleSet(false); });
