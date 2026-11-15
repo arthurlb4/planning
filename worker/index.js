@@ -493,6 +493,41 @@ async function iptvSyncList(request, env, url) {
 // Sous-titres OpenSubtitles pour la page web et l'iPhone : OpenSubtitles refuse la vérification préalable (CORS) que le
 // navigateur envoie avant une requête avec clé. La page envoie ici une requête simple (clé dans l'adresse ou le corps) ;
 // seules la recherche (/subtitles) et la demande de téléchargement (/download) sont relayées, et pour nos sites seulement.
+/* Top SensCritique de l'année (« Les meilleurs films de 2026 », « Les meilleures séries de 2026 ») : page du classement
+   retrouvée par la recherche du site, puis lue (données de la page : __NEXT_DATA__ › __APOLLO_STATE__). Gardé 12 h.
+   Réponse : { url, items: [{ t: titre, o: titre original, d: date de sortie, r: note, p: affiche }] } dans l'ordre du top. */
+async function iptvScTop(request, url, ctx) {
+  var o = request.headers.get('Origin') || '';
+  var h = { 'Access-Control-Allow-Origin': ALLOWED_ORIGINS.indexOf(o) >= 0 ? o : ALLOWED_ORIGIN, 'Vary': 'Origin', 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'public, max-age=43200' };
+  var k = url.searchParams.get('k'), y = +url.searchParams.get('y');
+  if ((k !== 'films' && k !== 'series') || !(y >= 2000 && y <= 2100)) return new Response(JSON.stringify({ error: 'paramètres' }), { status: 400, headers: h });
+  var cache = caches.default, ck = new Request('https://cache.local/sctop2/' + k + '/' + y);
+  var hit = await cache.match(ck); if (hit) { var hb = await hit.text(); return new Response(hb, { headers: h }); }
+  var UA = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36', 'Accept-Language': 'fr-FR,fr;q=0.9' };
+  var slug = k === 'films' ? 'les_meilleurs_films_de_' + y : 'les_meilleures_series_de_' + y;
+  var out = { url: '', items: [] };
+  try {
+    var q = k === 'films' ? 'meilleurs films de ' + y : 'meilleures séries de ' + y;
+    var sr = await fetch('https://www.senscritique.com/search?query=' + encodeURIComponent(q), { headers: UA });
+    var st = await sr.text(), m = new RegExp('/top/resultats/' + slug + '/(\\d+)').exec(st);
+    if (m) {
+      out.url = 'https://www.senscritique.com/top/resultats/' + slug + '/' + m[1];
+      var pr = await fetch(out.url, { headers: UA }), html = await pr.text();
+      var nd = /<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/.exec(html);
+      var ap = nd ? ((JSON.parse(nd[1]).props || {}).pageProps || {}).__APOLLO_STATE__ || {} : {};
+      var poll = ap['Poll:' + m[1]] || {}, refs = poll.minimalProducts || poll.products || [];
+      out.items = refs.map(function (r) {
+        var x = ap[r && r.__ref] || {}; if (!x.title) return null;
+        var pic = x.medias && x.medias.picture || '';
+        return { t: x.title, o: x.originalTitle || '', d: x.dateRelease || x.frenchReleaseDate || '', r: x.rating || 0, p: pic };
+      }).filter(Boolean).slice(0, 100);
+    }
+  } catch (e) { out.error = String(e && e.message || e); }
+  var body = JSON.stringify(out);
+  if (out.items.length) ctx.waitUntil(cache.put(ck, new Response(body, { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=43200' } })));
+  return new Response(body, { headers: h });
+}
+
 async function iptvOst(request, url) {
   var o = request.headers.get('Origin') || '';
   var h = { 'Access-Control-Allow-Origin': ALLOWED_ORIGINS.indexOf(o) >= 0 ? o : ALLOWED_ORIGIN, 'Vary': 'Origin', 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
@@ -560,6 +595,7 @@ async function handle(request, env, ctx) {
     var path = url.pathname;
     if (path === '/iptv/m3u') return iptvM3u(request, url);
     if (path === '/iptv/ost') return iptvOst(request, url);
+    if (path === '/iptv/sctop') return iptvScTop(request, url, ctx);
     if (path === '/iptv/sync') return iptvSync(request, env, url);
     if (path === '/iptv/synclist') return iptvSyncList(request, env, url);
     if (path === '/iptv/agenda') {                    // agenda sport préparé par GitHub (scripts/build-agenda.py) à partir de xmltvfr.fr
