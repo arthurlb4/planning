@@ -426,6 +426,7 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 .poster:hover .im{transform:scale(1.04)}
 .poster .im img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .poster .kd.tor{background:#2f5f9e;color:#fff}
+.poster .cnb{position:absolute;left:7px;bottom:7px;font-size:11px;font-weight:500;padding:2px 7px;border-radius:6px;background:rgba(10,132,255,.92);color:#fff;z-index:1}.poster .cnb.ok{background:#2e9e4f}
 .poster .nsb{position:absolute;right:7px;top:32px;font-size:11px;font-weight:500;padding:2px 7px;border-radius:6px;background:#e5322d;color:#fff;z-index:1}
 .poster .rt{position:absolute;top:7px;left:7px;font-size:11px;font-weight:600;padding:2px 6px;border-radius:6px;background:rgba(0,0,0,.7);color:var(--gold);z-index:1}
 .poster .kd{position:absolute;top:7px;right:7px;font-size:10px;font-weight:600;padding:2px 6px;border-radius:6px;background:rgba(0,0,0,.7);color:#fff;z-index:1}
@@ -3539,7 +3540,7 @@ function posterHtml(it, i, rank, prog) {
   const lb = '';                                         // plus d'étiquette de langue (VO, VO ?) sur les affiches
   const pg = prog ? `<span class="pgb"><i style="width:${Math.max(3, Math.min(100, prog.pct || 0))}%"></i></span>${prog.lab ? `<span class="pgl">${esc(prog.lab)}</span>` : ''}` : '';
   if (!coverOf(it)) setTimeout(() => coverWatch(i), 0);
-  return `<button class="poster" data-v="${i}"><div class="im">${esc(it.name)}${coverOf(it) ? `<img src="${esc(posterUrl(coverOf(it)))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="coverMiss(this)">` : ''}${r}${it.kind === 'series' ? '<span class="kd">SÉRIE</span>' : ''}${vfOnly(it) ? '<span class="vfo" title="Film étranger proposé seulement en français (pas de VO)">VF seule</span>' : ''}${rank ? `<span class="rk">${rank}</span>` : ''}${pg}${lb}</div><div class="pt">${esc(it.name)}</div><div class="py">${it.year || ''}</div></button>`;
+  return `<button class="poster" data-v="${i}"><div class="im">${esc(it.name)}${coverOf(it) ? `<img src="${esc(posterUrl(coverOf(it)))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="coverMiss(this)">` : ''}${r}${it.kind === 'series' ? '<span class="kd">SÉRIE</span>' : ''}${vfOnly(it) ? '<span class="vfo" title="Film étranger proposé seulement en français (pas de VO)">VF seule</span>' : ''}${pg}${lb}</div><div class="pt">${esc(it.name)}</div><div class="py">${it.year || ''}</div></button>`;
 }
 // keep : rangée toujours complète (classement, rangée personnelle) ; sinon rangée de découverte, sans les titres déjà
 // affichés plus haut (voir vodDedupe)
@@ -3749,6 +3750,64 @@ async function scTop(kind) {
   return data;
 }
 /* Français récents : films et séries de production française sortis depuis 18 mois, les plus populaires (TMDB) ; 12 h */
+/* ---------- Films au cinéma, pas encore sortis en numérique ----------
+   Les copies de qualité arrivent sur les indexeurs à la première sortie numérique (VOD, plateformes, DVD), où qu'elle soit
+   dans le monde (souvent aux États-Unis, 3 à 6 semaines après la salle). D'après les dates de sortie TMDB de tous les pays :
+   sortie numérique passée = disponible ; sinon, au cinéma (ou à venir) ; sans date numérique connue, disponible 45 jours
+   après la première sortie en salles. */
+async function relInfo(id) {
+  const ck = 'rel1:' + id, c = await DB.cacheGet(ck).catch(() => null); if (c && Date.now() - c.at < 2 * 864e5) return c.data;
+  const d = await tmdb('/movie/' + id + '/release_dates').catch(() => null); if (!d) return c ? c.data : null;
+  let th = 0, dg = 0, dgFr = 0;
+  (d.results || []).forEach(r => (r.release_dates || []).forEach(x => { const t = Date.parse(x.release_date); if (!t) return;
+    if (x.type === 2 || x.type === 3) th = th ? Math.min(th, t) : t;
+    if (x.type >= 4 && x.type <= 6) { dg = dg ? Math.min(dg, t) : t; if (r.iso_3166_1 === 'FR') dgFr = dgFr ? Math.min(dgFr, t) : t; } }));
+  const data = { th, dg, dgFr }; DB.cachePut({ id: ck, at: Date.now(), data }); return data;
+}
+// 'ok' | { st: 'cine' | 'soon', vod: date de sortie numérique connue (0 sinon), th: sortie en salles }
+async function relState(it) {
+  if (!it || it.kind !== 'movie' || !it.tmdb || (it.year && it.year < new Date().getFullYear() - 1)) return 'ok';
+  const R = await relInfo(it.tmdb); if (!R) return 'ok';
+  const now = Date.now();
+  if (R.dg && R.dg <= now) return 'ok';
+  if (R.th && R.th <= now) return R.dg || now - R.th < 45 * 864e5 ? { st: 'cine', vod: R.dg, th: R.th } : 'ok';
+  if (R.th || R.dg) return { st: 'soon', vod: R.dg, th: R.th };
+  return 'ok';
+}
+const dateFr = t => new Date(t).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' }).replace(/^1 /, '1er ');
+// films en salles en France (TMDB, 2 pages), gardés 12 h
+async function nowPlaying() {
+  const c = await DB.cacheGet('np1').catch(() => null); if (c && Date.now() - c.at < 12 * 3600e3) return c.data;
+  if (!LS.get('pref.tmdb', '')) return null;
+  const L = await Promise.all([1, 2].map(pg => tmdb('/movie/now_playing', { region: 'FR', page: pg }).catch(() => null)));
+  const ids = [], meta = {};
+  L.forEach(r => ((r && r.results) || []).forEach(x => { const id = 'm' + x.id; if (meta[id]) return; meta[id] = { k: 'm', t: x.title || '', o: x.original_title || '', y: +String(x.release_date || '').slice(0, 4) || 0, p: x.poster_path || '', l: x.original_language || '' }; ids.push(id); }));
+  const data = { ids, meta }; if (ids.length) DB.cachePut({ id: 'np1', at: Date.now(), data }); return data;
+}
+/* Rangées : un film hors abonnement encore au cinéma est retiré des rangées de lecture ; dans « Au cinéma » et Ma liste il
+   reste, avec une étiquette ; un film de Ma liste ajouté pendant qu'il était au cinéma passe « Disponible » à sa sortie numérique */
+async function vodCineFilter(box) {
+  const memo = new Map();
+  for (const row of [...box.querySelectorAll('.vrow')]) {
+    const h3 = (row.querySelector('h3') || {}).textContent || '', cine = row.dataset.cine === '1', mine = /^Ma liste/.test(h3), pers = mine || /^Reprendre/.test(h3);
+    for (const p of [...row.querySelectorAll('.poster[data-v]')]) {
+      const it = V.shown[+p.dataset.v]; if (!it || it.kind !== 'movie' || (!it.tor && !cine)) continue;
+      const k = itemKey(it); if (!memo.has(k)) memo.set(k, relState(it).catch(() => 'ok'));
+      const st = await memo.get(k); if (!box.isConnected) return;
+      const im = p.querySelector('.im'); if (!im || im.querySelector('.cnb')) continue;
+      const ml = mine ? myListRaw().find(x => x.k === k || x.g === gKey(it)) : null;
+      if (st === 'ok') {
+        if (cine) p.remove();
+        else if (ml && ml.cine) im.insertAdjacentHTML('beforeend', '<span class="cnb ok">Disponible</span>');
+        continue;
+      }
+      if (!cine && !pers) { p.remove(); continue; }
+      if (ml && !ml.cine) { const l = myListRaw(); const e = l.find(x => x === ml || x.k === ml.k); if (e) { e.cine = 1; LS.set('vod.mylist2', l); } }
+      im.insertAdjacentHTML('beforeend', `<span class="cnb">${st.st === 'soon' ? 'Bientôt' : 'Au cinéma'}${st.vod ? ' · VOD ' + esc(new Date(st.vod).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })) : ''}</span>`);
+    }
+    if (!row.querySelector('.poster[data-v]')) row.remove();
+  }
+}
 async function frRecent() {
   const c = await DB.cacheGet('frrec1').catch(() => null); if (c && Date.now() - c.at < 12 * 3600e3) return c.data;
   const since = new Date(Date.now() - 548 * 864e5).toISOString().slice(0, 10), meta = {}, ids = [];
@@ -4063,6 +4122,14 @@ async function renderVod() {
         const l = popList(T.ids, P, POP.meta, [kd]);
         if (l.length >= 3) h += vodRow('Top SensCritique ' + new Date().getFullYear() + ' · ' + lab, 'le classement de l\'année des membres de SensCritique', l.slice(0, 30), true);
       }
+      if (kinds.includes('m')) {
+        const NP = await Promise.race([nowPlaying().catch(() => null), new Promise(r => setTimeout(() => r(null), 5000))]);
+        if (NP && NP.ids.length) {
+          Object.entries(NP.meta).forEach(([k, m]) => { POP.meta[k] = POP.meta[k] || m; });
+          const l = NP.ids.map(id => popMatch(id, P, POP.meta) || virtItem(id, POP.meta[id])).filter(Boolean);
+          if (l.length >= 3) h += vodRow('Au cinéma', 'en salles en ce moment, pas encore en VOD · bande-annonce au survol, ＋ pour être prévenu', l.slice(0, 30), false, true).replace('class="vrow"', 'class="vrow" data-cine="1"');
+        }
+      }
       if (FRR) {
         Object.entries(FRR.meta).forEach(([k, m]) => { POP.meta[k] = POP.meta[k] || m; });
         const l = popList(FRR.ids, P, POP.meta, kinds);
@@ -4159,6 +4226,7 @@ async function renderVod() {
   box.innerHTML = h;
   vodDedupe(box);
   if (!V.q && !V.cat) vodSeenFilter(box);
+  vodCineFilter(box);
   const qi = $('#vodQ'); if (V.q) { qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); }
 }
 /* Recherche d'une plateforme (« netflix », « prime », « disney »…) : ses classements en tête des résultats — top 10 France
@@ -4714,6 +4782,15 @@ async function openVod(it) {
   V.open = { it, eps, cover, flat };
   vodEnrich(it);
   vodTorLoad(it).catch(() => {});
+  // film au cinéma (pas encore en numérique) : date de sortie en VOD et « Me prévenir » à la place de Lecture
+  if (it.kind === 'movie' && it.tor) relState(it).then(st => {
+    if (st === 'ok' || !V.open || V.open.it !== it) return;
+    const b = $('#vodDetail [data-tgo]'); if (!b) return;
+    V.open.cine = 1;
+    b.parentNode.innerHTML = `<button class="btn primary" data-mylist>${inMyList(it) ? '✓ Ma liste' : '＋ Me prévenir'}</button><button class="btn" data-tgo>Chercher quand même</button>`;
+    const row = $('#vodDetail [data-tgo]').parentNode;
+    row.insertAdjacentHTML('afterend', `<p class="hint" style="margin-top:8px">${st.st === 'soon' ? 'Pas encore sorti' + (st.th ? ' (en salles le ' + dateFr(st.th) + ')' : '') : 'Au cinéma' + (st.th ? ' depuis le ' + dateFr(st.th) : '')} · ${st.vod ? 'sortie en VOD le ' + dateFr(st.vod) : 'date de sortie en VOD pas encore connue'}. Dans Ma liste, il passera « Disponible » à sa sortie.</p>`);
+  }).catch(() => {});
   // appli Windows, rien en lecture : langues de ce film lues tout de suite si on ne les connaît pas
   if (window.desktop && window.desktop.remux && !it.tor && !LANG()[itemKey(it)] && !document.body.classList.contains('playing') && !LCHK.busy) {
     LCHK.busy = true; langProbe(it).then(() => { const l = $('#vodLangs'); if (l && V.open && V.open.it === it) l.textContent = langLine(it) || (langState(it) === 'fr' ? '' : 'Langues : non lues'); LCHK.dirty = true; }).finally(() => { LCHK.busy = false; });
@@ -4785,7 +4862,11 @@ async function vodEnrich(it) {
     put(null);
     // SensCritique et IMDb (« What's on? API », 200 demandes par jour) : ajoutées quand elles arrivent
     frNotes(ti.id, ti.kind).then(n => { if (n && (n.sc || n.im)) put(n); }).catch(() => {}); }
-  const m = $('#vodMeta'); if (m) m.textContent = [it.year || (d.release_date || d.first_air_date || '').slice(0, 4), genres || it.genre, run, certTxt, it.services.join(', ')].filter(Boolean).join(' · ');
+  // date de sortie exacte : en France (salles) pour un film quand TMDB la connaît, sinon la première sortie ; série : 1re diffusion
+  const frRel = ti.kind === 'movie' ? (((d.release_dates || {}).results || []).find(r => r.iso_3166_1 === 'FR') || {}).release_dates || [] : [];
+  const frTh = frRel.filter(x => x.type === 3 || x.type === 2).map(x => x.release_date).sort()[0] || '';
+  const rd = (frTh || d.release_date || d.first_air_date || '').slice(0, 10), rdTxt = /^\d{4}-\d\d-\d\d$/.test(rd) ? new Date(rd + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }).replace(/^1 /, '1er ') : '';
+  const m = $('#vodMeta'); if (m) m.textContent = [rdTxt ? (ti.kind === 'movie' ? 'Sortie le ' : 'Depuis le ') + rdTxt : it.year, genres || it.genre, run, certTxt, it.services.join(', ')].filter(Boolean).join(' · ');
   const cr = d.credits || {}, dir = (cr.crew || []).filter(c => c.job === 'Director').map(c => c.name).slice(0, 2).join(', ') || (d.created_by || []).map(c => c.name).slice(0, 2).join(', ');
   const crew = $('#vodCrew'); if (crew && dir) crew.innerHTML = `<div class="cr">${ti.kind === 'movie' ? 'Réalisation' : 'Création'} : ${esc(dir)}</div>`;
   // Distribution : réalisation (ou création) d'abord, puis les acteurs ; un clic montre les titres de la personne
@@ -4836,7 +4917,13 @@ $('#vodDetail').addEventListener('click', e => {
 $('#vodDetail').addEventListener('change', e => { if (e.target.id === 'seasonSel') { LS.set('season.' + V.open.it.id, e.target.value); openVod(V.open.it); } });
 $('#vodDetail').addEventListener('click', e => {
   // Changement de version : seulement les boutons de lecture mis à jour (la fiche et la bande-annonce restent)
-  if (e.target.closest('[data-mylist]')) { const it = V.open.it; toggleMyList(it); e.target.closest('[data-mylist]').textContent = inMyList(it) ? '✓ Ma liste' : '＋ Ma liste'; return; }
+  if (e.target.closest('[data-mylist]')) {
+    const it = V.open.it, on = toggleMyList(it);
+    if (on && V.open.cine) { const l = myListRaw(), x = l.find(z => z.k === itemKey(it)); if (x) { x.cine = 1; LS.set('vod.mylist2', l); } }
+    e.target.closest('[data-mylist]').textContent = on ? '✓ Ma liste' : (V.open.cine ? '＋ Me prévenir' : '＋ Ma liste');
+    const fr = $('#vodDetail .fbrow'); if (fr) fr.innerHTML = fbButtons(it, 'fbb');
+    return;
+  }
   const ek = e.target.closest('[data-epk]');
   if (ek) { const it = V.open.it, fl = V.open.flat || [], k = +ek.dataset.epk, x = fl[k]; if (!x) return; closeModals(); playVod(it, epUrl(x), x, fl[k + 1]); return; }
   const sp = e.target.closest('#vodSimilar [data-v]'); if (sp) { openVod(V.shown[+sp.dataset.v]); return; }
