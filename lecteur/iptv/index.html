@@ -394,7 +394,7 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 /* Rangées des films et séries (et distribution) : sans barre de défilement ; flèches comme Netflix (gauche seulement une
    fois qu'on a avancé), glisser à la souris, molette */
 .vscroll{scrollbar-width:none}.vscroll::-webkit-scrollbar{display:none}
-.vscroll.drag .ca{pointer-events:none}
+.vscroll.drag .ca,.vscroll.drag .tvc{pointer-events:none}
 .vwrap{position:relative}
 .varr{position:absolute;top:2px;bottom:12px;width:46px;z-index:3;display:flex;align-items:center;justify-content:center;color:#fff;opacity:0;transition:opacity .2s,background .2s;border-radius:10px}
 .varr svg{width:30px;height:30px;stroke:#fff;stroke-width:2.6;fill:none;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 2px 6px rgba(0,0,0,.6))}
@@ -497,6 +497,23 @@ body.hasmatch #nowScore{display:inline}
 #vodTrailer .trlogin b{font-size:17px}#vodTrailer .trlogin span{font-size:13px;color:var(--text3);max-width:420px}
 #vodTrailer .trtag{position:absolute;left:10px;top:10px;font-size:11px;font-weight:500;padding:3px 8px;border-radius:6px;background:rgba(0,0,0,.7);color:#fff;pointer-events:none}
 body.homeview #channels,body.homeview #player{display:none}
+.tvrow .vscroll{gap:14px}
+.tvc{flex:none;width:272px;display:flex;flex-direction:column;gap:3px;text-align:left;color:var(--text);cursor:pointer;border-radius:12px;padding:0}
+.tvc .tvi{position:relative;display:block;width:100%;aspect-ratio:16/9;border-radius:12px;overflow:hidden;background:linear-gradient(135deg,var(--bg3),var(--bg2));border:.5px solid var(--border);transition:transform .18s,box-shadow .18s}
+.tvc:hover .tvi{transform:scale(1.035);box-shadow:0 10px 26px rgba(0,0,0,.5)}
+.tvc .tvi .ti{width:100%;height:100%;object-fit:cover;display:block}
+.tvc .tlg{display:none}.tvc .tvi.nol .tlg,.tvc .tvi.crs .tlg{display:flex;position:absolute;inset:0;align-items:center;justify-content:center;padding:22% 26%}
+.tvc .tvi.nol .tlg img{max-width:100%;max-height:100%;object-fit:contain}.tvc .tlg b{font-size:28px;color:var(--text2)}
+.tvc .tvi.nol .tch,.tvc .tvi.crs .tch{display:none}
+.tvc .tch{position:absolute;left:8px;top:8px;height:24px;padding:3px 7px;border-radius:6px;background:rgba(0,0,0,.62);display:flex;align-items:center;font-size:11px;color:#fff;backdrop-filter:blur(6px)}
+.tvc .tch img{height:18px;max-width:64px;object-fit:contain}
+.tvc .tvi.crs{background:linear-gradient(135deg,#1d2a3a,#2b1f2e)}.tvc .tvi.crs .ti{opacity:.25}
+.tvc .tvi.crs .tlg{inset:auto 8px 8px auto;padding:0;width:56px;height:22px}.tvc .tvi.crs .tlg img{max-height:22px;max-width:56px}
+.tvc .crest{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:14px}.tvc .crest img{width:30%;max-height:62%;object-fit:contain;filter:drop-shadow(0 4px 10px rgba(0,0,0,.5))}.tvc .crest i{font-style:normal;color:var(--text3);font-size:20px}
+.tvc .bar{position:absolute;left:0;right:0;bottom:0;height:4px;background:rgba(255,255,255,.18)}.tvc .bar i{display:block;height:100%;background:#e5322d}
+.tvc .tvn{font-size:14px;font-weight:500;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tvc .tvs{font-size:12px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hsec h2 small{text-transform:none;letter-spacing:0;font-size:12px;color:var(--text3);margin-left:6px}
 .hsec h2,#agenda h2{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--text3);margin:22px 2px 12px;font-weight:500}
 .brands{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;align-items:start}
 .ag-teams{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:12px 2px 4px}
@@ -1332,6 +1349,68 @@ function tvForYou() {
   }
   return out.sort((a, b) => b.sc - a.sc).slice(0, 6).map(x => x.lab);
 }
+/* ---------- Accueil TV en vignettes : programmes en cours par thème (guide XML TV Fr : image et thème de chaque émission),
+   ce soir, sport avec les blasons des équipes (ESPN). Les cases des chaînes restent dessous (« Toutes les chaînes »). ---------- */
+const TV_TH = [['P', 'Sport'], ['F', 'Films'], ['S', 'Séries'], ['I', 'Info'], ['J', 'Jeunesse'], ['D', 'Documentaires'], ['E', 'Divertissement'], ['M', 'Magazines']];
+function tvCard(f, i, j, p, opt) {
+  const x = f.subs[j], c = x.list[0], logo = logoUrl(x.label) || c.logo || '', now = Date.now(), live = p && p.start <= now && p.end > now;
+  const im = p && p.img, sp = p && p.th === 'P' && /\s(\/|-|vs\.?)\s/.test(p.title) ? p.title : '';
+  const meta = p ? (opt && opt.soir ? hm(p.start) : hm(p.start) + '–' + hm(p.end)) : 'Programme inconnu';
+  return `<button class="tvc" data-play="${i}:${j}" title="${esc((p ? p.title + ' · ' : '') + x.label)}"${sp ? ` data-crest="${esc(sp)}"` : ''}>
+    <span class="tvi${im ? '' : ' nol'}">${im ? `<img class="ti" src="${esc(im)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentNode.classList.add('nol');this.remove()">` : ''}
+      <span class="tlg">${logo ? `<img src="${esc(logo)}" alt="" loading="lazy" onerror="this.remove()">` : `<b>${esc(initials(x.label))}</b>`}</span>
+      <span class="tch">${logo ? `<img src="${esc(logo)}" alt="" loading="lazy" data-n="${esc(x.label)}" onerror="this.parentNode.textContent=this.dataset.n">` : esc(x.label)}</span>
+      ${live ? `<span class="bar"><i style="width:${pct(p)}%"></i></span>` : ''}</span>
+    <span class="tvn">${esc(p ? p.title : x.label)}</span><span class="tvs">${esc((p && p.sub ? p.sub + ' · ' : '') + meta)}</span></button>`;
+}
+function tvRow(title, cards, sub) {
+  if (cards.length < 2) return '';
+  return `<div class="hsec tvrow"><h2>${esc(title)}${sub ? ` <small>${esc(sub)}</small>` : ''}</h2><div class="vwrap"><button class="varr l" data-arr="-1" aria-label="Précédents"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><div class="vscroll">${cards.join('')}</div><button class="varr r" data-arr="1" aria-label="Suivants"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button></div></div>`;
+}
+function tvRows(fams) {
+  const G = GUIDE.data;
+  if (!G) { if (!tvRows.ld) { tvRows.ld = 1; loadGuide().then(d => { if (d && document.body.classList.contains('homeview') && !document.body.classList.contains('vod') && !document.body.classList.contains('agenda')) renderHome(); }); } return ''; }
+  const now = Date.now(), cur = [], soir = [], seen = new Set();
+  const t0 = new Date(); t0.setHours(20, 45, 0, 0); const t1 = new Date(t0); t1.setHours(21, 30, 0, 0);
+  fams.forEach((f, i) => f.subs.forEach((x, j) => {
+    if (famHidden(f, j)) return;
+    const c = x.list[0]; if (seen.has(c)) return; seen.add(c);
+    const l = guideList(c, G) || []; const p = l.find(q => q.start <= now && q.end > now);
+    if (p && p.th !== 'X') cur.push({ f, i, j, p });
+    if (now < t1) { const q = l.find(q => q.start >= t0 - 15 * 60e3 && q.start <= t1); if (q && q.th !== 'X' && q.end - q.start >= 40 * 60e3) soir.push({ f, i, j, p: q }); }
+  }));
+  let h = '';
+  TV_TH.forEach(([t, lab]) => {
+    const l = cur.filter(x => x.p.th === t).sort((a, b) => (t === 'P' ? (/\s(\/|-|vs)\s/.test(b.p.title) - /\s(\/|-|vs)\s/.test(a.p.title)) : 0) || b.p.start - a.p.start);
+    h += tvRow(lab, l.map(x => tvCard(x.f, x.i, x.j, x.p)), t === 'P' ? 'en ce moment' : 'en ce moment');
+  });
+  if (soir.length) h += tvRow('Ce soir', soir.sort((a, b) => a.i - b.i || a.j - b.j).map(x => tvCard(x.f, x.i, x.j, x.p, { soir: 1 })), 'vers 21 h');
+  if (h) { h += '<div class="hsec"><h2>Toutes les chaînes</h2></div>'; setTimeout(tvCrests, 0); }
+  return h;
+}
+// Blasons des équipes (sport) : match trouvé chez ESPN (mêmes recherches que les statistiques du match), gardé 12 h
+const CREST = new Map();
+async function tvCrests() {
+  for (const b of [...document.querySelectorAll('#homeInner .tvc[data-crest]:not([data-cr])')]) {
+    b.dataset.cr = '1';
+    const txt = b.dataset.crest.replace(/\s(-|vs\.?)\s/, ' / '), k = nkey(txt);
+    let v = CREST.get(k);
+    if (v === undefined) {
+      const ck = 'crest1:' + k, c = await DB.cacheGet(ck).catch(() => null);
+      if (c && Date.now() - c.at < 12 * 3600e3) v = c.data;
+      else {
+        const sp = /rugby|top 14|xv/i.test(b.title) ? 'Rugby' : /basket|nba/i.test(b.title) ? 'Basket' : 'Football';
+        const ev = await espnFind(txt, sp).catch(() => null);
+        v = ev && ev.logos && ev.logos.length === 2 ? ev.logos : null;
+        DB.cachePut({ id: ck, at: Date.now(), data: v });
+      }
+      CREST.set(k, v);
+    }
+    if (!v || !b.isConnected) continue;
+    const tvi = b.querySelector('.tvi'); tvi.classList.add('crs');
+    tvi.insertAdjacentHTML('beforeend', `<span class="crest">${v.map(u => `<img src="${esc(u)}" alt="" loading="lazy">`).join('<i>–</i>')}</span>`);
+  }
+}
 function renderHome() {
   const fams = homeIndex();
   S.tiles = fams;
@@ -1344,6 +1423,8 @@ function renderHome() {
     const te = teamEvents(24); S.teamEv = te;
     if (te.length) h += `<div class="hsec"><h2>Vos équipes</h2><div class="brand fy"><div class="chs">${te.map((e, k) => `<button class="chr" data-tev="${k}" title="${esc(e.title)}"><span class="lg">${imgOr(logoUrl(e.tv[0].label) || e.tv[0].list[0].logo, initials(e.tv[0].label), '')}</span><span class="m"><span class="l">${esc(e.title)}</span><span class="e">${evLine(e)}</span></span></button>`).join('')}</div></div></div>`;
   }
+  // Rangées en vignettes (comme Films & séries) : en ce moment par thème, ce soir ; image de l'émission (guide), sinon logo
+  h += tvRows(fams);
   // Pour vous en ce moment : mêmes lignes que dans les cases (même lancement, même programme en cours)
   const fy = tvForYou().map(lab => { for (let i = 0; i < fams.length; i++) { const j = fams[i].subs.findIndex(x => x.label === lab); if (j >= 0) return [i, j]; } return null; }).filter(Boolean);
   if (fy.length) h += `<div class="hsec"><h2>Pour vous en ce moment</h2><div class="brand fy"><div class="chs">${fy.map(([i, j]) => { const x = fams[i].subs[j], c = x.list[0], q = chInfo(c).q, cur = S.current && x.list.includes(S.current);
@@ -2828,8 +2909,10 @@ function guideId(c, G) {
 function guideList(c, G) {
   const id = G && guideId(c, G), l = id && G.ch[id]; if (!l) return null;
   const now = Date.now();
-  return l.filter(p => p[1] * 1000 > now).map(p => ({ title: p[2], sub: p[3] || '', desc: [p[3], p[4]].filter(Boolean).join(' — '), start: p[0] * 1000, end: p[1] * 1000 }));
+  return l.filter(p => p[1] * 1000 > now).map(p => ({ title: p[2], sub: p[3] || '', desc: [p[3], p[4]].filter(Boolean).join(' — '), start: p[0] * 1000, end: p[1] * 1000, img: epgImg(p[5]), th: p[6] || '' }));
 }
+// image d'une émission : numéro d'image SFR (adresse recomposée : chiffres de la fin à l'envers) ou adresse complète
+const epgImg = v => typeof v === 'number' ? (d => 'https://static-cdn.tv.sfr.net/data/img/pl/' + d[d.length - 1] + '/' + d[d.length - 2] + '/' + d[d.length - 3] + '/' + d + '.jpg')(String(v)) : (v || '');
 async function getEpg(c, limit) {
   const G = await loadGuide(), gl = guideList(c, G);
   if (gl && gl.length) return gl.slice(0, Math.max(limit || 4, 1));
@@ -2998,7 +3081,7 @@ document.addEventListener('click', e => {
   sc.scrollBy({ left: +a.dataset.arr * sc.clientWidth * 0.85, behavior: 'smooth' });
 });
 document.addEventListener('scroll', e => { if (e.target.classList && e.target.classList.contains('vscroll')) varrState(e.target); }, true);
-new MutationObserver(() => document.querySelectorAll('.vscroll').forEach(varrState)).observe(document.getElementById('vod'), { childList: true, subtree: true });
+['vod', 'homeInner'].forEach(id => new MutationObserver(() => document.querySelectorAll('#' + id + ' .vscroll').forEach(varrState)).observe(document.getElementById(id), { childList: true, subtree: true }));
 let vdrag = null, vglide = null;
 document.addEventListener('pointerdown', e => {
   const sc = e.pointerType === 'mouse' && e.button === 0 && e.target.closest('.vscroll'); if (!sc) return;
@@ -5490,16 +5573,22 @@ async function currentMatchText(c) {
   const sp = SPORTS.find(([, re]) => re.test(p.title + ' ' + p.desc));
   return { text: m[1] + ' / ' + m[2], sport: sp ? sp[0] : 'Football' };
 }
+const ESPN_SB = new Map();
 async function espnFind(text, sport) {
   const [a, b] = text.split('/').map(x => x.trim()); if (!a || !b) return null;
   const d = new Date(), ymd = x => x.getFullYear() + String(x.getMonth() + 1).padStart(2, '0') + String(x.getDate()).padStart(2, '0');
   const dates = [ymd(d), ymd(new Date(d - 864e5))];
   for (const path of ESPN_PATHS[sport] || ESPN_PATHS.Football) {
     for (const dt of dates) {
-      const j = await fetch(ESPN + path + '/scoreboard?dates=' + dt).then(r => r.json()).catch(() => null);
+      const u = ESPN + path + '/scoreboard?dates=' + dt, hit = ESPN_SB.get(u);
+      const j = hit && Date.now() - hit.at < 10 * 60e3 ? hit.j : await fetch(u).then(r => r.json()).catch(() => null);
+      if (j && !(hit && hit.j === j)) ESPN_SB.set(u, { at: Date.now(), j });
       for (const e of (j && j.events) || []) {
         const cs = e.competitions && e.competitions[0] && e.competitions[0].competitors || [];
-        if (cs.length === 2 && ((sameTeam(a, cs[0]) && sameTeam(b, cs[1])) || (sameTeam(a, cs[1]) && sameTeam(b, cs[0])))) return { path, id: e.id };
+        if (cs.length === 2 && ((sameTeam(a, cs[0]) && sameTeam(b, cs[1])) || (sameTeam(a, cs[1]) && sameTeam(b, cs[0])))) {
+          const ord = sameTeam(a, cs[0]) ? [cs[0], cs[1]] : [cs[1], cs[0]];
+          return { path, id: e.id, logos: ord.map(c => c.team && (c.team.logo || (c.team.logos && c.team.logos[0] && c.team.logos[0].href)) || '').filter(Boolean) };
+        }
       }
     }
   }
