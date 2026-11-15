@@ -80,6 +80,7 @@ body.homeview.drawer #channels{display:flex!important;position:fixed;top:0;botto
 .srow .sc{flex:none;display:flex;gap:8px;align-items:center}
 .srow .btn{height:34px;font-size:13px}
 .ss{color:var(--text2)}.ss.ok{color:var(--green)}
+code.vh{font-family:ui-monospace,Menlo,monospace;font-size:12px;padding:1px 6px;border-radius:5px;background:var(--bg3);color:var(--text);white-space:nowrap;display:inline-block;margin:2px 0}
 .sw{appearance:none;-webkit-appearance:none;flex:none;width:42px;height:25px;border-radius:999px;background:var(--bg4);position:relative;cursor:pointer;transition:background .2s;margin:0}
 .sw::before{content:'';position:absolute;top:3px;left:3px;width:19px;height:19px;border-radius:50%;background:#fff;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.4)}
 .sw:checked{background:var(--blue)}.sw:checked::before{transform:translateX(17px)}
@@ -881,6 +882,8 @@ h1,h2,h3,h4,h5,h6,b,strong,th,summary{font-weight:500}
     </section>
     <section class="ptab" data-ptabc="aide">
     <h2 class="ptt">Aide</h2>
+    <h3>VPN</h3>
+    <div id="vpnBox" class="dlbox"></div>
     <h3>Diagnostic et réglages avancés</h3>
     <div class="dlbox">
     <div class="dl"><span><b>Exemples de noms pour diagnostic</b><small>Copie des noms de chaînes et de films de la liste en cours (sans adresse ni identifiants), à coller dans la conversation pour régler la reconnaissance des chaînes et des titres</small></span><button class="btn" onclick="copyNames()">Copier</button></div>
@@ -2484,6 +2487,7 @@ async function play(c, alts) {
   document.body.classList.toggle('vodplay', !!c.vod);
   document.body.classList.toggle('live', !c.vod);
   S.sel = S.view.indexOf(c); renderRows(true); scrollToSel();
+  if (!c.vod && typeof vpnNote === 'function') vpnNote(c.url);       // serveur de la chaîne : pour les exceptions du VPN
   // chaînes récentes et dernière chaîne : propres à la liste en cours (aucune liste : film lu par torrent ou Ma médiathèque)
   if (S.pl) { S.recent = [c.url, ...S.recent.filter(u => u !== c.url)].slice(0, 40); LS.set(recKey(), S.recent); LS.set('last.' + S.pl.id, c.url); }
   if (S.group === '⏱') applyFilter(false);
@@ -5585,6 +5589,38 @@ $('#addUrlBtn').onclick = async () => {
   b.disabled = false; b.textContent = 'Charger l\'adresse';
 };
 // Paramètres en onglets (Listes, Lecture, Appareils), le dernier retenu ; sans liste : Listes, ajout ouvert
+/* Serveurs à exclure du VPN (CyberGhost › Smart Rules › exceptions) : serveurs des listes, et serveurs vidéo réellement
+   contactés pendant la lecture des chaînes (souvent différents de celui de la liste) ; noms seuls, sans http:// */
+const OWN_HOSTS = /(^|\.)(franceinfoplanning\.com|workers\.dev|themoviedb\.org|tmdb\.org|youtube(-nocookie)?\.com|ytimg\.com|googlevideo\.com|google\.com|gstatic\.com|jsdelivr\.net|onrender\.com|github\.com|githubusercontent\.com|betaseries\.com|trakt\.tv|opensubtitles\.(com|org)|wikipedia\.org|wikimedia\.org|espn\.com|localhost)$|^127\.|^\[|^192\.168\.|^10\./i;
+const vpnSeen = () => { const o = LS.get('dev.vpnhosts', {}); return o && typeof o === 'object' ? o : {}; };
+function vpnNote(url) {
+  let h; try { h = new URL(url).hostname; } catch (e) { return; }
+  if (!h || OWN_HOSTS.test(h)) return;
+  const o = vpnSeen(); if (o[h] && Date.now() - o[h] < 3600e3) return;
+  o[h] = Date.now(); const k = Object.keys(o); if (k.length > 40) k.sort((a, b) => o[a] - o[b]).slice(0, k.length - 40).forEach(x => delete o[x]);
+  LS.set('dev.vpnhosts', o);
+}
+// requêtes de la page pendant la lecture d'une chaîne (listes HLS, morceaux vidéo) : leur serveur est noté
+if (window.PerformanceObserver) try { new PerformanceObserver(l => { if (!S.current || S.current.vod) return; l.getEntries().forEach(e => { if (/^https?:/.test(e.name) && /\.(m3u8|ts|m4s|mp4|aac)(\?|$)|\/live\/|\/hls\//i.test(e.name)) vpnNote(e.name); }); }).observe({ type: 'resource', buffered: false }); } catch (e) {}
+function vpnHosts() {
+  const lists = [...new Set(S.playlists.filter(p => !p.extra && p.url).map(p => { try { return new URL(p.url).hostname; } catch (e) { return ''; } }).filter(h => h && !OWN_HOSTS.test(h)))];
+  const seen = Object.keys(vpnSeen()).filter(h => !lists.includes(h));
+  return { lists, seen };
+}
+function renderVpnBox() {
+  const b = $('#vpnBox'); if (!b) return;
+  const { lists, seen } = vpnHosts(), chips = l => l.map(h => `<code class="vh">${esc(h)}</code>`).join(' ');
+  b.innerHTML = srow('Serveurs à exclure du VPN', 'À ajouter dans CyberGhost › Smart Rules › exceptions (nom seul, sans http://), puis reconnecter le VPN : l\'IPTV passe alors sans VPN, le reste reste protégé.'
+    + '<br><b style="font-weight:500;color:var(--text2)">Listes :</b> ' + (lists.length ? chips(lists) : 'aucune liste chargée (« Mon abonnement » : déverrouillez-le d\'abord)')
+    + '<br><b style="font-weight:500;color:var(--text2)">Serveurs vidéo vus pendant la lecture :</b> ' + (seen.length ? chips(seen) : 'aucun pour l\'instant : regardez quelques chaînes, puis revenez ici'),
+    (lists.length || seen.length ? '<button class="btn" data-vpncopy>Copier</button>' : '') + (seen.length ? '<button class="btn" data-vpnclr>Effacer</button>' : ''));
+}
+$('#vpnBox').addEventListener('click', e => {
+  if (e.target.closest('[data-vpnclr]')) { LS.set('dev.vpnhosts', {}); renderVpnBox(); return; }
+  if (!e.target.closest('[data-vpncopy]')) return;
+  const { lists, seen } = vpnHosts(), txt = lists.concat(seen).join('\n');
+  (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => toast('Serveurs copiés : collez-les un par un dans CyberGhost'), () => prompt('Copiez ces serveurs :', txt));
+});
 function ptab(k) {
   // à l'ouverture sans liste : Listes ; un onglet choisi s'ouvre toujours (Appareils › Synchronisation récupère les listes)
   if (!k) k = S.playlists.length ? LS.get('dev.ptab', 'listes') : 'listes';
@@ -5597,6 +5633,7 @@ function ptab(k) {
   if (typeof renderSrcBox === 'function') renderSrcBox();
   if (typeof renderNormBox === 'function') renderNormBox();
   if (typeof prwSettings === 'function') prwSettings();
+  if (typeof renderVpnBox === 'function') renderVpnBox();
   const vh = $('#appVerH'); if (vh) vh.hidden = $('#appVer').hidden;
 }
 document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-ptab]'); if (b) { psReset(); LS.set('dev.ptab', b.dataset.ptab); ptab(b.dataset.ptab); } });
