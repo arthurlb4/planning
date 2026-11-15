@@ -107,6 +107,30 @@ function thumb(ffmpeg, src, t, res) {
   res.on('close', () => { if (!done) { try { ff.kill('SIGKILL'); } catch (e) {} } });
   setTimeout(() => { try { ff.kill('SIGKILL'); } catch (e) {} }, 15000);
 }
+/* Top SensCritique de l'année, lu depuis ce PC à la demande de l'utilisateur : page « Les meilleures séries de 2026 »
+   retrouvée par la recherche du site, puis lue (__NEXT_DATA__ › __APOLLO_STATE__). Gardé 12 h en mémoire. */
+const SCT = new Map();
+async function scTop(k, y) {
+  if ((k !== 'films' && k !== 'series') || !(y >= 2000 && y <= 2100)) return { error: 'paramètres', items: [] };
+  const ck = k + y, c = SCT.get(ck); if (c && Date.now() - c.at < 12 * 3600e3) return c.data;
+  const UA = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36', 'Accept-Language': 'fr-FR,fr;q=0.9' };
+  const slug = k === 'films' ? 'les_meilleurs_films_de_' + y : 'les_meilleures_series_de_' + y, out = { url: '', items: [] };
+  try {
+    const q = k === 'films' ? 'meilleurs films de ' + y : 'meilleures séries de ' + y;
+    const st = await (await fetch('https://www.senscritique.com/search?query=' + encodeURIComponent(q), { headers: UA, signal: AbortSignal.timeout(20000) })).text();
+    const m = new RegExp('/top/resultats/' + slug + '/(\\d+)').exec(st);
+    if (m) {
+      out.url = 'https://www.senscritique.com/top/resultats/' + slug + '/' + m[1];
+      const html = await (await fetch(out.url, { headers: UA, signal: AbortSignal.timeout(20000) })).text();
+      const nd = /<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/.exec(html);
+      const ap = nd ? ((JSON.parse(nd[1]).props || {}).pageProps || {}).__APOLLO_STATE__ || {} : {};
+      const poll = ap['Poll:' + m[1]] || {}, refs = poll.minimalProducts || poll.products || [];
+      out.items = refs.map(r => { const x = ap[r && r.__ref] || {}; if (!x.title) return null; return { t: x.title, o: x.originalTitle || '', d: x.dateRelease || x.frenchReleaseDate || '', r: x.rating || 0, p: (x.medias && x.medias.picture) || '' }; }).filter(Boolean).slice(0, 100);
+    } else out.error = 'page du top introuvable';
+  } catch (e) { out.error = String(e && e.message || e); }
+  if (out.items.length) SCT.set(ck, { at: Date.now(), data: out });
+  return out;
+}
 // Image clé d'où ffmpeg partira réellement pour un départ à ss secondes (même recherche que /remux, qui doit recevoir le même
 // ss), en secondes depuis le début du film (moment d'affichage) ; null si on ne la trouve pas
 function seekPoint(ffmpeg, src, ss) {
@@ -195,6 +219,7 @@ module.exports = function startRemux(ffmpeg, findVlc) {
         return fs.readFile(f || '', (e, b) => res.end(e ? 'WEBVTT\n' : b));
       }
       if (u.pathname.startsWith('/torrent/')) return torrentProxy(req, res);   // torrents fournis par l'utilisateur (processus séparé)
+      if (u.pathname === '/sctop') { scTop(u.searchParams.get('k'), +u.searchParams.get('y')).then(j => { res.setHeader('Content-Type', 'application/json'); res.setHeader('Access-Control-Allow-Origin', '*'); res.end(JSON.stringify(j)); }); return; }
       if (u.pathname === '/vlcinfo') { Promise.resolve(findVlc ? findVlc() : '').then(p => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ ok: !!p })); }); return; }
       const src = u.searchParams.get('url') || '';
       if (!/^https?:\/\//i.test(src)) { res.statusCode = 400; return res.end(); }

@@ -3685,7 +3685,10 @@ async function scTopSc(kind) {
   const yr = new Date().getFullYear(), ck = 'sctop3:' + kind + ':' + yr, c = await DB.cacheGet(ck).catch(() => null);
   if (c && Date.now() - c.at < 864e5) return c.data;
   if (!LS.get('pref.tmdb', '')) return null;
-  const j = await fetch(SCTOP_URL + '?k=' + (kind === 'tvshow' ? 'series' : 'films') + '&y=' + yr).then(r => r.ok ? r.json() : null).catch(() => null);
+  // appli Windows : lu depuis le PC (SensCritique refuse les serveurs du relais) ; sinon par le relais
+  const qs = '?k=' + (kind === 'tvshow' ? 'series' : 'films') + '&y=' + yr, get = u => fetch(u).then(r => r.ok ? r.json() : null).catch(() => null);
+  let j = window.desktop && window.desktop.remux ? await get(window.desktop.remux + '/sctop' + qs) : null;
+  if (!j || !j.items || !j.items.length) j = await get(SCTOP_URL + qs);
   const L = j && Array.isArray(j.items) ? j.items.slice(0, 40) : []; if (L.length < 5) return null;
   const tk = kind === 'tvshow' ? 'tv' : 'movie', k0 = kind === 'tvshow' ? 's' : 'm', ids = [], meta = {};
   const find = async x => {
