@@ -212,8 +212,7 @@ module.exports = function startRemux(ffmpeg, findVlc) {
       // cœurs du processeur laissés libres (une conversion 4K en temps réel occupait tout le processeur et figeait le PC)
       if (enc) args.push('-vf', "scale='min(1920,iw)':-2", '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '21', '-pix_fmt', 'yuv420p', '-threads', String(Math.max(2, os.cpus().length - 2)));
       else { args.push('-c:v', 'copy'); if (hevc) args.push('-tag:v', 'hvc1'); }
-      // son recalé sur l'image (dérive ou trous dans la piste d'origine : décalage du son)
-      args.push('-af', 'aresample=async=1:first_pts=0', '-c:a', 'aac', '-ac', '2', '-b:a', '192k', '-f', 'mp4', '-movflags', 'frag_keyframe+empty_moov+default_base_moof', '-frag_duration', '1000000', 'pipe:1');
+      args.push('-c:a', 'aac', '-ac', '2', '-b:a', '192k', '-f', 'mp4', '-movflags', 'frag_keyframe+empty_moov+default_base_moof', '-frag_duration', '1000000', 'pipe:1');
       // Sous-titres intégrés : seconde sortie, en WebVTT dans un fichier temporaire lu par la page au fil de la lecture
       const sIdx = u.searchParams.get('s'), sid = u.searchParams.get('sid');
       let subFile = '';
@@ -221,7 +220,10 @@ module.exports = function startRemux(ffmpeg, findVlc) {
         subFile = path.join(os.tmpdir(), 'lecteur-iptv-' + sid + '.vtt');
         try { fs.writeFileSync(subFile, 'WEBVTT\n'); } catch (e) {}
         SUBS.set(sid, subFile);
-        args.push('-map', '0:s:' + (+sIdx), '-c:s', 'webvtt', '-flush_packets', '1', '-f', 'webvtt', '-y', subFile);
+        // calés sur l'image clé de départ (kf, donnée par la page) comme le film : sinon ffmpeg cale ce fichier sur le premier
+        // sous-titre qui suit le point de départ, et les sous-titres arrivaient décalés (jusqu'à plusieurs secondes)
+        const kf = +u.searchParams.get('kf'), so = ss && kf >= 0 && kf <= ss && u.searchParams.get('kf') !== null ? ss - kf : 0;
+        args.push('-map', '0:s:' + (+sIdx), ...(so ? ['-output_ts_offset', String(so)] : []), '-avoid_negative_ts', 'disabled', '-c:s', 'webvtt', '-flush_packets', '1', '-f', 'webvtt', '-y', subFile);
       }
       const ff = spawn(ffmpeg, args, { windowsHide: true });
       if (vlcPath) viaVlc(ff, vlcSource(vlcPath, src, ss));
