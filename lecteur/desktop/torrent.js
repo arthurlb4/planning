@@ -204,6 +204,16 @@ module.exports = function handleTorrent(req, res, u) {
     });
     return true;
   }
+  // torrents gardés sur le PC (lus depuis moins d'une semaine) : nom, taille, part reçue, dernière lecture
+  if (u.pathname === '/torrent/list') {
+    const o = idxRead(), out = Object.entries(o).map(([id, e]) => {
+      let pct = 0;
+      const t = c.get(id); if (t && t.ready) pct = t.progress || 0;
+      else if (e.bf && e.np) { const b = Buffer.from(e.bf, 'base64'); let n = 0; for (let i = 0; i < e.np; i++) if (b[i >> 3] & (128 >> (i & 7))) n++; pct = n / e.np; }
+      return { id, name: e.name, size: e.size || 0, at: e.at || 0, pct };
+    }).sort((a, b) => b.at - a.at);
+    json(out); return true;
+  }
   if (u.pathname === '/torrent/info') {
     const t = c.get(u.searchParams.get('id') || ''); if (!t) { json({ error: 'torrent fermé' }, 404); return true; }
     const o = info(t), fi = u.searchParams.get('f');

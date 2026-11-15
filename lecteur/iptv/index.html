@@ -1868,7 +1868,11 @@ async function torPlay(x, g, b, opts) {
     if (opts.remember) torLastSave(opts.remember, x, j, f);
     const furl = window.desktop.remux + '/torrent/file/' + j.id + '/' + f.i + '/' + encodeURIComponent(f.name);
     if (opts.resumeAt > 30) LS.set(posK(furl), Math.floor(opts.resumeAt));
-    play(Object.assign({ name: torName(f), url: furl, group: 'Torrent', logo: tm && tm.poster ? 'https://image.tmdb.org/t/p/w342' + tm.poster : '', n: 0, chno: '', vod: true, key: '' }, opts.extra ? opts.extra(j, f) : {}));
+    const ex = opts.extra ? opts.extra(j, f) : {};
+    // torrent → fiche (rangée « Téléchargés sur ce PC » de Films & séries)
+    if (ex.it) { const o = LS.get('vod.tordl', {}) || {}, it = ex.it; o[j.id] = { kind: it.kind, tmdb: it.tmdb || (tm && tm.id) || 0, g: gKey(it), k: itemKey(it), n: it.name, y: it.year || 0, p: it.cover || (tm && tm.poster ? 'https://image.tmdb.org/t/p/w342' + tm.poster : ''), at: Date.now() };
+      const ks = Object.keys(o); if (ks.length > 200) ks.sort((a, b) => o[a].at - o[b].at).slice(0, ks.length - 200).forEach(z => delete o[z]); LS.set('vod.tordl', o); }
+    play(Object.assign({ name: torName(f), url: furl, group: 'Torrent', logo: tm && tm.poster ? 'https://image.tmdb.org/t/p/w342' + tm.poster : '', n: 0, chno: '', vod: true, key: '' }, ex));
   } finally { TOR.busyPlay = false; if (b && b.isConnected) { b.disabled = false; b.innerHTML = lab; } }
 }
 /* ---------- Séries en torrent (fiche d'une série) ----------
@@ -3605,6 +3609,21 @@ async function vodSeenFilter(box) {
     if (!row.querySelector('.poster[data-v]')) row.remove();
   }
 }
+async function dlRow(kinds) {
+  if (!window.desktop || !window.desktop.remux) return '';
+  const L = await fetch(window.desktop.remux + '/torrent/list').then(r => r.ok ? r.json() : null).catch(() => null); if (!Array.isArray(L) || !L.length) return '';
+  const M = LS.get('vod.tordl', {}) || {}, seen = new Set(), its = [], pr = [];
+  L.forEach(x => {
+    const m = M[x.id]; if (!m) return;
+    let it = itemByKey(m.k) || (V.data && V.data._gmap && V.data._gmap.get(m.g)) || null;
+    if (!it && m.tmdb) { it = virtItem((m.kind === 'series' ? 's' : 'm') + m.tmdb, { t: m.n, y: m.y }); if (!it.cover && m.p) it.cover = m.p; }
+    if (!it || !kinds.includes(it.kind === 'series' ? 's' : 'm')) return;
+    const g = gKey(it); if (seen.has(g)) return; seen.add(g);
+    its.push(it); pr.push({ pct: Math.round(x.pct * 100), lab: torMo(x.size) + (x.pct < 0.995 ? ' · ' + Math.round(x.pct * 100) + ' %' : ' · complet') });
+  });
+  if (!its.length) return '';
+  return `<div class="vrow" data-dd="keep"><h3>Téléchargés sur ce PC<small>gardés une semaine après la dernière lecture</small></h3><div class="vwrap"><div class="vscroll">${its.map((it, i) => posterHtml(it, V.shown.push(it) - 1, 0, pr[i])).join('')}</div></div></div>`;
+}
 function vodRow(title, sub, list, ranked, keep) { if (!list.length) return ''; return `<div class="vrow" data-dd="${ranked || keep ? 'keep' : 'dedupe'}"><h3>${esc(title)}${sub ? `<small>${esc(sub)}</small>` : ''}</h3><div class="vwrap"><button class="varr l" data-arr="-1" aria-label="Précédents"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><div class="vscroll">${list.map((it, k) => posterHtml(it, V.shown.push(it) - 1, Array.isArray(ranked) ? ranked[k] : ranked && k < 20 ? k + 1 : 0)).join('')}</div><button class="varr r" data-arr="1" aria-label="Suivants"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button></div></div>`; }
 
 /* ---------- Vraie popularité : TMDB (tendances de la semaine, et le plus regardé en France sur chaque service), croisée avec
@@ -3789,7 +3808,7 @@ async function nowPlaying() {
 async function vodCineFilter(box) {
   const memo = new Map();
   for (const row of [...box.querySelectorAll('.vrow')]) {
-    const h3 = (row.querySelector('h3') || {}).textContent || '', cine = row.dataset.cine === '1', mine = /^Ma liste/.test(h3), pers = mine || /^Reprendre/.test(h3);
+    const h3 = (row.querySelector('h3') || {}).textContent || '', cine = row.dataset.cine === '1', mine = /^Ma liste/.test(h3), pers = mine || /^(Reprendre|Téléchargés|Ma médiathèque)/.test(h3);
     for (const p of [...row.querySelectorAll('.poster[data-v]')]) {
       const it = V.shown[+p.dataset.v]; if (!it || it.kind !== 'movie' || (!it.tor && !cine)) continue;
       const k = itemKey(it); if (!memo.has(k)) memo.set(k, relState(it).catch(() => 'ok'));
@@ -4088,6 +4107,10 @@ async function renderVod() {
     if (hist.length) h += `<div class="vrow"><h3>Reprendre</h3><div class="vwrap"><div class="vscroll">${hist.slice(0, 20).map(({ e, it }) => posterHtml(it, V.shown.push(it) - 1, 0, { pct: e.dur ? e.pos / e.dur * 100 : 0, lab: e.lab || (e.dur ? 'reste ' + fmtDur(e.dur - e.pos) : '') }).replace('<button class="poster"', `<button class="poster" data-hist="${esc(e.k)}"`).replace('<div class="im">', `<div class="im"><span class="hxb"><span data-histv="${esc(e.k)}" title="Marquer comme vu">✓</span><span data-histx="${esc(e.k)}" title="Retirer de Reprendre">✕</span></span>`)).join('')}</div></div></div>`;
     const ml = myListItems(kinds);
     if (ml.length) h += vodRow('Ma liste', '', ml, false, true);
+    // Téléchargés : torrents gardés sur ce PC (appli Windows) et derniers arrivés dans Ma médiathèque (Jellyfin)
+    h += await Promise.race([dlRow(kinds).catch(() => ''), new Promise(r => setTimeout(() => r(''), 2000))]);
+    if (V.tab === 'home' && jfConf()) { JF.shown = []; const jl = await Promise.race([jfGet('/Users/' + jfConf().uid + '/Items?Recursive=true&Fields=' + JF_FIELDS + '&IncludeItemTypes=Movie,Series&SortBy=DateCreated&SortOrder=Descending&Limit=20').catch(() => null), new Promise(r => setTimeout(() => r(null), 2500))]);
+      if (jl && jl.Items && jl.Items.length) h += jfRow('Ma médiathèque · ajoutés récemment', jl.Items).replace('class="vrow"', 'class="vrow" data-dd="keep"'); }
     let bc = '';
     if (POP) {
       const FY = await Promise.race([forYou(kinds).catch(() => null), new Promise(r => setTimeout(() => r(null), 6000))]);
