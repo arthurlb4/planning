@@ -25,7 +25,8 @@
 html:has(body.nat),body.nat{background:transparent}
 html:has(body.nat){color-scheme:light}body.nat{color-scheme:dark}   /* sinon le navigateur peint un fond sombre sous la page */
 body.nat::before{content:'';position:fixed;inset:0;background:var(--bg);clip-path:var(--hole);z-index:-1;pointer-events:none}
-body.nat #player{background:transparent}body.nat #screen{background:rgba(0,0,0,.01)}
+body.nat #player{background:transparent}body.nat #screen{background:#000}body.nat.natready #screen{background:rgba(0,0,0,.01)}
+/* zone noire tant que mpv n'affiche pas sa première image (pas d'animation d'ouverture de sa fenêtre), puis la vidéo d'un coup */
 body.nat.natmove #screen{background:#000}   /* fenêtre déplacée ou redimensionnée : noir le temps que la vidéo se recale */body.nat video{visibility:hidden}
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font);font-size:15px}
 body{display:flex;flex-direction:column;height:100dvh;overflow:hidden;-webkit-tap-highlight-color:transparent}
@@ -2462,7 +2463,7 @@ function freezeFrame() {
 function unfreeze() { const cv = $('#vfreeze'); if (cv) cv.hidden = true; }
 function stopEngines() {
   attempt = null;
-  if (S.engine === 'mpv' && window.desktop && window.desktop.mpv) { window.desktop.mpv.stop(); document.body.classList.remove('mpv', 'nat'); }
+  if (S.engine === 'mpv' && window.desktop && window.desktop.mpv) { window.desktop.mpv.stop(); document.body.classList.remove('mpv', 'nat', 'natready'); }
   document.body.classList.remove('remux');
   if (hls) { try { hls.destroy(); } catch (e) {} hls = null; }
   if (mts) { try { mts.pause(); mts.unload(); mts.detachMediaElement(); mts.destroy(); } catch (e) {} mts = null; }
@@ -5099,7 +5100,7 @@ function mpvSubArgs() {
 }
 async function playMpv(c, t) {
   const M = window.desktop.mpv;
-  stopEngines(); S.engine = 'mpv'; S.mpvSt = {}; S.playUrl = c.url; document.body.classList.add('mpv');
+  stopEngines(); S.engine = 'mpv'; S.mpvSt = {}; S.playUrl = c.url; document.body.classList.add('mpv'); document.body.classList.remove('natready');
   const pos = LS.get(posK(c.url), 0), start = pos > 60 ? pos : 0;
   setStatus('load', '<span class="hint">Ouverture dans le lecteur intégré…</span>');
   const r = await M.play({ url: c.url, title: c.name, start, vol: video.muted ? 0 : video.volume, alang: LS.get('pref.audio', 'fr'), slang: LS.get('pref.sub', 'off'), rect: mpvRect(), under: NAT, subArgs: NAT ? mpvSubArgs() : [] }).catch(e => ({ error: e.message }));
@@ -5131,6 +5132,7 @@ if (window.desktop && window.desktop.mpv) {
     const c = S.current; if (!c) return;
     if (st.back) { mpvBack(); return; }
     if (st.moving != null) { document.body.classList.toggle('natmove', !!st.moving); return; }
+    if (NAT && st.pos > 0 && !document.body.classList.contains('natready')) setTimeout(() => { if (S.engine === 'mpv') document.body.classList.add('natready'); }, 250);
     if (NAT) { if (st.tracks) renderTrackMenu(); vodTick(); if (!st.tracks && !st.chapters) vbarUpdate(); }
     if (st.eof || st.exit) {
       if (S.mpvSt.pos > 30) { LS.set(posK(c.url), st.eof ? 0 : Math.floor(S.mpvSt.pos)); try { histTrack(c, !!st.eof); } catch (e) {} }
