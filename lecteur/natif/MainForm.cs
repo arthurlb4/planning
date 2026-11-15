@@ -15,6 +15,16 @@ namespace LecteurNatif;
      là où la page est transparente (zone du lecteur), on voit la vidéo ; ses commandes et menus passent par-dessus.
    Windows assemble les deux couches : déplacement, redimensionnement, plein écran restent toujours calés.
    La souris est transmise à la page par la fenêtre (le cadre vidéo, désactivé, ne la prend jamais). */
+/* Cadre de la vidéo : « transparent » pour la souris (elle passe à la fenêtre, donc à la page posée au-dessus) */
+public class VideoPanel : Panel
+{
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == WM_NCHITTEST) { m.Result = (IntPtr)(-1); return; }   // HTTRANSPARENT
+        base.WndProc(ref m);
+    }
+}
+
 public class MainForm : Form
 {
     const string PAGE = "https://franceinfoplanning.com/iptv/";
@@ -23,7 +33,7 @@ public class MainForm : Form
 
     IDCompositionDevice dcomp; IDCompositionTarget target; IDCompositionVisual root;
     CoreWebView2CompositionController comp; CoreWebView2 web;
-    public readonly Panel Video = new() { BackColor = Color.Black, Visible = false };
+    public readonly VideoPanel Video = new() { BackColor = Color.Black, Visible = false };
     Mpv mpv; Backend backend;
     bool tracking; IntPtr cursor = IntPtr.Zero; bool wasMax;
     FormWindowState lastState = FormWindowState.Normal;
@@ -39,7 +49,6 @@ public class MainForm : Form
         Directory.CreateDirectory(DataDir);
         LoadBounds();
         Controls.Add(Video);
-        Video.Enabled = false;          // désactivé : la souris passe à la fenêtre (donc à la page), jamais à mpv
         mpv = new Mpv(this);
     }
 

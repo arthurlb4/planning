@@ -29,7 +29,7 @@ public class Mpv
         var psi = new ProcessStartInfo(Exe) { UseShellExecute = false, CreateNoWindow = true };
         var args = new List<string> { (string)o["url"], "--wid=" + f.Video.Handle.ToInt64(), "--input-ipc-server=\\\\.\\pipe\\" + name,
             "--force-media-title=" + ((string)o["title"] ?? ""), "--hwdec=auto-safe", "--keep-open=yes", "--idle=no", "--osc=no", "--osd-level=0",
-            "--input-default-bindings=no", "--input-vo-keyboard=no", "--no-input-cursor", "--cursor-autohide=no", "--background=color", "--background-color=#000000",
+            "--input-default-bindings=no", "--input-vo-keyboard=no", "--no-input-cursor", "--input-cursor-passthrough=yes", "--cursor-autohide=no", "--background=color", "--background-color=#000000",
             "--volume=" + Math.Round(Math.Clamp((double?)o["vol"] ?? 1, 0, 1) * 100),
             "--alang=" + (lang.TryGetValue(al, out var a1) ? a1 : al), sl != "off" ? "--slang=" + (lang.TryGetValue(sl, out var s1) ? s1 : sl) : "--sid=no",
             "--sub-auto=fuzzy", "--msg-level=all=no", "--no-terminal" };
@@ -52,8 +52,20 @@ public class Mpv
         string[] props = { "time-pos", "duration", "pause", "eof-reached", "aid", "sid", "track-list", "chapter-list", "volume", "mute", "demuxer-cache-time" };
         for (int i = 0; i < props.Length; i++) Cmd(new JsonArray("observe_property", i + 1, props[i]));
         var pp = pipe; new Thread(() => Read(pp)) { IsBackground = true }.Start();
+        _ = MuteMouse(p);
         Place();
         return new JsonObject { ["ok"] = true };
+    }
+
+    // fenêtres que mpv crée dans le cadre vidéo : désactivées, pour que la souris ne s'y arrête jamais (elle va à la page)
+    async Task MuteMouse(Process p)
+    {
+        for (int k = 0; k < 40 && proc == p; k++)
+        {
+            var h = f.Video.Handle;
+            Natif.EnumChildWindows(h, (c, l) => { if (Natif.IsWindowEnabled(c)) Natif.EnableWindow(c, false); return true; }, IntPtr.Zero);
+            await Task.Delay(k < 10 ? 100 : 500);
+        }
     }
 
     static JsonObject Msg(JsonObject st) => new() { ["t"] = "mpv", ["st"] = st };
