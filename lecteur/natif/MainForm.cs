@@ -177,7 +177,7 @@ public class MainForm : Form
                 if (a == "min") WindowState = FormWindowState.Minimized;
                 else if (a == "max") WindowState = WindowState == FormWindowState.Maximized ? FormWindowState.Normal : FormWindowState.Maximized;
                 else if (a == "close") Close();
-                else if (a == "hold") mpv?.Hold(600);   // la page change de mise en page (plein écran) : la coque garde la vidéo en place
+                else if (a == "hold") mpv?.Hold(250);   // la page change de mise en page (plein écran) : la coque garde la vidéo en place
                 break;
             case "mpvPlay":
                 var id = (int)m["id"]!; var o = m["o"]!.AsObject();
@@ -235,7 +235,7 @@ public class MainForm : Form
         if (on == full) return; full = on;
         // pendant le changement : la vidéo est placée par la coque (plein écran : tout l'écran ; retour : sa place d'avant),
         // les positions envoyées par la page pendant sa nouvelle mise en page sont ignorées un instant
-        mpv?.Hold(450);
+        mpv?.Hold(150);
         if (on)
         {
             prevVideo = Video.Bounds; fullPrev = WindowState; normalBounds = Bounds;
@@ -262,7 +262,7 @@ public class MainForm : Form
             mpv?.FitChild();
         }
         if (ClientSize.Width > 0) lastClient = ClientSize;
-        if (Video.Visible && !full && WindowState != FormWindowState.Minimized && ClientSize != moveSize) { moveSize = ClientSize; Post(new JsonObject { ["t"] = "mpv", ["st"] = new JsonObject { ["moving"] = true } }); mpv?.Hold(220); }
+        if (Video.Visible && !full && WindowState != FormWindowState.Minimized && ClientSize != moveSize) { moveSize = ClientSize; Post(new JsonObject { ["t"] = "mpv", ["st"] = new JsonObject { ["moving"] = true } }); mpv?.Hold(160); }
         if (comp != null) comp.Bounds = new Rectangle(Point.Empty, ClientSize);
         bool max = WindowState == FormWindowState.Maximized;
         if (max != wasMax) { wasMax = max; Post(new JsonObject { ["t"] = "win", ["st"] = new JsonObject { ["max"] = max, ["full"] = full } }); }

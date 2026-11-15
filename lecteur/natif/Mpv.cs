@@ -119,11 +119,11 @@ public class Mpv
     // la coque place elle-même la vidéo pendant ms millisecondes, puis reprend la position donnée par la page
     public void Hold(int ms)
     {
-        holdUntil = Environment.TickCount64 + ms;
+        holdUntil = Math.Max(holdUntil, Environment.TickCount64 + ms);
         // fin du changement : vidéo replacée, puis la page retire son noir
-        var t = new System.Windows.Forms.Timer { Interval = ms + 30 }; t.Tick += (s, e) => { t.Stop(); t.Dispose(); Place(); Settled(); }; t.Start();
+        var t = new System.Windows.Forms.Timer { Interval = ms + 10 }; t.Tick += (s, e) => { t.Stop(); t.Dispose(); Place(); Settled(); }; t.Start();
     }
-    void Settled() { var t2 = new System.Windows.Forms.Timer { Interval = 80 }; t2.Tick += (s, e) => { t2.Stop(); t2.Dispose(); if (!Holding) f.Post(Msg(new JsonObject { ["moving"] = false })); }; t2.Start(); }
+    void Settled() { var t2 = new System.Windows.Forms.Timer { Interval = 20 }; t2.Tick += (s, e) => { t2.Stop(); t2.Dispose(); if (!Holding) f.Post(Msg(new JsonObject { ["moving"] = false })); }; t2.Start(); }
     public void Place()
     {
         if (f.IsDisposed || Holding) return;
