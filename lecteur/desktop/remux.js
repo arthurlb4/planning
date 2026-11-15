@@ -66,6 +66,14 @@ function probeOnce(ffmpeg, src, vlcPath) {
           si++;
         }
       });
+      // chapitres (générique de fin, intro…) : « Chapter #0:3: start 2520.0, end 2610.0 » puis « title : Credits »
+      const chapters = [];
+      lines.forEach((l, i) => {
+        const c = l.match(/Chapter #\d+:\d+: start (-?[\d.]+), end (-?[\d.]+)/); if (!c) return;
+        let title = '';
+        for (let k = i + 1; k < Math.min(i + 4, lines.length) && !/Chapter #|Stream #/.test(lines[k]); k++) { const t = lines[k].match(/^\s+title\s*:\s*(.+)$/); if (t) title = t[1].trim(); }
+        chapters.push({ start: +c[1], end: +c[2], title });
+      });
       // En cas d'échec : la cause donnée par ffmpeg (erreur HTTP du serveur, délai, format…)
       const err = lines.filter(l => /error|failed|denied|forbidden|refused|timed out|invalid|not found|\b[45]\d\d\b/i.test(l) && !/^\s*(Stream|Duration|Input|Metadata)/.test(l)).slice(-3).join(' · ').slice(0, 300);
       let verr = '';
@@ -73,7 +81,7 @@ function probeOnce(ffmpeg, src, vlcPath) {
         try { verr = fs.readFileSync(log, 'utf8').split(/\r?\n/).filter(l => /error|warning.*(http|access|mux)/i.test(l)).map(l => l.replace(/^.*?(error|warning)\s*:\s*/i, '')).filter((l, i, a) => a.indexOf(l) === i).slice(-4).join(' · ').slice(0, 300); } catch (e) {}
       }
       if (log) setTimeout(() => fs.unlink(log, () => {}), 2000);
-      resolve({ duration, vcodec, vprofile, vh, audio, subs, ok: !!(duration || vcodec), err: vlc && !vcodec ? 'VLC n\'a rien pu lire' + (verr ? ' : ' + verr : '') : err, vlc: !!vlc });
+      resolve({ duration, vcodec, vprofile, vh, audio, subs, chapters, ok: !!(duration || vcodec), err: vlc && !vcodec ? 'VLC n\'a rien pu lire' + (verr ? ' : ' + verr : '') : err, vlc: !!vlc });
     };
     ff.stderr.on('data', b => { txt += b; });
     ff.on('exit', done); ff.on('error', e => resolve({ ok: false, audio: [], err: 'ffmpeg ne démarre pas : ' + (e && e.message || e) }));
@@ -81,6 +89,24 @@ function probeOnce(ffmpeg, src, vlcPath) {
   });
 }
 
+/* Aperçu d'une image du film (survol de la barre de lecture) : l'image clé la plus proche avant t, petite (160 px de haut),
+   une seule à la fois (la précédente est abandonnée), gardée en mémoire */
+const THUMB = { proc: null, cache: new Map() };
+function thumb(ffmpeg, src, t, res) {
+  const k = src + '|' + Math.round(t), c = THUMB.cache.get(k);
+  const send = buf => { if (!buf || !buf.length) { res.statusCode = 204; return res.end(); } res.setHeader('Content-Type', 'image/jpeg'); res.setHeader('Cache-Control', 'max-age=3600'); res.end(buf); };
+  if (c) return send(c);
+  if (THUMB.proc) { try { THUMB.proc.kill('SIGKILL'); } catch (e) {} }
+  const ff = THUMB.proc = spawn(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-skip_frame', 'nokey', '-noaccurate_seek', '-ss', String(t), '-rw_timeout', '15000000', '-i', src,
+    '-map', '0:v:0', '-frames:v', '1', '-vf', 'scale=-2:160', '-c:v', 'mjpeg', '-q:v', '6', '-f', 'image2pipe', 'pipe:1'], { windowsHide: true });
+  const parts = []; let done = false;
+  ff.stdout.on('data', b => parts.push(b));
+  const end = () => { if (done) return; done = true; if (THUMB.proc === ff) THUMB.proc = null; const buf = Buffer.concat(parts);
+    if (buf.length) { THUMB.cache.set(k, buf); if (THUMB.cache.size > 300) THUMB.cache.delete(THUMB.cache.keys().next().value); } send(buf); };
+  ff.on('exit', end); ff.on('error', end);
+  res.on('close', () => { if (!done) { try { ff.kill('SIGKILL'); } catch (e) {} } });
+  setTimeout(() => { try { ff.kill('SIGKILL'); } catch (e) {} }, 15000);
+}
 // Image clé d'où ffmpeg partira réellement pour un départ à ss secondes (même recherche que /remux, qui doit recevoir le même
 // ss), en secondes depuis le début du film (moment d'affichage) ; null si on ne la trouve pas
 function seekPoint(ffmpeg, src, ss) {
@@ -188,6 +214,7 @@ module.exports = function startRemux(ffmpeg, findVlc) {
         probe(ffmpeg, src).then(j => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify(j)); });
         return;
       }
+      if (u.pathname === '/thumb') return thumb(ffmpeg, src, Math.max(0, +u.searchParams.get('t') || 0), res);
       if (u.pathname === '/seekpt') { seekPoint(ffmpeg, src, Math.max(0, +u.searchParams.get('ss') || 0)).then(kf => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ kf })); }); return; }
       if (u.pathname !== '/remux') { res.statusCode = 404; return res.end(); }
       remux(u, src, req, res, '');

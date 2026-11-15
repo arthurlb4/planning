@@ -328,6 +328,12 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 #qtBox div{position:relative;display:flex;flex-direction:column;min-width:240px;padding-bottom:8px}
 #qtBox b{font-size:14px}#qtBox span{font-size:12px;color:var(--text3)}
 #qtBox i{position:absolute;left:0;bottom:0;height:3px;border-radius:3px;background:var(--blue);transition:width .4s}
+#vbThumb{position:absolute;bottom:58px;z-index:9;display:flex;flex-direction:column;align-items:center;gap:4px;pointer-events:none}
+#vbThumb[hidden]{display:none}
+#vbThumb .im{display:none;width:228px;aspect-ratio:16/9;border-radius:8px;background:#000 center/cover no-repeat;border:1px solid rgba(255,255,255,.5);box-shadow:0 6px 20px rgba(0,0,0,.6)}
+#vbThumb.img .im{display:block}
+#vbThumb span{font-size:13px;font-variant-numeric:tabular-nums;color:#fff;background:rgba(0,0,0,.7);padding:2px 8px;border-radius:6px}
+#skipIntro{position:absolute;right:16px;bottom:78px;z-index:8;height:40px;padding:0 18px;background:rgba(20,20,19,.92);border:.5px solid var(--border);font-size:14px}
 #nextBox{position:absolute;right:16px;bottom:78px;z-index:8;display:flex;align-items:center;gap:10px;padding:10px 10px 10px 14px;border-radius:14px;background:rgba(20,20,19,.95);border:.5px solid var(--border);box-shadow:0 10px 30px rgba(0,0,0,.5)}
 #nextBox span{display:flex;flex-direction:column}#nextBox small{font-size:11px;color:var(--text3)}#nextBox b{font-size:14px}
 #nextBox .btn{height:34px}
@@ -4900,6 +4906,34 @@ $('#vbBack').onclick = () => seekBy(-10);
 $('#vbFwd').onclick = () => seekBy(10);
 $('#vbRange').addEventListener('input', e => { if (S.engine !== 'remux') video.currentTime = +e.target.value; });
 $('#vbRange').addEventListener('change', e => { if (S.engine === 'remux') remuxStart(+e.target.value); });
+/* Survol de la barre de lecture : moment visé, et pour un torrent (appli Windows) l'image à cet endroit quand ce passage
+   est déjà téléchargé. Pas d'image pour l'abonnement IPTV : il faudrait une seconde connexion au serveur, que la plupart
+   des abonnements refusent (le film en cours serait coupé). */
+const VTH = { t: 0, key: '', imgs: new Map() };
+function vthHide() { const b = $('#vbThumb'); if (b) b.hidden = true; clearTimeout(VTH.t); }
+$('#vbRange').addEventListener('pointermove', e => {
+  const rg = e.currentTarget, c = S.current; if (!c || !c.vod) return vthHide();
+  const r = rg.getBoundingClientRect(), f = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+  const dur = S.engine === 'remux' && S.remux && S.remux.info ? S.remux.info.duration || 0 : isFinite(video.duration) ? video.duration : 0; if (!dur) return vthHide();
+  const t = f * dur, sc = $('#screen').getBoundingClientRect();
+  let b = $('#vbThumb'); if (!b) { b = document.createElement('div'); b.id = 'vbThumb'; b.innerHTML = '<div class="im"></div><span></span>'; $('#screen').appendChild(b); }
+  b.hidden = false; b.querySelector('span').textContent = fmtT(t);
+  const tor = window.desktop && S.engine === 'remux' && /\/torrent\/file\//.test(c.url || ''), map = TMAP.info && TMAP.info.map;
+  const got = tor && map && +map[Math.min(map.length - 1, Math.floor(f * map.length))] >= 8;
+  b.classList.toggle('img', !!got);
+  const w = got ? 228 : 70; b.style.left = Math.max(8, Math.min(sc.width - w - 8, e.clientX - sc.left - w / 2)) + 'px';
+  if (!got) return;
+  const tk = Math.round(t / 5) * 5, key = c.url + '|' + tk, im = b.querySelector('.im');
+  if (VTH.key === key) return; VTH.key = key;
+  const u = VTH.imgs.get(key); if (u) { im.style.backgroundImage = `url(${u})`; return; }
+  clearTimeout(VTH.t);
+  VTH.t = setTimeout(() => fetch(window.desktop.remux + '/thumb?url=' + encodeURIComponent(c.url) + '&t=' + tk).then(r => r.status === 200 ? r.blob() : null).then(bl => {
+    if (!bl) return; const ou = URL.createObjectURL(bl); VTH.imgs.set(key, ou);
+    if (VTH.imgs.size > 200) { const k0 = VTH.imgs.keys().next().value; URL.revokeObjectURL(VTH.imgs.get(k0)); VTH.imgs.delete(k0); }
+    if (VTH.key === key) im.style.backgroundImage = `url(${ou})`;
+  }).catch(() => {}), 120);
+});
+$('#vbRange').addEventListener('pointerleave', vthHide);
 $('#vbLive').onclick = () => { const w = liveWin(); if (w && !atLive(w)) video.currentTime = liveTarget(w); if (video.paused) video.play().catch(() => {}); vbarUpdate(); };
 $('#vbPlay').onclick = () => { video.paused ? video.play() : video.pause(); vbarUpdate(); };
 $('#vbMute').onclick = () => { if (video.muted || !video.volume) { video.muted = false; if (!video.volume) video.volume = 0.5; } else video.muted = true; vbarUpdate(); };
@@ -5450,10 +5484,25 @@ $('#epMenu').addEventListener('click', e => {
 });
 document.addEventListener('click', e => { if (!e.target.closest('#epMenu,#vbEps')) $('#epMenu').hidden = true; });
 function nextEpEnd() { const c = S.current; if (c && c.next && NXT.url !== c.url) nextEpBox(true); }
+/* Générique et intro : d'après les chapitres du fichier quand il en a (films convertis par l'appli : « Credits »,
+   « Générique », « Intro », « Opening »…) ; sinon l'épisode suivant est proposé 40 s avant la fin */
+const CH_END = /\b(end ?)?(credits?|cr[ée]dits?|g[ée]n[ée]rique(s)?( de fin)?|outro|ending|fin)\b/i, CH_INTRO = /\b(intro|opening|ouverture|g[ée]n[ée]rique( de d[ée]but)?|op)\b/i;
+function chapMarks() {
+  const R = S.remux, ch = S.engine === 'remux' && R && R.info && R.info.chapters || [], dur = (R && R.info && R.info.duration) || 0;
+  if (!ch.length || !dur) return {};
+  const end = ch.find(x => x.start > dur * 0.6 && CH_END.test(x.title || '')), intro = ch.find(x => x.start < dur * 0.3 && x.end - x.start < 240 && CH_INTRO.test(x.title || '') && !CH_END.test(x.title || '') || x.start < dur * 0.3 && x.end - x.start < 240 && /^(intro|opening|générique|generique)$/i.test(x.title || ''));
+  return { end: end ? end.start : 0, intro: intro ? [intro.start, intro.end] : null };
+}
 video.addEventListener('timeupdate', () => {
-  const c = S.current; if (!c || !c.next || $('#nextBox') || NXT.url === c.url) return;
-  const dur = (S.engine === 'remux' && S.remux && S.remux.info && S.remux.info.duration) || (isFinite(video.duration) ? video.duration : 0), pos = curPos();
-  if (dur > 300 && dur - pos < 40 && dur - pos > 1) nextEpBox(false);
+  const c = S.current; if (!c || !c.vod) return;
+  const dur = (S.engine === 'remux' && S.remux && S.remux.info && S.remux.info.duration) || (isFinite(video.duration) ? video.duration : 0), pos = curPos(), M = chapMarks();
+  // Passer l'intro
+  let sk = $('#skipIntro');
+  const inIntro = M.intro && pos >= M.intro[0] && pos < M.intro[1] - 2;
+  if (inIntro && !sk) { sk = document.createElement('button'); sk.id = 'skipIntro'; sk.className = 'btn'; sk.textContent = 'Passer l\'intro'; sk.onclick = e => { e.stopPropagation(); const m = chapMarks(); if (m.intro) seekBy(m.intro[1] - curPos()); sk.remove(); }; $('#screen').appendChild(sk); }
+  else if (!inIntro && sk) sk.remove();
+  if (!c.next || $('#nextBox') || NXT.url === c.url) return;
+  if (M.end ? pos >= M.end && dur - pos > 1 : dur > 300 && dur - pos < 40 && dur - pos > 1) nextEpBox(false);
 });
 // Bandes-annonces en boucle sans l'écran de fin de YouTube : on écoute leur état et on repart du début à la fin
 window.addEventListener('message', e => {
