@@ -754,16 +754,17 @@ body.hassrc #vbar .vsrc{display:inline-flex}
 .ep .ept b .epdl{margin-left:8px}
 /* rond de téléchargement (menu Épisodes) : vide = pas sur ce PC (clic : le télécharger), anneau qui se remplit = en cours,
    plein = téléchargé */
-.dli{flex:none;position:relative;display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;cursor:pointer;color:var(--text2);
-  background:conic-gradient(var(--text) calc(var(--p,0) * 1turn), rgba(255,255,255,.18) 0);transition:transform .15s}
-.dli::before{content:'';position:absolute;inset:2px;border-radius:50%;background:var(--bg2)}
+.dli{flex:none;position:relative;display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;cursor:pointer;color:var(--text2);--ring:var(--text);--track:rgba(255,255,255,.2);transition:transform .15s}
+.dli::before{content:'';position:absolute;inset:0;border-radius:50%;background:conic-gradient(var(--ring) calc(var(--p,0) * 1turn), var(--track) 0);
+  -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 2px),#000 calc(100% - 2px));mask:radial-gradient(farthest-side,transparent calc(100% - 2px),#000 calc(100% - 2px))}
 .dli svg{position:relative;width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
 .dli:hover{transform:scale(1.12);color:var(--text)}
-.dli.full{background:var(--text);color:var(--bg2);cursor:default}.dli.full::before{display:none}.dli.full:hover{transform:none}
+.dli.full{background:var(--ring);color:var(--bg2);cursor:default}.dli.full::before{display:none}.dli.full:hover{transform:none}
 .dli.wait{animation:dlip 1.2s ease-in-out infinite}@keyframes dlip{50%{opacity:.45}}
 #epMenu .el button .dli{margin-left:auto}
 #epMenu .ssn button{display:inline-flex;align-items:center;gap:7px}#epMenu .ssn .dli{width:20px;height:20px;margin-right:-6px}#epMenu .ssn .dli svg{width:11px;height:11px}
-#epMenu .ssn button.on .dli{background:conic-gradient(var(--bg) calc(var(--p,0) * 1turn), rgba(0,0,0,.22) 0);color:var(--bg)}#epMenu .ssn button.on .dli::before{background:var(--text)}#epMenu .ssn button.on .dli.full{background:var(--bg);color:var(--text)}
+#vodTorS .ep .dli{margin-left:6px}.tsea .chip{display:inline-flex;align-items:center;gap:7px}.tsea .chip .dli{width:20px;height:20px;margin-right:-6px}.tsea .chip .dli svg{width:11px;height:11px}
+#epMenu .ssn button.on .dli,.tsea .chip.on .dli{--ring:var(--bg);--track:rgba(0,0,0,.25);color:var(--bg)}#epMenu .ssn button.on .dli.full,.tsea .chip.on .dli.full{color:var(--text)}
 #epMenu .el .p{flex:none;width:7px;height:7px;border-radius:50%;background:#e5322d}
 #epMenu .more{color:var(--text3);font-size:13px;padding:6px 10px}
 #trackMenu h4{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin:8px 8px 4px}
@@ -2045,7 +2046,7 @@ async function vodTorSeries(it) {
   const h0 = histAll().find(x => x.k === itemKey(it)), m = h0 && /S(\d+)E/.exec(h0.lab || '');
   const s0 = LS.get('tseason.' + ti.id, m ? +m[1] : seasons[0].season_number);
   VTS.ti = ti; VTS.seasons = seasons;
-  box.innerHTML = `<h4 class="vdh">Torrent</h4><div class="tsea">${seasons.map(x => `<button class="chip" data-tsea="${x.season_number}">Saison ${x.season_number}</button>`).join('')}</div><div id="vodTorSB"></div>`;
+  box.innerHTML = `<h4 class="vdh">Torrent</h4><div class="tsea">${seasons.map(x => `<button class="chip" data-tsea="${x.season_number}">Saison ${x.season_number}${dlIco(0, `data-fssdl="${x.season_number}"`, 'Télécharger la saison ' + x.season_number + ' sur ce PC (qBittorrent)')}</button>`).join('')}</div><div id="vodTorSB"></div>`;
   vodTorSeason(it, seasons.some(x => x.season_number === +s0) ? +s0 : seasons[0].season_number);
 }
 // recherche d'une saison dans les indexeurs (gardée pour la session) : meilleures saisons complètes, meilleur torrent par épisode
@@ -2098,6 +2099,19 @@ const DLI_SVG = '<svg viewBox="0 0 24 24"><path d="M12 5v10M7.5 11l4.5 4.5 4.5-4
 const dlIco = (p, attrs, tip) => { p = p || 0; const full = p >= 0.995;
   return `<span class="dli${full ? ' full' : ''}" style="--p:${Math.min(1, p).toFixed(3)}" ${attrs} title="${full ? 'Téléchargé sur ce PC' : p > 0.005 ? 'Téléchargé à ' + Math.floor(p * 100) + ' % : cliquer pour le finir' : tip}">${DLI_SVG}</span>`; };
 const epBadge = p => p == null ? '' : p >= 0.995 ? '<span class="epdl ok" title="Téléchargé sur ce PC">✓ téléchargé</span>' : p >= 0.01 ? `<span class="epdl" title="Téléchargé en partie sur ce PC">${Math.floor(p * 100)} %</span>` : '';
+/* Fiche d'une série : ronds de téléchargement (épisodes de la saison ouverte, et chaque saison d'après son nombre d'épisodes
+   TMDB) mis à jour d'après ce qui est sur le PC ; toutes les 3 s tant que la fiche est ouverte */
+const dliSet = (d, p) => { if (d.classList.contains('wait') && p < 0.005) return; d.classList.remove('wait'); d.style.setProperty('--p', Math.min(1, p).toFixed(3)); d.classList.toggle('full', p >= 0.995);
+  d.title = p >= 0.995 ? 'Téléchargé sur ce PC' : p > 0.005 ? 'Téléchargé à ' + Math.floor(p * 100) + ' % : cliquer pour le finir' : d.dataset.fssdl ? 'Télécharger la saison ' + d.dataset.fssdl + ' sur ce PC (qBittorrent)' : 'Télécharger cet épisode sur ce PC (qBittorrent)'; };
+function ficheDli() {
+  const box = $('#vodTorS'), ti = VTS.ti; if (!box || !box.isConnected || !ti) return;
+  epHave(ti.id).then(H => {
+    box.querySelectorAll('[data-fepdl]').forEach(d => dliSet(d, H.get(d.dataset.fepdl) || 0));
+    box.querySelectorAll('[data-fssdl]').forEach(d => { const sn = +d.dataset.fssdl, se = (VTS.seasons || []).find(x => x.season_number === sn), k = se ? se.episode_count : 0;
+      let t = 0; for (let n = 1; n <= k; n++) t += H.get(sn + ':' + n) || 0; dliSet(d, k ? t / k : 0); });
+  }).catch(() => {});
+}
+setInterval(() => { if ($('#vodTorS [data-fepdl], #vodTorS [data-fssdl]')) { EPH.at = 0; ficheDli(); } }, 3000);
 async function vodTorSeason(it, s) {
   const ti = VTS.ti, body = $('#vodTorSB'); if (!body || !ti) return;
   VTS.s = s; LS.set('tseason.' + ti.id, s);
@@ -2116,12 +2130,11 @@ async function vodTorSeason(it, s) {
     : `<p class="hint tshead">${Object.keys(R.epRel).length ? 'Pas de saison complète : épisodes seuls.' : 'Rien pour la saison ' + s + ' dans vos indexeurs.'}</p>`;
   const src = n => !R.done ? '' : R.bp ? 'saison complète' : R.epRel[n] ? desc(R.epRel[n]) : 'introuvable';
   const list = (eps && eps.length ? eps : []).slice().sort((a, b) => a.n - b.n);
-  const epHtml = e => `<button class="ep" data-tse="${e.n}"${R.done && !R.bp && !R.epRel[e.n] ? ' disabled' : ''}><span class="epi" ${e.img ? `style="background-image:url('https://image.tmdb.org/t/p/w300${esc(e.img)}')"` : ''}><span class="n">${e.n}</span></span><span class="ept"><b>${esc(e.t || 'Épisode ' + e.n)}</b><span class="d">${esc([e.run ? e.run + ' min' : '', src(e.n)].filter(Boolean).join(' · '))}</span>${e.o ? `<span class="o">${esc(e.o)}</span>` : ''}</span></button>`;
-  const dlIcon = () => { document.querySelectorAll('#vodTorS .tsdl').forEach(x => x.remove()); const ch = document.querySelector(`#vodTorS [data-tsea="${s}"]`);
-    if (R.bp && ch) ch.insertAdjacentHTML('beforeend', `<span class="tsdl" data-tsdl title="Télécharger la saison ${s} entière avec qBittorrent (Ma médiathèque)"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></span>`); };
+  const epHtml = e => `<button class="ep" data-tse="${e.n}"${R.done && !R.bp && !R.epRel[e.n] ? ' disabled' : ''}><span class="epi" ${e.img ? `style="background-image:url('https://image.tmdb.org/t/p/w300${esc(e.img)}')"` : ''}><span class="n">${e.n}</span></span><span class="ept"><b>${esc(e.t || 'Épisode ' + e.n)}</b><span class="d">${esc([e.run ? e.run + ' min' : '', src(e.n)].filter(Boolean).join(' · '))}</span>${e.o ? `<span class="o">${esc(e.o)}</span>` : ''}</span>${dlIco(0, `data-fepdl="${s}:${e.n}"`, 'Télécharger cet épisode sur ce PC (qBittorrent)')}</button>`;
+  const dlIcon = () => {};                               // ronds de téléchargement des saisons : voir ficheDli
   if (R.done) dlIcon();
   body.innerHTML = head() + (list.length ? '<div class="eps">' + list.map(epHtml).join('') + '</div>' : '<p class="hint">Épisodes inconnus de TMDB pour cette saison.</p>');
-  epHave(ti.id).then(H => { if (VTS.s !== s || !body.isConnected) return; body.querySelectorAll('[data-tse]').forEach(b => { const t = b.querySelector('.ept b'), x = epBadge(H.get(s + ':' + b.dataset.tse)); if (t && x) t.insertAdjacentHTML('beforeend', x); }); });
+  ficheDli();
   if (!R.done) R.p.then(() => {
     if (!V.open || V.open.it !== it || VTS.s !== s || !$('#vodTorSB')) return;
     const hd = body.querySelector('.tshead'); if (hd) hd.outerHTML = head(); dlIcon();
@@ -5147,6 +5160,10 @@ $('#vodDetail').addEventListener('click', e => {
   closeModals(); V.q = b.dataset.pname; document.body.classList.remove('drawer'); setHomeView(true, true, 'vod'); $('#vod').scrollTop = 0;
 }, true);
 $('#vodDetail').addEventListener('click', e => {
+  const fd = e.target.closest('#vodTorS [data-fepdl], #vodTorS [data-fssdl]');
+  if (fd) { e.stopPropagation(); e.preventDefault(); if (fd.classList.contains('full') || fd.classList.contains('wait')) return; fd.classList.add('wait');
+    const [sn, n] = (fd.dataset.fepdl || fd.dataset.fssdl + ':0').split(':').map(Number);
+    epKeep(sn, n || 0, { it: VTS.it, g: VTS.g }).finally(() => { setTimeout(() => { fd.classList.remove('wait'); EPH.at = 0; ficheDli(); }, 1500); }); return; }
   const dl0 = e.target.closest('#vodTorS [data-tsdl]');
   if (dl0) { e.stopPropagation(); if (dl0.classList.contains('busy') || !VTS.R || !VTS.R.bp) return; dl0.classList.add('busy'); dl0.title = 'Envoi à qBittorrent…';
     torQbt(VTS.R.bp, 'series', null).then(ok => { dl0.classList.remove('busy'); dl0.classList.toggle('on', !!ok); dl0.title = ok ? 'Saison envoyée à qBittorrent ✓' : 'Télécharger la saison entière avec qBittorrent'; }); return; }
@@ -6163,8 +6180,8 @@ setInterval(() => {
 }, 3000);
 /* Télécharger un épisode (n) ou toute la saison (n = 0) sans le regarder : torrent de la saison en cours de lecture, sinon
    celui déjà sur le PC, sinon le meilleur des indexeurs (saison complète, ou torrent de l'épisode) ; gardé par qBittorrent */
-async function epKeep(sn, n) {
-  const c = S.current, A = c && c.torAlts; if (!A || !A.g || !A.g.tm || !torOk()) return;
+async function epKeep(sn, n, A) {
+  const c = A ? null : S.current; A = A || (c && c.torAlts); if (!A || !A.g || !A.g.tm || !torOk()) return;
   const tm = A.g.tm, lab = 'S' + pad2(sn) + (n ? 'E' + pad2(n) : '');
   const send = async (x, ep) => {
     const j = await fetch(window.desktop.remux + '/torrent/keep', { method: 'POST', body: JSON.stringify({ src: x.src || x.magnetUrl || x.downloadUrl || '', h: x.h || x.infoHash || '', ep, cat: 'series' }) }).then(r => r.json()).catch(e => ({ error: e.message }));
@@ -6173,7 +6190,7 @@ async function epKeep(sn, n) {
     const o = LS.get('vod.tordl', {}) || {}; if (j.h && !o[j.h]) { o[j.h] = { kind: 'series', tmdb: tm.id, g: gKey(A.it), k: itemKey(A.it), n: A.it.name, y: A.it.year || 0, p: A.it.cover || '', at: Date.now() }; LS.set('vod.tordl', o); }
   };
   try {
-    const cur = /\/torrent\/file\/([0-9a-f]{40})\//i.exec(c.url || ''), curPack = c.torSeq && c.torSeq.length && c.ep && c.ep.s === sn;
+    const cur = c && /\/torrent\/file\/([0-9a-f]{40})\//i.exec(c.url || ''), curPack = c && c.torSeq && c.torSeq.length && c.ep && c.ep.s === sn;
     if (curPack && cur) await send({ h: cur[1] }, n ? { s: sn, n } : null);
     else {
       const loc = n ? await epLocal(tm.id, sn, n) : null, src0 = !loc && n && EPH.src && EPH.src.get(sn + ':' + n);
