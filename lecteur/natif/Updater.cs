@@ -43,7 +43,8 @@ static class Updater
         try
         {
             Set(new() { ["state"] = "checking" });
-            var txt = (await http.GetStringAsync(BASE + "natif-version.txt")).Trim();
+            string txt;
+            using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20))) txt = (await http.GetStringAsync(BASE + "natif-version.txt", cts.Token)).Trim();
             if (!Version.TryParse(txt, out var v) || v <= Current) { Set(new() { ["state"] = "latest" }); return; }
             var dir = Path.Combine(Path.GetTempPath(), "LecteurIPTVNatif-maj"); Directory.CreateDirectory(dir);
             foreach (var old in Directory.GetFiles(dir)) try { File.Delete(old); } catch { }
