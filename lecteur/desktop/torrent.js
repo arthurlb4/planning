@@ -71,7 +71,7 @@ function cleanup() {
 }
 setTimeout(() => { cleanup(); giveLeft(); }, 30e3); setInterval(cleanup, 6 * 3600e3);
 // à la fermeture de l'appli : torrents fermés, fichiers gardés ; ceux assez avancés passent à qBittorrent au lancement suivant
-process.on('exit', () => { try { if (client) client.torrents.forEach(t => idxTouch(t, worth(t) ? { give: 1 } : null)); } catch (e) {} try { if (client) client.destroy(); } catch (e) {} });
+process.on('exit', () => { try { if (client) client.torrents.forEach(t => idxTouch(t, worth(t) ? { give: 1, w: [...(t._watched || [])] } : null)); } catch (e) {} try { if (client) client.destroy(); } catch (e) {} });
 
 // progression : celle du fichier en lecture (sinon du plus gros fichier vidéo) ; « known » = pairs trouvés par les trackers
 // et le DHT, pas encore forcément connectés
@@ -119,7 +119,7 @@ function addWt(src, cat, dir) {
       const opts = { path: dir, destroyStoreOnDestroy: false };
       if (typeof src === 'string' || saved) opts.announce = TRACKERS;
       const t = c.add(saved || src, opts, t => {
-        if (done) return; done = true; clearTimeout(timer); t._cat = cat || '';
+        if (done) return; done = true; clearTimeout(timer); t._cat = cat || ''; t._watched = new Set(WATCHED.get(t.infoHash) || []); WATCHED.delete(t.infoHash);
         // Seul le fichier vidéo principal est demandé (pas les bonus, sous-titres…), dans l'ordre ; il ne faut pas tout
         // désélectionner : sans rien à demander, l'appli n'intéresse plus les pairs, qui coupent la connexion (0 source)
         t.deselect(0, t.pieces.length - 1, false);
@@ -225,7 +225,7 @@ async function qbtAdd(url, category, port) {
    lancement suivant) : si le film a bien commencé, le torrent est confié à qBittorrent dans ce même dossier ; il contrôle ce
    qui est déjà là, ne télécharge que le reste et partage ensuite (ratio). Relu plus tard : fini, il est lu depuis le disque ;
    pas fini, l'appli le reprend le temps de la lecture (morceaux déjà terminés repris de qBittorrent), puis le rend. */
-const QBT = 'http://127.0.0.1:8085', QDIR = path.join(DIR, '.qbtdir'), QB = new Map(), RESUME = new Map();
+const QBT = 'http://127.0.0.1:8085', QDIR = path.join(DIR, '.qbtdir'), QB = new Map(), RESUME = new Map(), WATCHED = new Map();
 async function qbt(p, opts) {
   opts = opts || {};
   const go = () => fetch(QBT + p, { method: opts.method || 'GET', body: opts.body, signal: AbortSignal.timeout(opts.timeout || 8000), headers: qbtCookie ? { Cookie: qbtCookie } : {} });
@@ -251,7 +251,8 @@ async function qbtHas(h) {
   if (!(await qbtUp(QBT))) return null;
   const l = await qbt('/api/v2/torrents/info?hashes=' + h); const t = Array.isArray(l) && l[0]; if (!t) return null;
   const files = await qbt('/api/v2/torrents/files?hash=' + h); if (!Array.isArray(files)) return null;
-  const vids = files.filter(f => VID(f.name) && f.priority > 0), done = vids.length > 0 && vids.every(f => f.progress >= 1);
+  // lu depuis le disque seulement si toutes les vidéos sont là (épisodes pas gardés : repris par l'appli, qui les télécharge)
+  const vids = files.filter(f => VID(f.name)), done = vids.length > 0 && vids.every(f => f.progress >= 1);
   const q = { h, t, files, done, save: t.save_path,
     info: { id: h, name: t.name, files: files.map((f, i) => ({ i: f.index != null ? f.index : i, name: path.basename(f.name), size: f.size, video: VID(f.name) })),
       progress: 1, peers: 0, known: 0, down: 0, up: 0, warn: '', err: '', qbt: true } };
@@ -262,13 +263,14 @@ async function qbtHas(h) {
 async function qbtTakeBack(q) {
   const t = q.t, own = path.resolve(t.content_path || '') === path.resolve(t.save_path, t.name);
   if (!own) return null;                                  // rangement différent du torrent : laissé à qBittorrent
+  WATCHED.set(q.h, q.files.map((f, i) => [f.index != null ? f.index : i, f]).filter(([, f]) => VID(f.name) && f.priority > 0).map(([i]) => i));
   if (!/^checking|^moving/i.test(t.state || '')) { const ps = await qbt('/api/v2/torrents/pieceStates?hash=' + q.h).catch(() => null); if (Array.isArray(ps)) RESUME.set(q.h, ps); }
   await qbt('/api/v2/torrents/stop', { method: 'POST', body: form({ hashes: q.h }) }).catch(() => qbt('/api/v2/torrents/pause', { method: 'POST', body: form({ hashes: q.h }) }).catch(() => {}));
   await qbt('/api/v2/torrents/delete', { method: 'POST', body: form({ hashes: q.h, deleteFiles: 'false' }) });
   QB.delete(q.h);
   return path.resolve(t.save_path);
 }
-async function qbtGiveBuf(buf, h, dir, cat) {
+async function qbtGiveBuf(buf, h, dir, cat, watched) {
   await qbtEnsure(QBT);
   const fd = new FormData();
   fd.append('torrents', new Blob([buf], { type: 'application/x-bittorrent' }), h + '.torrent');
@@ -277,12 +279,27 @@ async function qbtGiveBuf(buf, h, dir, cat) {
   const r = String(await qbt('/api/v2/torrents/add', { method: 'POST', body: fd, timeout: 30000 }));
   if (/^fails/i.test(r.trim()) && !(await qbtHas(h).catch(() => null))) throw new Error('torrent refusé par qBittorrent');
   const o = idxRead(); if (o[h]) { o[h].qbt = 1; delete o[h].give; idxWrite(o); }
+  if (watched && watched.length) qbtOnly(h, watched).catch(() => {});
+}
+/* Saison complète (ou film avec bonus) : qBittorrent ne finit que les vidéos regardées ; les autres épisodes ne sont pas
+   téléchargés (priorité « ne pas télécharger »). Relu plus tard, un nouvel épisode regardé s'ajoute à la liste. */
+async function qbtOnly(h, watched) {
+  const keep = new Set(watched);
+  for (let k = 0; k < 15; k++) {                          // le torrent apparaît dans qBittorrent après quelques instants
+    const files = await qbt('/api/v2/torrents/files?hash=' + h).catch(() => null);
+    if (Array.isArray(files) && files.length) {
+      const off = files.map((f, i) => [f.index != null ? f.index : i, f]).filter(([i, f]) => VID(f.name) && !keep.has(i)).map(([i]) => i);
+      if (off.length) await qbt('/api/v2/torrents/filePrio', { method: 'POST', body: form({ hash: h, id: off.join('|'), priority: '0' }) });
+      return;
+    }
+    await pause(1000);
+  }
 }
 async function give(t) {
-  const buf = t.torrentFile, h = t.infoHash, dir = t.path || DIR, cat = t._cat || '';
-  idxTouch(t, { give: 1 });                               // repris au lancement suivant si l'envoi échoue
+  const buf = t.torrentFile, h = t.infoHash, dir = t.path || DIR, cat = t._cat || '', watched = [...(t._watched || [])];
+  idxTouch(t, { give: 1, w: watched });                               // repris au lancement suivant si l'envoi échoue
   await new Promise(r => { try { t.destroy({ destroyStore: false }, () => r()); } catch (e) { r(); } });
-  await qbtGiveBuf(buf, h, dir, cat);
+  await qbtGiveBuf(buf, h, dir, cat, watched);
 }
 // torrents laissés ouverts à la fermeture de l'appli (ou envoi raté) : confiés à qBittorrent maintenant
 async function giveLeft() {
@@ -290,7 +307,7 @@ async function giveLeft() {
   for (const [h, e] of Object.entries(o)) {
     if (!e.give || e.qbt || (client && client.get(h))) continue;
     let buf = null; try { buf = fs.readFileSync(path.join(META, h + '.torrent')); } catch (er) { continue; }
-    await qbtGiveBuf(buf, h, e.dir || DIR, e.cat || '').catch(() => {});
+    await qbtGiveBuf(buf, h, e.dir || DIR, e.cat || '', e.w).catch(() => {});
   }
 }
 // épisode suivant d'une saison complète : son début (≈ 64 Mo) demandé d'avance, pendant la fin de l'épisode en cours
@@ -377,6 +394,7 @@ module.exports = function handleTorrent(req, res, u) {
     if (!f) { res.statusCode = 404; res.end(); return true; }
     // fichier lu : c'est lui qui est demandé aux pairs (et plus le précédent, pour un épisode suivant)
     if (!t._idxAt || Date.now() - t._idxAt > 3600e3) { t._idxAt = Date.now(); idxTouch(t); }   // dernière lecture
+    (t._watched || (t._watched = new Set())).add(+m[2]);   // vidéo regardée : gardée par qBittorrent
     if (t._playing !== +m[2]) { const p = t._playing != null ? t.files[t._playing] : mainFile(t); if (p && p !== f) p.deselect(); f.select(); t._playing = +m[2]; }
     sendFile(t, f, req, res); return true; }
   res.statusCode = 404; res.end(); return true;
