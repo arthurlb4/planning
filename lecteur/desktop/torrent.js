@@ -386,6 +386,19 @@ module.exports = function handleTorrent(req, res, u) {
     }).sort((a, b) => b.at - a.at);
     json(out); })().catch(e => json({ error: e.message }, 500)); return true;
   }
+  // avancement de chaque fichier de ces torrents (fiche d'une série, menu Épisodes) : ouverts dans l'appli, sinon qBittorrent
+  if (u.pathname === '/torrent/have') { (async () => {
+    const ids = (u.searchParams.get('ids') || '').toLowerCase().split(',').filter(h => /^[0-9a-f]{40}$/.test(h)).slice(0, 50), out = {};
+    const up = ids.some(h => !c.get(h)) && await qbtUp(QBT);
+    for (const h of ids) {
+      const t = c.get(h);
+      if (t && t.ready) { out[h] = t.files.map((f, i) => ({ i, name: f.name, size: f.length, p: f.progress })); continue; }
+      if (!up) continue;
+      const l = await qbt('/api/v2/torrents/files?hash=' + h).catch(() => null);
+      if (Array.isArray(l)) out[h] = l.map((f, i) => ({ i: f.index != null ? f.index : i, name: path.basename(f.name), size: f.size, p: f.progress }));
+    }
+    json(out); })().catch(e => json({ error: e.message }, 500)); return true;
+  }
   if (u.pathname === '/torrent/prefetch') {
     const id = (u.searchParams.get('id') || '').toLowerCase(), fi = +u.searchParams.get('f'), q = !c.get(id) && QB.get(id);
     // épisode en cours lu depuis le disque, suivant pas fini : le torrent est repris dès maintenant pour en préparer le début
