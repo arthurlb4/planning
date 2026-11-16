@@ -250,6 +250,8 @@ async function dlDir() {
   return DIR;
 }
 const VID = n => VIDEO.test(n);
+// fichier d'un épisode : S01E05 / 1x05 / E05 dans son nom
+const epRe = e => [new RegExp('S0*' + e.s + '[ ._-]?E0*' + e.n + '(?!\\d)', 'i'), new RegExp('(^|\\D)' + e.s + 'x0*' + e.n + '(?!\\d)', 'i')];
 async function qbtHas(h) {
   if (!(await qbtUp(QBT))) return null;
   const l = await qbt('/api/v2/torrents/info?hashes=' + h); const t = Array.isArray(l) && l[0]; if (!t) return null;
@@ -396,6 +398,62 @@ module.exports = function handleTorrent(req, res, u) {
       return { id, name: e.name, size: e.size || 0, at: e.at || 0, pct, qbt: !!e.qbt };
     }).sort((a, b) => b.at - a.at);
     json(out); })().catch(e => json({ error: e.message }, 500)); return true;
+  }
+  /* Télécharger un épisode (ep = { s, n }) ou tout le torrent (saison) pour le garder, sans le regarder (menu Épisodes) :
+     ouvert dans l'appli → demandé tout de suite et gardé par qBittorrent à la fin ; déjà dans qBittorrent → ses fichiers repassent
+     en « télécharger » ; sinon → confié à qBittorrent avec seulement ces fichiers. Corps JSON { src, h, ep, cat }. */
+  if (u.pathname === '/torrent/keep' && req.method === 'POST') {
+    const parts = []; req.on('data', b => parts.push(b));
+    req.on('end', async () => {
+      try {
+        const o = JSON.parse(Buffer.concat(parts).toString() || '{}'), ep = o.ep && +o.ep.n ? { s: +o.ep.s, n: +o.ep.n } : null;
+        if (blocked) throw new Error(VPN_MSG);
+        const pick = names => names.map((nm, i) => [i, nm]).filter(([, nm]) => VID(nm) && (!ep || epRe(ep).some(r => r.test(path.basename(nm))))).map(([i]) => i);
+        let h = /^[0-9a-f]{40}$/i.test(o.h || '') ? o.h.toLowerCase() : '';
+        let src = null;
+        if (!h) { src = await fromBody(String(o.src || '')); h = typeof src === 'string' ? btih(src) : bufHash(src); }
+        const t = h && c.get(h);
+        if (t && t.ready) {
+          const ids = pick(t.files.map(f => f.path)); if (!ids.length) throw new Error('épisode introuvable dans ce torrent');
+          t._watched = t._watched || new Set(); ids.forEach(i => { t._watched.add(i); t.files[i].select(); });
+          return json({ ok: true, h, where: 'app' });
+        }
+        const q = h && await qbtHas(h).catch(() => null);
+        if (q) {
+          const all = q.files.map((f, i) => [f.index != null ? f.index : i, f.name]), ids = pick(all.map(x => x[1])).map(k => all[k][0]);
+          if (!ids.length) throw new Error('épisode introuvable dans ce torrent');
+          await qbt('/api/v2/torrents/filePrio', { method: 'POST', body: form({ hash: h, id: ids.join('|'), priority: '1' }) });
+          await qbt('/api/v2/torrents/start', { method: 'POST', body: form({ hashes: h }) }).catch(() => qbt('/api/v2/torrents/resume', { method: 'POST', body: form({ hashes: h }) }).catch(() => {}));
+          return json({ ok: true, h, where: 'qbt' });
+        }
+        if (!src) src = await fromBody(String(o.src || ''));
+        let buf = typeof src === 'string' ? null : src;
+        try { if (!buf) buf = fs.readFileSync(path.join(META, h + '.torrent')); } catch (e) {}
+        await qbtEnsure(QBT);
+        const fd = new FormData();
+        if (buf) fd.append('torrents', new Blob([buf], { type: 'application/x-bittorrent' }), h + '.torrent'); else fd.append('urls', src);
+        fd.append('savepath', await dlDir()); fd.append('category', o.cat || ''); fd.append('tags', 'lecteur');
+        fd.append('autoTMM', 'false'); fd.append('contentLayout', 'Original'); fd.append('useDownloadPath', 'false');
+        if (ep) fd.append('stopped', 'true'), fd.append('paused', 'true');     // rien avant d'avoir écarté les autres épisodes
+        await qbt('/api/v2/torrents/add', { method: 'POST', body: fd, timeout: 30000 });
+        if (ep) (async () => {                                  // description reçue (lien magnet : quelques secondes) → autres épisodes écartés
+          for (let k = 0; k < 120; k++) {
+            const l = await qbt('/api/v2/torrents/files?hash=' + h).catch(() => null);
+            if (Array.isArray(l) && l.length) {
+              const all = l.map((f, i) => [f.index != null ? f.index : i, f.name]), keep = new Set(pick(all.map(x => x[1])).map(k2 => all[k2][0]));
+              const off = all.filter(([i, nm]) => VID(nm) && !keep.has(i)).map(([i]) => i);
+              if (off.length) await qbt('/api/v2/torrents/filePrio', { method: 'POST', body: form({ hash: h, id: off.join('|'), priority: '0' }) }).catch(() => {});
+              await qbt('/api/v2/torrents/start', { method: 'POST', body: form({ hashes: h }) }).catch(() => qbt('/api/v2/torrents/resume', { method: 'POST', body: form({ hashes: h }) }).catch(() => {}));
+              return;
+            }
+            await pause(1000);
+          }
+        })().catch(() => {});
+        const ix = idxRead(); ix[h] = Object.assign(ix[h] || {}, { name: ix[h] && ix[h].name || '', at: Date.now(), qbt: 1, cat: o.cat || '' }); idxWrite(ix);
+        json({ ok: true, h, where: 'qbt-new' });
+      } catch (e) { json({ error: e.message || String(e) }, 502); }
+    });
+    return true;
   }
   // avancement de chaque fichier de ces torrents (fiche d'une série, menu Épisodes) : ouverts dans l'appli, sinon qBittorrent
   if (u.pathname === '/torrent/have') { (async () => {
