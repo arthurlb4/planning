@@ -157,8 +157,9 @@ public class MainForm : Form
         await web.AddScriptToExecuteOnDocumentCreatedAsync(shim.Replace("__CFG__", cfg.ToJsonString()));
 
         web.WebMessageReceived += (s, a) => { try { OnMessage(a.TryGetWebMessageAsString()); } catch { } };
-        // mise à jour téléchargée : prévenue dans la page, installée à la fermeture
-        Updater.Start(v => BeginInvoke(() => { try { web?.ExecuteScriptAsync("window.toast && toast(" + JsonSerializer.Serialize("Mise à jour " + v + " prête : elle s'installe à la fermeture de l'appli") + ")"); } catch { } }));
+        // mises à jour : état envoyé à la page (Paramètres, bandeau « version prête »)
+        Updater.Changed += st => Post(new JsonObject { ["t"] = "upd", ["st"] = st.DeepClone() });
+        Updater.Start();
         // vers les serveurs IPTV : sans les en-têtes propres aux pages web (Origin, Referer), comme une appli de lecture
         web.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
         web.WebResourceRequested += (s, a) =>
@@ -208,6 +209,7 @@ public class MainForm : Form
             case "vpn": Post(new JsonObject { ["t"] = "vpn", ["v"] = Vpn((string)m["pat"] ?? "") }); break;
             case "vlc": Reply((int)m["id"]!, OpenVlc((string)m["url"], (string)m["name"])); break;
             case "fs": SetFull(!full); break;
+            case "upd": Updater.CheckNow(this); break;
         }
     }
     void Reply(int id, JsonNode v) => Post(new JsonObject { ["t"] = "res", ["id"] = id, ["v"] = v });
