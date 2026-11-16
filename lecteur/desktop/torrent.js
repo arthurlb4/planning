@@ -481,7 +481,18 @@ module.exports = function handleTorrent(req, res, u) {
   // avancement de chaque fichier de ces torrents (fiche d'une série, menu Épisodes) : ouverts dans l'appli, sinon qBittorrent
   if (u.pathname === '/torrent/have') { (async () => {
     const ids = (u.searchParams.get('ids') || '').toLowerCase().split(',').filter(h => /^[0-9a-f]{40}$/.test(h)).slice(0, 50), out = {};
-    const up = ids.some(h => !c.get(h)) && await qbtUp(QBT);
+    // q : titres de la série (« titre|titre original ») ; torrents dont le nom commence par l'un d'eux, gardés par l'appli ou
+    // dans qBittorrent (lancés depuis l'autre appli, par Sonarr, par Télécharger…)
+    const nrm = x => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').trim();
+    const qs = (u.searchParams.get('q') || '').split('|').map(nrm).filter(x => x.length >= 2);
+    const hit = name => { const n = nrm(name); return qs.some(q => n === q || n.startsWith(q + ' ')); };
+    let up = null; const qUp = async () => up == null ? (up = await qbtUp(QBT)) : up;
+    if (qs.length) {
+      Object.entries(idxRead()).forEach(([h, e]) => { if (!ids.includes(h) && e.name && hit(e.name)) ids.push(h); });
+      (c.torrents || []).forEach(t => { if (t.name && !ids.includes(t.infoHash) && hit(t.name)) ids.push(t.infoHash); });
+      if (await qUp()) { const l = await qbt('/api/v2/torrents/info').catch(() => null); (Array.isArray(l) ? l : []).forEach(t => { if (t.hash && !ids.includes(t.hash) && hit(t.name)) ids.push(t.hash); }); }
+    }
+    if (ids.some(h => !c.get(h))) await qUp();
     for (const h of ids) {
       const t = c.get(h);
       if (t && t.ready) { out[h] = t.files.map((f, i) => ({ i, name: f.name, size: f.length, p: f.progress })); continue; }

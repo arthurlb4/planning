@@ -2045,7 +2045,7 @@ async function vodTorSeries(it) {
   if (!seasons.length) { box.innerHTML = ''; return; }
   const h0 = histAll().find(x => x.k === itemKey(it)), m = h0 && /S(\d+)E/.exec(h0.lab || '');
   const s0 = LS.get('tseason.' + ti.id, m ? +m[1] : seasons[0].season_number);
-  VTS.ti = ti; VTS.seasons = seasons;
+  VTS.ti = ti; VTS.seasons = seasons; tvTitles(ti.id, d.name, d.original_name, it.name);
   box.innerHTML = `<h4 class="vdh">Torrent</h4><div class="tsea">${seasons.map(x => `<button class="chip" data-tsea="${x.season_number}">Saison ${x.season_number}${dlIco(0, `data-fssdl="${x.season_number}"`, 'Télécharger la saison ' + x.season_number + ' sur ce PC (qBittorrent)')}</button>`).join('')}</div><div id="vodTorSB"></div>`;
   vodTorSeason(it, seasons.some(x => x.season_number === +s0) ? +s0 : seasons[0].season_number);
 }
@@ -2074,12 +2074,16 @@ async function torSeasonPlay(c, s, n) {
 /* Épisodes déjà téléchargés sur ce PC (appli Windows) : fichiers des torrents de la série déjà lus (vod.tordl), ouverts dans
    l'appli ou laissés à qBittorrent ; clé « saison:épisode » → part reçue (0 à 1), d'après S01E05 / 1x05 dans le nom du fichier */
 const EPH = { k: '', at: 0, m: null };
+// titres connus de chaque série (fiche ouverte, lecture) : pour retrouver aussi ses torrents par leur nom
+const TVT = new Map(), tvTitles = (id, ...t) => { if (id) TVT.set(+id, [...new Set([...(TVT.get(+id) || []), ...t.filter(Boolean)])]); };
 async function epHave(tmdbId) {
   if (!torOk() || !tmdbId) return new Map();
-  const o = LS.get('vod.tordl', {}) || {}, ids = Object.keys(o).filter(h => o[h] && o[h].kind === 'series' && +o[h].tmdb === +tmdbId);
-  if (!ids.length) return new Map();
-  const k = ids.join(','); if (EPH.k === k && EPH.tv === +tmdbId && EPH.m && Date.now() - EPH.at < 5000) return EPH.m;
-  const j = await fetch(window.desktop.remux + '/torrent/have?ids=' + k).then(r => r.ok ? r.json() : {}).catch(() => ({})), m = new Map(), src = new Map();
+  const o = LS.get('vod.tordl', {}) || {}, ids = Object.keys(o).filter(h => o[h] && o[h].kind === 'series' && +o[h].tmdb === +tmdbId), q = (TVT.get(+tmdbId) || []).join('|');
+  if (!ids.length && !q) return new Map();
+  const k = ids.join(',') + '#' + q; if (EPH.k === k && EPH.tv === +tmdbId && EPH.m && Date.now() - EPH.at < 5000) return EPH.m;
+  const j = await fetch(window.desktop.remux + '/torrent/have?ids=' + ids.join(',') + '&q=' + encodeURIComponent(q)).then(r => {
+    if (r.status === 404 && !EPH.old) { EPH.old = true; toastLong('Mettez à jour l\'appli (Paramètres) pour voir les épisodes déjà téléchargés'); }
+    return r.ok ? r.json() : {}; }).catch(() => ({})), m = new Map(), src = new Map();
   Object.entries(j || {}).forEach(([h, l]) => (Array.isArray(l) ? l : []).forEach(f => {
     if (!/\.(mkv|mp4|avi|m4v|mov|ts|m2ts|webm)$/i.test(f.name)) return;
     const x = /S(\d{1,2})[ ._-]?E(\d{1,3})(?!\d)/i.exec(f.name) || /(?:^|\D)(\d{1,2})x(\d{2,3})(?!\d)/i.exec(f.name); if (!x) return;
@@ -2150,9 +2154,11 @@ async function vodTorEp(n, b) {
   const loc = await epLocal(VTS.ti && VTS.ti.id, s, n);
   if (loc) return torEpPlay({ it, s, g, eplist: VTS.eplist || [], R }, loc, n, 0);
   if (!R.done) { if (b) { b.classList.add('busy'); const d0 = b.querySelector('.d'); if (d0) d0.textContent = 'recherche du meilleur torrent…'; } await R.p; }
-  if (b) { b.classList.remove('busy'); const d0 = b.querySelector('.d'); if (d0) d0.textContent = 'connexion aux sources…'; }
-  const x = R.bp || R.epRel[n]; if (!x) { toastLong('S' + pad2(s) + 'E' + pad2(n) + ' introuvable dans vos indexeurs'); return; }
-  return torEpPlay({ it, s, g, eplist: VTS.eplist || [], R }, x, n, 0);
+  const d0 = b && b.querySelector('.d'), was = d0 ? d0.dataset.was || (d0.dataset.was = d0.textContent) : '';
+  if (b) { b.classList.remove('busy'); if (d0) d0.textContent = 'connexion aux sources…'; }
+  const x = R.bp || R.epRel[n]; if (!x) { if (d0) d0.textContent = was; toastLong('S' + pad2(s) + 'E' + pad2(n) + ' introuvable dans vos indexeurs'); return; }
+  try { return await torEpPlay({ it, s, g, eplist: VTS.eplist || [], R }, x, n, 0); }
+  finally { if (d0 && d0.isConnected) d0.textContent = was; }        // lecture lancée (ou ratée) : la fiche reprend son texte
 }
 function torEpPlay(C, x, n, resumeAt) {
   const { it, s, g } = C, eps = C.eplist, tm = g.tm, lab = k => tm.name + ' · S' + pad2(s) + 'E' + pad2(k);
@@ -6136,6 +6142,7 @@ function renderEpMenu() {
   const N = epNav(), c = S.current; if (!N) { m.hidden = true; return; }
   // torrent : épisodes téléchargés sur ce PC marqués (relu toutes les 5 s au plus, menu redessiné à l'arrivée)
   const tvId = N.tor && c.it && (c.it.tmdb || (c.torAlts && c.torAlts.g && c.torAlts.g.tm && c.torAlts.g.tm.id));
+  if (tvId && c.torAlts && c.torAlts.g && c.torAlts.g.tm) tvTitles(tvId, c.torAlts.g.tm.name, c.torAlts.g.tm.orig, c.it.name);
   const H = tvId && EPH.tv === +tvId ? EPH.m : null;
   if (tvId && (EPH.tv !== +tvId || Date.now() - EPH.at > 5000) && !EPM.hv) { EPM.hv = 1; epHave(tvId).then(() => { EPM.hv = 0; if (!m.hidden) renderEpMenu(); }, () => { EPM.hv = 0; }); }
   const hb = (sn, n) => dlIco(H ? H.get(sn + ':' + n) : 0, `data-epdl="${sn}:${n}"`, 'Télécharger cet épisode sur ce PC (qBittorrent)');
