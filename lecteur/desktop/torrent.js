@@ -177,6 +177,15 @@ function sendFile(t, f, req, res) {
     m ? { 'Content-Range': `bytes ${start}-${end}/${size}` } : {}));
   if (req.method === 'HEAD') return res.end();
   const st = f.createReadStream({ start, end });
+  /* Lecteur qui saute (index en fin de fichier, déplacement) : la demande la plus récente passe avant les autres. Sans ça,
+     webtorrent sert ses sélections dans l'ordre d'arrivée et la première (tout le fichier depuis le début) passe d'abord :
+     la fin n'arrivait qu'avec le fichier presque entier. */
+  if (t && !t.destroyed && t.ready && f._startPiece != null && t.pieceLength) {
+    const pc = b => Math.max(f._startPiece, Math.min(f._endPiece, Math.floor((f.offset + b) / t.pieceLength))), p0 = pc(start), p1 = pc(end);
+    const prio = t._prioN = (t._prioN || 1) + 1;
+    try { t.select(p0, p1, prio); t.critical(p0, Math.min(p1, p0 + 1)); } catch (e) {}
+    res.on('close', () => { try { if (!t.destroyed) t.deselect(p0, p1, prio); } catch (e) {} });
+  }
   st.on('error', () => { try { res.destroy(); } catch (e) {} });
   res.on('close', () => { try { st.destroy(); } catch (e) {} });
   st.pipe(res);
@@ -344,6 +353,20 @@ function prefetch(t, f) {
 }
 const diskFile = (q, i) => { const f = qFile(q, i); if (!f) return null;
   const p = path.join(q.save, f.name); return { name: path.basename(f.name), length: f.size, createReadStream: o => fs.createReadStream(p, o) }; };
+/* Torrent fermé, gardé par l'appli (dossier de l'appli ou de qBittorrent, pas encore confié) : avancement de chaque fichier
+   d'après les morceaux reçus notés à la fermeture (index) et sa description gardée (.meta) */
+function keptFiles(h) {
+  const e = idxRead()[h]; if (!e || !e.bf || !e.np) return null;
+  let tor; try { tor = require('parse-torrent')(fs.readFileSync(path.join(META, h + '.torrent'))); } catch (er) { return null; }
+  if (!tor || !tor.files || tor.pieces.length !== e.np) return null;
+  const bf = Buffer.from(e.bf, 'base64'), has = i => !!(bf[i >> 3] & (128 >> (i & 7))), L = tor.pieceLength;
+  return tor.files.map((f, i) => {
+    if (!f.length) return { i, name: f.name, size: 0, p: 1 };
+    const a = Math.floor(f.offset / L), b = Math.floor((f.offset + f.length - 1) / L); let n = 0;
+    for (let k = a; k <= b; k++) if (has(k)) n++;
+    return { i, name: f.name, size: f.length, p: n / (b - a + 1) };
+  });
+}
 // Renvoie true si la requête concernait les torrents
 /* Fermeture de l'appli : chaque torrent ouvert assez avancé est confié à qBittorrent tout de suite (lancé s'il ne tourne
    pas), qui continue le téléchargement et le partage ; qBittorrent est aussi lancé s'il garde déjà des torrents de l'appli.
@@ -462,9 +485,9 @@ module.exports = function handleTorrent(req, res, u) {
     for (const h of ids) {
       const t = c.get(h);
       if (t && t.ready) { out[h] = t.files.map((f, i) => ({ i, name: f.name, size: f.length, p: f.progress })); continue; }
-      if (!up) continue;
-      const l = await qbt('/api/v2/torrents/files?hash=' + h).catch(() => null);
-      if (Array.isArray(l)) out[h] = l.map((f, i) => ({ i: f.index != null ? f.index : i, name: path.basename(f.name), size: f.size, p: f.progress }));
+      const l = up ? await qbt('/api/v2/torrents/files?hash=' + h).catch(() => null) : null;
+      if (Array.isArray(l) && l.length) { out[h] = l.map((f, i) => ({ i: f.index != null ? f.index : i, name: path.basename(f.name), size: f.size, p: f.progress })); continue; }
+      const k = keptFiles(h); if (k) out[h] = k;
     }
     json(out); })().catch(e => json({ error: e.message }, 500)); return true;
   }

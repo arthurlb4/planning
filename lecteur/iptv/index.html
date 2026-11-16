@@ -5215,20 +5215,16 @@ setInterval(async () => {
   if (S.current !== c || !LDI.since) return;
   let el = $('#ldi'); if (!el) { el = document.createElement('div'); el.id = 'ldi'; $('#screen').appendChild(el); }
   const secs = Math.round((Date.now() - LDI.since) / 1000) + 1, mo = n => n < 1e6 ? Math.round((n || 0) / 1e3) + ' ko' : n < 1e9 ? (n / 1e6).toFixed(n < 1e7 ? 1 : 0).replace('.', ',') + ' Mo' : torMo(n);
-  const row = (cls, txt) => `<div class="st ${cls}"><i></i><span>${txt}</span></div>`;
-  if (!i) { el.innerHTML = `<b>Attente du torrent · ${secs} s</b>` + row('ko', 'Le module torrent de l\'appli ne répond pas'); return; }
-  if (i.qbt) { el.innerHTML = `<b>Lecture depuis le disque · ${secs} s</b>` + row('ok', 'Fichier entier sur ce PC (qBittorrent)') + row('go', 'Préparation de la lecture (conversion)…'); return; }
-  // passage à lire : tranches de la fresque autour de la position (début si la durée n'est pas encore connue)
+  // une seule ligne : l'étape en cours (recherche de sources, téléchargement du passage, démarrage)
+  const show = (cls, txt, pct) => { el.innerHTML = `<b>Chargement · ${secs} s</b><div class="st ${cls}"><i></i><span>${txt}</span></div>` + (pct != null ? `<div class="bar"><span style="width:${pct}%"></span></div>` : ''); };
+  if (!i) return show('ko', 'Le module torrent de l\'appli ne répond pas');
+  if (i.qbt) return show('go', 'Préparation de la lecture…');
   const dur = S.engine === 'mpv' ? S.mpvSt.dur || 0 : (S.remux && S.remux.info && S.remux.info.duration) || (isFinite(video.duration) ? video.duration : 0);
   const map = i.map || '', k = map && dur ? Math.min(map.length - 1, Math.floor(curPos() / dur * map.length)) : 0;
   const here = map ? [0, 1, 2].map(d => +map[Math.min(map.length - 1, k + d)] || 0).reduce((a, b) => a + b, 0) / 27 : 0;
-  const src = i.peers > 0 ? row('ok', `${i.peers} source${i.peers > 1 ? 's' : ''} connectée${i.peers > 1 ? 's' : ''}` + (i.known > i.peers ? ` (${i.known} trouvées)` : ''))
-    : row(secs > 30 ? 'ko' : 'go', i.known ? `Connexion aux sources… (${i.known} trouvée${i.known > 1 ? 's' : ''})` : 'Recherche de sources sur le tracker…');
-  const pass = row(here >= 0.99 ? 'ok' : i.peers > 0 ? 'go' : '', `Téléchargement : ${Math.round(here * 100)} %` + (here < 0.99 && i.down > 0 ? ' · ' + mo(i.down) + '/s' : ''));
-  el.innerHTML = `<b>${k === 0 && !(curPos() > 5) ? 'Ouverture du torrent' : 'Mise en mémoire'} · ${secs} s</b>` + src + pass
-    + `<div class="bar"><span style="width:${Math.round(here * 100)}%"></span></div>`
-    + (here >= 0.99 ? row('go', 'Démarrage de la lecture…') : '')
-    + (i.warn || i.err ? `<div class="st ko"><i></i><span>${esc(String(i.warn || i.err).slice(0, 120))}</span></div>` : '');
+  if (!(i.peers > 0) && here < 0.99) return show(secs > 30 ? 'ko' : 'go', secs > 30 ? 'Aucune source trouvée pour l\'instant' : 'Recherche de sources…');
+  if (here < 0.99) return show('go', `Téléchargement : ${Math.round(here * 100)} %` + (i.down > 0 ? ' · ' + mo(i.down) + '/s' : ''), Math.round(here * 100));
+  show('go', 'Démarrage de la lecture…');
 }, 1000);
 function torMapTick() {
   const c = S.current, m = c && /\/torrent\/file\/([0-9a-f]{40})\/(\d+)\//i.exec(c.url || ''), rg = $('#vbRange');
