@@ -6668,7 +6668,91 @@ async function builtinNew() {
 const TMDB_ENC = { salt: 'jyaqEiMiGbi+oYy5B5TZBw==', iv: '3xilUtIYCDBzCe4d', data: 'sVCliRusMkctrrqSzb1mUkZFIS+iTSB2wmyxP61Yik7Ejo7UIxISv+FfrvWCeyLJ' };
 // Clé OpenSubtitles (sous-titres à télécharger), chiffrée de la même façon
 const OST_ENC = {"salt": "T0iBGBOOxgcNnuRfo1rgfg==", "iv": "ex8kKVNAyT97lG5g", "data": "/yVyqpKS1pG9RdJA9dA3XfYOTVZiI+9Le7t2uVdsSSBPCSuDx1yjO01GIdWPjxvN"};
+/* Déchiffrement sans crypto.subtle (page http sur mobile) : PBKDF2-SHA256 + AES-256-GCM en JavaScript pur. */
+const softDec = (() => {
+  const fr = (x, n) => (x - Math.floor(x)) * 4294967296 | 0, P = [];
+  for (let n = 2; P.length < 64; n++) if (P.every(p => n % p)) P.push(n);
+  const K = Int32Array.from(P, p => fr(Math.cbrt(p))), IV = Int32Array.from(P.slice(0, 8), p => fr(Math.sqrt(p))), W = new Int32Array(64);
+  function comp(H, M, o = 0) {
+    for (let i = 0; i < 16; i++) W[i] = M[o + i];
+    for (let i = 16; i < 64; i++) { const a = W[i - 15], b = W[i - 2]; W[i] = ((a >>> 7 | a << 25) ^ (a >>> 18 | a << 14) ^ (a >>> 3)) + W[i - 7] + ((b >>> 17 | b << 15) ^ (b >>> 19 | b << 13) ^ (b >>> 10)) + W[i - 16] | 0; }
+    let a = H[0], b = H[1], c = H[2], d = H[3], e = H[4], f = H[5], g = H[6], h = H[7];
+    for (let i = 0; i < 64; i++) {
+      const t1 = h + ((e >>> 6 | e << 26) ^ (e >>> 11 | e << 21) ^ (e >>> 25 | e << 7)) + ((e & f) ^ (~e & g)) + K[i] + W[i] | 0;
+      const t2 = ((a >>> 2 | a << 30) ^ (a >>> 13 | a << 19) ^ (a >>> 22 | a << 10)) + ((a & b) ^ (a & c) ^ (b & c)) | 0;
+      h = g; g = f; f = e; e = d + t1 | 0; d = c; c = b; b = a; a = t1 + t2 | 0;
+    }
+    H[0] = H[0] + a | 0; H[1] = H[1] + b | 0; H[2] = H[2] + c | 0; H[3] = H[3] + d | 0; H[4] = H[4] + e | 0; H[5] = H[5] + f | 0; H[6] = H[6] + g | 0; H[7] = H[7] + h | 0;
+  }
+  // hash des octets m, en reprenant l'état H après `pre` octets déjà traités
+  function hash(m, H = IV, pre = 0) {
+    const n = (m.length + 9 + 63) >> 6 << 4, M = new Int32Array(n); H = Int32Array.from(H);
+    for (let i = 0; i < m.length; i++) M[i >> 2] |= m[i] << (24 - (i & 3) * 8);
+    M[m.length >> 2] |= 0x80 << (24 - (m.length & 3) * 8);
+    const bits = (pre + m.length) * 8; M[n - 1] = bits | 0; M[n - 2] = Math.floor(bits / 4294967296);
+    for (let o = 0; o < n; o += 16) comp(H, M, o);
+    return H;
+  }
+  const bytes = H => { const b = new Uint8Array(H.length * 4); H.forEach((w, i) => { b[i * 4] = w >>> 24; b[i * 4 + 1] = w >>> 16; b[i * 4 + 2] = w >>> 8; b[i * 4 + 3] = w; }); return b; };
+  function pbkdf2(pass, salt, iter) {
+    let k = new TextEncoder().encode(pass); if (k.length > 64) k = bytes(hash(k));
+    const pad = x => { const b = new Int32Array(16); for (let i = 0; i < 64; i++) b[i >> 2] |= ((k[i] || 0) ^ x) << (24 - (i & 3) * 8); const H = Int32Array.from(IV); comp(H, b); return H; };
+    const Hi = pad(0x36), Ho = pad(0x5c), s1 = new Uint8Array(salt.length + 4); s1.set(salt); s1[salt.length + 3] = 1;
+    let U = hash(bytes(hash(s1, Hi, 64)), Ho, 64); const T = Int32Array.from(U), B = new Int32Array(16), S = new Int32Array(8);
+    B[8] = 0x80000000; B[15] = 768;
+    for (let j = 1; j < iter; j++) {
+      B.set(U); S.set(Hi); comp(S, B); B.set(S); S.set(Ho); comp(S, B); U = S;
+      for (let i = 0; i < 8; i++) T[i] ^= U[i];
+    }
+    return bytes(T);
+  }
+  // AES (chiffrement seul, suffisant pour GCM)
+  const SB = new Uint8Array(256), xt = x => (x << 1 ^ (x & 0x80 ? 0x11b : 0)) & 255;
+  { let p = 1, q = 1; do { p = p ^ xt(p); q ^= q << 1; q ^= q << 2; q ^= q << 4; q &= 255; if (q & 0x80) q ^= 0x09; const r = q ^ (q << 1 | q >> 7) ^ (q << 2 | q >> 6) ^ (q << 3 | q >> 5) ^ (q << 4 | q >> 4); SB[p] = (r ^ 0x63) & 255; } while (p !== 1); SB[0] = 0x63; }
+  function expand(k) {
+    const w = new Uint8Array(240); w.set(k); let rc = 1;
+    for (let i = 32; i < 240; i += 4) {
+      let t = w.slice(i - 4, i);
+      if (i % 32 === 0) { t = [SB[t[1]] ^ rc, SB[t[2]], SB[t[3]], SB[t[0]]]; rc = xt(rc); }
+      else if (i % 32 === 16) t = t.map(x => SB[x]);
+      for (let j = 0; j < 4; j++) w[i + j] = w[i - 32 + j] ^ t[j];
+    }
+    return w;
+  }
+  function enc(w, inp) {
+    const s = Uint8Array.from(inp), t = new Uint8Array(16);
+    for (let i = 0; i < 16; i++) s[i] ^= w[i];
+    for (let r = 1; r <= 14; r++) {
+      for (let c = 0; c < 4; c++) for (let j = 0; j < 4; j++) t[c * 4 + j] = SB[s[((c + j) & 3) * 4 + j]];
+      if (r < 14) for (let c = 0; c < 4; c++) { const a = t.slice(c * 4, c * 4 + 4), x = a[0] ^ a[1] ^ a[2] ^ a[3]; for (let j = 0; j < 4; j++) t[c * 4 + j] = a[j] ^ x ^ xt(a[j] ^ a[(j + 1) & 3]); }
+      for (let i = 0; i < 16; i++) s[i] = t[i] ^ w[r * 16 + i];
+    }
+    return s;
+  }
+  function gmul(X, H) {
+    const Z = new Uint8Array(16), V = Uint8Array.from(H);
+    for (let i = 0; i < 128; i++) {
+      if (X[i >> 3] & (0x80 >> (i & 7))) for (let j = 0; j < 16; j++) Z[j] ^= V[j];
+      const lsb = V[15] & 1; for (let j = 15; j > 0; j--) V[j] = V[j] >> 1 | (V[j - 1] & 1) << 7; V[0] >>= 1; if (lsb) V[0] ^= 0xe1;
+    }
+    return Z;
+  }
+  return (pass, salt, iv, data) => {
+    const w = expand(pbkdf2(pass, salt, 600000)), C = data.slice(0, -16), tag = data.slice(-16), H = enc(w, new Uint8Array(16));
+    let X = new Uint8Array(16);
+    for (let o = 0; o < C.length; o += 16) { for (let j = 0; j < 16 && o + j < C.length; j++) X[j] ^= C[o + j]; X = gmul(X, H); }
+    const L = new Uint8Array(16), bits = C.length * 8; L[12] = bits >>> 24; L[13] = bits >>> 16; L[14] = bits >>> 8; L[15] = bits; L[11] = Math.floor(bits / 4294967296);
+    for (let j = 0; j < 16; j++) X[j] ^= L[j]; X = gmul(X, H);
+    const J = new Uint8Array(16); J.set(iv); J[15] = 1; const E0 = enc(w, J);
+    let bad = 0; for (let j = 0; j < 16; j++) bad |= E0[j] ^ X[j] ^ tag[j];
+    if (bad) throw new Error('Mot de passe incorrect.');
+    const out = new Uint8Array(C.length);
+    for (let o = 0, n = 2; o < C.length; o += 16, n++) { J[12] = n >>> 24; J[13] = n >>> 16; J[14] = n >>> 8; J[15] = n; const ks = enc(w, J); for (let j = 0; j < 16 && o + j < C.length; j++) out[o + j] = C[o + j] ^ ks[j]; }
+    return new TextDecoder().decode(out);
+  };
+})();
 async function decEnc(E, pass) {
+  if (!(window.crypto && crypto.subtle)) { await new Promise(r => setTimeout(r, 50)); return softDec(pass, b64d(E.salt), b64d(E.iv), b64d(E.data)); }
   const C = crypto.subtle;
   const base = await C.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
   const key = await C.deriveKey({ name: 'PBKDF2', salt: b64d(E.salt), iterations: 600000, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
@@ -6677,12 +6761,7 @@ async function decEnc(E, pass) {
 async function useBuiltinTrakt(pass) { const k = (await decEnc(TRAKT_ENC, pass)).trim(); if (!/^[A-Za-z0-9_-]{20,80}$/.test(k)) throw new Error('clé'); LS.set('pref.trakt', k); return k; }
 async function useBuiltinBs(pass) { const k = (await decEnc(BS_ENC, pass)).trim(); if (!/^[A-Za-z0-9]{8,64}$/.test(k)) throw new Error('clé'); LS.set('pref.bs', k); return k; }
 async function useBuiltinOst(pass) { const k = (await decEnc(OST_ENC, pass)).trim(); if (!/^[A-Za-z0-9]{20,64}$/.test(k)) throw new Error('clé'); LS.set('pref.ost', k); return k; }
-async function unlockTmdb(pass) {
-  const C = crypto.subtle;
-  const base = await C.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
-  const key = await C.deriveKey({ name: 'PBKDF2', salt: b64d(TMDB_ENC.salt), iterations: 600000, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
-  return new TextDecoder().decode(await C.decrypt({ name: 'AES-GCM', iv: b64d(TMDB_ENC.iv) }, key, b64d(TMDB_ENC.data)));
-}
+const unlockTmdb = pass => decEnc(TMDB_ENC, pass);
 async function useBuiltinTmdb(pass) {
   const k = (await unlockTmdb(pass)).trim(); if (!/^[0-9a-f]{32}$/i.test(k)) throw new Error('clé');
   LS.set('pref.tmdb', k); TM.data = null; TM.err = ''; V.force2 = true;
@@ -6691,12 +6770,7 @@ async function useBuiltinTmdb(pass) {
   if (!LS.get('pref.trakt', '')) useBuiltinTrakt(pass).catch(() => {});        // BetaSeries aussi        // sous-titres OpenSubtitles activés du même coup
   return k;
 }
-async function unlockBuiltin(pass) {
-  const C = crypto.subtle;
-  const base = await C.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
-  const key = await C.deriveKey({ name: 'PBKDF2', salt: b64d(BUILTIN.salt), iterations: 600000, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
-  return new TextDecoder().decode(await C.decrypt({ name: 'AES-GCM', iv: b64d(BUILTIN.iv) }, key, b64d(BUILTIN.data)));
-}
+const unlockBuiltin = pass => decEnc(BUILTIN, pass);
 $('#bBtn').onclick = async () => {
   const b = $('#bBtn'), err = $('#bErr'), pass = $('#bPass').value.trim().toLowerCase();
   if (!pass) return;
