@@ -1716,6 +1716,8 @@ const torOk = () => !!(window.desktop && window.desktop.remux);
    lu en torrent (à la maison, avec le VPN) ; « iptv » = seulement les titres de l'abonnement (ailleurs). Sans torrent possible
    (page web, iPhone, Prowlarr non relié) : toujours l'abonnement. */
 const vodSrc = () => torOk() && prwConf() && LS.get('dev.vodsrc', 'tor') !== 'iptv' ? 'tor' : 'iptv';
+// titres hors abonnement (fiches TMDB) montrés : en mode torrent, ou sans abonnement qui fournit des films (catalogue à parcourir)
+const vodVirt = () => vodSrc() === 'tor' || !!(V.data && V.data.noSub);
 const torMo = n => !n ? '' : n >= 1e9 ? (n / 1e9).toFixed(1).replace('.', ',') + ' Go' : Math.round(n / 1e6) + ' Mo';
 // qualité, codec, HDR et langue lus dans le nom de la publication
 function torTags(t) {
@@ -4166,7 +4168,7 @@ async function forYou(kinds) {
   });
   return { all, because };
 }
-function popList(idsArr, P, meta, kinds) { const seen = new Set(), out = []; for (const id of idsArr) { if (!kinds.includes(id[0])) continue; const it = popMatch(id, P, meta) || (V.data && V.data.noSub && vodSrc() === 'tor' && meta[id] && meta[id].t ? virtItem(id, meta[id]) : ixVirtual(id, meta[id])); if (it && !seen.has(it)) { seen.add(it); out.push(it); } } return out; }
+function popList(idsArr, P, meta, kinds) { const seen = new Set(), out = []; for (const id of idsArr) { if (!kinds.includes(id[0])) continue; const it = popMatch(id, P, meta) || (V.data && V.data.noSub && meta[id] && meta[id].t ? virtItem(id, meta[id]) : ixVirtual(id, meta[id])); if (it && !seen.has(it)) { seen.add(it); out.push(it); } } return out; }
 async function renderVod() {
   const box = $('#vodInner');
   // Sans liste (ou liste sans films : pas de connexion Xtream) : catalogue vide, les rangées viennent de TMDB et chaque titre
@@ -4287,7 +4289,7 @@ async function renderVod() {
         const NP = await Promise.race([nowPlaying().catch(() => null), new Promise(r => setTimeout(() => r(null), 5000))]);
         if (NP && NP.ids.length) {
           Object.entries(NP.meta).forEach(([k, m]) => { POP.meta[k] = POP.meta[k] || m; });
-          const l = NP.ids.map(id => popMatch(id, P, POP.meta) || (vodSrc() === 'tor' ? virtItem(id, POP.meta[id]) : null)).filter(Boolean);
+          const l = NP.ids.map(id => popMatch(id, P, POP.meta) || (vodVirt() ? virtItem(id, POP.meta[id]) : null)).filter(Boolean);
           if (l.length >= 3) h += vodRow('Au cinéma', 'en salles en ce moment, pas encore en VOD · bande-annonce au survol, ＋ pour être prévenu', l.slice(0, 30), false, true).replace('class="vrow"', 'class="vrow" data-cine="1"');
         }
       }
@@ -4655,7 +4657,7 @@ function myListItems(kinds) {
   myListRaw().forEach(x => {
     let it = itemByKey(x.k);
     if (!it && x.g && V.data && V.data._gmap) it = V.data._gmap.get(x.g) || null;
-    if (!it && x.tmdb && vodSrc() === 'tor') { it = virtItem((x.kind === 'series' ? 's' : 'm') + x.tmdb, { t: x.n, y: x.y }); if (!it.cover && x.p) it.cover = x.p; }
+    if (!it && x.tmdb && vodVirt()) { it = virtItem((x.kind === 'series' ? 's' : 'm') + x.tmdb, { t: x.n, y: x.y }); if (!it.cover && x.p) it.cover = x.p; }
     if (!it || !kinds.includes(it.kind === 'series' ? 's' : 'm')) return;
     const g = gKey(it); if (seen.has(g)) return; seen.add(g); out.push(it);
   });
