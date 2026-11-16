@@ -377,7 +377,10 @@ module.exports = function handleTorrent(req, res, u) {
     const parts = []; req.on('data', b => parts.push(b));
     req.on('end', () => {
       const body = Buffer.concat(parts).toString().trim();
-      fromBody(body).then(src => add(src, u.searchParams.get('cat') || '')).then(i => json(i), e => json({ error: e.message || String(e) }, 504));
+      // torrent déjà connu (ouvert, dans qBittorrent ou sa description gardée) : pas besoin de redemander le .torrent à l'indexeur
+      const h = (u.searchParams.get('h') || '').toLowerCase();
+      const known = /^[0-9a-f]{40}$/.test(h) ? (async () => { if (c.get(h) || fs.existsSync(path.join(META, h + '.torrent'))) return 'magnet:?xt=urn:btih:' + h; const q = await qbtHas(h).catch(() => null); return q ? 'magnet:?xt=urn:btih:' + h : null; })() : Promise.resolve(null);
+      known.then(k => k || fromBody(body)).then(src => add(src, u.searchParams.get('cat') || '')).then(i => json(i), e => json({ error: e.message || String(e) }, 504));
     });
     return true;
   }
