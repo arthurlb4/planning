@@ -157,6 +157,8 @@ public class MainForm : Form
         await web.AddScriptToExecuteOnDocumentCreatedAsync(shim.Replace("__CFG__", cfg.ToJsonString()));
 
         web.WebMessageReceived += (s, a) => { try { OnMessage(a.TryGetWebMessageAsString()); } catch { } };
+        // mise à jour téléchargée : prévenue dans la page, installée à la fermeture
+        Updater.Start(v => BeginInvoke(() => { try { web?.ExecuteScriptAsync("window.toast && toast(" + JsonSerializer.Serialize("Mise à jour " + v + " prête : elle s'installe à la fermeture de l'appli") + ")"); } catch { } }));
         // vers les serveurs IPTV : sans les en-têtes propres aux pages web (Origin, Referer), comme une appli de lecture
         web.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
         web.WebResourceRequested += (s, a) =>
@@ -289,7 +291,7 @@ public class MainForm : Form
     }
     protected override void OnMove(EventArgs e) { base.OnMove(e); try { comp?.NotifyParentWindowPositionChanged(); } catch { } }
     protected override void OnActivated(EventArgs e) { base.OnActivated(e); try { comp?.MoveFocus(CoreWebView2MoveFocusReason.Programmatic); } catch { } }
-    protected override void OnFormClosing(FormClosingEventArgs e) { SaveBounds(); mpv.Stop(); backend?.Stop(); base.OnFormClosing(e); }
+    protected override void OnFormClosing(FormClosingEventArgs e) { SaveBounds(); mpv.Stop(); backend?.Stop(); Updater.InstallOnExit(); base.OnFormClosing(e); }
 
     // ---------- taille et position gardées d'une fois sur l'autre
     string StateFile => Path.Combine(DataDir, "fenetre.json");
