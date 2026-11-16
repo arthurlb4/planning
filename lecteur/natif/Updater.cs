@@ -15,6 +15,9 @@ static class Updater
     static HttpClient MakeClient() { var h = new HttpClient { Timeout = TimeSpan.FromMinutes(10) }; h.DefaultRequestHeaders.UserAgent.ParseAdd("LecteurIPTV-natif"); return h; }
     static string? ready;                                   // installateur téléchargé, prêt à être lancé
     static int busy;
+    // mise à jour prête ou lancée : à la fermeture, le serveur local est arrêté net (ses fichiers vont être remplacés)
+    public static bool Pending => ready != null || launched;
+    static bool launched;
     public static JsonObject State { get; private set; } = new() { ["state"] = "idle" };
     public static event Action<JsonObject>? Changed;
 
@@ -80,7 +83,7 @@ static class Updater
         // quelques secondes d'attente (fermeture de l'appli et de mpv), installation sans fenêtre, puis réouverture si demandée
         var cmd = "/c timeout /t 3 /nobreak >nul & start \"\" /wait \"" + ready + "\" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART"
             + (reopen ? " & start \"\" \"" + exe + "\"" : "");
-        try { Process.Start(new ProcessStartInfo("cmd.exe", cmd) { CreateNoWindow = true, UseShellExecute = false, WindowStyle = ProcessWindowStyle.Hidden }); ready = null; }
+        try { Process.Start(new ProcessStartInfo("cmd.exe", cmd) { CreateNoWindow = true, UseShellExecute = false, WindowStyle = ProcessWindowStyle.Hidden }); ready = null; launched = true; }
         catch { }
     }
     static void InstallNow(Form app) { Launch(true); app.BeginInvoke(() => app.Close()); }

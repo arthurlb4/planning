@@ -343,6 +343,14 @@ function prefetch(t, f) {
 const diskFile = (q, i) => { const f = qFile(q, i); if (!f) return null;
   const p = path.join(q.save, f.name); return { name: path.basename(f.name), length: f.size, createReadStream: o => fs.createReadStream(p, o) }; };
 // Renvoie true si la requête concernait les torrents
+/* Fermeture de l'appli : chaque torrent ouvert assez avancé est confié à qBittorrent tout de suite (lancé s'il ne tourne
+   pas), qui continue le téléchargement et le partage ; qBittorrent est aussi lancé s'il garde déjà des torrents de l'appli.
+   Fait par le processus des torrents, qui survit quelques secondes à l'appli. */
+async function finish() {
+  const open = client && !client.destroyed ? client.torrents.slice() : [];
+  for (const t of open) { if (blocked) break; if (worth(t)) await give(t).catch(() => {}); else { try { idxTouch(t); t.destroy({ destroyStore: false }); } catch (e) {} } }
+  if (!blocked && Object.values(idxRead()).some(e => e.qbt)) await qbtEnsure(QBT).catch(() => {});
+}
 module.exports = function handleTorrent(req, res, u) {
   if (!u.pathname.startsWith('/torrent/')) return false;
   const json = (o, code) => { res.writeHead(code || 200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(o)); };
@@ -441,6 +449,7 @@ module.exports = function handleTorrent(req, res, u) {
   }
   res.statusCode = 404; res.end(); return true;
 };
+module.exports.finish = finish;
 function wtServe(t, i, req, res) {
   const f = t.files[i];
   // fichier lu : c'est lui qui est demandé aux pairs (et plus le précédent, pour un épisode suivant)

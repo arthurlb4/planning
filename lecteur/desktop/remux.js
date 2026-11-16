@@ -190,7 +190,9 @@ function torrentProc() {
   });
   return TP.wait;
 }
-process.on('exit', () => { try { if (TP.child) TP.child.kill(); } catch (e) {} });
+// appli fermée : le processus des torrents est prévenu (il confie ses torrents à qBittorrent puis s'arrête seul) ; tué tout de
+// suite seulement pour une mise à jour (il bloquerait le remplacement des fichiers de l'appli)
+process.on('exit', () => { try { if (TP.child) { if (process.env.LECTEUR_MAJ) TP.child.kill(); else TP.child.disconnect(); } } catch (e) {} });
 function torrentProxy(req, res) {
   torrentProc().then(port => {
     const up = http.request({ host: '127.0.0.1', port, path: req.url, method: req.method, headers: req.headers }, r => {

@@ -293,7 +293,7 @@ public class MainForm : Form
     }
     protected override void OnMove(EventArgs e) { base.OnMove(e); try { comp?.NotifyParentWindowPositionChanged(); } catch { } }
     protected override void OnActivated(EventArgs e) { base.OnActivated(e); try { comp?.MoveFocus(CoreWebView2MoveFocusReason.Programmatic); } catch { } }
-    protected override void OnFormClosing(FormClosingEventArgs e) { SaveBounds(); mpv.Stop(); backend?.Stop(); Updater.InstallOnExit(); base.OnFormClosing(e); }
+    protected override void OnFormClosing(FormClosingEventArgs e) { SaveBounds(); mpv.Stop(); backend?.Stop(Updater.Pending); Updater.InstallOnExit(); base.OnFormClosing(e); }
 
     // ---------- taille et position gardées d'une fois sur l'autre
     string StateFile => Path.Combine(DataDir, "fenetre.json");

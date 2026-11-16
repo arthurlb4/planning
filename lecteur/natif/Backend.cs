@@ -26,5 +26,10 @@ public class Backend
         _ = Task.Delay(20000).ContinueWith(_ => tcs.TrySetResult(0));
         return tcs.Task;
     }
-    public void Stop() { try { if (proc != null && !proc.HasExited) proc.Kill(true); } catch { } }
+    // fermeture : entrée standard fermée, le serveur s'arrête de lui-même et son processus des torrents confie les torrents en
+    // cours à qBittorrent avant de s'arrêter ; tué net seulement pour une mise à jour (fichiers de l'appli à remplacer)
+    public void Stop(bool now = false)
+    {
+        try { if (proc == null || proc.HasExited) return; if (now) proc.Kill(true); else proc.StandardInput.Close(); } catch { }
+    }
 }

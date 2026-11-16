@@ -407,7 +407,7 @@ function setupUpdates(win) {
   autoUpdater.on('error', e => { const msg = String(e && e.message || e).split('\n')[0].slice(0, 200);
     if (/latest\.yml|404/i.test(msg)) { send({ state: 'checking' }); setTimeout(check, 120e3); return; } send({ state: 'error', msg }); });
   const check = () => autoUpdater.checkForUpdates().catch(() => {});   // erreurs traitées par l'évènement « error »
-  ipcMain.on('upd-check', () => { if (updState.state === 'ready') autoUpdater.quitAndInstall(true, true); else if (updState.state !== 'downloading') check(); });
+  ipcMain.on('upd-check', () => { if (updState.state === 'ready') { process.env.LECTEUR_MAJ = '1'; autoUpdater.quitAndInstall(true, true); } else if (updState.state !== 'downloading') check(); });
   setTimeout(check, 5000);
   setInterval(check, 6 * 3600e3);
 }
