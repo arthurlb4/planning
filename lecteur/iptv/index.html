@@ -6402,13 +6402,15 @@ if (window.desktop && window.desktop.version) {
   const v = $('#appVer'); v.hidden = false;
   // appli native d'avant la 0.1.20 : sa mise à jour n'est pas reliée à la page (elle se fait seule, en fond, à la fermeture)
   const natOld = (() => { const m = /^natif (\d+)\.(\d+)\.(\d+)/.exec(window.desktop.version || ''); return !!m && (+m[1] * 1e6 + +m[2] * 1e3 + +m[3]) < 1020; })();
+  const updMo = n => n >= 1e9 ? (n / 1e9).toFixed(1).replace('.', ',') + ' Go' : n >= 1e6 ? (n / 1e6).toFixed(n < 1e7 ? 1 : 0).replace('.', ',') + ' Mo' : Math.round(n / 1e3) + ' ko';
   const show = st => {
     clearTimeout(show.t);
     if (natOld) { v.innerHTML = '<div class="dlbox">' + srow('Appli Windows v' + esc(window.desktop.version), 'Installez une fois la dernière version à la main (github.com/arthurlb4/planning › Releases › iptv-natif) : ensuite elle se met à jour toute seule, avec son état ici.') + '</div>'; return; }
     // recherche sans réponse au bout de 40 s : on le dit (au lieu d'une recherche sans fin)
     if (st && st.state === 'checking') show.t = setTimeout(() => show({ state: 'error', msg: 'pas de réponse (réseau ?)' }), 40000);
     const t = !st ? '' : st.state === 'checking' ? 'recherche d\'une mise à jour…' : st.state === 'latest' ? 'à jour'
-      : st.state === 'downloading' ? 'téléchargement de la v' + (st.version || '?') + ' : ' + (st.pct || 0) + ' %' : st.state === 'ready' ? 'v' + st.version + ' prête'
+      : st.state === 'downloading' ? 'téléchargement de la v' + (st.version || '?') + ' : ' + (st.pct || 0) + ' %' + (st.total ? ' · ' + updMo(st.done || 0) + ' sur ' + updMo(st.total) : '') + (st.bps ? ' · ' + updMo(st.bps) + '/s' : '')
+      : st.state === 'ready' ? 'v' + st.version + ' prête' + (st.total ? ' (' + updMo(st.total) + ')' : '')
       : st.state === 'error' ? 'mise à jour impossible : ' + (st.msg || 'erreur') : '';
     const btn = !st || st.state === 'checking' || st.state === 'downloading' ? '' : `<button class="btn" id="updBtn">${st.state === 'ready' ? 'Redémarrer et installer' : 'Vérifier'}</button>`;
     v.innerHTML = '<div class="dlbox">' + srow('Appli Windows v' + esc(window.desktop.version), t ? sstate(st && st.state === 'latest', esc(t.replace(/^./, c => c.toUpperCase()))) : 'Mises à jour automatiques', btn) + '</div>';

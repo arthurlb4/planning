@@ -72,6 +72,12 @@ jobs:
         run: |
           gh release view iptv-natif >/dev/null 2>&1 || gh release create iptv-natif --prerelease --title "Lecteur IPTV pour Windows (natif, essai)" --notes "Version native en essai : la page de l'appli et la vidéo (mpv) dans la même fenêtre. Télécharger Lecteur-IPTV-Natif-Installation.exe ci-dessous et l'ouvrir."
           gh release upload iptv-natif build/Lecteur-IPTV-Natif-Installation.exe --clobber
+          # installateur propre à cette version, pour la mise à jour automatique (jamais remplacé pendant un téléchargement) ;
+          # seuls les deux derniers sont gardés
+          v="0.1.${{ github.run_number }}"
+          cp build/Lecteur-IPTV-Natif-Installation.exe "build/Lecteur-IPTV-Natif-$v.exe"
+          gh release upload iptv-natif "build/Lecteur-IPTV-Natif-$v.exe" --clobber
+          gh release view iptv-natif --json assets -q '.assets[].name' | grep -E '^Lecteur-IPTV-Natif-0\.1\.[0-9]+\.exe$' | sort -t. -k3 -n | head -n -2 | while read -r old; do gh release delete-asset iptv-natif "$old" -y || true; done
           # version publiée, lue par l'appli pour se mettre à jour toute seule (envoyée après l'installateur)
           echo "0.1.${{ github.run_number }}" > build/natif-version.txt
           gh release upload iptv-natif build/natif-version.txt --clobber

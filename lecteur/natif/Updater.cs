@@ -52,28 +52,55 @@ static class Updater
             var dir = Path.Combine(Path.GetTempPath(), "LecteurIPTVNatif-maj"); Directory.CreateDirectory(dir);
             foreach (var old in Directory.GetFiles(dir)) try { File.Delete(old); } catch { }
             var file = Path.Combine(dir, "Lecteur-IPTV-Natif-" + txt + ".exe"); var part = file + ".part";
-            Set(new() { ["state"] = "downloading", ["version"] = txt, ["pct"] = 0 });
-            using (var r = await http.GetAsync(BASE + "Lecteur-IPTV-Natif-Installation.exe", HttpCompletionOption.ResponseHeadersRead))
-            {
-                r.EnsureSuccessStatusCode();
-                long total = r.Content.Headers.ContentLength ?? 0, got = 0; int last = -1;
-                await using var src = await r.Content.ReadAsStreamAsync();
-                await using var fs = File.Create(part);
-                var buf = new byte[1 << 16]; int n;
-                while ((n = await src.ReadAsync(buf)) > 0)
-                {
-                    await fs.WriteAsync(buf.AsMemory(0, n)); got += n;
-                    int pct = total > 0 ? (int)(got * 100 / total) : 0;
-                    if (pct != last) { last = pct; Set(new() { ["state"] = "downloading", ["version"] = txt, ["pct"] = pct }); }
-                }
-            }
+            await Download(txt, part);
             if (new FileInfo(part).Length < 5_000_000) { File.Delete(part); throw new Exception("fichier incomplet"); }
             File.Move(part, file, true);
             ready = file;
-            Set(new() { ["state"] = "ready", ["version"] = txt });
+            Set(new() { ["state"] = "ready", ["version"] = txt, ["total"] = new FileInfo(file).Length });
         }
         catch (Exception e) { Set(new() { ["state"] = "error", ["msg"] = e.Message }); }
         finally { Interlocked.Exchange(ref busy, 0); }
+    }
+
+    /* Téléchargement de l'installateur : fichier propre à cette version (jamais remplacé pendant qu'on le télécharge, sinon
+       l'installateur commun des anciennes versions), repris là où il s'est arrêté si la connexion coupe (8 essais).
+       Avancement envoyé à la page : %, Mo reçus sur le total, vitesse. */
+    static async Task Download(string ver, string part)
+    {
+        string url = BASE + "Lecteur-IPTV-Natif-" + ver + ".exe";
+        using (var head = new HttpRequestMessage(HttpMethod.Head, url))
+        using (var hr = await http.SendAsync(head)) if (!hr.IsSuccessStatusCode) url = BASE + "Lecteur-IPTV-Natif-Installation.exe";
+        long got = 0, total = 0, winBytes = 0; var win = Stopwatch.StartNew(); double bps = 0; int last = -1; string? etag = null;
+        void Report(bool force)
+        {
+            if (win.ElapsedMilliseconds >= 1000) { bps = winBytes * 1000.0 / win.ElapsedMilliseconds; winBytes = 0; win.Restart(); force = true; }
+            int pct = total > 0 ? (int)(got * 100 / total) : 0;
+            if (!force && pct == last) return; last = pct;
+            Set(new() { ["state"] = "downloading", ["version"] = ver, ["pct"] = pct, ["total"] = total, ["done"] = got, ["bps"] = (long)bps });
+        }
+        Report(true);
+        await using var fs = File.Create(part);
+        for (int attempt = 0; ; attempt++)
+        {
+            try
+            {
+                using var req = new HttpRequestMessage(HttpMethod.Get, url);
+                if (got > 0) { req.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(got, null); if (etag != null) req.Headers.TryAddWithoutValidation("If-Range", etag); }
+                using var r = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead);
+                r.EnsureSuccessStatusCode();
+                if (got > 0 && r.StatusCode != System.Net.HttpStatusCode.PartialContent) { got = 0; fs.SetLength(0); }   // fichier changé : depuis le début
+                fs.Position = got;
+                etag ??= r.Headers.ETag?.ToString();
+                if (total == 0) total = got + (r.Content.Headers.ContentLength ?? 0);
+                await using var src = await r.Content.ReadAsStreamAsync();
+                var buf = new byte[1 << 16]; int n;
+                while ((n = await src.ReadAsync(buf)) > 0) { await fs.WriteAsync(buf.AsMemory(0, n)); got += n; winBytes += n; Report(false); }
+                if (total > 0 && got < total) throw new IOException("coupé");
+                return;
+            }
+            catch (Exception) when (attempt < 8) { await Task.Delay(TimeSpan.FromSeconds(2 + attempt * 2)); }
+            catch (Exception e) { throw new Exception("téléchargement interrompu (" + (got / 1_000_000) + " Mo sur " + (total / 1_000_000) + " Mo reçus) : " + e.Message); }
+        }
     }
 
     static void Launch(bool reopen)

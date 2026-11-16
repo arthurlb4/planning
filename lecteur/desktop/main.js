@@ -399,10 +399,11 @@ function setupUpdates(win) {
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.on('checking-for-update', () => send({ state: 'checking' }));
   autoUpdater.on('update-not-available', () => send({ state: 'latest' }));
-  autoUpdater.on('update-available', i => send({ state: 'downloading', version: i.version, pct: 0 }));
-  autoUpdater.on('download-progress', p => send({ state: 'downloading', version: updState.version, pct: Math.round(p.percent || 0) }));
+  const upSize = i => ((i && i.files) || []).reduce((a, f) => a + (f.size || 0), 0);
+  autoUpdater.on('update-available', i => send({ state: 'downloading', version: i.version, pct: 0, total: upSize(i), done: 0, bps: 0 }));
+  autoUpdater.on('download-progress', p => send({ state: 'downloading', version: updState.version, pct: Math.round(p.percent || 0), total: p.total || 0, done: p.transferred || 0, bps: p.bytesPerSecond || 0 }));
   // Mise à jour prête : proposée par la page, dans le style de l'appli (bandeau « Redémarrer maintenant / Plus tard »)
-  autoUpdater.on('update-downloaded', info => send({ state: 'ready', version: info.version }));
+  autoUpdater.on('update-downloaded', info => send({ state: 'ready', version: info.version, total: upSize(info) || updState.total || 0 }));
   // latest.yml absent quelques secondes pendant la mise en ligne d'une nouvelle version : nouvel essai 2 min plus tard
   autoUpdater.on('error', e => { const msg = String(e && e.message || e).split('\n')[0].slice(0, 200);
     if (/latest\.yml|404/i.test(msg)) { send({ state: 'checking' }); setTimeout(check, 120e3); return; } send({ state: 'error', msg }); });
