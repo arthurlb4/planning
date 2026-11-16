@@ -350,6 +350,10 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 #nextBox{position:absolute;right:16px;bottom:78px;z-index:8;display:flex;align-items:center;gap:10px;padding:10px 10px 10px 14px;border-radius:14px;background:rgba(20,20,19,.95);border:.5px solid var(--border);box-shadow:0 10px 30px rgba(0,0,0,.5)}
 #nextBox span{display:flex;flex-direction:column}#nextBox small{font-size:11px;color:var(--text3)}#nextBox b{font-size:14px}
 #nextBox .btn{height:34px}
+/* compte à rebours de l'épisode suivant (comme Netflix) : le bouton se remplit, puis l'épisode se lance */
+#nextBox .btn.cd{position:relative;overflow:hidden;isolation:isolate}
+#nextBox .btn.cd::before{content:'';position:absolute;inset:0;z-index:-1;background:rgba(255,255,255,.28);transform-origin:left;transform:scaleX(0);animation:nxfill var(--nxd,10s) linear forwards}
+@keyframes nxfill{to{transform:scaleX(1)}}
 .qsug{position:fixed;z-index:96;max-height:62vh;overflow:auto;background:rgba(30,30,29,.98);border:.5px solid var(--border);border-radius:14px;padding:6px;box-shadow:0 14px 40px rgba(0,0,0,.6)}
 .qsug .qs{display:flex;align-items:center;gap:12px;width:100%;padding:7px 10px;border-radius:10px;color:var(--text);text-align:left}
 .qsug .qs:hover,.qsug .qs.on{background:var(--bg3)}
@@ -1958,7 +1962,7 @@ async function torPlay(x, g, b, opts) {
   try {
     const ctx = g && g.tm ? g : await torCtx(x);
     torStop();
-    const r = await fetch(window.desktop.remux + '/torrent/add', { method: 'POST', body: src }).catch(() => null);
+    const r = await fetch(window.desktop.remux + '/torrent/add?cat=' + (ctx && ctx.kind === 'series' ? 'series' : 'films'), { method: 'POST', body: src }).catch(() => null);
     const j = !r ? { error: 'module de l\'appli injoignable' } : r.status === 404 ? { error: 'mettez à jour l\'appli Windows (1.20 et plus)' } : await r.json().catch(() => ({ error: 'réponse illisible' }));
     if (j.error) { toastLong('Torrent : ' + j.error); return; }
     TOR.cur = j; TOR.ctx = ctx;
@@ -2642,7 +2646,7 @@ $('#qualMenu').addEventListener('click', e => {
 });
 document.addEventListener('click', e => { if (!e.target.closest('#qualMenu,#qualBtn')) $('#qualMenu').hidden = true; });
 function showNow(c, idle) {
-  if (S.current !== c) { document.body.classList.remove('hasmatch'); MATCH.ev = null; MATCH.key = ''; }
+  if (S.current !== c) { document.body.classList.remove('hasmatch'); MATCH.ev = null; MATCH.key = ''; if (S.current) torRelease(S.current); }
   S.current = c;
   $('#nowName').textContent = c.vod ? c.name : niceName(c); $('#nowName').title = c.name;
   $('#nowSub').textContent = '';                      // ni catégorie ni numéro sous le titre
@@ -2715,7 +2719,7 @@ async function play(c, alts) {
   if (!S.retry) S.tries = [];                           // journal des essais (montré si rien ne passe)
   S.retry = false;
   setHomeView(false); document.body.classList.remove('drawer');
-  if (typeof NXT !== 'undefined') { clearInterval(NXT.t); const nb = $('#nextBox'); if (nb) nb.remove(); }
+  if (typeof NXT !== 'undefined') { nextEpHalt(); const nb = $('#nextBox'); if (nb) nb.remove(); }
   stopEngines(); S.engine = ''; showNow(c); S.found = null; S.conv = false;
   if (SIDE.mode === 'guide' && !$('#side').hidden) { if (c.vod) toggleSide(false); else renderGuideSide(true); }   // programme : suit la chaîne
   normSetup(); normReset(c);
@@ -3499,7 +3503,9 @@ function hovClose(fast) {
     // pendant la réduction la hauteur reste fixe (sinon l'affiche, encore large, grandirait en hauteur avec la rangée) ;
     // affiche pas encore agrandie (départ avant le début de la bande-annonce) : rien à réduire
     const grown = el.classList.contains('xp');
-    if (grown) el.classList.add('xpc');
+    // en se réduisant, l'affiche raccourcit la rangée : le navigateur la décale tout seul (fin de rangée) ; ce n'est pas un
+    // défilement de l'utilisateur, l'aperçu suivant (voisine survolée) ne doit pas se fermer pour autant
+    if (grown) { el.classList.add('xpc'); HOV.auto = Date.now(); }
     el.classList.remove('xp'); el.style.width = ''; el.style.marginLeft = '';
     setTimeout(() => { if (!el.classList.contains('xp')) { el.classList.remove('xpc'); el.style.removeProperty('--ph'); } }, 340);
     const v = el.querySelector('.xpv'), b = el.querySelector('.xpb');
@@ -5969,13 +5975,26 @@ function nextEpBox(auto) {
   const c = S.current; if (!c || !c.next || !c.it) return;
   let b = $('#nextBox');
   if (!b) { b = document.createElement('div'); b.id = 'nextBox'; $('#screen').appendChild(b); }
-  b.innerHTML = `<span><small>Épisode suivant</small><b>${esc('S' + c.next.s + 'E' + c.next.n)}</b></span><button class="btn primary" data-nx>▶ ${auto ? 'Lecture dans <i>8</i> s' : 'Épisode suivant'}</button><button class="btn" data-nxx aria-label="Fermer">✕</button>`;
-  b.querySelector('[data-nx]').onclick = () => nextEpGo();
-  b.querySelector('[data-nxx]').onclick = () => { clearInterval(NXT.t); NXT.url = c.url; b.remove(); };
-  if (auto) { let n = 8; clearInterval(NXT.t); NXT.t = setInterval(() => { const i = b.querySelector('i'); if (--n <= 0) { clearInterval(NXT.t); nextEpGo(); } else if (i) i.textContent = n; }, 1000); }
+  b.innerHTML = `<span><small>Épisode suivant</small><b>${esc('S' + c.next.s + 'E' + c.next.n)}</b></span><button class="btn primary" data-nx>▶ Épisode suivant</button><button class="btn" data-nxx aria-label="Fermer">✕</button>`;
+  const go = b.querySelector('[data-nx]');
+  go.onclick = () => nextEpGo();
+  b.querySelector('[data-nxx]').onclick = () => { nextEpHalt(); NXT.url = c.url; b.remove(); };
+  if (!auto) return;
+  /* Comme Netflix : lancement automatique au bout de 10 s, le bouton se remplissant ; la souris bougée (ou une touche)
+     arrête le compte à rebours : l'utilisateur est là, il choisit (le bouton reste) */
+  const D = 10; nextEpHalt();
+  go.classList.add('cd'); go.style.setProperty('--nxd', D + 's');
+  const t0 = Date.now(), arm = t0 + 600;                  // le geste qui a pu faire apparaître la boîte ne compte pas
+  NXT.stop = e => { if (Date.now() < arm || (e.type === 'mousemove' && !e.movementX && !e.movementY)) return; nextEpHalt(); go.classList.remove('cd'); };
+  ['mousemove', 'keydown', 'pointerdown', 'wheel'].forEach(k => addEventListener(k, NXT.stop, true));
+  NXT.t = setInterval(() => { if (Date.now() - t0 >= D * 1000) { nextEpHalt(); nextEpGo(); } }, 250);
+}
+function nextEpHalt() {
+  clearInterval(NXT.t);
+  if (NXT.stop) { ['mousemove', 'keydown', 'pointerdown', 'wheel'].forEach(k => removeEventListener(k, NXT.stop, true)); NXT.stop = null; }
 }
 function nextEpGo() {
-  clearInterval(NXT.t); const c = S.current, b = $('#nextBox'); if (b) b.remove(); if (!c || !c.next || !c.it) return;
+  nextEpHalt(); const c = S.current, b = $('#nextBox'); if (b) b.remove(); if (!c || !c.next || !c.it) return;
   // saison complète en torrent : épisode suivant dans le même torrent, et le suivant d'après retenu
   if (c.torSeq) { const k2 = c.torSeq.findIndex(x => x.url === c.next.url); const nx = c.torSeq[k2]; if (nx) return play(Object.assign({}, c, { url: nx.url, name: nx.name, ep: { s: nx.s, n: nx.n }, next: c.torSeq[k2 + 1] || null })); }
   const fl = V.open && V.open.it === c.it ? V.open.flat : null, k = fl ? fl.findIndex(x => epUrl(x) === c.next.url) : -1;
@@ -5995,7 +6014,7 @@ const epIdx = (N, c) => N.l.findIndex(x => x.s === c.ep.s && x.n === c.ep.n);
 function epGo(N, k) {
   const c = S.current;
   if (c && curPos() > 30) { LS.set(posK(c.url), Math.floor(curPos())); try { histTrack(c); } catch (e) {} }
-  $('#epMenu').hidden = true; clearInterval(NXT.t); const b = $('#nextBox'); if (b) b.remove();
+  $('#epMenu').hidden = true; nextEpHalt(); const b = $('#nextBox'); if (b) b.remove();
   N.go(k);
 }
 function epStep(d) {
@@ -6097,8 +6116,10 @@ function vodTick() {
   const inIntro = M.intro && pos >= M.intro[0] && pos < M.intro[1] - 2;
   if (inIntro && !sk) { sk = document.createElement('button'); sk.id = 'skipIntro'; sk.className = 'btn'; sk.textContent = 'Passer l\'intro'; sk.onclick = e => { e.stopPropagation(); const m = chapMarks(); if (m.intro) seekBy(m.intro[1] - curPos()); sk.remove(); }; $('#screen').appendChild(sk); }
   else if (!inIntro && sk) sk.remove();
+  // saison complète en torrent : le début de l'épisode suivant téléchargé pendant les 5 dernières minutes (enchaînement immédiat)
+  if (c.next && c.torSeq && !c._pre && dur > 300 && dur - pos < 300) { c._pre = 1; const m = /\/torrent\/file\/([0-9a-f]{40})\/(\d+)\//i.exec(c.next.url || ''); if (m && window.desktop) fetch(window.desktop.remux + '/torrent/prefetch?id=' + m[1] + '&f=' + m[2]).catch(() => {}); }
   if (!c.next || $('#nextBox') || NXT.url === c.url) return;
-  if (M.end ? pos >= M.end && dur - pos > 1 : dur > 300 && dur - pos < 40 && dur - pos > 1) nextEpBox(false);
+  if (M.end ? pos >= M.end && dur - pos > 1 : dur > 300 && dur - pos < 40 && dur - pos > 1) nextEpBox(true);
 }
 // Bandes-annonces en boucle sans l'écran de fin de YouTube : on écoute leur état et on repart du début à la fin
 window.addEventListener('message', e => {
@@ -6396,7 +6417,17 @@ $('#plList').addEventListener('click', async e => {
     catch (err) { toast(err.message); r.disabled = false; }
   }
 });
-function stopAll() { token++; stopEngines(); unfreeze(); S.engine = ''; S.current = null; document.body.classList.remove('playing', 'mini', 'hasmatch', 'vodplay', 'live'); MATCH.ev = null; MATCH.key = ''; toggleStats(false); toggleSide(false); $('#nowEpg').textContent = ''; setStatus('msg', '<span class="hint">Choisissez une chaîne dans la liste.</span>'); $('#nowName').textContent = '—'; $('#nowSub').textContent = ''; qualBtnUpdate(null); document.title = 'Lecteur IPTV'; }
+/* Lecture d'un torrent terminée (lecteur fermé, autre chose lancé) : quelques secondes après, s'il n'est plus lu (épisode
+   suivant du même torrent : si), il est confié à qBittorrent (s'il a bien commencé) qui le finit et le partage */
+function torRelease(c) {
+  const m = c && window.desktop && /\/torrent\/file\/([0-9a-f]{40})\//i.exec(c.url || ''); if (!m) return;
+  setTimeout(() => {
+    if (S.current && String(S.current.url || '').includes('/torrent/file/' + m[1])) return;
+    if (TOR.cur && TOR.cur.id === m[1]) TOR.cur = null;
+    fetch(window.desktop.remux + '/torrent/stop?id=' + m[1]).catch(() => {});
+  }, 8000);
+}
+function stopAll() { torRelease(S.current); token++; stopEngines(); unfreeze(); S.engine = ''; S.current = null; document.body.classList.remove('playing', 'mini', 'hasmatch', 'vodplay', 'live'); MATCH.ev = null; MATCH.key = ''; toggleStats(false); toggleSide(false); $('#nowEpg').textContent = ''; setStatus('msg', '<span class="hint">Choisissez une chaîne dans la liste.</span>'); $('#nowName').textContent = '—'; $('#nowSub').textContent = ''; qualBtnUpdate(null); document.title = 'Lecteur IPTV'; }
 
 /* Liste par adresse : directement si le serveur l'accepte, sinon via le serveur de l'app (CORS, adresse en http, blocage) */
 const RELAY = 'https://planning-gcal.arthur-lebreton94.workers.dev/iptv/m3u?url=';
