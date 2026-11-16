@@ -49,7 +49,7 @@ public class Mpv
         if (proc != p) return new JsonObject { ["error"] = "remplacé" };
         if (pipe == null) { Stop(); return new JsonObject { ["error"] = "mpv ne répond pas" }; }
         wr = new StreamWriter(pipe, new UTF8Encoding(false)) { AutoFlush = true, NewLine = "\n" };
-        string[] props = { "time-pos", "duration", "pause", "eof-reached", "aid", "sid", "track-list", "chapter-list", "volume", "mute", "demuxer-cache-time", "video-params/aspect" };
+        string[] props = { "time-pos", "duration", "pause", "eof-reached", "aid", "sid", "track-list", "chapter-list", "volume", "mute", "demuxer-cache-time", "video-params/aspect", "paused-for-cache" };
         for (int i = 0; i < props.Length; i++) Cmd(new JsonArray("observe_property", i + 1, props[i]));
         var pp = pipe; new Thread(() => Read(pp)) { IsBackground = true }.Start();
         _ = MuteMouse(p);
@@ -69,7 +69,7 @@ public class Mpv
     }
 
     static JsonObject Msg(JsonObject st) => new() { ["t"] = "mpv", ["st"] = st };
-    static readonly Dictionary<string, string> KEYS = new() { ["time-pos"] = "pos", ["duration"] = "dur", ["pause"] = "paused", ["eof-reached"] = "eof", ["aid"] = "aid", ["sid"] = "sid", ["volume"] = "vol", ["mute"] = "mute", ["demuxer-cache-time"] = "cache" };
+    static readonly Dictionary<string, string> KEYS = new() { ["time-pos"] = "pos", ["duration"] = "dur", ["pause"] = "paused", ["eof-reached"] = "eof", ["aid"] = "aid", ["sid"] = "sid", ["volume"] = "vol", ["mute"] = "mute", ["demuxer-cache-time"] = "cache", ["paused-for-cache"] = "buf" };
 
     void Read(NamedPipeClientStream p)
     {
