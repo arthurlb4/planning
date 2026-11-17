@@ -6,7 +6,8 @@ const ALLOWED_ORIGIN = 'https://arthurlb4.github.io';
 // Adresses d'où l'app peut appeler le serveur : l'ancienne (GitHub Pages) et le domaine de l'app
 const ALLOWED_ORIGINS = [ALLOWED_ORIGIN, 'https://franceinfoplanning.com', 'https://www.franceinfoplanning.com',
   'http://franceinfoplanning.com', 'http://www.franceinfoplanning.com', // http : le temps que le certificat HTTPS soit prêt
-  'http://tv.lecteur.franceinfoplanning.com'];   // lecteur IPTV en http seulement (voir iptvHttpPage)
+  'http://tv.lecteur.franceinfoplanning.com', 'http://tv.lecteur.franceinfoplanning.com:8080', 'http://tv.lecteur.franceinfoplanning.com:8880'];
+  // lecteur IPTV en http seulement (voir iptvHttpPage) ; ports 8080 / 8880 : Chrome ne tente jamais le https sur un autre port que 80
 /* Adresse du lecteur IPTV volontairement sans https : sous-adresse à deux niveaux, que le certificat gratuit de Cloudflare ne
    couvre pas. Chrome y tente le https, échoue, et reste en http : la page peut alors lire les chaînes en http (bloquées sur
    une page https). Sert la même page que https://franceinfoplanning.com/iptv/ (copie prise à chaque visite). */
