@@ -1988,6 +1988,7 @@ async function torPlay(x, g, b, opts) {
      la vidéo ne s'impose pas en arrivant */
   const tm0 = g && g.tm, pend = { name: opts.pname || (tm0 && tm0.name) || cleanTitle(String(x.title || 'Torrent')), url: 'torrent:attente', group: 'Torrent', vod: true, key: '', n: 0, chno: '',
     logo: tm0 && tm0.poster ? 'https://image.tmdb.org/t/p/w342' + tm0.poster : '', it: opts.it || null, pending: 'Connexion aux sources du torrent…' };
+  if (!CH.cur || CH.cur.done || Date.now() - CH.cur.t0 > 120000) chStart(pend.name);
   closeModals(); play(pend);
   const tt = 0;
   try {
@@ -1997,7 +1998,10 @@ async function torPlay(x, g, b, opts) {
     const r = await fetch(window.desktop.remux + '/torrent/add?cat=' + (ctx && ctx.kind === 'series' ? 'series' : 'films') + (/^[0-9a-f]{40}$/i.test(x.infoHash || '') ? '&h=' + x.infoHash.toLowerCase() : ''), { method: 'POST', body: src }).catch(() => null);
     clearTimeout(tt);
     if (S.current !== pend) return;                      // lecteur quitté pendant l'attente
+    const t2 = Date.now();
     const j = !r ? { error: 'module de l\'appli injoignable' } : r.status === 404 ? { error: 'mettez à jour l\'appli Windows (1.20 et plus)' } : await r.json().catch(() => ({ error: 'réponse illisible' }));
+    if (j.ms && CH.cur && !CH.cur.done) { chMark('torrent', t2 - j.ms.ready); chMark('ready', t2); }
+    if (j.qbt && CH.cur) { CH.cur.m.peers = CH.cur.m.peers || t2; }   // déjà sur le disque : pas de sources à joindre
     if (j.error) { if (S.current === pend) setStatus('err', 'Torrent : ' + esc(j.error)); toastLong('Torrent : ' + j.error); return; }
     TOR.cur = j; TOR.ctx = ctx;
     const vids = j.files.filter(f => f.video);
@@ -2070,8 +2074,10 @@ function torSeasonR(it, tm, s, g) {
 // épisode d'une autre saison, choisi dans le lecteur : saison cherchée si besoin, meilleur torrent lancé
 async function torSeasonPlay(c, s, n) {
   const A = c && c.torAlts; if (!A || !A.g || !A.g.tm) return;
+  chStart(A.it.name + ' S' + pad2(s) + 'E' + pad2(n));
   const R = torSeasonR(A.it, A.g.tm, s, A.g), loc = await epLocal(A.g.tm.id, s, n);   // déjà téléchargé : relu tout de suite
   if (!R.done && !loc) { toast('Recherche de la saison ' + s + ' dans vos indexeurs…'); await R.p; }
+  chMark('search');
   const eps = (await tmdbSeason(A.g.tm.id, s).catch(() => null)) || [];
   const x = loc || R.bp || R.epRel[n]; if (!x) { toastLong('S' + pad2(s) + 'E' + pad2(n) + ' introuvable dans vos indexeurs'); return; }
   const cur = S.current; if (cur && curPos() > 30) { LS.set(posK(cur.url), Math.floor(curPos())); try { histTrack(cur); } catch (e) {} }
@@ -2155,11 +2161,13 @@ async function vodTorSeason(it, s) {
 // saison est attendue si elle n'est pas finie. x : torrent imposé (changement depuis le lecteur), resumeAt : position reprise
 async function vodTorEp(n, b) {
   const it = VTS.it, s = VTS.s, g = VTS.g, R = VTS.R; if (!R) return;
+  chStart((it && it.name || '') + ' S' + pad2(s) + 'E' + pad2(n));
   // épisode déjà téléchargé sur ce PC : relu depuis son torrent à lui, tout de suite (sans attendre la recherche, ni prendre
   // un autre torrent que celui déjà téléchargé)
   const loc = await epLocal(VTS.ti && VTS.ti.id, s, n);
   if (loc) return torEpPlay({ it, s, g, eplist: VTS.eplist || [], R }, loc, n, 0);
   if (!R.done) { if (b) { b.classList.add('busy'); const d0 = b.querySelector('.d'); if (d0) d0.textContent = 'recherche du meilleur torrent…'; } await R.p; }
+  chMark('search');
   const d0 = b && b.querySelector('.d'), was = d0 ? d0.dataset.was || (d0.dataset.was = d0.textContent) : '';
   if (b) { b.classList.remove('busy'); if (d0) d0.textContent = 'connexion aux sources…'; }
   const x = R.bp || R.epRel[n]; if (!x) { if (d0) d0.textContent = was; toastLong('S' + pad2(s) + 'E' + pad2(n) + ' introuvable dans vos indexeurs'); return; }
@@ -2203,9 +2211,11 @@ function torPlayLast(it, b) {
 const movieAlts = (it, x) => ({ kind: 'movie', it, g: VT.g, list: VT.list, cur: x });
 async function torPlayBest(it, b) {
   if (!torOk() || !prwConf()) return;
+  chStart(it.name);
   if (VT.it !== it) vodTorLoad(it);
   if (VT.state === 'loading') { if (b) { b.disabled = true; b.dataset.lab = b.dataset.lab || b.innerHTML; b.textContent = 'Recherche du meilleur torrent…'; } toast('Recherche du meilleur torrent dans vos indexeurs…'); await VT.p; }
   if (b && b.dataset.lab) { b.disabled = false; b.innerHTML = b.dataset.lab; }
+  chMark('search');
   if (VT.it !== it) return;
   const bx = VT.list.length ? torBest(VT.list, VT.g) : null;
   if (!bx) { toastLong('Aucune version de « ' + it.name + ' » dans vos indexeurs'); if (it.tor) ixNone(it); return; }
@@ -3139,6 +3149,21 @@ async function masterInfo() {
   } catch (e) {}
 }
 // panneau ⓘ : téléchargement du torrent en lecture
+/* Chronométrage de la mise en route d'un torrent (panneau ⓘ, « Mise en route ») : du clic sur Lecture à la première image,
+   étape par étape ; les 20 dernières gardées sur l'appareil (dev.chrono) pour comparer */
+const CH = { cur: null };
+function chStart(what) { CH.cur = { what, t0: Date.now(), m: {}, done: false }; }
+function chMark(k, at) { const c = CH.cur; if (!c || c.done || c.m[k]) return; c.m[k] = at || Date.now();
+  if (k === 'image') { c.done = true; const l = LS.get('dev.chrono', []) || []; l.unshift({ w: c.what, t0: c.t0, m: c.m }); LS.set('dev.chrono', l.slice(0, 20)); } }
+const CH_STEPS = [['search', 'Recherche dans les indexeurs'], ['torrent', 'Fichier .torrent (indexeur)'], ['ready', 'Description du torrent'], ['peers', 'Connexion aux sources'], ['piece', 'Premiers morceaux'], ['image', 'Ouverture par le lecteur']];
+function chronoHtml(row) {
+  const c = CH.cur; if (!c) return '';
+  const sec = ms => (ms / 1000).toFixed(1).replace('.', ',') + ' s';
+  let prev = c.t0, h = '';
+  CH_STEPS.forEach(([k, lab]) => { const t = c.m[k]; if (!t) return; h += row(lab, sec(Math.max(0, t - prev))); prev = Math.max(prev, t); });
+  h += row('Total', c.done ? '<b>' + sec(c.m.image - c.t0) + '</b>' : 'en cours · ' + sec(Date.now() - c.t0));
+  return `<h4>Mise en route</h4><table>${h}</table>`;
+}
 function torStatsHtml(row) {
   const i = TMAP.info; if (!i || !S.current || !/\/torrent\/file\//.test(S.current.url || '')) return '';
   const mo = x => (x / 1e6).toFixed(1).replace('.', ','), pc = Math.round((i.fprog != null ? i.fprog : i.progress || 0) * 100);
@@ -3183,7 +3208,7 @@ function refreshStats() {
     ${row('Lecteur', { hls: 'hls.js', mpegts: 'mpegts.js', native: 'lecteur du navigateur', remux: 'ffmpeg (conversion' + (S.remux && S.remux.enc ? ' image et son' : ' du son') + ')' }[S.engine] || '')}
     ${S.engine === 'remux' && S.remux.info ? row('Source', esc([S.remux.info.vcodec, S.remux.info.vprofile].filter(Boolean).join(' ') + ' · ' + ((S.remux.info.audio || [])[S.remux.a] || {}).codec)) : ''}
     ${row('Format', S.playUrl ? (kindOf(S.playUrl) === 'hls' ? 'HLS (.m3u8)' : kindOf(S.playUrl) === 'ts' ? 'MPEG-TS' : 'fichier') + (/^https:/.test(S.playUrl) ? ' · https' : ' · http') : '')}
-  </table>${torStatsHtml(row)}`;
+  </table>${chronoHtml(row)}${torStatsHtml(row)}`;
 }
 function toggleStats(on) {
   const el = $('#stats'); el.hidden = on === undefined ? !el.hidden : !on;
@@ -5222,21 +5247,23 @@ setInterval(async () => {
   const c = S.current, m = c && window.desktop && /\/torrent\/file\/([0-9a-f]{40})\/(\d+)\//i.exec(c.url || ''), el0 = $('#ldi');
   if (!m || !document.body.classList.contains('playing') && !$('#status .spin') || !ldiStalled()) { LDI.since = 0; if (el0) el0.remove(); return; }
   if (!LDI.since) LDI.since = Date.now();
-  if (Date.now() - LDI.since < 1000 || LDI.busy) return;
+  if (LDI.busy) return;                                 // interrogé dès le début (chronométrage), montré au bout d'une seconde
   LDI.busy = true;
   const i = await fetch(window.desktop.remux + '/torrent/info?id=' + m[1] + '&f=' + m[2]).then(r => r.ok ? r.json() : null).catch(() => null);
   LDI.busy = false;
   if (S.current !== c || !LDI.since) return;
-  let el = $('#ldi'); if (!el) { el = document.createElement('div'); el.id = 'ldi'; $('#screen').appendChild(el); }
+  if (i && i.peers > 0) chMark('peers');
+  let el = $('#ldi'); const mkEl = () => { if (!el) { el = document.createElement('div'); el.id = 'ldi'; $('#screen').appendChild(el); } };
   const secs = Math.round((Date.now() - LDI.since) / 1000) + 1, mo = n => n < 1e6 ? Math.round((n || 0) / 1e3) + ' ko' : n < 1e9 ? (n / 1e6).toFixed(n < 1e7 ? 1 : 0).replace('.', ',') + ' Mo' : torMo(n);
   // une seule ligne : l'étape en cours (recherche de sources, téléchargement du passage, démarrage)
-  const show = (cls, txt, pct) => { el.innerHTML = `<b>Chargement · ${secs} s</b><div class="st ${cls}"><i></i><span>${txt}</span></div>` + (pct != null ? `<div class="bar"><span style="width:${pct}%"></span></div>` : ''); };
+  const show = (cls, txt, pct) => { if (Date.now() - LDI.since < 1000) return; mkEl(); el.innerHTML = `<b>Chargement · ${secs} s</b><div class="st ${cls}"><i></i><span>${txt}</span></div>` + (pct != null ? `<div class="bar"><span style="width:${pct}%"></span></div>` : ''); };
   if (!i) return show('ko', 'Le module torrent de l\'appli ne répond pas');
   if (i.qbt) return show('go', 'Préparation de la lecture…');
   const dur = S.engine === 'mpv' ? S.mpvSt.dur || 0 : (S.remux && S.remux.info && S.remux.info.duration) || (isFinite(video.duration) ? video.duration : 0);
   const map = i.map || '', k = map && dur ? Math.min(map.length - 1, Math.floor(curPos() / dur * map.length)) : 0;
   const here = map ? [0, 1, 2].map(d => +map[Math.min(map.length - 1, k + d)] || 0).reduce((a, b) => a + b, 0) / 27 : 0;
   if (!(i.peers > 0) && here < 0.99) return show(secs > 30 ? 'ko' : 'go', secs > 30 ? 'Aucune source trouvée pour l\'instant' : 'Recherche de sources…');
+  if (here >= 0.99) chMark('piece');
   if (here < 0.99) return show('go', `Téléchargement : ${Math.round(here * 100)} %` + (i.down > 0 ? ' · ' + mo(i.down) + '/s' : ''), Math.round(here * 100));
   show('go', 'Démarrage de la lecture…');
 }, 1000);
@@ -6279,6 +6306,7 @@ function chapMarks() {
 video.addEventListener('timeupdate', () => vodTick());
 function vodTick() {
   const c = S.current; if (!c || !c.vod) return;
+  if (CH.cur && !CH.cur.done && /\/torrent\/file\//.test(c.url || '') && curPos() > 0) chMark('image');
   const dur = S.engine === 'mpv' ? S.mpvSt.dur || 0 : (S.engine === 'remux' && S.remux && S.remux.info && S.remux.info.duration) || (isFinite(video.duration) ? video.duration : 0), pos = curPos(), M = chapMarks();
   // Passer l'intro
   let sk = $('#skipIntro');
