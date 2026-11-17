@@ -1761,7 +1761,11 @@ const TOR = { q: '', kind: 'all', qual: 'all', sort: 'best', res: null, err: '',
 // Prowlarr et torrents : seulement dans l'appli installée (son module torrent et son VPN surveillé) ; dans un navigateur, sur un
 // autre PC par exemple, rien ne part vers les indexeurs ni vers un module torrent
 const prwConf = () => { if (!torOk()) return null; const c = LS.get('dev.prowlarr', null); return c && c.url && c.key ? c : null; };
-const torOk = () => !!(window.desktop && window.desktop.remux);
+/* Torrents : appli installée seulement, et sur cet appareil seulement s'ils y sont permis (Paramètres › Lecture, « Torrents sur
+   cet appareil ») et que Prowlarr y est relié. Appli installée ailleurs (sans Prowlarr) : coupés d'office, le module torrent
+   ne démarre même pas (rien ne le sollicite). */
+const torAllowed = () => !!(window.desktop && window.desktop.remux) && LS.get('dev.tor', true) !== false;
+const torOk = () => torAllowed() && !!(LS.get('dev.prowlarr', null) || {}).url;
 /* Où le catalogue des films et séries va chercher (Paramètres › Lecture, propre à l'appareil) : « tor » = catalogue TMDB complet
    lu en torrent (à la maison, avec le VPN) ; « iptv » = seulement les titres de l'abonnement (ailleurs). Sans torrent possible
    (page web, iPhone, Prowlarr non relié) : toujours l'abonnement. */
@@ -1789,7 +1793,7 @@ const vpnOk = () => !vpnGuard() || vpnSt().on;
 setInterval(() => {
   if (!window.desktop || !window.desktop.vpn || !window.desktop.remux) return;
   const off = !vpnOk();
-  if (off || vpnGuard.was) fetch(window.desktop.remux + '/torrent/guard?block=' + (off ? 1 : 0)).catch(() => {});
+  if ((off || vpnGuard.was) && torOk()) fetch(window.desktop.remux + '/torrent/guard?block=' + (off ? 1 : 0)).catch(() => {});
   if (off && !vpnGuard.was && TOR.cur) toastLong('VPN coupé : torrent mis en pause, il reprendra dès que le VPN sera reconnecté');
   vpnGuard.was = off;
 }, 4000);
@@ -2467,7 +2471,7 @@ $('#vodDetail').addEventListener('click', e => {
 /* Paramètres › Appareils (appli Windows) : Prowlarr (indexeurs) et connexion à YouTube (bandes-annonces) */
 function prwSettings() {
   const box = $('#prwBox'); if (!box) return;
-  if (!torOk()) { box.hidden = true; $('#prwH').hidden = true; return; }
+  if (!torAllowed()) { box.hidden = true; $('#prwH').hidden = true; return; }
   box.hidden = false; $('#prwH').hidden = false;
   const c = prwConf();
   box.innerHTML = (c ? srow('Prowlarr', sstate(true, 'Relié') + ' · ' + esc(c.url) + '<br>Vos indexeurs : meilleur torrent de chaque film, recherche Torrent', '<button class="btn" data-prwout>Changer</button>')
@@ -7365,8 +7369,11 @@ function renderNormBox() {
     `<select class="field" id="vodSrcSel" style="width:auto;margin:0;height:34px"><option value="tor"${vodSrc() === 'tor' ? ' selected' : ''}>Torrent (à la maison)</option><option value="iptv"${vodSrc() === 'iptv' ? ' selected' : ''}>Abonnement IPTV (ailleurs)</option></select>`) : '';
   const nat = window.desktop && window.desktop.mpv && window.desktop.setNative ? srow('Lecteur intégré (essai)', 'Films, séries et torrents lus par mpv (même moteur que VLC) sous la page : tous les formats, son et image calés comme dans VLC, commandes de l\'appli par-dessus. Redémarre l\'appli.', swi('id="natChk"', !!window.desktop.native)) : '';
   const mp = NAT ? '' : window.desktop && window.desktop.mpv ? srow('Lire les films et séries avec mpv', 'Dans une fenêtre posée sur le lecteur : lit tout sans conversion (Dolby Vision, DTS…), mais sans mini-lecteur ni animations ni commandes de l\'appli. Désactivé : lecteur de l\'appli (image lue telle quelle, seul le son est converti)', swi('id="mpvChk"', LS.get('pref.mpvwin', false) === true)) : '';
-  b.innerHTML = window.desktop ? '<div class="dlbox" style="margin-top:8px">' + src + nat + mp + srow('Volume égalisé entre les chaînes', 'Chaînes trop fortes ou trop faibles ramenées au même niveau', swi('id="normChk"', normWanted())) + '</div>' : '';
+  // torrents permis sur cet appareil (coupé : ni recherche, ni lecture, ni téléchargement, module torrent jamais démarré)
+  const torSw = window.desktop && window.desktop.remux ? srow('Torrents sur cet appareil', 'À couper sur une appli installée ailleurs que chez vous : plus aucune recherche dans les indexeurs, lecture ni téléchargement de torrent ici', swi('id="torChk"', LS.get('dev.tor', true) !== false)) : '';
+  b.innerHTML = window.desktop ? '<div class="dlbox" style="margin-top:8px">' + torSw + src + nat + mp + srow('Volume égalisé entre les chaînes', 'Chaînes trop fortes ou trop faibles ramenées au même niveau', swi('id="normChk"', normWanted())) + '</div>' : '';
   const mc = $('#mpvChk'); if (mc) mc.onchange = e => LS.set('pref.mpvwin', e.target.checked);
+  const tc = $('#torChk'); if (tc) tc.onchange = e => { LS.set('dev.tor', e.target.checked); V.pop = null; IX.virt && IX.virt.clear && IX.virt.clear(); renderNormBox(); if (typeof prwSettings === 'function') prwSettings(); toast(e.target.checked ? 'Torrents permis sur cet appareil' : 'Torrents coupés sur cet appareil'); };
   const vs = $('#vodSrcSel'); if (vs) vs.onchange = e => { LS.set('dev.vodsrc', e.target.value); V.pop = null; IX.virt && IX.virt.clear && IX.virt.clear(); toast(e.target.value === 'tor' ? 'Films et séries : torrent (catalogue complet)' : 'Films et séries : abonnement IPTV seulement'); };
   const nc = $('#natChk'); if (nc) nc.onchange = e => { if (confirm('L\'appli va redémarrer pour ' + (e.target.checked ? 'activer' : 'désactiver') + ' le lecteur intégré.')) window.desktop.setNative(e.target.checked); else e.target.checked = !e.target.checked; };
   const c = $('#normChk'); if (c) c.onchange = e => { LS.set('pref.norm', e.target.checked); normSetup(); normRoute(); normReset(S.current); };
