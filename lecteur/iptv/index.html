@@ -1984,20 +1984,26 @@ async function torPlay(x, g, b, opts) {
   if (!vpnOk()) { toastLong(VPN_MSG); return; }
   TOR.busyPlay = true;
   const lab = b ? b.innerHTML : ''; if (b) { b.disabled = true; b.textContent = 'Connexion…'; }
-  const tt = setTimeout(() => toast('Connexion aux sources du torrent…'), 700);   // rien à afficher si c'est déjà sur le PC
+  /* Le lecteur s'ouvre tout de suite (torrent choisi), l'attente des sources s'y affiche ; si on le quitte entre-temps,
+     la vidéo ne s'impose pas en arrivant */
+  const tm0 = g && g.tm, pend = { name: opts.pname || (tm0 && tm0.name) || cleanTitle(String(x.title || 'Torrent')), url: 'torrent:attente', group: 'Torrent', vod: true, key: '', n: 0, chno: '',
+    logo: tm0 && tm0.poster ? 'https://image.tmdb.org/t/p/w342' + tm0.poster : '', it: opts.it || null, pending: 'Connexion aux sources du torrent…' };
+  closeModals(); play(pend);
+  const tt = 0;
   try {
     const ctx = g && g.tm ? g : await torCtx(x);
     torStop();
     // h : empreinte du torrent quand l'indexeur la donne ; déjà sur le PC, le .torrent n'est pas redemandé à l'indexeur
     const r = await fetch(window.desktop.remux + '/torrent/add?cat=' + (ctx && ctx.kind === 'series' ? 'series' : 'films') + (/^[0-9a-f]{40}$/i.test(x.infoHash || '') ? '&h=' + x.infoHash.toLowerCase() : ''), { method: 'POST', body: src }).catch(() => null);
     clearTimeout(tt);
+    if (S.current !== pend) return;                      // lecteur quitté pendant l'attente
     const j = !r ? { error: 'module de l\'appli injoignable' } : r.status === 404 ? { error: 'mettez à jour l\'appli Windows (1.20 et plus)' } : await r.json().catch(() => ({ error: 'réponse illisible' }));
-    if (j.error) { toastLong('Torrent : ' + j.error); return; }
+    if (j.error) { if (S.current === pend) setStatus('err', 'Torrent : ' + esc(j.error)); toastLong('Torrent : ' + j.error); return; }
     TOR.cur = j; TOR.ctx = ctx;
     const vids = j.files.filter(f => f.video);
     // film : le plus gros fichier vidéo ; série : le premier épisode
     const f = opts.pick ? opts.pick(vids, j) : ctx && ctx.kind === 'series' ? vids.sort((a, c) => a.name.localeCompare(c.name, 'fr', { numeric: true }))[0] : vids.sort((a, c) => c.size - a.size)[0];
-    if (!f) { toastLong(opts.pick ? 'Épisode introuvable dans ce torrent' : 'Aucune vidéo dans ce torrent'); return; }
+    if (!f) { const m = opts.pick ? 'Épisode introuvable dans ce torrent' : 'Aucune vidéo dans ce torrent'; if (S.current === pend) setStatus('err', m); toastLong(m); return; }
     const tm = ctx && ctx.tm;
     closeModals();
     if (opts.remember) torLastSave(opts.remember, x, j, f);
@@ -2130,7 +2136,7 @@ async function vodTorSeason(it, s) {
   VTS.eplist = eps || [];
   const desc = x => [torQ(x), torMo(x.size), torSd(x)].filter(Boolean).join(' · ');
   const head = () => !R.done ? '<p class="hint tshead">Recherche dans vos indexeurs… les épisodes se lisent déjà : le meilleur torrent sera lancé.</p>'
-    : R.bp ? `<p class="hint tshead">Saison ${s} complète · ${esc(desc(R.bp))}${R.packs.length > 1 ? ' · ' + (R.packs.length - 1) + ' autre' + (R.packs.length > 2 ? 's' : '') + ' version' + (R.packs.length > 2 ? 's' : '') : ''}</p>`
+    : R.bp ? '<span class="tshead"></span>'                // saison complète trouvée : rien à dire (choix possible dans le lecteur)
     : `<p class="hint tshead">${Object.keys(R.epRel).length ? 'Pas de saison complète : épisodes seuls.' : 'Rien pour la saison ' + s + ' dans vos indexeurs.'}</p>`;
   const src = n => !R.done ? '' : R.bp ? 'saison complète' : R.epRel[n] ? desc(R.epRel[n]) : 'introuvable';
   const list = (eps && eps.length ? eps : []).slice().sort((a, b) => a.n - b.n);
@@ -2164,7 +2170,7 @@ function torEpPlay(C, x, n, resumeAt) {
   const { it, s, g } = C, eps = C.eplist, tm = g.tm, lab = k => tm.name + ' · S' + pad2(s) + 'E' + pad2(k);
   const alts = { kind: 'series', it, s, g, eplist: eps, R: C.R, cur: x };
   if (x._p && x._p.ep == null) return torPlay(x, g, null, {
-    resumeAt, pick: vids => torEpFile(vids, s, n, eps.length),
+    resumeAt, pname: lab(n), it, pick: vids => torEpFile(vids, s, n, eps.length),
     extra: (j, f) => {
       const url = v => window.desktop.remux + '/torrent/file/' + j.id + '/' + v.i + '/' + encodeURIComponent(v.name);
       const seq = eps.map(e => { const v = torEpFile(j.files.filter(z => z.video), s, e.n, eps.length); return v ? { s, n: e.n, url: url(v), name: lab(e.n) } : null; }).filter(Boolean);
@@ -2172,7 +2178,7 @@ function torEpPlay(C, x, n, resumeAt) {
       return { name: lab(n), it, ep: { s, n }, torSeq: seq, next: k >= 0 ? seq[k + 1] || null : null, torAlts: alts };
     }
   });
-  return torPlay(x, g, null, { resumeAt, extra: () => ({ name: lab(n), it, ep: { s, n }, torAlts: alts }) });
+  return torPlay(x, g, null, { resumeAt, pname: lab(n), it, extra: () => ({ name: lab(n), it, ep: { s, n }, torAlts: alts }) });
 }
 /* Torrent déjà commencé pour un film : retenu par fiche TMDB (vod.torlast, synchronisé), reproposé en tête du menu Lecture
    et par « Reprendre » ; relu à l'identique (même torrent, même fichier : morceaux gardés une semaine sur le PC, position
@@ -2192,7 +2198,7 @@ function torPlayLast(it, b) {
   const r = torLast(it); if (!r || !torOk()) return Promise.resolve();
   const x = { magnetUrl: /^magnet:/i.test(r.src) ? r.src : '', downloadUrl: /^magnet:/i.test(r.src) ? '' : r.src, title: r.title, size: r.size, seeders: r.sd };
   const g = VT.it === it && VT.g ? VT.g : { kind: 'movie', tm: { name: it.name, poster: '' } };
-  return torPlay(x, g, b, { pick: vids => vids.find(v => v.i === r.fi) || vids.find(v => v.name === r.fname) || null, extra: () => ({ it, name: it.name, torAlts: VT.it === it && VT.list.length ? movieAlts(it, null) : null }) });
+  return torPlay(x, g, b, { pname: it.name, it, pick: vids => vids.find(v => v.i === r.fi) || vids.find(v => v.name === r.fname) || null, extra: () => ({ it, name: it.name, torAlts: VT.it === it && VT.list.length ? movieAlts(it, null) : null }) });
 }
 const movieAlts = (it, x) => ({ kind: 'movie', it, g: VT.g, list: VT.list, cur: x });
 async function torPlayBest(it, b) {
@@ -2203,7 +2209,7 @@ async function torPlayBest(it, b) {
   if (VT.it !== it) return;
   const bx = VT.list.length ? torBest(VT.list, VT.g) : null;
   if (!bx) { toastLong('Aucune version de « ' + it.name + ' » dans vos indexeurs'); if (it.tor) ixNone(it); return; }
-  return torPlay(bx, VT.g, b, { remember: it, extra: () => ({ it, name: it.name, torAlts: movieAlts(it, bx) }) });
+  return torPlay(bx, VT.g, b, { remember: it, pname: it.name, it, extra: () => ({ it, name: it.name, torAlts: movieAlts(it, bx) }) });
 }
 function torStop() {
   clearInterval(TOR.t);
@@ -2809,12 +2815,14 @@ async function play(c, alts) {
   S.sel = S.view.indexOf(c); renderRows(true); scrollToSel();
   if (!c.vod && typeof vpnNote === 'function') vpnNote(c.url);       // serveur de la chaîne : pour les exceptions du VPN
   // chaînes récentes et dernière chaîne : propres à la liste en cours (aucune liste : film lu par torrent ou Ma médiathèque)
-  if (S.pl) { S.recent = [c.url, ...S.recent.filter(u => u !== c.url)].slice(0, 40); LS.set(recKey(), S.recent); LS.set('last.' + S.pl.id, c.url); }
+  if (S.pl && !c.pending) { S.recent = [c.url, ...S.recent.filter(u => u !== c.url)].slice(0, 40); LS.set(recKey(), S.recent); LS.set('last.' + S.pl.id, c.url); }
   if (S.group === '⏱') applyFilter(false);
   renderGroups();
   document.title = (c.vod ? c.name : niceName(c)) + ' · IPTV';
   video.controls = false;                               // un seul indicateur de chargement : le nôtre (contrôles remis à l'image)
   setStatus('load');
+  // torrent choisi, connexion aux sources en cours (voir torPlay) : le lecteur est déjà là, la vidéo suit
+  if (c.pending) { setStatus('load', '<span class="hint">' + esc(c.pending) + '</span>'); return; }
 
 
   // Appli Windows avec mpv : films, épisodes et torrents lus par mpv (tout format, sans conversion) ; ancien lecteur en secours
