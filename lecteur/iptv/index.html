@@ -3246,15 +3246,11 @@ function refreshStats() {
     const cn = String(M.vcodec || '').replace(/\s*\(.*$/, ''), hdr = /pq|hlg/i.test(M.gamma || '') ? ' · HDR' : '';
     const ch = M.ach === 1 ? 'mono' : M.ach === 2 ? 'stéréo' : M.ach === 6 ? '5.1' : M.ach === 8 ? '7.1' : M.ach ? M.ach + ' canaux' : '';
     el.innerHTML = `<h4>Image et son</h4><table>
-      ${row('Titre', esc(S.current ? S.current.name : ''))}
-      ${row('Résolution', w ? `${w}×${hh}${hh >= 2000 || w >= 3200 ? ' (4K)' : hh >= 1000 || w >= 1800 ? ' (Full HD)' : hh >= 700 || w >= 1200 ? ' (HD)' : ''}${hdr}` : '')}
-      ${row('Images/s', (M.efps ? (+M.efps).toFixed(1) + ' affichées' : '') + (M.fps ? (M.efps ? ' · ' : '') + (+M.fps).toFixed(2).replace(/\.?0+$/, '') + ' dans le fichier' : ''))}
+      ${row('Résolution', hh ? `${hh >= 2000 ? 2160 : hh >= 1000 ? 1080 : hh >= 700 ? 720 : hh}p${hh >= 2000 || w >= 3200 ? ' (4K)' : hh >= 1000 ? ' (Full HD)' : ''}${hdr}` : '')}
+      ${row('Images/s', M.fps ? String(Math.round(+M.fps)) : '')}
       ${row('Vidéo', esc(cn) + (M.vbr ? ' · ' + kb(M.vbr) : ''))}
-      ${row('Décodage', M.hwdec && M.hwdec !== 'no' ? 'carte graphique (' + esc(M.hwdec) + ')' : M.vcodec ? 'processeur' : '')}
-      ${row('Son', esc(String(M.acodec || '').toUpperCase()) + (ch ? ' · ' + ch : '') + (M.arate ? ' · ' + (M.arate / 1000) + ' kHz' : '') + (M.abr ? ' · ' + kb(M.abr) : ''))}
-      ${row('Images perdues', (M.drop || 0) + (M.ddrop || 0) ? String((M.drop || 0) + (M.ddrop || 0)) : '')}
-      ${row('Tampon', M.cdur > 0 ? (+M.cdur).toFixed(1).replace('.', ',') + ' s d\'avance' : '')}
-      ${row('Lecteur', 'mpv (intégré)')}
+      ${row('Son', esc(String(M.acodec || '').toUpperCase()) + (ch ? ' · ' + ch : ''))}
+      ${row('Décodage', M.hwdec && M.hwdec !== 'no' ? 'carte graphique' : M.vcodec ? 'processeur' : '')}
     </table>${chronoHtml(row)}${torStatsHtml(row)}`;
     return;
   }
@@ -5703,7 +5699,7 @@ setInterval(() => {
 }, 4000);   // une vignette toutes les 4 s au plus (chacune fait décoder une image du film à ffmpeg : le PC doit rester fluide)
 $('#vbLive').onclick = () => { const w = liveWin(); if (w && !atLive(w)) video.currentTime = liveTarget(w); if (video.paused) video.play().catch(() => {}); vbarUpdate(); };
 const mpvOn = () => S.engine === 'mpv' && NAT;
-const MPV_INFO = new Set(['w', 'h', 'vcodec', 'acodec', 'ach', 'arate', 'fps', 'efps', 'vbr', 'abr', 'hwdec', 'drop', 'ddrop', 'cdur', 'gamma']);
+const MPV_INFO = new Set(['w', 'h', 'vcodec', 'acodec', 'ach', 'fps', 'vbr', 'hwdec', 'gamma']);
 const mpvC = a => window.desktop.mpv.cmd(a);
 function mpvVol() { if (mpvOn()) { mpvC(['set_property', 'volume', Math.round((video.muted ? 0 : video.volume) * 100)]); } }
 $('#vbPlay').onclick = () => { if (mpvOn()) { mpvC(['cycle', 'pause']); return; } video.paused ? video.play() : video.pause(); vbarUpdate(); };
@@ -5768,6 +5764,14 @@ function setSub(i, remember) {
   if (mpvOn() && i !== 'f') {
     const id = typeof i === 'string' && i[0] === 'm' ? +i.slice(1) : -1, t = (S.mpvSt.tracks || []).find(x => x.type === 'sub' && x.id === id);
     mpvC(['set_property', 'sid', id >= 0 ? id : 'no']);
+    /* filet de sécurité : mpv peut rester figé en relisant le passage pour la nouvelle piste ; lecture pas repartie au bout
+       de 4 s → film rouvert à la même seconde avec ces sous-titres (et la même piste audio) */
+    const c0 = S.current, p0 = curPos(), was = !S.mpvSt.paused; clearTimeout(setSub.t);
+    if (was && c0 && c0.url) setSub.t = setTimeout(() => {
+      if (S.current !== c0 || S.engine !== 'mpv' || S.mpvSt.paused || curPos() > p0 + 1) return;
+      const aid = S.mpvSt.aid, opt = 'start=' + Math.max(0, Math.floor(p0)) + ',sid=' + (id >= 0 ? id : 'no') + (aid ? ',aid=' + aid : '');
+      mpvC(['loadfile', c0.url, 'replace', '-1', opt]);
+    }, 4000);
     if (remember) { LS.set('pref.sub', t ? (lang2(t.lang) || t.title || 'on') : 'off'); if (t) LS.set('pref.sublast', { lang: lang2(t.lang) || '', name: t.title || '', i: String(i) }); }
     setTimeout(renderTrackMenu, 300); return;
   }

@@ -51,7 +51,7 @@ public class Mpv
         wr = new StreamWriter(pipe, new UTF8Encoding(false)) { AutoFlush = true, NewLine = "\n" };
         string[] props = { "time-pos", "duration", "pause", "eof-reached", "aid", "sid", "track-list", "chapter-list", "volume", "mute", "demuxer-cache-time", "video-params/aspect", "paused-for-cache",
             // panneau ⓘ de la page (image et son)
-            "width", "height", "video-codec", "audio-codec-name", "audio-params/channel-count", "audio-params/samplerate", "container-fps", "estimated-vf-fps", "video-bitrate", "audio-bitrate", "hwdec-current", "frame-drop-count", "decoder-frame-drop-count", "demuxer-cache-duration", "video-params/gamma" };
+            "width", "height", "video-codec", "audio-codec-name", "audio-params/channel-count", "container-fps", "video-bitrate", "hwdec-current", "video-params/gamma" };
         for (int i = 0; i < props.Length; i++) Cmd(new JsonArray("observe_property", i + 1, props[i]));
         var pp = pipe; new Thread(() => Read(pp)) { IsBackground = true }.Start();
         _ = MuteMouse(p);
@@ -71,11 +71,11 @@ public class Mpv
     }
 
     static JsonObject Msg(JsonObject st) => new() { ["t"] = "mpv", ["st"] = st };
-    static readonly HashSet<string> Noisy = new() { "cdur", "efps", "vbr", "abr", "drop", "ddrop", "cache" };
+    static readonly HashSet<string> Noisy = new() { "vbr", "cache" };
     readonly Dictionary<string, long> lastNoisy = new();
     static readonly Dictionary<string, string> KEYS = new() { ["time-pos"] = "pos", ["duration"] = "dur", ["pause"] = "paused", ["eof-reached"] = "eof", ["aid"] = "aid", ["sid"] = "sid", ["volume"] = "vol", ["mute"] = "mute", ["demuxer-cache-time"] = "cache", ["paused-for-cache"] = "buf",
-        ["width"] = "w", ["height"] = "h", ["video-codec"] = "vcodec", ["audio-codec-name"] = "acodec", ["audio-params/channel-count"] = "ach", ["audio-params/samplerate"] = "arate", ["container-fps"] = "fps", ["estimated-vf-fps"] = "efps",
-        ["video-bitrate"] = "vbr", ["audio-bitrate"] = "abr", ["hwdec-current"] = "hwdec", ["frame-drop-count"] = "drop", ["decoder-frame-drop-count"] = "ddrop", ["demuxer-cache-duration"] = "cdur", ["video-params/gamma"] = "gamma" };
+        ["width"] = "w", ["height"] = "h", ["video-codec"] = "vcodec", ["audio-codec-name"] = "acodec", ["audio-params/channel-count"] = "ach", ["container-fps"] = "fps",
+        ["video-bitrate"] = "vbr", ["hwdec-current"] = "hwdec", ["video-params/gamma"] = "gamma" };
 
     void Read(NamedPipeClientStream p)
     {
