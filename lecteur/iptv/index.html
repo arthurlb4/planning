@@ -763,7 +763,8 @@ body.hassrc #vbar .vsrc{display:inline-flex}
 .dli.wait{animation:dlip 1.2s ease-in-out infinite}@keyframes dlip{50%{opacity:.45}}
 #epMenu .el button .dli{margin-left:auto}
 #epMenu .ssn button{display:inline-flex;align-items:center;gap:7px}#epMenu .ssn .dli{width:20px;height:20px;margin-right:-6px}#epMenu .ssn .dli svg{width:11px;height:11px}
-#vodTorS .ep .dli{margin-left:6px}.tsea .chip{display:inline-flex;align-items:center;gap:7px}.tsea .chip .dli{width:20px;height:20px;margin-right:-6px}.tsea .chip .dli svg{width:11px;height:11px}
+#vodTorS .ep .dli{margin-left:6px}.tsea .chip{display:inline-flex;align-items:center;gap:7px}.row .dli[data-mdl]{width:34px;height:34px;align-self:center}.row .dli[data-mdl] svg{width:16px;height:16px}
+.tsea .chip .dli{width:20px;height:20px;margin-right:-6px}.tsea .chip .dli svg{width:11px;height:11px}
 #epMenu .ssn button.on .dli,.tsea .chip.on .dli{--ring:var(--bg);--track:rgba(0,0,0,.25);color:var(--bg)}#epMenu .ssn button.on .dli.full,.tsea .chip.on .dli.full{color:var(--text)}
 #epMenu .el .p{flex:none;width:7px;height:7px;border-radius:50%;background:#e5322d}
 #epMenu .more{color:var(--text3);font-size:13px;padding:6px 10px}
@@ -2119,6 +2120,36 @@ const epBadge = p => p == null ? '' : p >= 0.995 ? '<span class="epdl ok" title=
    TMDB) mis à jour d'après ce qui est sur le PC ; toutes les 3 s tant que la fiche est ouverte */
 const dliSet = (d, p) => { if (d.classList.contains('wait') && p < 0.005) return; d.classList.remove('wait'); d.style.setProperty('--p', Math.min(1, p).toFixed(3)); d.classList.toggle('full', p >= 0.995);
   d.title = p >= 0.995 ? 'Téléchargé sur ce PC' : p > 0.005 ? 'Téléchargé à ' + Math.floor(p * 100) + ' % : cliquer pour le finir' : d.dataset.fssdl ? 'Télécharger la saison ' + d.dataset.fssdl + ' sur ce PC (qBittorrent)' : 'Télécharger cet épisode sur ce PC (qBittorrent)'; };
+/* Film (fiche) : part téléchargée sur ce PC (fichier vidéo principal de ses torrents : celui déjà lu, ceux retrouvés par le
+   titre) ; clic : téléchargé en entier par qBittorrent sans le regarder (torrent déjà commencé, sinon le meilleur trouvé) */
+const MVH = { k: '', at: 0, v: null };
+async function movHave(it) {
+  if (!torOk() || !it) return { p: 0, h: '' };
+  const r = torLast(it), o = LS.get('vod.tordl', {}) || {}, tm = it.tmdb || (VT.it === it && VT.g && VT.g.tm && VT.g.tm.id) || 0;
+  const ids = [...new Set([r && r.id, ...Object.keys(o).filter(h => o[h] && o[h].kind === 'movie' && tm && +o[h].tmdb === +tm)].filter(h => /^[0-9a-f]{40}$/i.test(h || '')))];
+  const g = VT.it === it && VT.g, q = [it.name, g && g.title, g && g.tm && g.tm.orig].filter(Boolean).map(t => t + (it.year ? ' ' + it.year : '')).join('|');
+  const k = gKey(it) + '#' + ids.join(',') + '#' + q; if (MVH.k === k && Date.now() - MVH.at < 2500) return MVH.v;
+  const j = await fetch(window.desktop.remux + '/torrent/have?ids=' + ids.join(',') + '&q=' + encodeURIComponent(q)).then(x => x.ok ? x.json() : {}).catch(() => ({}));
+  let best = { p: 0, h: '' };
+  Object.entries(j || {}).forEach(([h, l]) => { const v = (Array.isArray(l) ? l : []).filter(f => /\.(mkv|mp4|avi|m4v|mov|ts|m2ts|webm)$/i.test(f.name)).sort((a, b) => b.size - a.size)[0]; if (v && v.p >= best.p) best = { p: v.p, h }; });
+  MVH.k = k; MVH.at = Date.now(); MVH.v = best; return best;
+}
+function movDli() { const d = $('#vodDetail [data-mdl]'), it = V.open && V.open.it; if (!d || !it) return; movHave(it).then(v => { if (d.isConnected) dliSet(d, v.p); }).catch(() => {}); }
+async function movKeep(it) {
+  const tm = (VT.it === it && VT.g && VT.g.tm) || {}, save = h => { const o = LS.get('vod.tordl', {}) || {}; if (h && !o[h]) { o[h] = { kind: 'movie', tmdb: it.tmdb || tm.id || 0, g: gKey(it), k: itemKey(it), n: it.name, y: it.year || 0, p: it.cover || '', at: Date.now() }; LS.set('vod.tordl', o); } };
+  const send = async x => { const j = await fetch(window.desktop.remux + '/torrent/keep', { method: 'POST', body: JSON.stringify({ src: x.src || x.magnetUrl || x.downloadUrl || '', h: x.h || x.infoHash || '', ep: null, cat: 'films' }) }).then(r => r.json()).catch(e => ({ error: e.message }));
+    if (j.error) throw new Error(j.error); save(j.h); };
+  try {
+    const v = await movHave(it);
+    if (v.h) await send({ h: v.h });
+    else {
+      if (VT.it !== it) vodTorLoad(it); if (VT.state === 'loading') { toast('Recherche du meilleur torrent dans vos indexeurs…'); await VT.p; }
+      const bx = VT.it === it && VT.list.length ? torBest(VT.list, VT.g) : null; if (!bx) throw new Error('aucune version dans vos indexeurs');
+      await send(bx);
+    }
+    toast('Téléchargement de « ' + it.name + ' » lancé (qBittorrent)');
+  } catch (e) { toastLong('Téléchargement impossible : ' + e.message); }
+}
 function ficheDli() {
   const box = $('#vodTorS'), ti = VTS.ti; if (!box || !box.isConnected || !ti) return;
   epHave(ti.id).then(H => {
@@ -2127,7 +2158,7 @@ function ficheDli() {
       let t = 0; for (let n = 1; n <= k; n++) t += H.get(sn + ':' + n) || 0; dliSet(d, k ? t / k : 0); });
   }).catch(() => {});
 }
-setInterval(() => { if ($('#vodTorS [data-fepdl], #vodTorS [data-fssdl]')) { EPH.at = 0; ficheDli(); } }, 3000);
+setInterval(() => { if ($('#vodTorS [data-fepdl], #vodTorS [data-fssdl]')) { EPH.at = 0; ficheDli(); } if ($('#vodDetail [data-mdl]')) movDli(); }, 3000);
 async function vodTorSeason(it, s) {
   const ti = VTS.ti, body = $('#vodTorSB'); if (!body || !ti) return;
   VTS.s = s; LS.set('tseason.' + ti.id, s);
@@ -5054,8 +5085,8 @@ async function openVod(it) {
   const flat = it.kind === 'series' ? epFlat(eps) : [];
   if (it.kind === 'movie') {
     const vs = vodVars(it), pick = vodPick(it), url = it.tor ? '' : vodUrl('movie', pick.id, pick.ext), pos = url ? LS.get('pos.' + url, 0) : 0;
-    if (it.tor) h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-tgo>▶ ${torLast(it) ? 'Reprendre' : 'Lecture'}</button><button class="btn icon" data-pmenu title="Autres sources et versions"><svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button></div><p class="hint" style="margin-top:8px">Pas dans votre abonnement : trouvé dans vos indexeurs (torrent).</p>`;
-    else if (vodSrc() === 'tor') h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-tgo>▶ ${torLast(it) ? 'Reprendre' : 'Lecture'}</button><button class="btn icon" data-pmenu title="Abonnement IPTV et autres versions"><svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button><button class="btn" data-vlc="${esc(url)}">VLC</button></div>`;
+    if (it.tor) h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-tgo>▶ ${torLast(it) ? 'Reprendre' : 'Lecture'}</button><button class="btn icon" data-pmenu title="Autres sources et versions"><svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>${it.kind === 'movie' && torOk() ? dlIco(0, 'data-mdl', 'Télécharger ce film sur ce PC (qBittorrent)') : ''}</div><p class="hint" style="margin-top:8px">Pas dans votre abonnement : trouvé dans vos indexeurs (torrent).</p>`;
+    else if (vodSrc() === 'tor') h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-tgo>▶ ${torLast(it) ? 'Reprendre' : 'Lecture'}</button><button class="btn icon" data-pmenu title="Abonnement IPTV et autres versions"><svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button><button class="btn" data-vlc="${esc(url)}">VLC</button>${it.kind === 'movie' && torOk() ? dlIco(0, 'data-mdl', 'Télécharger ce film sur ce PC (qBittorrent)') : ''}</div>`;
     else h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-pmenu>▶ ${pos > 60 ? 'Reprendre à ' + fmtDur(pos) : 'Lecture'}<svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>${pos > 60 ? `<button class="btn" data-pm="${esc(url)}" data-zero>Depuis le début</button>` : ''}${listBtn}<button class="btn" data-vlc="${esc(url)}">VLC</button></div>`;
     setTimeout(() => jfLink(it).catch(() => {}), 0);
   } else if (!flat.length) h += it.tor ? (torOk() && prwConf() ? '' : '<p class="hint" style="margin-top:14px">Série absente de votre abonnement : pas d\'épisode à lire ici (les torrents se lisent dans l\'appli Windows).</p>') : `<div class="row" style="margin-top:14px">${listBtn}</div><p class="hint" style="margin-top:14px">Aucun épisode trouvé.</p>`;
@@ -5079,6 +5110,7 @@ async function openVod(it) {
   V.open = { it, eps, cover, flat };
   vodEnrich(it);
   vodTorLoad(it).catch(() => {});
+  movDli();
   // film au cinéma (pas encore en numérique) : date de sortie en VOD et « Me prévenir » à la place de Lecture
   if (it.kind === 'movie' && it.tor) relState(it).then(st => {
     if (st === 'ok' || !V.open || V.open.it !== it) return;
@@ -5207,6 +5239,9 @@ $('#vodDetail').addEventListener('click', e => {
   closeModals(); V.q = b.dataset.pname; document.body.classList.remove('drawer'); setHomeView(true, true, 'vod'); $('#vod').scrollTop = 0;
 }, true);
 $('#vodDetail').addEventListener('click', e => {
+  const md = e.target.closest('#vodDetail [data-mdl]');
+  if (md) { e.stopPropagation(); e.preventDefault(); if (md.classList.contains('full') || md.classList.contains('wait') || !V.open) return; md.classList.add('wait');
+    movKeep(V.open.it).finally(() => setTimeout(() => { md.classList.remove('wait'); MVH.at = 0; movDli(); }, 1500)); return; }
   const fd = e.target.closest('#vodTorS [data-fepdl], #vodTorS [data-fssdl]');
   if (fd) { e.stopPropagation(); e.preventDefault(); if (fd.classList.contains('full') || fd.classList.contains('wait')) return; fd.classList.add('wait');
     const [sn, n] = (fd.dataset.fepdl || fd.dataset.fssdl + ':0').split(':').map(Number);
