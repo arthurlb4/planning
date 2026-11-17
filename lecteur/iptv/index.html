@@ -3240,6 +3240,24 @@ function torStatsHtml(row) {
 function refreshStats() {
   const el = $('#stats'); if (el.hidden) return;
   const row = (k, v) => v ? `<tr><td>${k}</td><td>${v}</td></tr>` : '';
+  // lecteur intégré mpv (appli native) : ses propres informations (la vidéo de la page ne sert pas)
+  if (S.engine === 'mpv') {
+    const M = S.mpvSt || {}, w = M.w || 0, hh = M.h || 0, kb = n => n ? (n >= 1e6 ? (n / 1e6).toFixed(1).replace('.', ',') + ' Mb/s' : Math.round(n / 1e3) + ' kb/s') : '';
+    const cn = String(M.vcodec || '').replace(/\s*\(.*$/, ''), hdr = /pq|hlg/i.test(M.gamma || '') ? ' · HDR' : '';
+    const ch = M.ach === 1 ? 'mono' : M.ach === 2 ? 'stéréo' : M.ach === 6 ? '5.1' : M.ach === 8 ? '7.1' : M.ach ? M.ach + ' canaux' : '';
+    el.innerHTML = `<h4>Image et son</h4><table>
+      ${row('Titre', esc(S.current ? S.current.name : ''))}
+      ${row('Résolution', w ? `${w}×${hh}${hh >= 2000 || w >= 3200 ? ' (4K)' : hh >= 1000 || w >= 1800 ? ' (Full HD)' : hh >= 700 || w >= 1200 ? ' (HD)' : ''}${hdr}` : '')}
+      ${row('Images/s', (M.efps ? (+M.efps).toFixed(1) + ' affichées' : '') + (M.fps ? (M.efps ? ' · ' : '') + (+M.fps).toFixed(2).replace(/\.?0+$/, '') + ' dans le fichier' : ''))}
+      ${row('Vidéo', esc(cn) + (M.vbr ? ' · ' + kb(M.vbr) : ''))}
+      ${row('Décodage', M.hwdec && M.hwdec !== 'no' ? 'carte graphique (' + esc(M.hwdec) + ')' : M.vcodec ? 'processeur' : '')}
+      ${row('Son', esc(String(M.acodec || '').toUpperCase()) + (ch ? ' · ' + ch : '') + (M.arate ? ' · ' + (M.arate / 1000) + ' kHz' : '') + (M.abr ? ' · ' + kb(M.abr) : ''))}
+      ${row('Images perdues', (M.drop || 0) + (M.ddrop || 0) ? String((M.drop || 0) + (M.ddrop || 0)) : '')}
+      ${row('Tampon', M.cdur > 0 ? (+M.cdur).toFixed(1).replace('.', ',') + ' s d\'avance' : '')}
+      ${row('Lecteur', 'mpv (intégré)')}
+    </table>${chronoHtml(row)}${torStatsHtml(row)}`;
+    return;
+  }
   const q = video.getVideoPlaybackQuality ? video.getVideoPlaybackQuality() : null;
   let vc = '', ac = '', declared = '', bitrate = '', real = '', audio = '', declFps = '';
   if (S.engine === 'hls' && hls) {
@@ -5431,6 +5449,8 @@ if (window.desktop && window.desktop.mpv) {
     if (st.moving != null) { if (st.moving) natMove(); else { clearTimeout(natMove.t); requestAnimationFrame(() => document.body.classList.remove('natmove')); } return; }
     if (st.paused === true) { clearTimeout(idleT); idleSet(false); } else if (st.paused === false) wake();
     if (NAT && st.pos > 0 && !document.body.classList.contains('natready')) setTimeout(() => { if (S.engine === 'mpv') document.body.classList.add('natready'); }, 250);
+    // informations du panneau ⓘ seulement : rien à redessiner
+    if (Object.keys(st).every(k => MPV_INFO.has(k))) return;
     if (NAT) { if (st.tracks) renderTrackMenu(); vodTick(); if (!st.tracks && !st.chapters) vbarUpdate(); }
     if (st.eof || st.exit) {
       if (S.mpvSt.pos > 30) { LS.set(posK(c.url), st.eof ? 0 : Math.floor(S.mpvSt.pos)); try { histTrack(c, !!st.eof); } catch (e) {} }
@@ -5683,6 +5703,7 @@ setInterval(() => {
 }, 4000);   // une vignette toutes les 4 s au plus (chacune fait décoder une image du film à ffmpeg : le PC doit rester fluide)
 $('#vbLive').onclick = () => { const w = liveWin(); if (w && !atLive(w)) video.currentTime = liveTarget(w); if (video.paused) video.play().catch(() => {}); vbarUpdate(); };
 const mpvOn = () => S.engine === 'mpv' && NAT;
+const MPV_INFO = new Set(['w', 'h', 'vcodec', 'acodec', 'ach', 'arate', 'fps', 'efps', 'vbr', 'abr', 'hwdec', 'drop', 'ddrop', 'cdur', 'gamma']);
 const mpvC = a => window.desktop.mpv.cmd(a);
 function mpvVol() { if (mpvOn()) { mpvC(['set_property', 'volume', Math.round((video.muted ? 0 : video.volume) * 100)]); } }
 $('#vbPlay').onclick = () => { if (mpvOn()) { mpvC(['cycle', 'pause']); return; } video.paused ? video.play() : video.pause(); vbarUpdate(); };
