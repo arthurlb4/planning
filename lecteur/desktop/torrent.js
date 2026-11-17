@@ -302,6 +302,9 @@ function takeOver(h) {
     let buf = null; try { buf = cleanTorrent(fs.readFileSync(path.join(META, h + '.torrent'))); } catch (e) {}
     if (!buf) buf = await qbt('/api/v2/torrents/export?hash=' + h, { raw: true });
     const dir = await qbtTakeBack(q); if (!dir) throw new Error('torrent rangé autrement par qBittorrent');
+    // qBittorrent se retire du tracker (annonce « arrêté ») avant que l'appli s'y présente : certains trackers privés refusent
+    // deux connexions du même compte sur le même torrent
+    await pause(2000);
     // reprise ratée (aucune source) : rendu tout de suite à qBittorrent, avec les mêmes épisodes gardés
     try { await addWt(buf, q.cat, dir); } catch (e) { await qbtGiveBuf(buf, h, dir, q.cat, WATCHED.get(h) || []).catch(() => {}); WATCHED.delete(h); throw e; }
     return getClient().get(h);

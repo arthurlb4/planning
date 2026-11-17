@@ -2204,7 +2204,8 @@ const torLastUrl = r => window.desktop && r ? window.desktop.remux + '/torrent/f
 // relecture du torrent retenu : même torrent rouvert, même fichier
 function torPlayLast(it, b) {
   const r = torLast(it); if (!r || !torOk()) return Promise.resolve();
-  const x = { magnetUrl: /^magnet:/i.test(r.src) ? r.src : '', downloadUrl: /^magnet:/i.test(r.src) ? '' : r.src, title: r.title, size: r.size, seeders: r.sd };
+  // empreinte (r.id) : torrent déjà sur le PC rouvert directement, sans redemander le .torrent à l'indexeur (lien parfois expiré)
+  const x = { magnetUrl: /^magnet:/i.test(r.src) ? r.src : '', downloadUrl: /^magnet:/i.test(r.src) ? '' : r.src, title: r.title, size: r.size, seeders: r.sd, infoHash: /^[0-9a-f]{40}$/i.test(r.id || '') ? r.id : '' };
   const g = VT.it === it && VT.g ? VT.g : { kind: 'movie', tm: { name: it.name, poster: '' } };
   return torPlay(x, g, b, { pname: it.name, it, pick: vids => vids.find(v => v.i === r.fi) || vids.find(v => v.name === r.fname) || null, extra: () => ({ it, name: it.name, torAlts: VT.it === it && VT.list.length ? movieAlts(it, null) : null }) });
 }
@@ -5269,7 +5270,10 @@ setInterval(async () => {
   const dur = S.engine === 'mpv' ? S.mpvSt.dur || 0 : (S.remux && S.remux.info && S.remux.info.duration) || (isFinite(video.duration) ? video.duration : 0);
   const map = i.map || '', k = map && dur ? Math.min(map.length - 1, Math.floor(curPos() / dur * map.length)) : 0;
   const here = map ? [0, 1, 2].map(d => +map[Math.min(map.length - 1, k + d)] || 0).reduce((a, b) => a + b, 0) / 27 : 0;
-  if (!(i.peers > 0) && here < 0.99) return show(secs > 30 ? 'ko' : 'go', secs > 30 ? 'Aucune source trouvée pour l\'instant' : 'Recherche de sources…');
+  // pas de source : pourquoi (au bout de 10 s) — le tracker n'en donne aucune, ou elles ne répondent pas
+  if (!(i.peers > 0) && here < 0.99) return show(secs > 10 ? 'ko' : 'go', secs <= 10 ? 'Recherche de sources…'
+    : i.known > 0 ? `${i.known} source${i.known > 1 ? 's' : ''} trouvée${i.known > 1 ? 's' : ''}, aucune ne répond pour l'instant`
+    : 'Le tracker ne donne aucune source' + (i.warn ? ' (' + esc(String(i.warn).replace(/\s*\(.*$/, '').slice(0, 60)) + ')' : ''));
   if (here >= 0.99) chMark('piece');
   if (here < 0.99) return show('go', `Téléchargement : ${Math.round(here * 100)} %` + (i.down > 0 ? ' · ' + mo(i.down) + '/s' : ''), Math.round(here * 100));
   show('go', 'Démarrage de la lecture…');
