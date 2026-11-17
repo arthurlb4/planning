@@ -33,10 +33,8 @@ function getClient() {
     // les liens magnet publics gardent les trackers publics. 35 connexions par torrent suffisent largement à la lecture.
     client = new WebTorrent({ utp: false, dht: false, lsd: false, maxConns: 35 });   // pas de module natif à compiler
     client.on('error', e => { clientErr = e.message || String(e); });
-    /* vitesse plafonnée à 15 Mo/s : assez pour lire sans attente (un film 4K demande 6 à 10 Mo/s), sans dépasser ce que le
-       disque écrit (au-delà, les morceaux pas encore écrits s'entassaient en mémoire : 1,3 Go, disque à 100 %, PC figé).
-       qBittorrent finit le reste ensuite, à son rythme */
-    try { client.throttleDownload(15e6); } catch (e) {}
+    // vitesse : voir throttleTick (plafond intelligent)
+    TH.cur = 0; throttleTick();
   }
   return client;
 }
@@ -201,6 +199,24 @@ async function fromBody(body) {
   return b;
 }
 
+/* Plafond intelligent : pleine vitesse tant que la lecture a moins de ≈ 400 Mo d'avance (environ une minute d'un 4K), puis
+   15 Mo/s une fois confortable, et sans lecture en cours. Plus vite que le disque n'écrit, les morceaux s'entassaient en
+   mémoire (1,3 Go, disque à 100 %, PC figé) ; qBittorrent finit le reste à son rythme. Position de lecture suivie par flux. */
+const RD = new Set(), TH = { cur: 0 }, AHEAD = 400e6;
+function aheadBytes(t, f, pos) {
+  if (!t || !t.ready || t.destroyed || !f || f._startPiece == null) return 0;
+  let i = Math.floor((f.offset + Math.max(0, pos)) / t.pieceLength), n = 0, cap = Math.ceil(AHEAD / t.pieceLength) + 1;
+  while (i <= f._endPiece && n < cap && t.bitfield.get(i)) { i++; n++; }
+  return i > f._endPiece ? Infinity : n * t.pieceLength;
+}
+function throttleTick() {
+  if (!client || client.destroyed) return;
+  let need = false;
+  for (const r of RD) if (aheadBytes(r.t, r.f, r.pos) < AHEAD) need = true;
+  const want = need ? -1 : 15e6;
+  if (want !== TH.cur) { try { client.throttleDownload(want); TH.cur = want; } catch (e) {} }
+}
+setInterval(throttleTick, 2000);
 function sendFile(t, f, req, res) {
   const size = f.length, m = /bytes=(\d*)-(\d*)/.exec(req.headers.range || '');
   let start = 0, end = size - 1;
@@ -211,6 +227,7 @@ function sendFile(t, f, req, res) {
     m ? { 'Content-Range': `bytes ${start}-${end}/${size}` } : {}));
   if (req.method === 'HEAD') return res.end();
   const st = f.createReadStream({ start, end });
+  if (t) { const r = { t, f, pos: start }; RD.add(r); st.on('data', b => { r.pos += b.length; }); res.on('close', () => { RD.delete(r); }); throttleTick(); }
   /* Lecteur qui saute (index en fin de fichier, déplacement) : la demande la plus récente passe avant les autres. Sans ça,
      webtorrent sert ses sélections dans l'ordre d'arrivée et la première (tout le fichier depuis le début) passe d'abord :
      la fin n'arrivait qu'avec le fichier presque entier. */
@@ -586,6 +603,8 @@ module.exports = function handleTorrent(req, res, u) {
       const a = f._startPiece, n = f._endPiece - a + 1, W = Math.min(200, n); let map = '';
       for (let k = 0; k < W; k++) { const p0 = a + Math.floor(k * n / W), p1 = a + Math.floor((k + 1) * n / W); let got = 0; for (let i = p0; i < Math.max(p1, p0 + 1); i++) if (t.bitfield.get(i)) got++; map += Math.round(9 * got / Math.max(1, p1 - p0)); }
       o.map = map; o.fprog = f.progress; o.fsize = f.length;
+      // part prête juste après l'endroit demandé (fraction du fichier) : barre d'attente de la page
+      const at = Math.max(0, Math.min(1, +u.searchParams.get('at') || 0)), ah = aheadBytes(t, f, at * f.length); o.ahead = ah === Infinity ? f.length : ah;
     }
     json(o); return true;
   }
