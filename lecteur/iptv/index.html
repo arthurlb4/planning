@@ -774,8 +774,9 @@ body.hassrc #vbar .vsrc{display:inline-flex}
 .dli svg{position:relative;width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
 .dli:hover{transform:scale(1.12);color:var(--text)}
 .dli.full{background:var(--ring);color:var(--bg2);cursor:default}.dli.full::before{display:none}.dli.full:hover{transform:none}
-/* deux états seulement : vide (pas sur le PC, cliquable pour le télécharger) ou plein (téléchargé) ; pas d'anneau de progression */
+/* trois états : vide (pas sur le PC, cliquable pour le télécharger), bleu (commencé, pas fini), plein (téléchargé) ; pas d'anneau */
 .dli::before{background:var(--track)!important}.dli.full{pointer-events:none}
+.dli.mid{color:var(--blue)}.dli.mid::before{background:var(--blue)!important}
 .dli.wait{animation:dlip 1.2s ease-in-out infinite}@keyframes dlip{50%{opacity:.45}}
 #epMenu .el button .dli{margin-left:auto}
 #epMenu .ssn button{display:inline-flex;align-items:center;gap:7px}#epMenu .ssn .dli{width:20px;height:20px;margin-right:-6px}#epMenu .ssn .dli svg{width:11px;height:11px}
@@ -2131,13 +2132,13 @@ async function epLocal(tvId, s, n) {
 }
 const DLI_SVG = '<svg viewBox="0 0 24 24"><path d="M12 5v10M7.5 11l4.5 4.5 4.5-4.5M6 19.5h12"/></svg>';
 // p : part reçue (0 à 1, null = rien) ; attrs : de quoi le reconnaître au clic
-const dlIco = (p, attrs, tip) => { p = p || 0; const full = p >= 0.995; p = full ? 1 : 0;
-  return `<span class="dli${full ? ' full' : ''}" style="--p:${Math.min(1, p).toFixed(3)}" ${attrs} title="${full ? 'Téléchargé sur ce PC' : p > 0.005 ? 'Téléchargé à ' + Math.floor(p * 100) + ' % : cliquer pour le finir' : tip}">${DLI_SVG}</span>`; };
+const dlIco = (p, attrs, tip) => { p = p || 0; const full = p >= 0.995, mid = !full && p > 0.005; p = full ? 1 : 0;
+  return `<span class="dli${full ? ' full' : mid ? ' mid' : ''}" ${attrs} title="${full ? 'Téléchargé sur ce PC' : mid ? 'Téléchargement commencé, pas encore fini (clic : le finir)' : tip}">${DLI_SVG}</span>`; };
 const epBadge = p => p == null ? '' : p >= 0.995 ? '<span class="epdl ok" title="Téléchargé sur ce PC">✓ téléchargé</span>' : p >= 0.01 ? `<span class="epdl" title="Téléchargé en partie sur ce PC">${Math.floor(p * 100)} %</span>` : '';
 /* Fiche d'une série : ronds de téléchargement (épisodes de la saison ouverte, et chaque saison d'après son nombre d'épisodes
    TMDB) mis à jour d'après ce qui est sur le PC ; toutes les 3 s tant que la fiche est ouverte */
-const dliSet = (d, p) => { if (d.classList.contains('wait') && p < 0.005) return; d.classList.remove('wait'); d.style.setProperty('--p', Math.min(1, p).toFixed(3)); d.classList.toggle('full', p >= 0.995);
-  d.title = p >= 0.995 ? 'Téléchargé sur ce PC' : d.dataset.fssdl ? 'Télécharger la saison ' + d.dataset.fssdl + ' sur ce PC (qBittorrent)' : 'Télécharger cet épisode sur ce PC (qBittorrent)'; };
+const dliSet = (d, p) => { if (d.classList.contains('wait') && p < 0.005) return; d.classList.remove('wait'); d.style.setProperty('--p', Math.min(1, p).toFixed(3)); d.classList.toggle('full', p >= 0.995); d.classList.toggle('mid', p > 0.005 && p < 0.995);
+  d.title = p >= 0.995 ? 'Téléchargé sur ce PC' : p > 0.005 ? 'Téléchargement commencé, pas encore fini (clic : le finir)' : d.dataset.fssdl ? 'Télécharger la saison ' + d.dataset.fssdl + ' sur ce PC (qBittorrent)' : 'Télécharger cet épisode sur ce PC (qBittorrent)'; };
 /* Film (fiche) : part téléchargée sur ce PC (fichier vidéo principal de ses torrents : celui déjà lu, ceux retrouvés par le
    titre) ; clic : téléchargé en entier par qBittorrent sans le regarder (torrent déjà commencé, sinon le meilleur trouvé) */
 const MVH = { k: '', at: 0, v: null };
@@ -6293,7 +6294,7 @@ setInterval(() => {
   const m = $('#epMenu'), c = S.current; if (!m || m.hidden || !c || !c.torAlts || !c.torAlts.g || !c.torAlts.g.tm) return;
   EPH.at = 0; epHave(c.torAlts.g.tm.id).then(H => {
     if (m.hidden) return;
-    m.querySelectorAll('[data-epdl]').forEach(d => { if (d.classList.contains('wait')) return; const p = H.get(d.dataset.epdl) || 0; d.style.setProperty('--p', Math.min(1, p).toFixed(3)); d.classList.toggle('full', p >= 0.995); });
+    m.querySelectorAll('[data-epdl]').forEach(d => { if (d.classList.contains('wait')) return; const p = H.get(d.dataset.epdl) || 0; d.style.setProperty('--p', Math.min(1, p).toFixed(3)); d.classList.toggle('full', p >= 0.995); d.classList.toggle('mid', p > 0.005 && p < 0.995); });
   }).catch(() => {});
 }, 30000);
 /* Télécharger un épisode (n) ou toute la saison (n = 0) sans le regarder : torrent de la saison en cours de lecture, sinon
