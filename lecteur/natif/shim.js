@@ -4,7 +4,7 @@
   const W = window.chrome && window.chrome.webview; if (!W || window.desktop) return;
   const cfg = __CFG__;
   const L = { mpv: [], win: [], upd: [], yt: [] }, reqs = new Map();
-  let rid = 0, max = false, vpn = { on: true, name: '', all: [], pat: '' }, upd = { state: 'idle' };
+  let rid = 0, max = false, vpn = { on: true, name: '', all: [], pat: '' }, upd = cfg.upd || { state: 'idle' };
   const send = (t, d) => W.postMessage(JSON.stringify(Object.assign({ t }, d || {})));
   const call = (t, d) => new Promise(r => { const id = ++rid; reqs.set(id, r); send(t, Object.assign({ id }, d || {})); });
   W.addEventListener('message', e => {
@@ -18,12 +18,13 @@
   });
   window.desktop = {
     remux: cfg.remux, version: cfg.version, natif: true, native: !!cfg.mpv,
-    updState: () => upd, onUpdate: f => L.upd.push(f), checkUpdate: () => send('upd'),
+    updState: () => upd, onUpdate: f => L.upd.push(f), checkUpdate: how => send('upd', { auto: how === 'auto' }),
     openVlc: (url, name) => call('vlc', { url, name }),
     ytLogin: () => send('yt'), onYtLogin: f => L.yt.push(f),
     vpn: pat => { pat = pat || ''; if (pat !== vpn.pat) { vpn = Object.assign({}, vpn, { pat }); send('vpn', { pat }); } return vpn; },
     mpv: cfg.mpv ? { play: o => call('mpvPlay', { o }), stop: () => send('mpvStop'), rect: r => send('mpvRect', { r }), cmd: a => send('mpvCmd', { a }), on: f => L.mpv.push(f) } : null,
     win: { act: a => send('win', { a }), isMax: () => max, onState: f => L.win.push(f) }
   };
+  send('updGet');                                       // état de la mise à jour (page rechargée : une version peut être prête)
   send('vpn', { pat: '' }); setInterval(() => send('vpn', { pat: vpn.pat || '' }), 3000);
 })();

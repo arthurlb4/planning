@@ -36,9 +36,10 @@ static class Updater
     }
 
     // demandé par la page (bouton Vérifier, ouverture des Paramètres) ; version prête : installation tout de suite
-    public static void CheckNow(Form app)
+    // auto : recherche lancée d'elle-même (ouverture des Paramètres) ; seul un clic sur le bouton installe une version prête
+    public static void CheckNow(Form app, bool auto = false)
     {
-        if (ready != null) { InstallNow(app); return; }
+        if (ready != null) { if (!auto) InstallNow(app); else Set(State); return; }
         _ = Task.Run(Check);
     }
 

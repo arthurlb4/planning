@@ -153,7 +153,7 @@ public class MainForm : Form
         try { int port = await portTask; if (port > 0) remux = "http://127.0.0.1:" + port; } catch { }
         string shim;
         using (var st = typeof(MainForm).Assembly.GetManifestResourceStream("shim.js")!) using (var rd = new StreamReader(st)) shim = rd.ReadToEnd();
-        var cfg = new JsonObject { ["remux"] = remux, ["version"] = "natif " + string.Join(".", Application.ProductVersion.Split('+')[0].Split('.').Take(3)), ["mpv"] = mpv.Available };
+        var cfg = new JsonObject { ["remux"] = remux, ["version"] = "natif " + string.Join(".", Application.ProductVersion.Split('+')[0].Split('.').Take(3)), ["mpv"] = mpv.Available, ["upd"] = Updater.State.DeepClone() };
         await web.AddScriptToExecuteOnDocumentCreatedAsync(shim.Replace("__CFG__", cfg.ToJsonString()));
 
         web.WebMessageReceived += (s, a) => { try { OnMessage(a.TryGetWebMessageAsString()); } catch { } };
@@ -209,7 +209,8 @@ public class MainForm : Form
             case "vpn": Post(new JsonObject { ["t"] = "vpn", ["v"] = Vpn((string)m["pat"] ?? "") }); break;
             case "vlc": Reply((int)m["id"]!, OpenVlc((string)m["url"], (string)m["name"])); break;
             case "fs": SetFull(!full); break;
-            case "upd": Updater.CheckNow(this); break;
+            case "upd": Updater.CheckNow(this, (bool?)m["auto"] == true); break;
+            case "updGet": Post(new JsonObject { ["t"] = "upd", ["st"] = Updater.State.DeepClone() }); break;   // page (re)chargée : état actuel
             case "yt": YtLogin(); break;
         }
     }
