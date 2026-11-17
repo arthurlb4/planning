@@ -29,7 +29,9 @@ const VPN_MSG = 'VPN inactif : connectez CyberGhost (torrents et indexeur bloqu�
 function getClient() {
   if (!client || client.destroyed) {
     const WebTorrent = require('webtorrent');
-    client = new WebTorrent({ utp: false, maxConns: 50 });   // pas de module natif à compiler
+    // pas de DHT : inutile aux trackers privés, et coûteux en processeur (milliers de contacts entretenus en permanence) ;
+    // les liens magnet publics gardent les trackers publics. 35 connexions par torrent suffisent largement à la lecture.
+    client = new WebTorrent({ utp: false, dht: false, lsd: false, maxConns: 35 });   // pas de module natif à compiler
     client.on('error', e => { clientErr = e.message || String(e); });
   }
   return client;
@@ -281,6 +283,9 @@ async function dlDir() {
 const VID = n => VIDEO.test(n);
 // fichier d'un épisode : S01E05 / 1x05 / E05 dans son nom
 const epRe = e => [new RegExp('S0*' + e.s + '[ ._-]?E0*' + e.n + '(?!\\d)', 'i'), new RegExp('(^|\\D)' + e.s + 'x0*' + e.n + '(?!\\d)', 'i')];
+// liste complète des torrents de qBittorrent, gardée 15 s (ronds de téléchargement : appelée souvent, fiche ouverte)
+let QL = { at: 0, l: null };
+async function qbtList() { if (QL.l && Date.now() - QL.at < 15000) return QL.l; const l = await qbt('/api/v2/torrents/info').catch(() => null); QL = { at: Date.now(), l }; return l; }
 async function qbtHas(h) {
   if (!(await qbtUp(QBT))) return null;
   const l = await qbt('/api/v2/torrents/info?hashes=' + h); const t = Array.isArray(l) && l[0]; if (!t) return null;
@@ -479,7 +484,9 @@ module.exports = function handleTorrent(req, res, u) {
         const t = h && c.get(h);
         if (t && t.ready) {
           const ids = pick(t.files.map(f => f.path)); if (!ids.length) throw new Error('épisode introuvable dans ce torrent');
-          t._watched = t._watched || new Set(); ids.forEach(i => { t._watched.add(i); t.files[i].select(); });
+          // ouvert dans l'appli (en lecture) : noté seulement ; téléchargé par qBittorrent à la fin de la lecture (l'appli ne
+          // télécharge pas en plus de la lecture : processeur et disque épargnés)
+          t._watched = t._watched || new Set(); ids.forEach(i => t._watched.add(i));
           if (hint) RG.hintSave(h, hint); return json({ ok: true, h, where: 'app' });
         }
         const q = h && await qbtHas(h).catch(() => null);
@@ -531,7 +538,7 @@ module.exports = function handleTorrent(req, res, u) {
     if (qs.length) {
       Object.entries(idxRead()).forEach(([h, e]) => { if (!ids.includes(h) && e.name && hit(e.name)) ids.push(h); });
       (c.torrents || []).forEach(t => { if (t.name && !ids.includes(t.infoHash) && hit(t.name)) ids.push(t.infoHash); });
-      if (await qUp()) { const l = await qbt('/api/v2/torrents/info').catch(() => null); (Array.isArray(l) ? l : []).forEach(t => { if (t.hash && !ids.includes(t.hash) && hit(t.name)) ids.push(t.hash); }); }
+      if (await qUp()) { const l = await qbtList(); (Array.isArray(l) ? l : []).forEach(t => { if (t.hash && !ids.includes(t.hash) && hit(t.name)) ids.push(t.hash); }); }
     }
     if (ids.some(h => !c.get(h))) await qUp();
     for (const h of ids) {
