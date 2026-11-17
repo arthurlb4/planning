@@ -203,7 +203,10 @@ function sendFile(t, f, req, res) {
      webtorrent sert ses sélections dans l'ordre d'arrivée et la première (tout le fichier depuis le début) passe d'abord :
      la fin n'arrivait qu'avec le fichier presque entier. */
   if (t && !t.destroyed && t.ready && f._startPiece != null && t.pieceLength) {
-    const pc = b => Math.max(f._startPiece, Math.min(f._endPiece, Math.floor((f.offset + b) / t.pieceLength))), p0 = pc(start), p1 = pc(end);
+    // priorité limitée aux ≈ 32 Mo qui suivent l'endroit demandé (le reste suit la sélection habituelle) : une sélection sur
+    // tout le fichier, recalculée à chaque morceau reçu, faisait monter le processeur pendant le téléchargement
+    const pc = b => Math.max(f._startPiece, Math.min(f._endPiece, Math.floor((f.offset + b) / t.pieceLength))), p0 = pc(start);
+    const p1 = Math.min(pc(end), p0 + Math.max(2, Math.ceil(32e6 / t.pieceLength)));
     const prio = t._prioN = (t._prioN || 1) + 1;
     try { t.select(p0, p1, prio); t.critical(p0, Math.min(p1, p0 + 1)); } catch (e) {}
     res.on('close', () => { try { if (!t.destroyed) t.deselect(p0, p1, prio); } catch (e) {} });
