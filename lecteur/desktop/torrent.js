@@ -69,7 +69,7 @@ function cleanup() {
   try { fs.readdirSync(DIR).forEach(n => { if (n === '.index.json' || n === '.meta' || known.has(n)) return; const f = path.join(DIR, n); try { if (Date.now() - fs.statSync(f).mtimeMs > KEEP) fs.rmSync(f, { recursive: true, force: true }); } catch (e) {} }); } catch (e) {}
   idxWrite(o);
 }
-setTimeout(() => { cleanup(); giveLeft(); }, 30e3); setInterval(cleanup, 6 * 3600e3);
+setTimeout(() => { cleanup(); giveLeft().finally(() => qbtFixTrackers().catch(() => {})); }, 30e3); setInterval(cleanup, 6 * 3600e3);
 // à la fermeture de l'appli : torrents fermés, fichiers gardés ; ceux assez avancés passent à qBittorrent au lancement suivant
 process.on('exit', () => { try { if (client) client.torrents.forEach(t => idxTouch(t, worth(t) ? { give: 1, w: [...(t._watched || [])] } : null)); } catch (e) {} try { if (client) client.destroy(); } catch (e) {} });
 
@@ -95,7 +95,16 @@ function btih(src) {
   return /^[0-9a-f]{40}$/i.test(h) ? h.toLowerCase() : '';
 }
 function metaSave(t) { try { if (t && t.infoHash && t.torrentFile) { fs.mkdirSync(META, { recursive: true }); const f = path.join(META, t.infoHash + '.torrent'); if (!fs.existsSync(f)) fs.writeFileSync(f, t.torrentFile); } } catch (e) {} }
-function metaLoad(src) { try { const h = typeof src === 'string' ? btih(src) : ''; const f = h && path.join(META, h + '.torrent'); return f && fs.existsSync(f) ? fs.readFileSync(f) : null; } catch (e) { return null; } }
+function metaLoad(src) { try { const h = typeof src === 'string' ? btih(src) : ''; const f = h && path.join(META, h + '.torrent'); return f && fs.existsSync(f) ? cleanTorrent(fs.readFileSync(f)) : null; } catch (e) { return null; } }
+/* Torrent privé (ou qui a ses propres trackers) : trackers publics ajoutés autrefois par l'appli retirés (même empreinte :
+   seule la liste des trackers change) */
+function cleanTorrent(buf) {
+  try {
+    const pt = require('parse-torrent'), t = pt(buf), mine = (t.announce || []).filter(a => !TRACKERS.includes(a));
+    if (!mine.length || mine.length === (t.announce || []).length) return buf;
+    t.announce = mine; return pt.toTorrentFile(t);
+  } catch (e) { return buf; }
+}
 async function add(src, cat) {
   const h = typeof src === 'string' ? btih(src) : bufHash(src), c = getClient();
   let dir = null;
@@ -119,7 +128,9 @@ function addWt(src, cat, dir) {
     const timer = setTimeout(() => { if (done) return; done = true; try { const t = c.get(src); if (t) t.destroy(); } catch (e) {} reject(new Error('aucun pair trouvé en 90 s (torrent sans source en ligne ?)' + (clientErr ? ' · ' + clientErr : ''))); }, 90000);
     try {
       const opts = { path: dir, destroyStoreOnDestroy: false };
-      if (typeof src === 'string' || saved) opts.announce = TRACKERS;
+      // trackers publics : seulement pour un lien magnet sans tracker à lui ; jamais pour un torrent privé ou qui a les siens
+      // (qBittorrent, qui reçoit ensuite le torrent, s'épuisait sur eux sans jamais joindre le tracker privé)
+      if (typeof src === 'string' && !/[?&]tr=/i.test(src) && !saved) opts.announce = TRACKERS;
       const t = c.add(saved || src, opts, t => {
         if (done) return; done = true; clearTimeout(timer); t._cat = cat || ''; t._watched = new Set(WATCHED.get(t.infoHash) || []); WATCHED.delete(t.infoHash);
         // Seul le fichier vidéo principal est demandé (pas les bonus, sous-titres…), dans l'ordre ; il ne faut pas tout
@@ -288,7 +299,7 @@ async function qbtTakeBack(q) {
 function takeOver(h) {
   const q = QB.get(h); if (!q) return Promise.resolve(null);
   if (!q.taking) q.taking = (async () => {
-    let buf = null; try { buf = fs.readFileSync(path.join(META, h + '.torrent')); } catch (e) {}
+    let buf = null; try { buf = cleanTorrent(fs.readFileSync(path.join(META, h + '.torrent'))); } catch (e) {}
     if (!buf) buf = await qbt('/api/v2/torrents/export?hash=' + h, { raw: true });
     const dir = await qbtTakeBack(q); if (!dir) throw new Error('torrent rangé autrement par qBittorrent');
     // reprise ratée (aucune source) : rendu tout de suite à qBittorrent, avec les mêmes épisodes gardés
@@ -329,17 +340,30 @@ async function qbtOnly(h, watched) {
   }
 }
 async function give(t) {
-  const buf = t.torrentFile, h = t.infoHash, dir = t.path || DIR, cat = t._cat || '', watched = [...(t._watched || [])];
+  const buf = cleanTorrent(t.torrentFile), h = t.infoHash, dir = t.path || DIR, cat = t._cat || '', watched = [...(t._watched || [])];
   idxTouch(t, { give: 1, w: watched });                               // repris au lancement suivant si l'envoi échoue
   await new Promise(r => { try { t.destroy({ destroyStore: false }, () => r()); } catch (e) { r(); } });
   await qbtGiveBuf(buf, h, dir, cat, watched);
 }
 // torrents laissés ouverts à la fermeture de l'appli (ou envoi raté) : confiés à qBittorrent maintenant
+/* Torrents déjà confiés à qBittorrent avec les trackers publics en trop : retirés (s'il reste le tracker du torrent), puis
+   annonce immédiate au bon tracker. Une fois au lancement. */
+async function qbtFixTrackers() {
+  if (!(await qbtUp(QBT))) return;
+  const l = await qbt('/api/v2/torrents/info?tag=lecteur').catch(() => null);
+  for (const t of Array.isArray(l) ? l : []) {
+    const tr = await qbt('/api/v2/torrents/trackers?hash=' + t.hash).catch(() => null); if (!Array.isArray(tr)) continue;
+    const urls = tr.map(x => x.url).filter(x => /^(https?|udp):/i.test(x)), pub = urls.filter(x => TRACKERS.includes(x));
+    if (!pub.length || pub.length === urls.length) continue;
+    await qbt('/api/v2/torrents/removeTrackers', { method: 'POST', body: form({ hash: t.hash, urls: pub.join('|') }) }).catch(() => {});
+    await qbt('/api/v2/torrents/reannounce', { method: 'POST', body: form({ hashes: t.hash }) }).catch(() => {});
+  }
+}
 async function giveLeft() {
   const o = idxRead();
   for (const [h, e] of Object.entries(o)) {
     if (!e.give || e.qbt || (client && client.get(h))) continue;
-    let buf = null; try { buf = fs.readFileSync(path.join(META, h + '.torrent')); } catch (er) { continue; }
+    let buf = null; try { buf = cleanTorrent(fs.readFileSync(path.join(META, h + '.torrent'))); } catch (er) { continue; }
     await qbtGiveBuf(buf, h, e.dir || DIR, e.cat || '', e.w).catch(() => {});
   }
 }
@@ -357,7 +381,7 @@ const diskFile = (q, i) => { const f = qFile(q, i); if (!f) return null;
    d'après les morceaux reçus notés à la fermeture (index) et sa description gardée (.meta) */
 function keptFiles(h) {
   const e = idxRead()[h]; if (!e || !e.bf || !e.np) return null;
-  let tor; try { tor = require('parse-torrent')(fs.readFileSync(path.join(META, h + '.torrent'))); } catch (er) { return null; }
+  let tor; try { tor = require('parse-torrent')(cleanTorrent(fs.readFileSync(path.join(META, h + '.torrent')))); } catch (er) { return null; }
   if (!tor || !tor.files || tor.pieces.length !== e.np) return null;
   const bf = Buffer.from(e.bf, 'base64'), has = i => !!(bf[i >> 3] & (128 >> (i & 7))), L = tor.pieceLength;
   return tor.files.map((f, i) => {
@@ -451,7 +475,7 @@ module.exports = function handleTorrent(req, res, u) {
         }
         if (!src) src = await fromBody(String(o.src || ''));
         let buf = typeof src === 'string' ? null : src;
-        try { if (!buf) buf = fs.readFileSync(path.join(META, h + '.torrent')); } catch (e) {}
+        try { if (!buf) buf = cleanTorrent(fs.readFileSync(path.join(META, h + '.torrent'))); } catch (e) {}
         await qbtEnsure(QBT);
         const fd = new FormData();
         if (buf) fd.append('torrents', new Blob([buf], { type: 'application/x-bittorrent' }), h + '.torrent'); else fd.append('urls', src);
