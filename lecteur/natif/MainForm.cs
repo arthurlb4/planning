@@ -36,7 +36,7 @@ public class MainForm : Form
     IDCompositionDevice dcomp; IDCompositionTarget target; IDCompositionVisual root;
     CoreWebView2CompositionController comp; CoreWebView2 web;
     public readonly VideoPanel Video = new() { BackColor = Color.Black, Visible = false };
-    Mpv mpv; Backend backend;
+    Mpv mpv; Backend backend; CoreWebView2Environment webEnv; Form ytWin;
     bool tracking; IntPtr cursor = IntPtr.Zero; bool wasMax;
     FormWindowState lastState = FormWindowState.Normal;
 
@@ -136,7 +136,7 @@ public class MainForm : Form
 
         var opts = new CoreWebView2EnvironmentOptions("--disable-web-security --allow-running-insecure-content --autoplay-policy=no-user-gesture-required "
             + "--enable-blink-features=AudioVideoTracks --disable-features=BlockInsecurePrivateNetworkRequests,PrivateNetworkAccessSendPreflights,PrivateNetworkAccessRespectPreflightResults,LocalNetworkAccessChecks");
-        var env = await CoreWebView2Environment.CreateAsync(null, Path.Combine(DataDir, "WebView2"), opts);
+        var env = webEnv = await CoreWebView2Environment.CreateAsync(null, Path.Combine(DataDir, "WebView2"), opts);
         comp = await env.CreateCoreWebView2CompositionControllerAsync(Handle);
         comp.RootVisualTarget = root;
         dcomp.Commit();
@@ -210,7 +210,33 @@ public class MainForm : Form
             case "vlc": Reply((int)m["id"]!, OpenVlc((string)m["url"], (string)m["name"])); break;
             case "fs": SetFull(!full); break;
             case "upd": Updater.CheckNow(this); break;
+            case "yt": YtLogin(); break;
         }
+    }
+    /* Connexion à YouTube (bandes-annonces) : derrière un VPN, YouTube demande souvent de se connecter. Page de connexion
+       Google dans une petite fenêtre, même profil que la page (le compte sert ensuite à ses lecteurs YouTube) ; fermée et page
+       prévenue une fois revenu sur YouTube. */
+    async void YtLogin()
+    {
+        if (ytWin != null && !ytWin.IsDisposed) { ytWin.Activate(); return; }
+        if (webEnv == null) return;
+        bool ok = false;
+        var w = ytWin = new Form { Text = "Connexion à YouTube", Width = 520, Height = 760, StartPosition = FormStartPosition.CenterParent, Icon = Icon, ShowInTaskbar = false };
+        var wv = new Microsoft.Web.WebView2.WinForms.WebView2 { Dock = DockStyle.Fill };
+        w.Controls.Add(wv);
+        w.FormClosed += (s, e) => { ytWin = null; Post(new JsonObject { ["t"] = "yt", ["st"] = new JsonObject { ["ok"] = ok } }); };
+        w.Show(this);
+        try
+        {
+            await wv.EnsureCoreWebView2Async(webEnv);
+            var cw = wv.CoreWebView2;
+            cw.NewWindowRequested += (s, e) => { e.Handled = true; cw.Navigate(e.Uri); };
+            void Check(string u) { if (!ok && Regex.IsMatch(u ?? "", @"^https://(www|m)\.youtube\.com/?(\?|#|$|feed/|index)", RegexOptions.IgnoreCase)) { ok = true; BeginInvoke(async () => { await Task.Delay(300); try { w.Close(); } catch { } }); } }
+            cw.SourceChanged += (s, e) => Check(cw.Source);
+            cw.NavigationCompleted += (s, e) => Check(cw.Source);
+            cw.Navigate("https://accounts.google.com/ServiceLogin?service=youtube&hl=fr&continue=" + Uri.EscapeDataString("https://www.youtube.com/signin?action_handle_signin=true&app=desktop&hl=fr&next=%2F"));
+        }
+        catch { try { w.Close(); } catch { } }
     }
     void Reply(int id, JsonNode v) => Post(new JsonObject { ["t"] = "res", ["id"] = id, ["v"] = v });
     public void Post(JsonObject o) { if (IsDisposed) return; if (InvokeRequired) { BeginInvoke(() => Post(o)); return; } try { web?.PostWebMessageAsJson(o.ToJsonString()); } catch { } }

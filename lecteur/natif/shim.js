@@ -13,6 +13,7 @@
     else if (m.t === 'mpv') L.mpv.forEach(f => { try { f(m.st); } catch (er) {} });
     else if (m.t === 'win') { max = !!(m.st && m.st.max); L.win.forEach(f => { try { f(m.st); } catch (er) {} }); }
     else if (m.t === 'vpn') vpn = m.v || vpn;
+    else if (m.t === 'yt') L.yt.forEach(f => { try { f(m.st || {}); } catch (er) {} });
     else if (m.t === 'upd') { upd = m.st || upd; L.upd.forEach(f => { try { f(upd); } catch (er) {} }); }
   });
   window.desktop = {
