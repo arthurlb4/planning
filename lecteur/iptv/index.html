@@ -3157,11 +3157,18 @@ function chMark(k, at) { const c = CH.cur; if (!c || c.done || c.m[k]) return; c
   if (k === 'image') { c.done = true; const l = LS.get('dev.chrono', []) || []; l.unshift({ w: c.what, t0: c.t0, m: c.m }); LS.set('dev.chrono', l.slice(0, 20)); } }
 const CH_STEPS = [['search', 'Recherche dans les indexeurs'], ['torrent', 'Fichier .torrent (indexeur)'], ['ready', 'Description du torrent'], ['peers', 'Connexion aux sources'], ['piece', 'Premiers morceaux'], ['image', 'Ouverture par le lecteur']];
 function chronoHtml(row) {
-  const c = CH.cur; if (!c) return '';
-  const sec = ms => (ms / 1000).toFixed(1).replace('.', ',') + ' s';
-  let prev = c.t0, h = '';
-  CH_STEPS.forEach(([k, lab]) => { const t = c.m[k]; if (!t) return; h += row(lab, sec(Math.max(0, t - prev))); prev = Math.max(prev, t); });
-  h += row('Total', c.done ? '<b>' + sec(c.m.image - c.t0) + '</b>' : 'en cours · ' + sec(Date.now() - c.t0));
+  const c = CH.cur, cur = S.current, tor = cur && /\/torrent\/|^torrent:/.test(cur.url || '');
+  const sec = ms => (ms / 1000).toFixed(1).replace('.', ',') + ' s', hist = (LS.get('dev.chrono', []) || []).filter(x => x && x.m && x.m.image);
+  if (!tor && !c) return '';
+  let h = '';
+  if (c && (!cur || !c.done || Date.now() - c.t0 < 6 * 3600e3)) {
+    let prev = c.t0;
+    CH_STEPS.forEach(([k, lab]) => { const t = c.m[k]; if (!t) return; h += row(lab, sec(Math.max(0, t - prev))); prev = Math.max(prev, t); });
+    h += row('Total', c.done ? '<b>' + sec(c.m.image - c.t0) + '</b>' : 'en cours · ' + sec(Date.now() - c.t0));
+  } else h += row('Cette lecture', 'pas mesurée (lancée autrement que par Lecture)');
+  // dernières mises en route : titre et durée totale
+  const last = hist.slice(c && c.done ? 1 : 0, (c && c.done ? 1 : 0) + 4);
+  if (last.length) h += '<tr><td colspan="2" style="padding-top:6px;color:var(--text3)">Précédentes</td></tr>' + last.map(x => row(esc(String(x.w || '').slice(0, 28)), sec(x.m.image - x.t0))).join('');
   return `<h4>Mise en route</h4><table>${h}</table>`;
 }
 function torStatsHtml(row) {
