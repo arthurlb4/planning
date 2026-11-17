@@ -33,6 +33,10 @@ function getClient() {
     // les liens magnet publics gardent les trackers publics. 35 connexions par torrent suffisent largement à la lecture.
     client = new WebTorrent({ utp: false, dht: false, lsd: false, maxConns: 35 });   // pas de module natif à compiler
     client.on('error', e => { clientErr = e.message || String(e); });
+    /* vitesse plafonnée à 15 Mo/s : assez pour lire sans attente (un film 4K demande 6 à 10 Mo/s), sans dépasser ce que le
+       disque écrit (au-delà, les morceaux pas encore écrits s'entassaient en mémoire : 1,3 Go, disque à 100 %, PC figé).
+       qBittorrent finit le reste ensuite, à son rythme */
+    try { client.throttleDownload(15e6); } catch (e) {}
   }
   return client;
 }
