@@ -3056,13 +3056,17 @@ function fail(c) {
     try { sessionStorage.setItem('iptv.httpTry', c.url); } catch (e) {}
     setStatus('load', '<span class="hint">Passage à la version iPhone de la page…</span>'); openHttpVersion(); return;
   }
-  const why = mixed
+  // serveur joint mais qui refuse (403) : adresse bloquée par le fournisseur (VPN, ou adresse bannie), quel que soit le navigateur
+  const refused = (S.tries || []).some(x => /\b403\b/.test(x.why || ''));
+  const why = refused
+    ? 'Le serveur IPTV <b>refuse la connexion</b> (erreur 403) : il bloque l\'adresse d\'où vous vous connectez. Souvent un VPN actif (les fournisseurs bloquent leurs adresses), ou votre adresse bannie par le fournisseur (trop de connexions). Essayez sans VPN, ou depuis une autre connexion (4G) ; si ça ne passe nulle part, le fournisseur doit la débloquer.'
+    : mixed
     ? 'Ce flux est en <b>http</b>, bloqué sur une page sécurisée (https), et sa version https ne s\'ouvre pas dans ce navigateur (serveur qui refuse les navigateurs, ou pas de https). Sur iPhone et Mac, Safari passe souvent là où Chrome, Edge ou Firefox échouent.'
     : 'Le flux ne répond pas au navigateur : serveur hors ligne, accès refusé aux navigateurs (CORS) ou format non pris en charge.';
   // Détail des essais (lecteur, adresse, erreur exacte) : pas affiché, copié par le bouton pour le diagnostic
   const log = (S.tries || []).map(x => ({ native: 'appareil', hls: 'hls.js', mpegts: 'mpegts.js' }[x.eng] || x.eng) + ' · ' + x.u + ' → ' + x.why);
   failMsg([why.replace(/<[^>]+>/g, ''), ...log, navigator.userAgent.replace(/^Mozilla\/5\.0 /, '').slice(0, 140)].join('\n'),
-    (mixed && APPLE_WEBKIT && !/[#&]fromhttps=1/.test(location.hash) ? `<button class="btn primary" onclick="openHttpVersion()">Ouvrir la version iPhone</button>` : '') +
+    (!refused && mixed && APPLE_WEBKIT && !/[#&]fromhttps=1/.test(location.hash) ? `<button class="btn primary" onclick="openHttpVersion()">Ouvrir la version iPhone</button>` : '') +
     `<button class="btn${mixed && APPLE_WEBKIT ? '' : ' primary'}" onclick="openVlc(S.current)">Ouvrir dans VLC</button>`);
 }
 // « Lecture impossible » seul, avec Réessayer et un bouton qui copie le code d'erreur complet
