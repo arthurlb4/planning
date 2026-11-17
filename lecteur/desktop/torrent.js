@@ -130,6 +130,14 @@ async function add(src, cat) {
   if (!dir) dir = await dlDir();
   return addWt(src, cat, dir);
 }
+/* Moins de calcul pour le processeur : webtorrent recalcule ses demandes auprès de toutes les sources à chaque annonce d'un
+   pair (« j'ai reçu tel morceau ») ou bloc reçu, des centaines de fois par seconde sur un film récent très partagé, en
+   parcourant des milliers de morceaux : node.exe tournait à fond. Recalculs regroupés : au plus un toutes les 40 ms. */
+function calm(t) {
+  if (!t || t._calm || typeof t._update !== 'function') return;
+  const run = t._update.bind(t); let wait = null; t._calm = true;
+  t._update = () => { if (wait) return; wait = setTimeout(() => { wait = null; if (!t.destroyed) run(); }, 40); };
+}
 function addWt(src, cat, dir) {
   return new Promise((resolve, reject) => {
     const c = getClient(), old = c.get(src);
@@ -152,7 +160,7 @@ function addWt(src, cat, dir) {
         idxTouch(t); metaSave(t);
         resolve(info(t));
       });
-      fastResume(t);
+      fastResume(t); calm(t);
       t.on('warning', e => { t._lastWarn = String((e && e.message) || e).slice(0, 200); });
       t.on('error', e => { if (done) return; done = true; clearTimeout(timer); reject(e); });
     } catch (e) { done = true; clearTimeout(timer); reject(e); }
