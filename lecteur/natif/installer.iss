@@ -33,3 +33,11 @@ Name: "{userdesktop}\Lecteur IPTV (natif)"; Filename: "{app}\LecteurIPTV.exe"
 
 [Run]
 Filename: "{app}\LecteurIPTV.exe"; Description: "Ouvrir le Lecteur IPTV"; Flags: nowait postinstall skipifsilent
+; mise à jour par « Redémarrer et installer » (installation sans fenêtre) : l'appli est rouverte une fois tout installé
+Filename: "{app}\LecteurIPTV.exe"; Flags: nowait; Check: Relancer
+
+[Code]
+function Relancer: Boolean;
+begin
+  Result := WizardSilent and (ExpandConstant('{param:RELANCE|0}') = '1');
+end;

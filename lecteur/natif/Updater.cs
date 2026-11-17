@@ -114,10 +114,10 @@ static class Updater
     static void Launch(bool reopen)
     {
         if (ready == null || !File.Exists(ready)) return;
-        var exe = Application.ExecutablePath;
         // quelques secondes d'attente (fermeture de l'appli et de mpv), installation sans fenêtre, puis réouverture si demandée
-        var cmd = "/c timeout /t 3 /nobreak >nul & start \"\" /wait \"" + ready + "\" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART"
-            + (reopen ? " & start \"\" \"" + exe + "\"" : "");
+        // attente par ping (« timeout » ne marche pas sans console) ; la réouverture est faite par l'installateur lui-même, une
+        // fois l'installation finie (paramètre /RELANCE=1, voir installer.iss)
+        var cmd = "/c ping -n 5 127.0.0.1 >nul & \"" + ready + "\" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS" + (reopen ? " /RELANCE=1" : "");
         try { Process.Start(new ProcessStartInfo("cmd.exe", cmd) { CreateNoWindow = true, UseShellExecute = false, WindowStyle = ProcessWindowStyle.Hidden }); ready = null; launched = true; }
         catch { }
     }
