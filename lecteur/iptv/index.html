@@ -774,6 +774,7 @@ body.hassrc #vbar .vsrc{display:inline-flex}
 .dli svg{position:relative;width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
 .dli:hover{transform:scale(1.12);color:var(--text)}
 .dli.full{background:var(--ring);color:var(--bg2);cursor:default}.dli.full::before{display:none}.dli.full:hover{transform:none}
+.dli:not(.full){display:none}.dli.full{pointer-events:none}   /* simple repère : montré seulement si c'est entièrement sur ce PC */
 .dli.wait{animation:dlip 1.2s ease-in-out infinite}@keyframes dlip{50%{opacity:.45}}
 #epMenu .el button .dli{margin-left:auto}
 #epMenu .ssn button{display:inline-flex;align-items:center;gap:7px}#epMenu .ssn .dli{width:20px;height:20px;margin-right:-6px}#epMenu .ssn .dli svg{width:11px;height:11px}
@@ -2129,7 +2130,7 @@ async function epLocal(tvId, s, n) {
 }
 const DLI_SVG = '<svg viewBox="0 0 24 24"><path d="M12 5v10M7.5 11l4.5 4.5 4.5-4.5M6 19.5h12"/></svg>';
 // p : part reçue (0 à 1, null = rien) ; attrs : de quoi le reconnaître au clic
-const dlIco = (p, attrs, tip) => { p = p || 0; const full = p >= 0.995;
+const dlIco = (p, attrs, tip) => { p = p || 0; const full = p >= 0.995; tip = 'Téléchargé sur ce PC';
   return `<span class="dli${full ? ' full' : ''}" style="--p:${Math.min(1, p).toFixed(3)}" ${attrs} title="${full ? 'Téléchargé sur ce PC' : p > 0.005 ? 'Téléchargé à ' + Math.floor(p * 100) + ' % : cliquer pour le finir' : tip}">${DLI_SVG}</span>`; };
 const epBadge = p => p == null ? '' : p >= 0.995 ? '<span class="epdl ok" title="Téléchargé sur ce PC">✓ téléchargé</span>' : p >= 0.01 ? `<span class="epdl" title="Téléchargé en partie sur ce PC">${Math.floor(p * 100)} %</span>` : '';
 /* Fiche d'une série : ronds de téléchargement (épisodes de la saison ouverte, et chaque saison d'après son nombre d'épisodes
@@ -2174,7 +2175,7 @@ function ficheDli() {
       let t = 0; for (let n = 1; n <= k; n++) t += H.get(sn + ':' + n) || 0; dliSet(d, k ? t / k : 0); });
   }).catch(() => {});
 }
-setInterval(() => { if ($('#vodTorS [data-fepdl], #vodTorS [data-fssdl]')) { EPH.at = 0; ficheDli(); } if ($('#vodDetail [data-mdl]')) movDli(); }, 3000);
+setInterval(() => { if ($('#vodTorS [data-fepdl], #vodTorS [data-fssdl]')) { EPH.at = 0; ficheDli(); } if ($('#vodDetail [data-mdl]')) movDli(); }, 30000);
 async function vodTorSeason(it, s) {
   const ti = VTS.ti, body = $('#vodTorSB'); if (!body || !ti) return;
   VTS.s = s; LS.set('tseason.' + ti.id, s);
@@ -6286,14 +6287,14 @@ function renderEpMenu() {
   const cur = m.querySelector('.el button.on'); if (cur) cur.scrollIntoView({ block: 'nearest' });
 }
 const EPM = { s: 0 };
-// menu Épisodes ouvert : anneaux de téléchargement rafraîchis toutes les 3 s
+// menu Épisodes ouvert : repères « téléchargé » rafraîchis toutes les 30 s
 setInterval(() => {
   const m = $('#epMenu'), c = S.current; if (!m || m.hidden || !c || !c.torAlts || !c.torAlts.g || !c.torAlts.g.tm) return;
   EPH.at = 0; epHave(c.torAlts.g.tm.id).then(H => {
     if (m.hidden) return;
     m.querySelectorAll('[data-epdl]').forEach(d => { if (d.classList.contains('wait')) return; const p = H.get(d.dataset.epdl) || 0; d.style.setProperty('--p', Math.min(1, p).toFixed(3)); d.classList.toggle('full', p >= 0.995); });
   }).catch(() => {});
-}, 3000);
+}, 30000);
 /* Télécharger un épisode (n) ou toute la saison (n = 0) sans le regarder : torrent de la saison en cours de lecture, sinon
    celui déjà sur le PC, sinon le meilleur des indexeurs (saison complète, ou torrent de l'épisode) ; gardé par qBittorrent */
 async function epKeep(sn, n, A) {
