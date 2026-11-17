@@ -70,8 +70,13 @@ static class Updater
     static async Task Download(string ver, string part)
     {
         string url = BASE + "Lecteur-IPTV-Natif-" + ver + ".exe";
-        using (var head = new HttpRequestMessage(HttpMethod.Head, url))
-        using (var hr = await http.SendAsync(head)) if (!hr.IsSuccessStatusCode) url = BASE + "Lecteur-IPTV-Natif-Installation.exe";
+        // existe ? (un seul octet demandé : le stockage de GitHub refuse les requêtes HEAD)
+        using (var probe = new HttpRequestMessage(HttpMethod.Get, url))
+        {
+            probe.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(0, 0);
+            using var hr = await http.SendAsync(probe, HttpCompletionOption.ResponseHeadersRead);
+            if (!hr.IsSuccessStatusCode) url = BASE + "Lecteur-IPTV-Natif-Installation.exe";
+        }
         long got = 0, total = 0, winBytes = 0; var win = Stopwatch.StartNew(); double bps = 0; int last = -1; string? etag = null;
         void Report(bool force)
         {
