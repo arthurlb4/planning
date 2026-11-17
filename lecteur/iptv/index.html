@@ -5667,7 +5667,7 @@ $('#vbRange').addEventListener('pointerleave', vthHide);
 // une à la fois et jamais pendant un survol (l'image survolée passe d'abord)
 setInterval(() => {
   const c = S.current; if (!c || !c.vod || !window.desktop || !/\/torrent\/file\//.test(c.url || '') || VTH.busy || Date.now() - (VTH.hover || 0) < 1500) return;
-  if (S.engine !== 'remux' && S.engine !== 'mpv') return;
+  if ((S.engine !== 'remux' && S.engine !== 'mpv') || ldiStalled()) return;   // pas pendant une attente : la lecture d'abord
   const dur = S.engine === 'mpv' ? S.mpvSt.dur || 0 : S.remux && S.remux.info ? S.remux.info.duration || 0 : 0, map = TMAP.info && TMAP.info.map; if (!dur || !map) return;
   const step = Math.max(10, Math.round(dur / 100 / 5) * 5); VTH.tried = VTH.tried || new Set();
   for (let tk = 0; tk < dur; tk += step) {
@@ -5677,7 +5677,7 @@ setInterval(() => {
     fetch(window.desktop.remux + '/thumb?url=' + encodeURIComponent(c.url) + '&t=' + tk).then(r => r.status === 200 ? r.blob() : null).then(bl => { if (bl) VTH.imgs.set(key, URL.createObjectURL(bl)); }).catch(() => {}).finally(() => { VTH.busy = false; });
     return;
   }
-}, 700);
+}, 4000);   // une vignette toutes les 4 s au plus (chacune fait décoder une image du film à ffmpeg : le PC doit rester fluide)
 $('#vbLive').onclick = () => { const w = liveWin(); if (w && !atLive(w)) video.currentTime = liveTarget(w); if (video.paused) video.play().catch(() => {}); vbarUpdate(); };
 const mpvOn = () => S.engine === 'mpv' && NAT;
 const mpvC = a => window.desktop.mpv.cmd(a);

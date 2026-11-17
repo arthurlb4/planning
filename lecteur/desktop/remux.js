@@ -97,8 +97,10 @@ function thumb(ffmpeg, src, t, res) {
   const send = buf => { if (!buf || !buf.length) { res.statusCode = 204; return res.end(); } res.setHeader('Content-Type', 'image/jpeg'); res.setHeader('Cache-Control', 'max-age=3600'); res.end(buf); };
   if (c) return send(c);
   if (THUMB.proc) { try { THUMB.proc.kill('SIGKILL'); } catch (e) {} }
-  const ff = THUMB.proc = spawn(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-skip_frame', 'nokey', '-noaccurate_seek', '-ss', String(t), '-rw_timeout', '15000000', '-i', src,
+  // vignette : un seul cœur, priorité minimale (le reste du PC et la lecture passent avant)
+  const ff = THUMB.proc = spawn(ffmpeg, ['-hide_banner', '-loglevel', 'error', '-threads', '1', '-skip_frame', 'nokey', '-noaccurate_seek', '-ss', String(t), '-rw_timeout', '15000000', '-i', src,
     '-map', '0:v:0', '-frames:v', '1', '-vf', 'scale=-2:160', '-c:v', 'mjpeg', '-q:v', '6', '-f', 'image2pipe', 'pipe:1'], { windowsHide: true });
+  try { if (ff.pid) os.setPriority(ff.pid, os.constants.priority.PRIORITY_LOW); } catch (e) {}
   const parts = []; let done = false;
   ff.stdout.on('data', b => parts.push(b));
   const end = () => { if (done) return; done = true; if (THUMB.proc === ff) THUMB.proc = null; const buf = Buffer.concat(parts);
