@@ -3058,8 +3058,13 @@ function fail(c) {
   }
   // serveur joint mais qui refuse (403) : adresse bloquée par le fournisseur (VPN, ou adresse bannie), quel que soit le navigateur
   const refused = (S.tries || []).some(x => /\b(403|511)\b/.test(x.why || ''));   // 511 : connexion « non autorisée » (VPN détecté, le plus souvent)
+  // serveurs à mettre en exception du VPN : celui de la liste (qui délivre l'autorisation, liée à l'adresse qui la demande) et
+  // ceux des chaînes ; les deux doivent passer par la même connexion
+  const host = u => { try { return new URL(u).hostname; } catch (e) { return ''; } };
+  const hosts = [...new Set([S.pl && S.pl.url ? host(S.pl.url) : '', host(c.url), ...(S.tries || []).map(x => host(x.u))].filter(Boolean))];
   const why = refused
     ? 'Le serveur IPTV <b>refuse la connexion</b> (erreur 403 ou 511) : il bloque l\'adresse d\'où vous vous connectez. Souvent un VPN actif (les fournisseurs bloquent leurs adresses), ou votre adresse bannie par le fournisseur (trop de connexions). Essayez sans VPN, ou depuis une autre connexion (4G) ; si ça ne passe nulle part, le fournisseur doit la débloquer.'
+      + (hosts.length ? '<br><br>Pour garder le VPN : mettez <b>tous</b> ces serveurs dans les exceptions du VPN (la liste et les chaînes doivent passer par la même connexion), puis reconnectez-le : <b>' + hosts.map(esc).join('</b>, <b>') + '</b>' : '')
     : mixed
     ? 'Ce flux est en <b>http</b>, bloqué sur une page sécurisée (https), et sa version https ne s\'ouvre pas dans ce navigateur (serveur qui refuse les navigateurs, ou pas de https). Sur iPhone et Mac, Safari passe souvent là où Chrome, Edge ou Firefox échouent.'
     : 'Le flux ne répond pas au navigateur : serveur hors ligne, accès refusé aux navigateurs (CORS) ou format non pris en charge.';
