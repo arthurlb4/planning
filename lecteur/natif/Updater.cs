@@ -51,7 +51,7 @@ static class Updater
             Set(new() { ["state"] = "checking" });
             string txt;
             using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20))) txt = (await http.GetStringAsync(BASE + "natif-version.txt", cts.Token)).Trim();
-            if (!Version.TryParse(txt, out var v) || v <= Current) { Set(new() { ["state"] = "latest" }); return; }
+            if (!Version.TryParse(txt, out var v) || v <= Current) { Clean(); Set(new() { ["state"] = "latest" }); return; }
             var dir = Path.Combine(Path.GetTempPath(), "LecteurIPTVNatif-maj"); Directory.CreateDirectory(dir);
             foreach (var old in Directory.GetFiles(dir)) try { File.Delete(old); } catch { }
             var file = Path.Combine(dir, "Lecteur-IPTV-Natif-" + txt + ".exe"); var part = file + ".part";
@@ -111,6 +111,11 @@ static class Updater
         }
     }
 
+    // à jour : installateurs déjà utilisés supprimés (≈ 150 Mo chacun) ; seul le compte rendu de la dernière installation reste
+    static void Clean()
+    {
+        try { foreach (var f in Directory.GetFiles(Path.Combine(Path.GetTempPath(), "LecteurIPTVNatif-maj"))) if (!f.EndsWith("install.log", StringComparison.OrdinalIgnoreCase)) try { File.Delete(f); } catch { } } catch { }
+    }
     static void Launch(bool reopen)
     {
         if (ready == null || !File.Exists(ready)) return;
