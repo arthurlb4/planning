@@ -5,7 +5,19 @@ const CLIENT_ID = '669191513748-a40uvl9k46kqsmjatpqokhnhgvrc7mdt.apps.googleuser
 const ALLOWED_ORIGIN = 'https://arthurlb4.github.io';
 // Adresses d'où l'app peut appeler le serveur : l'ancienne (GitHub Pages) et le domaine de l'app
 const ALLOWED_ORIGINS = [ALLOWED_ORIGIN, 'https://franceinfoplanning.com', 'https://www.franceinfoplanning.com',
-  'http://franceinfoplanning.com', 'http://www.franceinfoplanning.com']; // http : le temps que le certificat HTTPS soit prêt
+  'http://franceinfoplanning.com', 'http://www.franceinfoplanning.com', // http : le temps que le certificat HTTPS soit prêt
+  'http://tv.lecteur.franceinfoplanning.com'];   // lecteur IPTV en http seulement (voir iptvHttpPage)
+/* Adresse du lecteur IPTV volontairement sans https : sous-adresse à deux niveaux, que le certificat gratuit de Cloudflare ne
+   couvre pas. Chrome y tente le https, échoue, et reste en http : la page peut alors lire les chaînes en http (bloquées sur
+   une page https). Sert la même page que https://franceinfoplanning.com/iptv/ (copie prise à chaque visite). */
+const HTTP_HOST = 'tv.lecteur.franceinfoplanning.com';
+async function iptvHttpPage(url) {
+  const rest = url.pathname.replace(/^\/(iptv\/?)?/, '');
+  const r = await fetch('https://franceinfoplanning.com/iptv/' + rest + url.search, { cf: { cacheTtl: 0 } });
+  const h = new Headers(); ['content-type', 'last-modified', 'etag'].forEach(k => { const v = r.headers.get(k); if (v) h.set(k, v); });
+  h.set('Cache-Control', 'no-cache');
+  return new Response(r.body, { status: r.status, headers: h });
+}
 // Adresse de l'app (liens des mails, retour de Google) : celle d'où vient la demande
 // Adresses de retour Google acceptées (celle enregistrée chez Google sert aussi depuis franceinfoplanning.com)
 const OAUTH_RU = ['https://arthurlb4.github.io/planning/app/', 'https://franceinfoplanning.com/app/', 'https://www.franceinfoplanning.com/app/'];
@@ -593,6 +605,7 @@ async function handle(request, env, ctx) {
     try {
     var url = new URL(request.url);
     var path = url.pathname;
+    if (url.hostname === HTTP_HOST && request.method === 'GET') return iptvHttpPage(url);
     if (path === '/iptv/m3u') return iptvM3u(request, url);
     if (path === '/iptv/ost') return iptvOst(request, url);
     if (path === '/iptv/sctop') return iptvScTop(request, url, ctx);
