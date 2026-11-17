@@ -153,7 +153,7 @@ public class MainForm : Form
         try { int port = await portTask; if (port > 0) remux = "http://127.0.0.1:" + port; } catch { }
         string shim;
         using (var st = typeof(MainForm).Assembly.GetManifestResourceStream("shim.js")!) using (var rd = new StreamReader(st)) shim = rd.ReadToEnd();
-        var cfg = new JsonObject { ["remux"] = remux, ["version"] = "natif " + Application.ProductVersion.Split('+')[0], ["mpv"] = mpv.Available };
+        var cfg = new JsonObject { ["remux"] = remux, ["version"] = "natif " + string.Join(".", Application.ProductVersion.Split('+')[0].Split('.').Take(3)), ["mpv"] = mpv.Available };
         await web.AddScriptToExecuteOnDocumentCreatedAsync(shim.Replace("__CFG__", cfg.ToJsonString()));
 
         web.WebMessageReceived += (s, a) => { try { OnMessage(a.TryGetWebMessageAsString()); } catch { } };

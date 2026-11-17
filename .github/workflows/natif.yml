@@ -12,6 +12,7 @@ on:
       - 'lecteur/desktop/torrent-proc.js'
       - 'lecteur/desktop/backend.js'
       - 'lecteur/desktop/icon.ico'
+      - 'lecteur/desktop/package.json'
       - '.github/workflows/natif.yml'
   workflow_dispatch:
 
@@ -28,13 +29,19 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+
+      # même numéro que l'appli Windows classique (package.json), plus un numéro de construction caché (mise à jour automatique
+      # d'une correction propre à l'appli native, publiée sous le même numéro)
+      - name: Numéro de version
+        shell: bash
+        run: echo "NATIF_VER=$(node -p "require('./lecteur/desktop/package.json').version").${{ github.run_number }}" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v4
         with:
           node-version: 20
 
       # outil .NET déjà installé sur les serveurs Windows de GitHub (son installation restait parfois bloquée)
       - name: Appli (C#)
-        run: dotnet --list-sdks; dotnet publish lecteur/natif/LecteurNatif.csproj -c Release -r win-x64 --self-contained true -o build/app -p:Version=0.1.${{ github.run_number }}
+        run: dotnet --list-sdks; dotnet publish lecteur/natif/LecteurNatif.csproj -c Release -r win-x64 --self-contained true -o build/app -p:Version=${{ env.NATIF_VER }}
 
       - name: Serveur local (Node, torrents, conversion)
         shell: bash
@@ -61,7 +68,7 @@ jobs:
         shell: pwsh
         run: |
           if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) { choco install innosetup -y --no-progress | Out-Null; $env:Path += ";C:\Program Files (x86)\Inno Setup 6" }
-          $env:APP_VERSION = "0.1.$env:GITHUB_RUN_NUMBER"
+          $env:APP_VERSION = $env:NATIF_VER
           iscc lecteur/natif/installer.iss
           Get-ChildItem build/*.exe
 
@@ -74,10 +81,10 @@ jobs:
           gh release upload iptv-natif build/Lecteur-IPTV-Natif-Installation.exe --clobber
           # installateur propre à cette version, pour la mise à jour automatique (jamais remplacé pendant un téléchargement) ;
           # seuls les deux derniers sont gardés
-          v="0.1.${{ github.run_number }}"
+          v="$NATIF_VER"
           cp build/Lecteur-IPTV-Natif-Installation.exe "build/Lecteur-IPTV-Natif-$v.exe"
           gh release upload iptv-natif "build/Lecteur-IPTV-Natif-$v.exe" --clobber
-          gh release view iptv-natif --json assets -q '.assets[].name' | grep -E '^Lecteur-IPTV-Natif-0\.1\.[0-9]+\.exe$' | sort -t. -k3 -n | head -n -2 | while read -r old; do gh release delete-asset iptv-natif "$old" -y || true; done
+          gh release view iptv-natif --json assets -q '.assets[].name' | grep -E '^Lecteur-IPTV-Natif-[0-9]+(\.[0-9]+)+\.exe$' | sort -V | head -n -2 | while read -r old; do gh release delete-asset iptv-natif "$old" -y || true; done
           # version publiée, lue par l'appli pour se mettre à jour toute seule (envoyée après l'installateur)
-          echo "0.1.${{ github.run_number }}" > build/natif-version.txt
+          echo "$NATIF_VER" > build/natif-version.txt
           gh release upload iptv-natif build/natif-version.txt --clobber

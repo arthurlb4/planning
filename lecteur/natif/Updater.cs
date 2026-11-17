@@ -21,6 +21,8 @@ static class Updater
     public static JsonObject State { get; private set; } = new() { ["state"] = "idle" };
     public static event Action<JsonObject>? Changed;
 
+    // numéro montré : celui de l'appli Windows (le 4e, numéro de construction, reste caché)
+    static string Short(string v) => string.Join(".", v.Split('.').Take(3));
     static Version Current => Version.TryParse(Application.ProductVersion.Split('+')[0], out var v) ? v : new Version(0, 0);
     static void Set(JsonObject st) { State = st; try { Changed?.Invoke(st); } catch { } }
 
@@ -56,7 +58,7 @@ static class Updater
             if (new FileInfo(part).Length < 5_000_000) { File.Delete(part); throw new Exception("fichier incomplet"); }
             File.Move(part, file, true);
             ready = file;
-            Set(new() { ["state"] = "ready", ["version"] = txt, ["total"] = new FileInfo(file).Length });
+            Set(new() { ["state"] = "ready", ["version"] = Short(txt), ["total"] = new FileInfo(file).Length });
         }
         catch (Exception e) { Set(new() { ["state"] = "error", ["msg"] = e.Message }); }
         finally { Interlocked.Exchange(ref busy, 0); }
@@ -76,7 +78,7 @@ static class Updater
             if (win.ElapsedMilliseconds >= 1000) { bps = winBytes * 1000.0 / win.ElapsedMilliseconds; winBytes = 0; win.Restart(); force = true; }
             int pct = total > 0 ? (int)(got * 100 / total) : 0;
             if (!force && pct == last) return; last = pct;
-            Set(new() { ["state"] = "downloading", ["version"] = ver, ["pct"] = pct, ["total"] = total, ["done"] = got, ["bps"] = (long)bps });
+            Set(new() { ["state"] = "downloading", ["version"] = Short(ver), ["pct"] = pct, ["total"] = total, ["done"] = got, ["bps"] = (long)bps });
         }
         Report(true);
         await using var fs = File.Create(part);
