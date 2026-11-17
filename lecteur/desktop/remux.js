@@ -217,6 +217,20 @@ module.exports = function startRemux(ffmpeg, findVlc) {
       res.setHeader('Access-Control-Allow-Headers', '*');
       if (req.method === 'OPTIONS') { res.statusCode = 204; return res.end(); }
       if (u.pathname === '/ping') return res.end('ok');
+      // comme nslookup : vrai nom derrière un alias (CNAME) et adresses, pour les exceptions du VPN (serveur IPTV refusé)
+      if (u.pathname === '/dns') {
+        const dns = require('dns').promises, h0 = String(u.searchParams.get('h') || '').toLowerCase();
+        res.setHeader('Content-Type', 'application/json');
+        if (!/^[a-z0-9.-]{1,253}$/.test(h0)) return res.end(JSON.stringify({ error: 'nom invalide' }));
+        (async () => {
+          const alias = []; let name = h0;
+          for (let k = 0; k < 5; k++) { const c = await dns.resolveCname(name).catch(() => null); if (!c || !c[0]) break; alias.push(c[0]); name = c[0]; }
+          let ips = await dns.resolve4(name).catch(() => []);
+          if (!ips.length) ips = (await dns.lookup(name, { all: true, family: 4 }).catch(() => [])).map(x => x.address);   // secours : résolveur de Windows
+          res.end(JSON.stringify({ host: h0, alias, ips }));
+        })().catch(e => res.end(JSON.stringify({ error: e.message })));
+        return;
+      }
       if (u.pathname === '/subs') {                                // sous-titres extraits jusqu'ici (le fichier grandit pendant la lecture)
         const f = SUBS.get(u.searchParams.get('id') || '');
         res.setHeader('Content-Type', 'text/vtt; charset=utf-8'); res.setHeader('Cache-Control', 'no-store');

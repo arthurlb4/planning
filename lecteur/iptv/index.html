@@ -3072,12 +3072,20 @@ function fail(c) {
   const log = (S.tries || []).map(x => ({ native: 'appareil', hls: 'hls.js', mpegts: 'mpegts.js' }[x.eng] || x.eng) + ' · ' + x.u + ' → ' + x.why);
   failMsg([why.replace(/<[^>]+>/g, ''), ...log, navigator.userAgent.replace(/^Mozilla\/5\.0 /, '').slice(0, 140)].join('\n'),
     (!refused && mixed && APPLE_WEBKIT && !/[#&]fromhttps=1/.test(location.hash) ? `<button class="btn primary" onclick="openHttpVersion()">Ouvrir la version iPhone</button>` : '') +
-    `<button class="btn${mixed && APPLE_WEBKIT ? '' : ' primary'}" onclick="openVlc(S.current)">Ouvrir dans VLC</button>`);
+    `<button class="btn${mixed && APPLE_WEBKIT ? '' : ' primary'}" onclick="openVlc(S.current)">Ouvrir dans VLC</button>`,
+    refused ? 'Serveur IPTV qui refuse la connexion (VPN actif ?). Pour garder le VPN, mettez dans ses exceptions : <b id="vpnHosts">' + hosts.map(esc).join(', ') + '</b>, puis reconnectez-le.' : '');
+  // appli : comme nslookup, le vrai serveur derrière chaque alias et ses adresses (les exceptions du VPN suivent mal les alias)
+  if (refused && window.desktop && window.desktop.remux && hosts.length) Promise.all(hosts.map(h => fetch(window.desktop.remux + '/dns?h=' + encodeURIComponent(h)).then(r => r.json()).catch(() => null))).then(L => {
+    const all = [...new Set(L.filter(Boolean).flatMap(x => [x.host, ...(x.alias || []), ...(x.ips || [])]).filter(Boolean))];
+    const el = $('#vpnHosts'); if (!el || S.current !== c || all.length <= hosts.length) return;
+    el.innerHTML = all.map(esc).join(', ');
+    S.errText += '\nÀ exclure du VPN : ' + all.join(', ');
+  });
 }
 // « Lecture impossible » seul, avec Réessayer et un bouton qui copie le code d'erreur complet
-function failMsg(txt, extra) {
+function failMsg(txt, extra, note) {
   S.errText = txt;
-  setStatus('msg', '<b style="color:var(--text)">Lecture impossible</b>',
+  setStatus('msg', '<b style="color:var(--text)">Lecture impossible</b>' + (note ? '<div class="hint" id="failNote" style="margin-top:8px;max-width:520px;line-height:1.5">' + note + '</div>' : ''),
     '<button class="btn" onclick="play(S.current)">Réessayer</button><button class="btn" onclick="copyErr()">Copier le code d\'erreur</button>' + (extra || ''));
 }
 function copyErr() {
