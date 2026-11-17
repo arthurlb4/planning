@@ -114,11 +114,21 @@ static class Updater
     static void Launch(bool reopen)
     {
         if (ready == null || !File.Exists(ready)) return;
-        // quelques secondes d'attente (fermeture de l'appli et de mpv), installation sans fenêtre, puis réouverture si demandée
-        // attente par ping (« timeout » ne marche pas sans console) ; la réouverture est faite par l'installateur lui-même, une
-        // fois l'installation finie (paramètre /RELANCE=1, voir installer.iss)
-        var cmd = "/c ping -n 5 127.0.0.1 >nul & \"" + ready + "\" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS" + (reopen ? " /RELANCE=1" : "");
-        try { Process.Start(new ProcessStartInfo("cmd.exe", cmd) { CreateNoWindow = true, UseShellExecute = false, WindowStyle = ProcessWindowStyle.Hidden }); ready = null; launched = true; }
+        /* Installation lancée seulement une fois l'appli vraiment fermée (on attend la fin de son processus, puis de ceux qu'elle
+           a lancés depuis son dossier : serveur local, mpv), sinon l'installateur trouve ses fichiers pris et abandonne sans rien
+           dire. Fermeture forcée en dernier recours ; compte rendu dans install.log ; réouverture par l'installateur (/RELANCE=1). */
+        string dir = Path.GetDirectoryName(ready)!, logf = Path.Combine(dir, "install.log"), appDir = AppContext.BaseDirectory.TrimEnd('\\');
+        var ps = "$ErrorActionPreference='SilentlyContinue';"
+            + "Wait-Process -Id " + Environment.ProcessId + " -Timeout 40;"
+            + "for($k=0;$k -lt 20;$k++){$l=Get-Process|?{$_.Path -and $_.Path.StartsWith('" + appDir.Replace("'", "''") + "')};if(-not $l){break};if($k -eq 12){$l|Stop-Process -Force};Start-Sleep 1};"
+            + "Start-Sleep 1;"
+            + "Start-Process -FilePath '" + ready.Replace("'", "''") + "' -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CLOSEAPPLICATIONS','/FORCECLOSEAPPLICATIONS','/LOG=\"" + logf.Replace("'", "''") + "\"'" + (reopen ? ",'/RELANCE=1'" : "") + " -Wait";
+        try
+        {
+            var psi = new ProcessStartInfo("powershell.exe") { CreateNoWindow = true, UseShellExecute = false, WindowStyle = ProcessWindowStyle.Hidden };
+            foreach (var a in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-Command", ps }) psi.ArgumentList.Add(a);
+            Process.Start(psi); ready = null; launched = true;
+        }
         catch { }
     }
     static void InstallNow(Form app) { Launch(true); app.BeginInvoke(() => app.Close()); }
