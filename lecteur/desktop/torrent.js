@@ -13,6 +13,7 @@
 //   POST /torrent/qbt      { url, category } : envoi à qBittorrent (téléchargement complet, rangé ensuite par Radarr / Sonarr) ;
 //                          fait ici et non par la page : qBittorrent refuse les requêtes venues d'un autre site
 const path = require('path');
+const RG = require('./ranger');
 const os = require('os');
 const fs = require('fs');
 
@@ -69,7 +70,15 @@ function cleanup() {
   try { fs.readdirSync(DIR).forEach(n => { if (n === '.index.json' || n === '.meta' || known.has(n)) return; const f = path.join(DIR, n); try { if (Date.now() - fs.statSync(f).mtimeMs > KEEP) fs.rmSync(f, { recursive: true, force: true }); } catch (e) {} }); } catch (e) {}
   idxWrite(o);
 }
-setTimeout(() => { cleanup(); giveLeft().finally(() => qbtFixTrackers().catch(() => {})); }, 30e3); setInterval(cleanup, 6 * 3600e3);
+setTimeout(() => { cleanup(); giveLeft().finally(() => qbtFixTrackers().catch(() => {})); }, 30e3);
+/* Rangement dans Ma médiathèque (ranger.js) : au lancement puis toutes les 10 min ; et qBittorrent réglé pour l'appeler à la
+   fin de chaque téléchargement, appli fermée (appli native : node.exe fourni avec elle) */
+const rangeTick = () => qbtUp(QBT).then(up => up && RG.rangeAll().catch(e => RG.log('erreur ' + e.message)));
+setTimeout(() => {
+  rangeTick();
+  if (/^node(\.exe)?$/i.test(path.basename(process.execPath))) qbtUp(QBT).then(up => up && RG.autorunSetup(process.execPath, path.join(__dirname, 'ranger.js')).then(r => RG.log('qBittorrent, fin de téléchargement : ' + r)).catch(() => {}));
+}, 60e3);
+setInterval(rangeTick, 10 * 60e3); setInterval(cleanup, 6 * 3600e3);
 // à la fermeture de l'appli : torrents fermés, fichiers gardés ; ceux assez avancés passent à qBittorrent au lancement suivant
 process.on('exit', () => { try { if (client) client.torrents.forEach(t => idxTouch(t, worth(t) ? { give: 1, w: [...(t._watched || [])] } : null)); } catch (e) {} try { if (client) client.destroy(); } catch (e) {} });
 
@@ -434,8 +443,9 @@ module.exports = function handleTorrent(req, res, u) {
       const known = /^[0-9a-f]{40}$/.test(h) ? (async () => { if (c.get(h) || fs.existsSync(path.join(META, h + '.torrent'))) return 'magnet:?xt=urn:btih:' + h; const q = await qbtHas(h).catch(() => null); return q ? 'magnet:?xt=urn:btih:' + h : null; })() : Promise.resolve(null);
       // durées pour le chronométrage de la mise en route (page) : .torrent auprès de l'indexeur, puis torrent prêt
       const t0 = Date.now(); let t1 = 0;
+      const hint = () => ({ kind: u.searchParams.get('cat') === 'series' ? 'series' : 'movie', tmdb: +u.searchParams.get('tmdb') || 0, title: u.searchParams.get('title') || '', orig: u.searchParams.get('orig') || '', year: +u.searchParams.get('year') || 0 });
       known.then(k => k || fromBody(body)).then(src => { t1 = Date.now(); return add(src, u.searchParams.get('cat') || ''); })
-        .then(i => json(Object.assign({}, i, { ms: { torrent: t1 - t0, ready: Date.now() - t1 } })), e => json({ error: e.message || String(e) }, 504));
+        .then(i => { if (u.searchParams.get('cat') && i && i.id) RG.hintSave(i.id, hint()); json(Object.assign({}, i, { ms: { torrent: t1 - t0, ready: Date.now() - t1 } })); }, e => json({ error: e.message || String(e) }, 504));
     });
     return true;
   }
@@ -463,13 +473,14 @@ module.exports = function handleTorrent(req, res, u) {
         if (blocked) throw new Error(VPN_MSG);
         const pick = names => names.map((nm, i) => [i, nm]).filter(([, nm]) => VID(nm) && (!ep || epRe(ep).some(r => r.test(path.basename(nm))))).map(([i]) => i);
         let h = /^[0-9a-f]{40}$/i.test(o.h || '') ? o.h.toLowerCase() : '';
+        const hint = o.tmdb || o.title ? { kind: o.cat === 'series' ? 'series' : 'movie', tmdb: +o.tmdb || 0, title: o.title || '', orig: o.orig || '', year: +o.year || 0 } : null;
         let src = null;
         if (!h) { src = await fromBody(String(o.src || '')); h = typeof src === 'string' ? btih(src) : bufHash(src); }
         const t = h && c.get(h);
         if (t && t.ready) {
           const ids = pick(t.files.map(f => f.path)); if (!ids.length) throw new Error('épisode introuvable dans ce torrent');
           t._watched = t._watched || new Set(); ids.forEach(i => { t._watched.add(i); t.files[i].select(); });
-          return json({ ok: true, h, where: 'app' });
+          if (hint) RG.hintSave(h, hint); return json({ ok: true, h, where: 'app' });
         }
         const q = h && await qbtHas(h).catch(() => null);
         if (q) {
@@ -477,7 +488,7 @@ module.exports = function handleTorrent(req, res, u) {
           if (!ids.length) throw new Error('épisode introuvable dans ce torrent');
           await qbt('/api/v2/torrents/filePrio', { method: 'POST', body: form({ hash: h, id: ids.join('|'), priority: '1' }) });
           await qbt('/api/v2/torrents/start', { method: 'POST', body: form({ hashes: h }) }).catch(() => qbt('/api/v2/torrents/resume', { method: 'POST', body: form({ hashes: h }) }).catch(() => {}));
-          return json({ ok: true, h, where: 'qbt' });
+          if (hint) RG.hintSave(h, hint); return json({ ok: true, h, where: 'qbt' });
         }
         if (!src) src = await fromBody(String(o.src || ''));
         let buf = typeof src === 'string' ? null : src;
@@ -503,7 +514,7 @@ module.exports = function handleTorrent(req, res, u) {
           }
         })().catch(() => {});
         const ix = idxRead(); ix[h] = Object.assign(ix[h] || {}, { name: ix[h] && ix[h].name || '', at: Date.now(), qbt: 1, cat: o.cat || '' }); idxWrite(ix);
-        json({ ok: true, h, where: 'qbt-new' });
+        if (hint) RG.hintSave(h, hint); json({ ok: true, h, where: 'qbt-new' });
       } catch (e) { json({ error: e.message || String(e) }, 502); }
     });
     return true;
@@ -532,6 +543,8 @@ module.exports = function handleTorrent(req, res, u) {
     }
     json(out); })().catch(e => json({ error: e.message }, 500)); return true;
   }
+  // rangement tout de suite (Paramètres) : compte rendu par torrent
+  if (u.pathname === '/torrent/ranger') { RG.rangeAll().then(r => json({ ok: true, r }), e => json({ error: e.message }, 502)); return true; }
   if (u.pathname === '/torrent/prefetch') {
     const id = (u.searchParams.get('id') || '').toLowerCase(), fi = +u.searchParams.get('f'), q = !c.get(id) && QB.get(id);
     // épisode en cours lu depuis le disque, suivant pas fini : le torrent est repris dès maintenant pour en préparer le début

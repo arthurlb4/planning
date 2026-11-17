@@ -1996,7 +1996,9 @@ async function torPlay(x, g, b, opts) {
     const ctx = g && g.tm ? g : await torCtx(x);
     torStop();
     // h : empreinte du torrent quand l'indexeur la donne ; déjà sur le PC, le .torrent n'est pas redemandé à l'indexeur
-    const r = await fetch(window.desktop.remux + '/torrent/add?cat=' + (ctx && ctx.kind === 'series' ? 'series' : 'films') + (/^[0-9a-f]{40}$/i.test(x.infoHash || '') ? '&h=' + x.infoHash.toLowerCase() : ''), { method: 'POST', body: src }).catch(() => null);
+    const r = await fetch(window.desktop.remux + '/torrent/add?cat=' + (ctx && ctx.kind === 'series' ? 'series' : 'films') + (/^[0-9a-f]{40}$/i.test(x.infoHash || '') ? '&h=' + x.infoHash.toLowerCase() : '')
+      // fiche (rangement dans Ma médiathèque par Radarr / Sonarr, voir ranger.js)
+      + (ctx && ctx.tm ? '&tmdb=' + (ctx.tm.id || '') + '&title=' + encodeURIComponent(ctx.tm.name || '') + '&orig=' + encodeURIComponent(ctx.tm.orig || '') + '&year=' + (ctx.tm.year || ctx.year || '') : ''), { method: 'POST', body: src }).catch(() => null);
     clearTimeout(tt);
     if (S.current !== pend) return;                      // lecteur quitté pendant l'attente
     const t2 = Date.now();
@@ -2137,7 +2139,7 @@ async function movHave(it) {
 function movDli() { const d = $('#vodDetail [data-mdl]'), it = V.open && V.open.it; if (!d || !it) return; movHave(it).then(v => { if (d.isConnected) dliSet(d, v.p); }).catch(() => {}); }
 async function movKeep(it) {
   const tm = (VT.it === it && VT.g && VT.g.tm) || {}, save = h => { const o = LS.get('vod.tordl', {}) || {}; if (h && !o[h]) { o[h] = { kind: 'movie', tmdb: it.tmdb || tm.id || 0, g: gKey(it), k: itemKey(it), n: it.name, y: it.year || 0, p: it.cover || '', at: Date.now() }; LS.set('vod.tordl', o); } };
-  const send = async x => { const j = await fetch(window.desktop.remux + '/torrent/keep', { method: 'POST', body: JSON.stringify({ src: x.src || x.magnetUrl || x.downloadUrl || '', h: x.h || x.infoHash || '', ep: null, cat: 'films' }) }).then(r => r.json()).catch(e => ({ error: e.message }));
+  const send = async x => { const j = await fetch(window.desktop.remux + '/torrent/keep', { method: 'POST', body: JSON.stringify({ src: x.src || x.magnetUrl || x.downloadUrl || '', h: x.h || x.infoHash || '', ep: null, cat: 'films', tmdb: it.tmdb || tm.id || 0, title: it.name, orig: tm.orig || '', year: it.year || tm.year || 0 }) }).then(r => r.json()).catch(e => ({ error: e.message }));
     if (j.error) throw new Error(j.error); save(j.h); };
   try {
     const v = await movHave(it);
@@ -6268,7 +6270,7 @@ async function epKeep(sn, n, A) {
   const c = A ? null : S.current; A = A || (c && c.torAlts); if (!A || !A.g || !A.g.tm || !torOk()) return;
   const tm = A.g.tm, lab = 'S' + pad2(sn) + (n ? 'E' + pad2(n) : '');
   const send = async (x, ep) => {
-    const j = await fetch(window.desktop.remux + '/torrent/keep', { method: 'POST', body: JSON.stringify({ src: x.src || x.magnetUrl || x.downloadUrl || '', h: x.h || x.infoHash || '', ep, cat: 'series' }) }).then(r => r.json()).catch(e => ({ error: e.message }));
+    const j = await fetch(window.desktop.remux + '/torrent/keep', { method: 'POST', body: JSON.stringify({ src: x.src || x.magnetUrl || x.downloadUrl || '', h: x.h || x.infoHash || '', ep, cat: 'series', tmdb: tm.id, title: tm.name, orig: tm.orig || '', year: A.it.year || 0 }) }).then(r => r.json()).catch(e => ({ error: e.message }));
     if (j.error) throw new Error(j.error);
     // torrent → série (fiche, menu Épisodes) : comme une lecture
     const o = LS.get('vod.tordl', {}) || {}; if (j.h && !o[j.h]) { o[j.h] = { kind: 'series', tmdb: tm.id, g: gKey(A.it), k: itemKey(A.it), n: A.it.name, y: A.it.year || 0, p: A.it.cover || '', at: Date.now() }; LS.set('vod.tordl', o); }
