@@ -328,8 +328,13 @@ public class MainForm : Form
         if (Video.Visible && mpv != null && mpv.Full) { var fb = new Rectangle(Point.Empty, ClientSize); if (Video.Bounds != fb) { Video.Bounds = fb; mpv.FitChild(); } }
         else if (Video.Visible && !(mpv?.Holding ?? false) && lastClient.Width > 0 && lastClient.Height > 0 && ClientSize.Width > 0 && ClientSize != lastClient)
         {
-            double kx = (double)ClientSize.Width / lastClient.Width, ky = (double)ClientSize.Height / lastClient.Height; var v = Video.Bounds;
-            Video.Bounds = new Rectangle((int)(v.X * kx), (int)(v.Y * ky), (int)Math.Ceiling(v.Width * kx), (int)Math.Ceiling(v.Height * ky));
+            /* pendant qu'on tire un bord : la liste à gauche, les panneaux et la barre du bas gardent leur taille, seul le lecteur
+               grandit de la différence (avant : agrandi en proportion de la fenêtre, il débordait puis se recalait). Mini lecteur
+               (petit, collé en bas à droite) : il suit le coin sans changer de taille. */
+            int dW = ClientSize.Width - lastClient.Width, dH = ClientSize.Height - lastClient.Height; var v = Video.Bounds;
+            bool mini = v.Width < lastClient.Width * 0.6 && lastClient.Width - v.Right < 60 && lastClient.Height - v.Bottom < 60;
+            Video.Bounds = mini ? new Rectangle(v.X + dW, v.Y + dH, v.Width, v.Height)
+                : new Rectangle(v.X, v.Y, Math.Max(1, v.Width + dW), Math.Max(1, v.Height + dH));
             mpv?.FitChild();
         }
         if (ClientSize.Width > 0) lastClient = ClientSize;
