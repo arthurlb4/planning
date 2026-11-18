@@ -2383,7 +2383,7 @@ const ixGet = () => { const o = LS.get('dev.ix', {}); return o && typeof o === '
 function ixVirtual(id, m) {
   if (vodSrc() !== 'tor' || !/^[ms]/.test(id) || !m || !m.t) return null;
   const c = ixGet()[id];
-  if (c && !c.ok && Date.now() - c.at < 14 * 864e5) return null;
+  if (c && !c.ok) { if (Date.now() - c.at >= 14 * 864e5 && ixOn()) ixQueue(id, m); return null; }   // recherché à nouveau en coulisse
   return virtItem(id, m, c && c.ok ? { q: c.q, s: c.s } : {});
 }
 // rien trouvé dans les indexeurs pour ce titre : retenu (il n'est plus proposé pendant une semaine)
@@ -2417,29 +2417,35 @@ function ixNext() {
   }
 }
 /* Catalogue en mode torrent : chaque titre affiché est cherché dans les indexeurs, ceux de l'écran d'abord (puis le reste de
-   la page) ; introuvable → retiré (et plus proposé pendant 2 semaines). Trouvé : jamais recherché à nouveau. */
+   la page) ; introuvable → retiré, et cherché à nouveau en coulisse toutes les 2 semaines (il ne revient que s'il est trouvé). Trouvé : jamais recherché à nouveau. */
 const ixIdOf = it => it && it.tor && it.tmdb ? (it.kind === 'series' ? 's' : 'm') + it.tmdb : '';
-function ixHide(id) {
+function ixHide(id, now) {
   document.querySelectorAll('#vod .poster[data-v]:not([data-jfv])').forEach(p => {
     if (ixIdOf(V.shown[+p.dataset.v]) !== id) return;
-    const row = p.closest('.vrow'); p.style.transition = 'opacity .3s'; p.style.opacity = '0';
+    const row = p.closest('.vrow');
+    if (now) { p.remove(); if (row && !row.querySelector('.poster')) row.remove(); return; }   // déjà connu : retiré avant l'affichage p.style.transition = 'opacity .3s'; p.style.opacity = '0';
     setTimeout(() => { p.remove(); if (row && !row.querySelector('.poster')) row.remove(); }, 300);
   });
 }
 function ixScan() {
-  if (vodSrc() !== 'tor' || !document.body.classList.contains('vod') || ['jf', 'hist'].includes(V.tab) || !ixOn()) return;
-  const o = ixGet(), now = Date.now(), vh = innerHeight, vw = innerWidth, vis = [], rest = [];
+  if (vodSrc() !== 'tor' || !document.body.classList.contains('vod') || ['jf', 'hist'].includes(V.tab)) return;
+  const o = ixGet(), now = Date.now(), vh = innerHeight, vw = innerWidth, vis = [], rest = [], on = ixOn();
   document.querySelectorAll('#vod .poster[data-v]:not([data-jfv])').forEach(p => {
     const it = V.shown[+p.dataset.v], id = ixIdOf(it); if (!id) return;
     const c = o[id];
-    if (c && !c.ok && now - c.at < 14 * 864e5) { ixHide(id); return; }
-    if (c && c.ok) return;                              // trouvé une fois : plus recherché (s'il a disparu, la lecture le dira et le retirera)
-    const r = p.getBoundingClientRect(), on = r.bottom > 0 && r.top < vh && r.right > 0 && r.left < vw;
-    (on ? vis : rest).push([id, { t: it.name, o: it.orig || '', y: it.year || 0, l: it.ol || '' }]);
+    // introuvable : toujours masqué ; au bout de 2 semaines, cherché à nouveau en coulisse (il ne revient que s'il est trouvé)
+    if (c && !c.ok) { ixHide(id, true); if (now - c.at < 14 * 864e5) return; }
+    if (c && c.ok) return;
+    if (!on) return;                              // trouvé une fois : plus recherché (s'il a disparu, la lecture le dira et le retirera)
+    const r = p.getBoundingClientRect(), vi = r.bottom > 0 && r.top < vh && r.right > 0 && r.left < vw;
+    (vi ? vis : rest).push([id, { t: it.name, o: it.orig || '', y: it.year || 0, l: it.ol || '' }]);
   });
   // file refaite dans l'ordre : écran d'abord
-  IX.q.forEach(([id]) => IX.queued.delete(id)); IX.q.length = 0;
+  if (!on) return;
+  const want = new Set(vis.concat(rest).map(x => x[0])), keep = IX.q.filter(([id]) => !want.has(id));   // titres hors page (nouvelles recherches en coulisse) gardés, après
+  IX.q.forEach(([id]) => { if (want.has(id)) IX.queued.delete(id); }); IX.q.length = 0;
   for (const [id, m] of vis.concat(rest)) if (!IX.queued.has(id) && IX.n + IX.q.length < IX_MAX) { IX.queued.add(id); IX.q.push([id, m]); }
+  IX.q.push(...keep);
   ixNext();
 }
 // défilement : les titres arrivés à l'écran passent devant
@@ -4728,7 +4734,7 @@ async function renderVod() {
   vodDedupe(box);
   if (!V.q && !V.cat && !['jf', 'hist'].includes(V.tab)) vodSeenFilter(box);   // pas sur Ma médiathèque ni l'Historique
   vodCineFilter(box);
-  setTimeout(ixScan, 500);
+  ixScan();
   const qi = $('#vodQ'); if (V.q) { qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); }
 }
 /* Recherche d'une plateforme (« netflix », « prime », « disney »…) : ses classements en tête des résultats — top 10 France
