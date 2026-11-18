@@ -1646,7 +1646,11 @@ function setHomeView(on, mini, page) {
   document.body.classList.toggle('mini', mn);
   if (mn) { $('#miniName').textContent = S.current.vod ? S.current.name : niceName(S.current); video.controls = false; }
   else if (S.engine && S.engine !== 'remux' && !window.PREFER_NATIVE && NATIVE_CTRL() && document.body.classList.contains('playing')) video.controls = true;
-  if (on && page === 'agenda') renderAgenda(); else if (on && page === 'vod') renderVod(); else if (on) renderHome();
+  // arrivée sur Films & séries : la page s'affiche d'abord (contenu de la dernière fois), puis se met à jour — sinon l'ancienne
+  // page restait près d'une seconde à l'écran pendant la préparation du catalogue
+  if (on && page === 'agenda') renderAgenda();
+  else if (on && page === 'vod') { if (S.arrive && Date.now() - S.arrive < 50) requestAnimationFrame(() => setTimeout(() => { if (document.body.classList.contains('vod')) renderVod(); }, 0)); else renderVod(); }
+  else if (on) renderHome();
 }
 $('#homeInner').addEventListener('click', e => {
   const tv = e.target.closest('[data-tev]'); if (tv) { const ev = S.teamEv[+tv.dataset.tev]; if (ev) play(ev.tv[0].list[0], ev.tv[0].list.slice(1)); return; }
