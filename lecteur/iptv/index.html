@@ -6261,12 +6261,14 @@ async function refreshMatch(render) {
   const comp = j.header.competitions[0], cs = comp.competitors.slice().sort((x, y) => (x.homeAway === 'home' ? 0 : 1) - (y.homeAway === 'home' ? 0 : 1));
   const st = comp.status && comp.status.type || {}, clock = comp.status && comp.status.displayClock;
   const state = st.state === 'pre' ? 'À venir' : st.completed ? 'Terminé' : st.state === 'in' ? (st.shortDetail || clock || 'En cours') : (st.shortDetail || '');
-  const sc = cs.map(x => x.score == null ? '–' : x.score).join(' – ');
-  const ns = $('#nowScore'); if (ns) ns.textContent = ' · ' + sc + (st.state === 'in' ? ' (' + (clock || st.shortDetail || '') + ')' : st.completed ? ' (terminé)' : '');
+  // avant le coup d'envoi, ESPN renvoie les moyennes de la saison à la place des statistiques : rien n'est montré
+  const pre = st.state === 'pre', ko = pre && comp.date ? ' · coup d\'envoi à ' + hm(Date.parse(comp.date)) : '';
+  const sc = pre ? '–' : cs.map(x => x.score == null ? '–' : x.score).join(' – ');
+  if (ns) ns.textContent = pre ? '' : ' · ' + sc + (st.state === 'in' ? ' (' + (clock || st.shortDetail || '') + ')' : st.completed ? ' (terminé)' : '');
   if (!render && ($('#side').hidden || SIDE.mode !== 'match')) return;
   if (SIDE.mode !== 'match') return;
   const box = j.boxscore && j.boxscore.teams || [];
-  const statsOf = id => ((box.find(b => b.team.id === id) || {}).statistics || []);
+  const statsOf = id => pre ? [] : ((box.find(b => b.team.id === id) || {}).statistics || []);
   const S0 = statsOf(cs[0].team.id), S1 = statsOf(cs[1].team.id);
   const rows = S0.map(s => { const o = S1.find(x => x.name === s.name) || {}; return { name: s.name, label: STAT_FR[s.name] || s.label, a: s.displayValue, b: o.displayValue }; })
     .filter(r => r.b != null && STAT_FR[r.name])
@@ -6274,9 +6276,9 @@ async function refreshMatch(render) {
   rows.forEach(r => { if (/Pct$/.test(r.name) && !/%/.test(r.a)) { r.a += ' %'; r.b += ' %'; } });
   const num = v => parseFloat(String(v).replace(',', '.')) || 0;
   let h = `<div class="mh"><div class="tm">${cs[0].team.logo ? `<img src="${esc(cs[0].team.logo)}" alt="">` : ''}${esc(cs[0].team.displayName)}</div>
-    <div><div class="sc">${esc(sc)}</div><div class="st">${esc(state)}</div></div>
+    <div><div class="sc">${esc(sc)}</div><div class="st">${esc(state + ko)}</div></div>
     <div class="tm">${cs[1].team.logo ? `<img src="${esc(cs[1].team.logo)}" alt="">` : ''}${esc(cs[1].team.displayName)}</div></div>`;
-  const kev = (j.keyEvents || []).filter(k => k.type && /goal|card|penalty/i.test(k.type.text || ''));
+  const kev = pre ? [] : (j.keyEvents || []).filter(k => k.type && /goal|card|penalty/i.test(k.type.text || ''));
   if (kev.length) h += '<h3>Temps forts</h3>' + kev.map(k => `<div class="mev"><b>${esc(k.clock && k.clock.displayValue || '')}</b><span>${esc(EV_FR[k.type.text] || k.type.text)}${k.participants && k.participants[0] ? ' · ' + esc(k.participants[0].athlete.displayName) : ''}${k.team ? ' (' + esc(k.team.displayName) + ')' : ''}</span></div>`).join('');
   if (rows.length) h += '<h3>Statistiques</h3>' + rows.map(r => { const a = num(r.a), b = num(r.b), t = a + b || 1;
     return `<div class="mst"><div class="lb"><b>${esc(r.a)}</b><span>${esc(r.label)}</span><b>${esc(r.b)}</b></div><div class="bars"><i class="${a >= b ? 'w' : ''}" style="flex:${a / t}"></i><i class="${b > a ? 'w' : ''}" style="flex:${b / t}"></i></div></div>`; }).join('');
