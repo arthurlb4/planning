@@ -990,6 +990,8 @@ h1,h2,h3,h4,h5,h6,b,strong,th,summary{font-weight:500}
     </div>
     <div id="subHostBox" class="srow" style="display:none"><div class="st"><b>Serveur de « Mon abonnement »</b><small>Nouveau serveur donné par votre fournisseur : seul le serveur change, vos identifiants restent chiffrés. Réglage partagé entre vos appareils.</small></div>
       <div class="sc" style="display:flex;gap:8px;flex-wrap:wrap"><input class="field" id="subHost" placeholder="nouveau-serveur.com:8080 (avec le port s'il y en a un)" autocomplete="off" spellcheck="false" style="width:220px;margin:0"><button class="btn" id="subHostBtn">Changer</button></div></div>
+    <div id="replayBox" class="srow" style="display:none"><div class="st"><b>Replay</b><small id="replayRes">Le serveur garde-t-il les programmes passés (retour au début, replay) ? Une seule question au serveur.</small></div>
+      <div class="sc"><button class="btn" id="replayBtn">Vérifier</button></div></div>
     <h3>Mes listes</h3>
     <div id="plList"></div>
     <details class="padd" id="addBox"><summary>＋ Ajouter une liste</summary>
@@ -6945,7 +6947,7 @@ function copyNames() {
 }
 function renderPlaylists() {
   $('#builtinBox').style.display = S.playlists.some(p => p.id === 'builtin') ? 'none' : '';
-  { const bp = S.playlists.find(p => p.id === 'builtin'), sb = $('#subHostBox'); if (sb) { sb.style.display = bp ? '' : 'none'; const i = $('#subHost'); if (bp && i && document.activeElement !== i) { try { const u = new URL(bp.url); i.value = u.host; } catch (e) {} } } }
+  { const rb = $('#replayBox'); if (rb) rb.style.display = epgCtx() ? '' : 'none'; } { const bp = S.playlists.find(p => p.id === 'builtin'), sb = $('#subHostBox'); if (sb) { sb.style.display = bp ? '' : 'none'; const i = $('#subHost'); if (bp && i && document.activeElement !== i) { try { const u = new URL(bp.url); i.value = u.host; } catch (e) {} } } }
   if (window.renderSync) renderSync();
   const own = S.playlists.filter(p => !p.extra);       // les listes gratuites sont gérées dans « Chaînes gratuites »
   $('#plList').innerHTML = own.length ? own.map(p => `
@@ -7373,6 +7375,21 @@ function subHost(url) {
   const h = String(LS.get('pref.subhost', '') || '').trim(); if (!h) return url;
   try { const u = new URL(url), n = new URL(/^https?:\/\//i.test(h) ? h : 'http://' + h); u.protocol = n.protocol; u.hostname = n.hostname; u.port = n.port; return u.toString(); } catch (e) { return url; }   // port tapé, sinon celui par défaut
 }
+/* Replay du fournisseur (Xtream) : chaînes dont le serveur garde les programmes passés (tv_archive), et sur combien de jours */
+async function replayCheck() {
+  const x = epgCtx(), out = $('#replayRes'); if (!x) { out.textContent = 'Seulement pour un abonnement Xtream.'; return; }
+  out.textContent = 'Question au serveur…';
+  try {
+    const api = x.base + '/player_api.php?username=' + encodeURIComponent(x.user) + '&password=' + encodeURIComponent(x.pass);
+    const l = JSON.parse(await fetchText(api + '&action=get_live_streams')); if (!Array.isArray(l)) throw new Error('réponse illisible');
+    const a = l.filter(s => String(s.tv_archive) === '1'), days = Math.max(0, ...a.map(s => +s.tv_archive_duration || 0));
+    const fr = a.filter(s => chInfo({ name: s.name, group: '' }).fr);
+    S.replay = new Map(a.map(s => [String(s.stream_id), +s.tv_archive_duration || 0]));
+    out.innerHTML = !a.length ? 'Aucune chaîne avec replay sur ce serveur.'
+      : `<b>${a.length.toLocaleString('fr-FR')}</b> chaîne${a.length > 1 ? 's' : ''} avec replay sur ${l.length.toLocaleString('fr-FR')} (jusqu'à ${days} jour${days > 1 ? 's' : ''}), dont ${fr.length} françaises${fr.length ? ' : ' + esc(fr.slice(0, 8).map(s => s.name).join(', ')) + (fr.length > 8 ? '…' : '') : ''}.`;
+  } catch (e) { out.textContent = 'Vérification impossible : ' + (e.message || e); }
+}
+$('#replayBtn').onclick = replayCheck;
 async function subHostApply(quiet) {
   const p = S.playlists.find(x => x.id === 'builtin'); if (!p || !p.url) return;
   const url = subHost(p.url); if (url === p.url) return;
