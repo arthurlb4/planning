@@ -2714,6 +2714,29 @@ setInterval(() => {
   if (JF.cur && (!c || c.jfId !== JF.cur)) { jfPost('/Sessions/Playing/Stopped', { ItemId: JF.cur, PositionTicks: Math.round((JF.pos || 0) * 1e7) }); JF.cur = null; }
   if (c && c.jfId) { JF.cur = c.jfId; JF.pos = curPos() || 0; jfPost('/Sessions/Playing/Progress', { ItemId: c.jfId, PositionTicks: Math.round(JF.pos * 1e7), IsPaused: video.paused }); }
 }, 15000);
+/* Fiche d'une série de Ma médiathèque : bouton Reprendre (épisode commencé, sinon le suivant à voir), puis ses épisodes
+   rangés par saison (onglets), lus depuis Jellyfin */
+async function jfSeriesFiche(it) {
+  const box = $('#vodJfS'), c = jfConf(); if (!box || !c) return;
+  try {
+    const j = await jfGet('/Shows/' + it.jfx.Id + '/Episodes?UserId=' + c.uid + '&Fields=Overview,Container,UserData'), eps = j.Items || [];
+    if (!box.isConnected) return;
+    if (!eps.length) { box.innerHTML = '<p class="hint">Aucun épisode dans Ma médiathèque.</p>'; return; }
+    const ud = e => e.UserData || {}, lab = e => 'S' + (e.ParentIndexNumber || 0) + 'E' + (e.IndexNumber || 0);
+    const started = eps.find(e => ud(e).PlaybackPositionTicks > 0 && !ud(e).Played), li = eps.map(e => !!ud(e).Played).lastIndexOf(true);
+    const nx = started || eps[li + 1] || eps[0], nk = eps.indexOf(nx);
+    const seasons = [...new Set(eps.map(e => e.ParentIndexNumber || 0))];
+    let cur = nx.ParentIndexNumber || 0;
+    const draw = () => {
+      box.innerHTML = `<div class="row" style="margin-top:14px"><button class="btn primary" data-jfe="${nk}"><svg class="pli" viewBox="0 0 24 24"><path d="M8 6.5v11l9-5.5z"/></svg>${started ? 'Reprendre ' : li >= 0 ? 'Épisode suivant · ' : 'Lecture · '}${lab(nx)}</button><span class="hint" style="align-self:center">Dans Ma médiathèque</span></div>`
+        + (seasons.length > 1 ? `<div class="tsea">${seasons.map(sn => `<button class="chip${sn === cur ? ' on' : ''}" data-jfs="${sn}">Saison ${sn}</button>`).join('')}</div>` : '')
+        + eps.map((e, i) => (e.ParentIndexNumber || 0) !== cur ? '' : `<button class="chr" data-jfe="${i}"><span class="lg">${e.IndexNumber || ''}</span><span class="m"><span class="l">${esc(e.Name || '')}${ud(e).Played ? ' · vu' : ud(e).PlaybackPositionTicks ? ' · commencé' : ''}</span><span class="e">${esc((e.Overview || '').slice(0, 160))}</span></span></button>`).join('');
+    };
+    draw();
+    box.onclick = e => { const s0 = e.target.closest('[data-jfs]'); if (s0) { cur = +s0.dataset.jfs; draw(); return; }
+      const b = e.target.closest('[data-jfe]'); if (b && eps[+b.dataset.jfe]) { closeModals(); jfPlay(eps[+b.dataset.jfe]); } };
+  } catch (e) { box.innerHTML = `<p class="err">${esc(e.message || e)}</p>`; }
+}
 async function jfSeries(x) {
   const c = jfConf(), m = document.createElement('div'); m.className = 'modal open'; m.style.zIndex = 60;
   m.innerHTML = `<div class="sheet" style="max-width:640px"><h2>${esc(x.Name)} <button class="btn icon" data-x aria-label="Fermer"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button></h2><div id="jfEps"><div class="spin" style="margin:20px auto"></div></div></div>`;
@@ -2755,6 +2778,7 @@ function jfClick(e) {
   // film reconnu par TMDB : sa fiche (bande-annonce, infos), « Lecture » lit le fichier de Jellyfin
   const tm = (x.ProviderIds || {}).Tmdb;
   if (x.Type === 'Movie' && tm && LS.get('pref.tmdb', '')) { const it = virtItem('m' + tm, { t: x.Name, y: x.ProductionYear || 0 }); it.jfx = x; if (!it.cover) it.cover = jfImg(x); openVod(it); return true; }
+  if (x.Type === 'Series' && tm && LS.get('pref.tmdb', '')) { const it = virtItem('s' + tm, { t: x.Name, y: x.ProductionYear || 0 }); it.jfx = x; if (!it.cover) it.cover = jfImg(x); openVod(it); return true; }
   if (x.Type === 'Series') jfSeries(x); else jfPlay(x);
   return true;
 }
@@ -5466,7 +5490,8 @@ async function openVod(it) {
     else if (vodSrc() === 'tor') h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-tgo><svg class="pli" viewBox="0 0 24 24"><path d="M8 6.5v11l9-5.5z"/></svg>${torLast(it) ? 'Reprendre' : 'Lecture'}</button><button class="btn icon" data-pmenu title="Abonnement IPTV et autres versions"><svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button><button class="btn" data-vlc="${esc(url)}">VLC</button>${it.kind === 'movie' && torOk() ? dlIco(0, 'data-mdl', 'Télécharger ce film sur ce PC (qBittorrent)') : ''}</div>`;
     else h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-pmenu><svg class="pli" viewBox="0 0 24 24"><path d="M8 6.5v11l9-5.5z"/></svg>${pos > 60 ? 'Reprendre à ' + fmtDur(pos) : 'Lecture'}<svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>${pos > 60 ? `<button class="btn" data-pm="${esc(url)}" data-zero>Depuis le début</button>` : ''}${listBtn}<button class="btn" data-vlc="${esc(url)}">VLC</button></div>`;
     if (!it.jfx) setTimeout(() => jfLink(it).catch(() => {}), 0);
-  } else if (!flat.length) h += it.tor ? (torOk() && prwConf() ? '' : '<p class="hint" style="margin-top:14px">Série absente de votre abonnement : pas d\'épisode à lire ici (les torrents se lisent dans l\'appli Windows).</p>') : `<div class="row" style="margin-top:14px">${listBtn}</div><p class="hint" style="margin-top:14px">Aucun épisode trouvé.</p>`;
+  } else if (it.jfx) { h += '<div id="vodJfS"><div class="spin" style="margin:16px 0"></div></div>'; setTimeout(() => jfSeriesFiche(it), 0); }
+  else if (!flat.length) h += it.tor ? (torOk() && prwConf() ? '' : '<p class="hint" style="margin-top:14px">Série absente de votre abonnement : pas d\'épisode à lire ici (les torrents se lisent dans l\'appli Windows).</p>') : `<div class="row" style="margin-top:14px">${listBtn}</div><p class="hint" style="margin-top:14px">Aucun épisode trouvé.</p>`;
   else {
     // Reprendre l'épisode en cours (ou le suivant à voir), sinon le premier
     let k0 = hist ? flat.findIndex(x => epUrl(x) === hist.url) : -1; if (k0 < 0) k0 = 0;
@@ -5480,7 +5505,7 @@ async function openVod(it) {
       return `<button class="ep" data-epk="${k}" data-epn="${x.n}"><span class="epi" ${img ? `style="background-image:url('${esc(img)}')"` : ''}><span class="n">${esc(x.n)}</span>${pct ? `<i style="width:${pct}%"></i>` : ''}</span><span class="ept"><b>${esc(cleanTitle(x.e.title || 'Épisode ' + x.n).replace(/^.*?S\d+\s*E\d+\s*[-:·]?\s*/i, '') || 'Épisode ' + x.n)}</b><span class="d">${esc([fmtDur(d.duration_secs) || d.duration, pos > 60 ? 'vu jusqu\'à ' + fmtDur(pos) : ''].filter(Boolean).join(' · '))}</span><span class="eppl">${esc(d.plot || '')}</span></span></button>`; }).join('');
     h += '</div>';
   }
-  if (it.kind === 'series' && vodSrc() === 'tor') { h += '<div id="vodTorS"></div>'; setTimeout(() => vodTorSeries(it).catch(() => {}), 0); }
+  if (it.kind === 'series' && vodSrc() === 'tor' && !it.jfx) { h += '<div id="vodTorS"></div>'; setTimeout(() => vodTorSeries(it).catch(() => {}), 0); }
   h += `<div class="fbrow">${fbButtons(it, 'fbb')}</div><div class="cr" id="vodLangs">${esc(langLine(it))}</div><div id="vodCast"></div><div id="vodSimilar"></div>`;
   $('#vodDetail').innerHTML = h + '</div></div>';
   showTrailer(it);
