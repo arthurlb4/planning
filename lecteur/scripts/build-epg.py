@@ -45,6 +45,7 @@ def icon(el):
 # (même chaîne d'abord, puis une autre chaîne pour un titre assez précis).
 WIDE = [r'^https://img\d\.oqee\.net/pictures/\d+/wide', r'^https://focus\.telerama\.fr/\d+x\d+/', r'^https://thumb\.canalplus\.pro/http/unsafe/640x360/',
         r'^https://www\.programme-tv\.net/imgre/fit/.*/640x360/']
+SURE = 2                                             # rangs 0 à 2 : toujours en 16/9
 def wide_rank(src):
     for i, rx in enumerate(WIDE):
         if isinstance(src, str) and re.search(rx, src): return i
@@ -90,10 +91,12 @@ def main():
     for cid, l in ch.items():
         l.sort(key=lambda p: p[0])
         for p in l:
-            if wide_rank(p[5]) is not None: continue
-            if p[5] and not isinstance(p[5], int): continue          # autre source d'image : gardée telle quelle
+            # sûres (toujours recadrées en 16/9) : Free, Télérama, Canal+ ; les autres (SFR, Télé-Loisirs « fit » qui garde
+            # la forme d'origine, sources belges) remplacées par une image sûre de la même émission quand il y en a une
+            r0 = wide_rank(p[5])
+            if r0 is not None and r0 <= SURE: continue
             t = tkey(p[2]); w = wide.get((cid, t)) or (len(t) >= 10 and wide.get(('*', t)))
-            if w: p[5] = w[1]; swapped += 1
+            if w and (r0 is None or w[0] < r0): p[5] = w[1]; swapped += 1
     print('images en largeur trouvées pour', swapped, 'émissions', file=sys.stderr)
     k = {}
     for cid in ch:                                   # identifiant d'abord (« France2.fr » → france2), puis nom affiché
