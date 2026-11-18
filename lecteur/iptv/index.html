@@ -476,6 +476,11 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 .poster .py{font-size:12px;color:var(--text3)}
 .vgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:18px 14px;margin-top:14px}
 .vgrid .poster{width:auto}
+.hgrid{display:flex;flex-wrap:wrap;gap:18px 14px;margin-top:14px}.hgrid .poster{width:150px}
+.hsep{flex:none;width:18px;height:225px;position:relative;display:flex;justify-content:center}
+.hsep::before{content:'';position:absolute;top:0;bottom:0;left:50%;width:1px;background:linear-gradient(transparent,var(--border) 15%,var(--border) 85%,transparent)}
+@media (max-width:700px){.hgrid .poster{width:104px}.hsep{height:156px}}
+.hsep span{position:relative;writing-mode:vertical-rl;transform:rotate(180deg);font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);background:var(--bg0);padding:8px 0;align-self:flex-start;margin-top:10px;white-space:nowrap}
 .vgrid .poster.xp,.vgrid .poster.xpc{z-index:6}
 .vgrid .poster.xp .pt,.vgrid .poster.xp .py{visibility:hidden}
 .vd{display:grid;grid-template-columns:170px minmax(0,1fr);gap:18px}
@@ -590,9 +595,10 @@ body.homeview #channels,body.homeview #player{display:none}
 .vxs h2{grid-column:1/-1;font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--text3);margin:10px 2px 4px;font-weight:500}
 .vxs .brand{display:contents}.vxs .chs{display:contents}
 .poster .hxb{position:absolute;top:6px;right:6px;z-index:3;display:flex;gap:4px;opacity:0;transition:opacity .15s}
-.poster:hover .hxb{opacity:1}
-.poster .hxb span{width:26px;height:26px;border-radius:50%;background:rgba(0,0,0,.72);color:#fff;font-size:13px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.poster:hover .hxb{opacity:1}.poster.xp .hxb{left:8px;right:auto;top:8px;z-index:4}
+.poster .hxb span{width:30px;height:30px;border-radius:50%;background:rgba(0,0,0,.72);color:#fff;font-size:13px;display:flex;align-items:center;justify-content:center;cursor:pointer}
 .poster .hxb span:hover{background:rgba(255,255,255,.9);color:#000}
+.poster .hxb svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}.poster .hxb span.sure{background:#e5322d;color:#fff}
 .chr .l{font-weight:500;font-size:14px;display:flex;align-items:center;gap:6px}
 .qb{font-size:10px;font-weight:600;padding:1px 5px;border-radius:5px;background:var(--bg4);color:var(--text2);letter-spacing:.03em}
 .qb.k4{background:var(--gold);color:#1b1500}
@@ -2559,7 +2565,9 @@ function jfRow(title, list, prog) {
   if (!list.length) return '';
   return `<div class="vrow"><h3>${esc(title)}</h3><div class="vwrap"><div class="vscroll">${list.map(x => { const it = jfItem(x), k = JF.shown.push(x) - 1, ud = x.UserData || {};
     const pr = prog && ud.PlaybackPositionTicks && x.RunTimeTicks ? { pct: ud.PlaybackPositionTicks / x.RunTimeTicks * 100, lab: 'reste ' + fmtDur((x.RunTimeTicks - ud.PlaybackPositionTicks) / 1e7) } : null;
-    return posterHtml(it, -1, 0, pr).replace('data-v="-1"', 'data-jfv="' + k + '"'); }).join('')}</div></div></div>`;
+    // data-v aussi : aperçu au survol avec la bande-annonce (TMDB, via l'identifiant TMDB de Jellyfin) ; le clic reste à Jellyfin
+    return posterHtml(it, V.shown.push(it) - 1, 0, pr).replace('<button class="poster"', '<button class="poster" data-jfv="' + k + '"')
+      .replace('<div class="im">', `<div class="im"><span class="hxb"><span data-jfdel="${k}" title="Supprimer de la médiathèque (fichiers effacés du disque)"><svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg></span></span>`); }).join('')}</div></div></div>`;
 }
 async function jfRender() {
   JF.shown = [];
@@ -2575,7 +2583,7 @@ async function jfRender() {
       jfGet(u + 'Movie&SortBy=SortName'), jfGet(u + 'Series&SortBy=SortName')]);
     let h = jfRow('Reprendre', res.Items || [], true) + jfRow('Ajoutés récemment', late.Items || []) + jfRow('Films', mov.Items || []) + jfRow('Séries', ser.Items || []);
     if (!h) h = '<div class="empty">Votre médiathèque est vide pour l\'instant : les films et séries rangés dans les dossiers de Jellyfin apparaîtront ici.</div>';
-    return h + `<div class="vrow"><small class="hint">Jellyfin · ${esc(c.user)} · ${esc(c.url)}</small> <button class="chip" data-jfout>Se déconnecter</button></div>`;
+    return h;                                           // compte Jellyfin : dans Paramètres › Sources
   } catch (e) {
     return `<div class="empty">Jellyfin injoignable (${esc(e.message || String(e))}).${https ? '<br>Depuis cette page web, seul « localhost » est joignable : utilisez l\'appli Windows.' : '<br>Jellyfin est-il démarré sur le PC ?'}<br><br><button class="btn" data-jfout>Changer de serveur</button></div>`;
   }
@@ -2619,6 +2627,19 @@ function jfClick(e) {
     return true;
   }
   if (e.target.closest('[data-jfout]')) { LS.set('dev.jf', null); renderVod(); return true; }
+  // supprimer un film ou une série de Jellyfin (et ses fichiers) : 1er clic = « Supprimer ? », 2e clic = suppression
+  const del = e.target.closest('[data-jfdel]');
+  if (del) {
+    e.stopPropagation(); e.preventDefault();
+    const x = JF.shown[+del.dataset.jfdel]; if (!x) return true;
+    if (!del.classList.contains('sure')) { del.classList.add('sure'); del.title = 'Cliquer encore pour supprimer « ' + x.Name + ' »'; toast('Cliquez encore sur la corbeille pour supprimer « ' + x.Name + ' » et ses fichiers'); setTimeout(() => del.classList.remove('sure'), 4000); return true; }
+    const c = jfConf();
+    fetch(c.url + '/Items/' + x.Id, { method: 'DELETE', headers: { 'Authorization': jfAuth(c.token) } }).then(r => {
+      if (r.ok) { toast('« ' + x.Name + ' » supprimé de la médiathèque'); const p = del.closest('.poster'); p.style.transition = 'opacity .3s'; p.style.opacity = '0'; setTimeout(() => p.remove(), 300); }
+      else toast(r.status === 401 || r.status === 403 ? 'Jellyfin refuse : ce compte n\'a pas le droit de supprimer (Tableau de bord › Utilisateurs › autoriser la suppression)' : 'Suppression impossible (Jellyfin répond ' + r.status + ')');
+    }).catch(() => toast('Suppression impossible : Jellyfin injoignable'));
+    return true;
+  }
   const p = e.target.closest('[data-jfv]'); if (!p) return false;
   const x = JF.shown[+p.dataset.jfv]; if (!x) return true;
   if (x.Type === 'Series') jfSeries(x); else jfPlay(x);
@@ -3878,6 +3899,7 @@ document.addEventListener('click', e => {
     const f = p.querySelector('iframe'); if (f) f.contentWindow.postMessage(JSON.stringify({ event: 'command', func: on ? 'unMute' : 'mute', args: [] }), '*');
     return;
   }
+  if (e.target.closest('[data-histv],[data-histx],[data-jfdel]') || p.dataset.jfv) { hovClose(true); return; }   // ✓ ✕ corbeille, Ma médiathèque : traités plus loin   // Reprendre : ✓ / ✕ traités plus loin
   const fb = e.target.closest('.hfb [data-fb]');
   if (fb) {
     e.stopPropagation(); e.preventDefault();
@@ -3966,7 +3988,7 @@ function posterHtml(it, i, rank, prog) {
 function vodDedupe(box) {
   const seen = new Set();
   box.querySelectorAll('.vrow').forEach(row => {
-    const ps = [...row.querySelectorAll('.poster[data-v]')]; if (!ps.length) return;
+    const ps = [...row.querySelectorAll('.poster[data-v]:not([data-jfv])')]; if (!ps.length) return;
     const dd = row.dataset.dd === 'dedupe', key = p => { const it = V.shown[+p.dataset.v]; return it ? itemKey(it) : ''; };
     const pers = /^(Reprendre|Ma liste)/.test((row.querySelector('h3') || {}).textContent || '');
     const left = ps.filter(p => {
@@ -4012,15 +4034,15 @@ async function vodSeenFilter(box) {
   const memo = new Map();
   for (const row of rows) {
     // rangée sans affiche du catalogue (Ma médiathèque, boutons…) : pas concernée, jamais retirée
-    if (!row.querySelector('.poster[data-v]')) continue;
-    for (const p of [...row.querySelectorAll('.poster[data-v]')]) {
+    if (!row.querySelector('.poster[data-v]:not([data-jfv])')) continue;
+    for (const p of [...row.querySelectorAll('.poster[data-v]:not([data-jfv])')]) {
       const it = V.shown[+p.dataset.v]; if (!it) continue;
       const k = itemKey(it); if (!memo.has(k)) memo.set(k, seenState(it).catch(() => ''));
       const st = await memo.get(k); if (!box.isConnected) return;
       if (st === 'hide') p.remove();
       else if (st === 'new' && !p.querySelector('.nsb')) { const im = p.querySelector('.im'); if (im) im.insertAdjacentHTML('beforeend', '<span class="nsb">Nouvelle saison</span>'); }
     }
-    if (!row.querySelector('.poster[data-v]')) row.remove();
+    if (!row.querySelector('.poster[data-v]:not([data-jfv])')) row.remove();
   }
 }
 async function dlRow(kinds) {
@@ -4222,9 +4244,9 @@ async function nowPlaying() {
 async function vodCineFilter(box) {
   const memo = new Map();
   for (const row of [...box.querySelectorAll('.vrow')]) {
-    if (!row.querySelector('.poster[data-v]')) continue;   // rangée sans affiche du catalogue (Ma médiathèque…) : jamais retirée
+    if (!row.querySelector('.poster[data-v]:not([data-jfv])')) continue;   // rangée sans affiche du catalogue (Ma médiathèque…) : jamais retirée
     const h3 = (row.querySelector('h3') || {}).textContent || '', cine = row.dataset.cine === '1', mine = /^Ma liste/.test(h3), pers = mine || /^(Reprendre|Téléchargés|Ma médiathèque)/.test(h3);
-    for (const p of [...row.querySelectorAll('.poster[data-v]')]) {
+    for (const p of [...row.querySelectorAll('.poster[data-v]:not([data-jfv])')]) {
       const it = V.shown[+p.dataset.v]; if (!it || it.kind !== 'movie' || (!it.tor && !cine)) continue;
       const k = itemKey(it); if (!memo.has(k)) memo.set(k, relState(it).catch(() => 'ok'));
       const st = await memo.get(k); if (!box.isConnected) return;
@@ -4239,7 +4261,7 @@ async function vodCineFilter(box) {
       if (ml && !ml.cine) { const l = myListRaw(); const e = l.find(x => x === ml || x.k === ml.k); if (e) { e.cine = 1; LS.set('vod.mylist2', l); } }
       im.insertAdjacentHTML('beforeend', `<span class="cnb">${st.st === 'soon' ? 'Bientôt' : 'Au cinéma'}${st.vod ? ' · VOD ' + esc(new Date(st.vod).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })) : ''}</span>`);
     }
-    if (!row.querySelector('.poster[data-v]')) row.remove();
+    if (!row.querySelector('.poster[data-v]:not([data-jfv])')) row.remove();
   }
 }
 async function frRecent() {
@@ -4495,7 +4517,8 @@ async function renderVod() {
       return n === 0 ? 'Aujourd\'hui' : n === 1 ? 'Hier' : n < 7 ? d.toLocaleDateString('fr-FR', { weekday: 'long' }).replace(/^./, x => x.toUpperCase()) : d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: d.getFullYear() === d0.getFullYear() ? undefined : 'numeric' }); };
     const groups = [];
     l.forEach(x => { const g = day(x.e.at); if (!groups.length || groups[groups.length - 1].g !== g) groups.push({ g, l: [] }); groups[groups.length - 1].l.push(x); });
-    groups.forEach(g => { h += `<div class="vrow"><h3>${esc(g.g)}<small>${g.l.length} titre${g.l.length > 1 ? 's' : ''}</small></h3></div><div class="vgrid">${g.l.map(({ e, it }) => posterHtml(it, V.shown.push(it) - 1, 0, { pct: e.f ? 100 : 0, lab: [e.lab, e.f ? 'vu en entier' : 'commencé', new Date(e.at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })].filter(Boolean).join(' · ') })).join('')}</div>`; });
+    // une seule grille : les jours se suivent sans retour à la ligne, séparés par un trait vertical portant la date
+    h += `<div class="hgrid">${groups.map((g, n) => `<div class="hsep${n ? '' : ' first'}" title="${g.l.length} titre${g.l.length > 1 ? 's' : ''}"><span>${esc(g.g)}</span></div>` + g.l.map(({ e, it }) => posterHtml(it, V.shown.push(it) - 1, 0, { pct: e.f ? 100 : 0, lab: [e.lab, e.f ? 'vu en entier' : 'commencé', new Date(e.at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })].filter(Boolean).join(' · ') })).join('')).join('')}</div>`;
     if (l.length) h += '<div class="vrow"><button class="chip" data-seenclr>Effacer l\'historique</button></div>';
   } else if (V.tab === 'cats') {
     if (V.cat) {
