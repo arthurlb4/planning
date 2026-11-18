@@ -187,14 +187,16 @@ video{width:100%;height:100%;object-fit:contain;background:#000;outline:none}
 /* Attente (chargement) : plus de cercle ; titre au centre, étape dessous, et une barre fine au bas de l'image : un reflet y
    glisse tant qu'on ne sait pas combien il reste (connexion), puis elle se remplit (téléchargement d'un torrent) */
 #status .spin{display:none}
-#status .ldt{font-family:var(--disp,inherit);font-size:21px;font-weight:700;color:var(--text);letter-spacing:.1px;max-width:80%;text-wrap:balance}
+#status .ldt{display:none}
 #status .msg.ko{color:#ff6961}
-#ldbar{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(255,255,255,.12);z-index:6;overflow:hidden;opacity:0;transition:opacity .3s;pointer-events:none}
+/* attente : une seule lumière douce (couleur des morceaux téléchargés) qui glisse lentement sur la barre de lecture
+   (posée sur son trait par ldPlace) ; en bas de l'image tant que la barre n'est pas affichée */
+#ldbar{position:absolute;left:0;right:0;bottom:0;height:4px;border-radius:4px;z-index:6;overflow:hidden;opacity:0;transition:opacity .4s;pointer-events:none}
 #ldbar.on{opacity:1}
-#ldbar b{position:absolute;top:0;bottom:0;left:0;width:0;background:var(--blue);box-shadow:0 0 10px var(--blue);transition:width .45s ease}
-#ldbar i{display:none;position:absolute;top:0;bottom:0;width:28%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.85),transparent);animation:ldg 1.3s ease-in-out infinite}
-#ldbar.ind i{display:block}
-@keyframes ldg{from{left:-30%}to{left:105%}}
+#ldbar b{display:none}
+#ldbar i{position:absolute;top:0;bottom:0;width:22%;border-radius:4px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.38),transparent);animation:ldg 2.8s cubic-bezier(.45,0,.55,1) infinite}
+@keyframes ldg{from{left:-24%}to{left:102%}}
+body.playing #screen.idle.ldg #vbar{opacity:1;pointer-events:auto}
 @media (prefers-reduced-motion:reduce){#ldbar i{animation:none;left:36%}}
 /* Torrent qui fait attendre le lecteur : ce qui se passe, étape par étape (sources, passage à lire, vitesse) */
 #ldi{position:absolute;left:16px;bottom:78px;z-index:7;min-width:250px;max-width:min(420px,calc(100% - 32px));padding:12px 14px;border-radius:14px;background:rgba(20,20,19,.9);border:.5px solid var(--border);box-shadow:0 10px 30px rgba(0,0,0,.45);font-size:13px;color:var(--text2);pointer-events:none;display:flex;flex-direction:column;gap:7px}
@@ -2697,19 +2699,27 @@ function setStatus(kind, msg, actions) {
   if (!kind) { el.className = 'hide'; el.innerHTML = ''; return; }   // vidé : un écran d'attente caché ne doit plus compter comme affiché
   el.className = '';
   // attente : titre de ce qui se charge, l'étape dessous, barre fine en bas (voir ldBar)
-  const c = S.current, ttl = kind === 'load' && c ? (c.vod ? c.name : niceName(c)) : '';
-  el.innerHTML = (ttl ? `<div class="ldt">${esc(ttl)}</div>` : '') + (msg || kind === 'load' ? `<div class="msg">${msg || ''}</div>` : '') + (actions ? `<div class="actions">${actions}</div>` : '');
+  const c = S.current;
+  // attente : ni titre ni étape écrite (.ldt vide sert de repère « écran d'attente affiché ») ; erreurs et messages explicites gardés
+  el.innerHTML = (kind === 'load' ? '<div class="ldt"></div>' : '') + (msg || kind === 'load' ? `<div class="msg">${msg || ''}</div>` : '') + (actions ? `<div class="actions">${actions}</div>` : '');
   if (kind === 'load') ldBar(null);
   // film ou épisode : son affiche floutée derrière l'attente
   const bg = kind === 'load' && c && c.vod && c.logo ? posterUrl(c.logo) : '';
   el.classList.toggle('bg', !!bg); if (bg) el.style.setProperty('--sbg', 'url("' + bg.replace(/"/g, '%22') + '")');
 }
-// barre d'attente : false = cachée, null = reflet qui glisse (durée inconnue), 0 à 1 = part faite
+// lumière d'attente : false = cachée, sinon affichée (l'avancement n'est plus montré : la lumière suffit)
 function ldBar(v) {
-  let b = $('#ldbar'); if (!b) { b = document.createElement('div'); b.id = 'ldbar'; b.innerHTML = '<b></b><i></i>'; $('#screen').appendChild(b); }
-  b.classList.toggle('on', v !== false); b.classList.toggle('ind', v === null);
-  b.querySelector('b').style.width = typeof v === 'number' ? Math.round(Math.max(0, Math.min(1, v)) * 100) + '%' : '0%';
+  let b = $('#ldbar'); if (!b) { b = document.createElement('div'); b.id = 'ldbar'; b.innerHTML = '<i></i>'; }
+  const on = v !== false; b.classList.toggle('on', on); $('#screen').classList.toggle('ldg', on);
+  if (on) ldPlace(b);
 }
+// sur le trait de la barre de lecture quand elle est affichée, sinon en bas de l'image
+function ldPlace(b) {
+  const vb = $('#vbar'), rg = $('#vbRange'), vis = vb && getComputedStyle(vb).display !== 'none' && rg.offsetWidth > 0;
+  if (vis) { if (b.parentNode !== vb) vb.appendChild(b); Object.assign(b.style, { left: rg.offsetLeft + 'px', width: rg.offsetWidth + 'px', right: 'auto', top: (rg.offsetTop + rg.offsetHeight / 2 - 2) + 'px', bottom: 'auto' }); }
+  else { if (b.parentNode !== $('#screen')) $('#screen').appendChild(b); b.removeAttribute('style'); }
+}
+setInterval(() => { const b = $('#ldbar'); if (b && b.classList.contains('on')) ldPlace(b); }, 400);
 /* Nom de chaîne simplifié pour le lecteur : « FR: Canal+ FHD ᴿᴬᵂ » → « Canal+ » */
 const Q_TOKEN = /^(8k|4k|uhd|2160p?|fhd|1080[pi]?|hd|720p?|sd|576p|lq|hevc|h\.?26[45]|x26[45]|\d+\s?fps|raw|vip|backup|bkp?|multi|hdr|hdr10|dolby|[ᴬ-ᵡ⁰-⁹ᴴᴰᴿᴬᵂᶠᵖˢ]+)$/i;
 function niceName(c) {
@@ -2930,7 +2940,7 @@ async function play(c, alts) {
   video.controls = false;                               // un seul indicateur de chargement : le nôtre (contrôles remis à l'image)
   setStatus('load');
   // torrent choisi, connexion aux sources en cours (voir torPlay) : le lecteur est déjà là, la vidéo suit
-  if (c.pending) { setStatus('load', '<span class="hint">' + esc(c.pending) + '</span>'); return; }
+  if (c.pending) return;
 
 
   // Appli Windows avec mpv : films, épisodes et torrents lus par mpv (tout format, sans conversion) ; ancien lecteur en secours
@@ -5468,7 +5478,7 @@ function ldiStalled() {
 setInterval(async () => {
   // barre d'attente jamais seule : écran d'attente caché par ailleurs (lecture lancée, erreur) → barre cachée aussi
   // (la lecture démarre : la barre finit de se remplir, puis disparaît)
-  { const st = $('#status'), b = $('#ldbar'); if (b && b.classList.contains('on') && !b.dataset.end && (!st || st.className === 'hide' || !st.querySelector('.ldt'))) { b.dataset.end = '1'; b.classList.remove('ind'); b.querySelector('b').style.width = '100%'; setTimeout(() => { delete b.dataset.end; if (!$('#status .ldt')) ldBar(false); }, 450); } }
+  { const st = $('#status'), b = $('#ldbar'); if (b && b.classList.contains('on') && (!st || st.className === 'hide' || !st.querySelector('.ldt'))) ldBar(false); }
   const c = S.current, m = c && window.desktop && /\/torrent\/file\/([0-9a-f]{40})\/(\d+)\//i.exec(c.url || ''), el0 = $('#ldi');
   if (!m || !document.body.classList.contains('playing') && !$('#status .ldt') || !ldiStalled()) { LDI.since = 0; if (el0) el0.remove(); if (LDI.own) { LDI.own = false; if ($('#status .ldt')) setStatus(); } return; }
   if (!LDI.since) LDI.since = Date.now();
@@ -5486,8 +5496,8 @@ setInterval(async () => {
   const show = (cls, txt, pct) => {
     if (Date.now() - LDI.since < 1000) return;
     if (!$('#status .ldt')) { setStatus('load'); LDI.own = true; }
-    const m = $('#status .msg'); if (m) { m.innerHTML = txt; m.classList.toggle('ko', cls === 'ko'); }
-    ldBar(pct != null ? pct / 100 : cls === 'ko' ? false : null);
+    const m = $('#status .msg'); if (m) { m.innerHTML = cls === 'ko' ? txt : ''; m.classList.toggle('ko', cls === 'ko'); }
+    ldBar(cls === 'ko' ? false : null);
   };
   if (!i) return show('ko', 'Le module torrent de l\'appli ne répond pas');
   if (i.qbt) return show('go', 'Préparation de la lecture…');
@@ -5555,7 +5565,7 @@ async function playMpv(c, t) {
   stopEngines(); S.engine = 'mpv'; S.mpvSt = {}; S.playUrl = c.url; document.body.classList.add('mpv'); document.body.classList.remove('natready');
   const pos = c.vod ? LS.get(posK(c.url), 0) : 0, start = pos > 60 ? pos : 0;
   document.body.classList.toggle('mpvlive', !c.vod);
-  setStatus('load', c.vod ? '<span class="hint">Ouverture dans le lecteur intégré…</span>' : '');
+  setStatus('load');
   const r = await M.play({ url: c.url, title: c.vod ? c.name : niceName(c), live: !c.vod, start, vol: video.muted ? 0 : video.volume, alang: LS.get('pref.audio', 'fr'), slang: LS.get('pref.sub', 'off'), rect: mpvRect(), under: NAT, subArgs: NAT ? mpvSubArgs() : [] }).catch(e => ({ error: e.message }));
   if (t !== token) return;
   if (!r || r.error) { document.body.classList.remove('mpv', 'nat'); S.engine = ''; S.noMpv = c.url; toast('Lecteur intégré indisponible (' + ((r && r.error) || '?') + ') : ancien lecteur'); return play(c); }
