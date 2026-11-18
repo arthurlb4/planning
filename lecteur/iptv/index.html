@@ -813,8 +813,9 @@ body.playing #screen.idle #vbar{transform:translateY(8px)}
 #vbar .live{display:none;height:24px;padding:0 9px 0 20px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:.06em;color:#fff;background:rgba(255,255,255,.12);position:relative}
 #vbar .live::before{content:'';position:absolute;left:9px;top:50%;width:6px;height:6px;margin-top:-3px;border-radius:50%;background:#9d9b95}
 #vbar .live.edge::before{background:#e5322d}
-#vbar .rstart{display:none;height:24px;padding:0 10px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:.04em;color:#fff;background:rgba(255,255,255,.12)}
-#vbar .rstart:hover{background:rgba(255,255,255,.22)}#vbar.hasrp .rstart{display:inline-block}
+/* « Début » (replay de l'émission en cours) : à gauche du −10 s, sur les chaînes ; grisé sans replay */
+#vbar #vbStart{display:none}body.live #vbar #vbStart,body.rplay #vbar #vbStart{display:flex}
+#vbar #vbStart svg{fill:none;stroke-width:2}#vbar:not(.hasrp) #vbStart{opacity:.35;pointer-events:none}
 body.live #vbar .live{display:inline-block}
 body.live #vbar .tm{display:none}
 @media (max-width:760px){#vbVol{display:none}}
@@ -973,6 +974,7 @@ h1,h2,h3,h4,h5,h6,b,strong,th,summary{font-weight:500}
       <input type="file" id="subFile" accept=".srt,.vtt,.ass,.ssa,text/vtt,application/x-subrip" hidden>
       <div id="vbar">
         <button class="vb" id="vbPlay" title="Lecture / pause (espace)"><svg viewBox="0 0 24 24"><path class="ip" d="M8.5 6v12l9.5-6z"/><g class="ipa"><rect x="7" y="5.5" width="3" height="13" rx="1.5"/><rect x="14" y="5.5" width="3" height="13" rx="1.5"/></g></svg></button>
+        <button class="vb vbs" id="vbStart" title="Reprendre l'émission en cours depuis son début (replay)"><svg viewBox="0 0 24 24" fill="none"><path d="M5.6 9.5A7 7 0 1 1 5 13"/><path d="M8.5 3.5 5.5 6.5 8.5 9.5M12.5 3.5 9.5 6.5 12.5 9.5"/></svg></button>
         <button class="vb" id="vbBack" title="Reculer de 10 s"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.4-5.7M4 4v4h4" fill="none"/><text x="12" y="15.5" text-anchor="middle">10</text></svg></button>
         <button class="vb" id="vbFwd" title="Avancer de 10 s"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.4-5.7M20 4v4h-4" fill="none"/><text x="12" y="15.5" text-anchor="middle">10</text></svg></button>
         <button class="vb vep" id="vbEpPrev" title="Épisode précédent"><svg viewBox="0 0 24 24"><path d="M6.5 6v12" fill="none"/><path d="M18 7v10l-7.5-5z"/></svg></button>
@@ -982,7 +984,6 @@ h1,h2,h3,h4,h5,h6,b,strong,th,summary{font-weight:500}
         <input type="range" id="vbRange" min="0" max="100" step="0.1" value="0" aria-label="Position">
         <span class="tm" id="vbDur">0:00</span>
         <button class="live" id="vbLive" title="Revenir au direct">DIRECT</button>
-        <button class="rstart" id="vbStart" title="Reprendre l'émission en cours depuis son début (replay)">Début</button>
         <button class="vsrc" id="vbSrc" title="Changer de torrent"><span id="vbSrcL">Torrent</span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
         <button class="vb" id="vbMute" title="Couper le son (M)"><svg viewBox="0 0 24 24"><path d="M5 9.5h3l4.5-3.5v12L8 14.5H5z"/><path class="iv" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" fill="none"/><path class="im" d="M16 9l5 6M21 9l-5 6" fill="none"/></svg></button>
         <input type="range" id="vbVol" min="0" max="1" step="0.05" value="1" aria-label="Volume">
@@ -6316,8 +6317,8 @@ const mpvBehind = on => { const L = S.mpvLive; if (!L) return; if (on && !L.back
 const mpvGap = () => (S.mpvLive && S.mpvLive.gap) || 4;
 function vbarUpdate() {
   if (!S.current) return;
-  { const c = S.current, b = $('#vbStart'), on = !!c.replayOf || archDays(c) > 0; $('#vbar').classList.toggle('hasrp', on);
-    if (on) { const t = c.replayOf ? 'Retour au direct' : 'Début'; if (b.textContent !== t) b.textContent = t; } }
+  { const c = S.current, on = archDays(c.replayOf || c) > 0; $('#vbar').classList.toggle('hasrp', on);
+    $('#vbStart').title = on ? 'Reprendre l\'émission en cours depuis son début (replay)' : 'Pas de replay sur cette chaîne'; }
   epUi(); srcUi();
   if (S.engine === 'mpv' && NAT) {
     const M = S.mpvSt, rg = $('#vbRange'), dur = M.dur || 0, cur = M.pos || 0;
@@ -6453,10 +6454,10 @@ setInterval(() => {
 }, 4000);   // une vignette toutes les 4 s au plus (chacune fait décoder une image du film à ffmpeg : le PC doit rester fluide)
 $('#vbStart').onclick = async () => {
   const c = S.current; if (!c) return;
-  if (c.replayOf) return play(c.replayOf);
-  const l = await getEpg(c, 2), p = l && l.find(q => q.start <= Date.now() && q.end > Date.now());
+  const ch = c.replayOf || c;   // pendant un replay : l'émission en cours sur la chaîne, depuis son début
+  const l = await getEpg(ch, 2), p = l && l.find(q => q.start <= Date.now() && q.end > Date.now());
   if (!p) { toast('Programme en cours inconnu : ouvrez le Programme (panneau de droite) pour choisir'); return; }
-  playReplay(c, p);
+  playReplay(ch, p);
 };
 $('#vbLive').onclick = () => { if (S.current && S.current.replayOf) { play(S.current.replayOf); return; } if (mpvOn()) { const w = mpvLiveWin(); if (w && !mpvAtLive(w)) mpvC(['seek', w[1] - mpvGap(), 'absolute']); mpvBehind(false); if (S.mpvSt.paused) mpvC(['set_property', 'pause', false]); return; } const w = liveWin(); if (w && !atLive(w)) video.currentTime = liveTarget(w); if (video.paused) video.play().catch(() => {}); vbarUpdate(); };
 const mpvOn = () => S.engine === 'mpv' && NAT;
