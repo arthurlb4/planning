@@ -2695,10 +2695,29 @@ function jfPost(path, body) { const c = jfConf(); if (!c) return; fetch(c.url + 
 const jfImg = (x, id) => { const c = jfConf(), tag = x.ImageTags && x.ImageTags.Primary; return tag || id ? c.url + '/Items/' + (id || x.Id) + '/Images/Primary?maxHeight=450&quality=90' + (tag ? '&tag=' + tag : '') : ''; };
 const JF_FIELDS = 'ProductionYear,ProviderIds,DateCreated,CommunityRating,Overview,Container,UserData';
 // élément Jellyfin → forme des affiches de l'appli
+/* Affiche des films et séries de Ma médiathèque : celle de TMDB (la même que dans le catalogue) quand Jellyfin donne
+   l'identifiant TMDB, sinon celle de Jellyfin. Adresses gardées (vod.tmposter) ; celles qui manquent sont demandées après. */
+const tmPosters = () => LS.get('vod.tmposter', {}) || {};
+function jfTmCover(x) {
+  const tm = (x.ProviderIds || {}).Tmdb; if (!tm || x.Type === 'Episode') return '';
+  const id = (x.Type === 'Series' ? 's' : 'm') + tm, v = IX.virt.get(id);
+  if (v && v.cover && /image\.tmdb\.org/.test(v.cover)) return v.cover;
+  const p = tmPosters()[id]; return p ? 'https://image.tmdb.org/t/p/w342' + p : '';
+}
+async function jfTmFill() {
+  if (!LS.get('pref.tmdb', '')) return;
+  const todo = [...document.querySelectorAll('#vod .poster[data-jfv]')].map(p => ({ p, x: JF.shown[+p.dataset.jfv] })).filter(o => o.x && (o.x.ProviderIds || {}).Tmdb && o.x.Type !== 'Episode' && !jfTmCover(o.x));
+  for (const o of todo.slice(0, 40)) {
+    const kind = o.x.Type === 'Series' ? 'tv' : 'movie', id = (kind === 'tv' ? 's' : 'm') + o.x.ProviderIds.Tmdb;
+    const d = await tmdb('/' + kind + '/' + o.x.ProviderIds.Tmdb).catch(() => null); if (!d || !d.poster_path) continue;
+    const m = tmPosters(); m[id] = d.poster_path; const k = Object.keys(m); if (k.length > 3000) delete m[k[0]]; LS.set('vod.tmposter', m);
+    const im = o.p.isConnected && o.p.querySelector('.im img'); if (im) im.src = 'https://image.tmdb.org/t/p/w342' + d.poster_path;
+  }
+}
 function jfItem(x) {
   const ep = x.Type === 'Episode';
   return { kind: x.Type === 'Series' ? 'series' : 'movie', id: 'jf' + x.Id, jf: x, name: ep ? (x.SeriesName || '') + ' · S' + (x.ParentIndexNumber || 0) + 'E' + (x.IndexNumber || 0) : x.Name,
-    year: x.ProductionYear || 0, rating: x.CommunityRating || 0, cover: ep ? jfImg({}, x.SeriesId) : jfImg(x), cats: [], services: [], added: (Date.parse(x.DateCreated) || 0) / 1000, tmdb: (x.ProviderIds || {}).Tmdb || '' };
+    year: x.ProductionYear || 0, rating: x.CommunityRating || 0, cover: ep ? jfImg({}, x.SeriesId) : (jfTmCover(x) || jfImg(x)), cats: [], services: [], added: (Date.parse(x.DateCreated) || 0) / 1000, tmdb: (x.ProviderIds || {}).Tmdb || '' };
 }
 function jfRow(title, list, prog) {
   if (!list.length) return '';
@@ -5008,7 +5027,7 @@ async function renderVod() {
   vodDedupe(box);
   if (!V.q && !V.cat && !['jf', 'hist'].includes(V.tab)) vodSeenFilter(box);   // pas sur Ma médiathèque ni l'Historique
   vodCineFilter(box);
-  ixScan();
+  ixScan(); setTimeout(() => jfTmFill().catch(() => {}), 300);
   const qi = $('#vodQ'); if (V.q) { qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); }
 }
 /* Recherche d'une plateforme (« netflix », « prime », « disney »…) : ses classements en tête des résultats — top 10 France
