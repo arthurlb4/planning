@@ -43,7 +43,6 @@ static class Natif
     [DllImport("user32.dll")] public static extern IntPtr SetCapture(IntPtr h);
     [DllImport("user32.dll")] public static extern bool ReleaseCapture();
     [DllImport("user32.dll")] public static extern IntPtr SetFocus(IntPtr h);
-    [DllImport("user32.dll")] public static extern bool EnableWindow(IntPtr h, bool on);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string? cls, string? title);
     [DllImport("user32.dll")] public static extern IntPtr GetCapture();
     [DllImport("user32.dll")] public static extern bool ScreenToClient(IntPtr h, ref POINT p);
