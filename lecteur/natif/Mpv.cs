@@ -68,7 +68,7 @@ public class Mpv
         if (proc != p) return new JsonObject { ["error"] = "remplacé" };
         if (pipe == null) { Stop(); return new JsonObject { ["error"] = "mpv ne répond pas" }; }
         wr = new StreamWriter(pipe, new UTF8Encoding(false)) { AutoFlush = true, NewLine = "\n" };
-        _ = Task.Run(async () => { foreach (var ms in new[] { 150, 600, 1500 }) { await Task.Delay(ms); f.FocusPage(); } });
+        _ = Task.Run(async () => { foreach (var ms in new[] { 150, 400, 800, 1500, 3000 }) { await Task.Delay(ms); f.FocusPage(); } });
         string[] props = { "time-pos", "duration", "pause", "eof-reached", "aid", "sid", "track-list", "chapter-list", "volume", "mute", "demuxer-cache-time", "video-params/aspect", "paused-for-cache",
             // panneau ⓘ de la page (image et son)
             "width", "height", "video-codec", "audio-codec-name", "audio-params/channel-count", "container-fps", "video-bitrate", "hwdec-current", "video-params/gamma" };

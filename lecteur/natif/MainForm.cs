@@ -323,7 +323,17 @@ public class MainForm : Form
     protected override void OnMove(EventArgs e) { base.OnMove(e); try { comp?.NotifyParentWindowPositionChanged(); } catch { } }
     [System.Runtime.InteropServices.DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr h, int attr, ref int v, int size);
     // clavier rendu à la page (la fenêtre vidéo de mpv le prend en s'ouvrant : F, espace, flèches ne marchaient qu'après un clic)
-    public void FocusPage() { if (IsDisposed) return; if (InvokeRequired) { BeginInvoke(FocusPage); return; } try { if (ContainsFocus || Form.ActiveForm == this) { Focus(); comp?.MoveFocus(CoreWebView2MoveFocusReason.Programmatic); } } catch { } }
+    public void FocusPage()
+    {
+        if (IsDisposed) return; if (InvokeRequired) { BeginInvoke(FocusPage); return; }
+        try
+        {
+            // fenêtre de mpv désactivée : elle ne peut plus prendre le clavier (la souris passe déjà au travers)
+            for (IntPtr h = Natif.FindWindowEx(Video.Handle, IntPtr.Zero, null, null); h != IntPtr.Zero; h = Natif.FindWindowEx(Video.Handle, h, null, null)) Natif.EnableWindow(h, false);
+            if (Form.ActiveForm == this || ContainsFocus) { Natif.SetFocus(Handle); comp?.MoveFocus(CoreWebView2MoveFocusReason.Programmatic); }
+        }
+        catch { }
+    }
     protected override void OnActivated(EventArgs e) { base.OnActivated(e); try { comp?.MoveFocus(CoreWebView2MoveFocusReason.Programmatic); } catch { } }
     /* Fermeture en deux temps : la page enregistre d'abord ce qui est en cours (position du film, Reprendre), puis le
        navigateur intégré est fermé proprement et on attend qu'il ait écrit ses données sur le disque ; sinon les
