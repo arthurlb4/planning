@@ -2511,7 +2511,10 @@ async function jfLogin(url, user, pw) {
   const j = await r.json(); LS.set('dev.jf', { url, token: j.AccessToken, uid: j.User.Id, user });
 }
 async function jfGet(path) {
-  const c = jfConf(), r = await fetch(c.url + path, { headers: { 'Authorization': jfAuth(c.token) } });
+  // 8 s au plus : sans réponse (Jellyfin arrêté, adresse du réseau local coupée par le VPN…), l'onglet le dit au lieu de rester vide
+  const c = jfConf(); let r;
+  try { r = await fetch(c.url + path, { headers: { 'Authorization': jfAuth(c.token) }, signal: AbortSignal.timeout(8000) }); }
+  catch (e) { throw new Error(e && e.name === 'TimeoutError' ? 'pas de réponse de ' + c.url + ' en 8 s' : 'connexion impossible à ' + c.url); }
   if (r.status === 401) { LS.set('dev.jf', null); throw new Error('session Jellyfin expirée : reconnectez-vous'); }
   if (!r.ok) throw new Error('Jellyfin répond ' + r.status);
   return r.json();
