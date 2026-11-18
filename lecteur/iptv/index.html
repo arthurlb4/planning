@@ -878,7 +878,7 @@ h1,h2,h3,h4,h5,h6,b,strong,th,summary{font-weight:500}
   <button class="btn icon" id="groupsBtn" title="Chaînes" aria-label="Chaînes"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></button>
   <div id="plName"></div>
   <button class="btn" id="homeBtn" title="TV : les chaînes"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="2"/><path d="M8 21h8M12 17v4"/></svg><span class="lbl">TV</span></button>
-  <button class="btn" id="agendaBtn" title="Agenda sport"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><circle cx="12" cy="15.5" r="2.5"/></svg><span class="lbl">Agenda</span></button>
+  <button class="btn" id="agendaBtn" style="display:none" title="Agenda sport"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><circle cx="12" cy="15.5" r="2.5"/></svg><span class="lbl">Agenda</span></button>
   <button class="btn" id="vodBtn" title="Films et séries"><svg viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M3 8l3-5M9 8l3-5M15 8l3-5M3 8h18"/></svg><span class="lbl">Films & séries</span></button>
   <button class="btn" id="managePl" title="Paramètres : listes de lecture, synchro, version"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span class="lbl">Paramètres</span></button>
   <div class="wbtns"><button data-win="min" title="Réduire" aria-label="Réduire"><svg viewBox="0 0 11 11"><path d="M0 5.5h11"/></svg></button><button data-win="max" title="Agrandir / restaurer" aria-label="Agrandir"><svg class="mx" viewBox="0 0 11 11"><rect x=".5" y=".5" width="10" height="10"/></svg><svg class="rs" viewBox="0 0 11 11"><rect x=".5" y="2.5" width="8" height="8"/><path d="M2.5 2.5V.5h8v8h-2"/></svg></button><button class="cl" data-win="close" title="Fermer" aria-label="Fermer"><svg viewBox="0 0 11 11"><path d="M.5.5l10 10M10.5.5l-10 10"/></svg></button></div>
@@ -1258,6 +1258,12 @@ function langOf(name) {
   return XX_RE.test(s) ? 'xx' : '';
 }
 function groupLabel(g) { return g === 'home' ? 'TV' : g === '*' ? 'Toutes les chaînes' : g === '★' ? 'Favoris' : g === '⏱' ? 'Récentes' : g; }
+// Clic sur l'onglet où l'on est déjà (TV, Films & séries, sous-onglets) : retour en haut de la page
+document.addEventListener('click', e => {
+  const b = e.target.closest('#homeBtn,#vodBtn,.chip.on[data-tab],.chip.on[data-tvt]'), B = document.body.classList; if (!b || !B.contains('homeview') || B.contains('drawer')) return;
+  const pg = B.contains('vod') ? 'vod' : B.contains('agenda') ? 'agenda' : 'home', want = b.id === 'vodBtn' ? ['vod'] : b.id === 'homeBtn' ? ['home'] : [pg];
+  if (want.includes(pg)) { const el = document.getElementById(pg); if (el.scrollTop > 0) { el.scrollTo({ top: 0, behavior: 'smooth' }); if (b.id) e.stopImmediatePropagation(); } }
+}, true);
 $('#homeBtn').onclick = () => {
   S.group = 'home'; renderGroups(); applyFilter(true); document.body.classList.remove('drawer'); setSolo(false); setHomeView(true, true);
 };
@@ -1396,7 +1402,19 @@ const DRAWN_LOGO = {
   'Info': 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 76"><rect x="16" y="9" width="128" height="58" rx="12" fill="#e5322d"/><text x="80" y="52" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-size="40" font-weight="900" letter-spacing="2" fill="#fff">INFO</text></svg>')
 };
 const brandLogo = t => DRAWN_LOGO[t] || (BRAND_LOGO[t] ? LOGO_BASE + 'france/' + BRAND_LOGO[t] + '-fr.png' : '');
-const imgOr = (src, txt, cls) => src ? `<img src="${esc(src)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.insertAdjacentHTML('afterend','<span class=&quot;${cls}&quot;>'+this.dataset.t+'</span>');this.remove()" data-t="${esc(txt)}">` : `<span class="${cls}">${esc(txt)}</span>`;
+/* Logo qui ne charge pas : autre adresse (logo fourni par la liste), puis un nouvel essai 2 s plus tard (le dépôt des
+   logos refuse parfois quand beaucoup sont demandés d'un coup), et seulement ensuite le nom en texte */
+function logoFail(im, how) {
+  const d = im.dataset;
+  if (d.alt && d.alt !== im.getAttribute('src')) { const a = d.alt; delete d.alt; d.o = d.o || im.getAttribute('src'); im.src = a; return; }
+  if (!d.r) { d.r = 1; const u = d.o || im.getAttribute('src'); setTimeout(() => { if (im.isConnected) im.src = u + (u.includes('?') ? '&' : '?') + 'r=1'; }, 2000); return; }
+  if (how === 'rm!') im.remove();
+  else if (how === 'nm!') im.parentNode.textContent = d.n || '';
+  else { im.insertAdjacentHTML('afterend', '<span class="' + how + '">' + esc(d.t || '') + '</span>'); im.remove(); }
+}
+const imgOrA = (src, alt, txt, cls) => imgOr(src, txt, cls, alt);
+const altAttr = (src, alt) => alt && alt !== src ? ` data-alt="${esc(alt)}"` : '';
+const imgOr = (src, txt, cls, alt) => { if (!src) { src = alt; alt = ''; } return src ? `<img src="${esc(src)}"${altAttr(src, alt)} alt="" loading="lazy" referrerpolicy="no-referrer" onerror="logoFail(this,'${cls || ''}')" data-t="${esc(txt)}">` : `<span class="${cls}">${esc(txt)}</span>`; };
 // Cases chargées (Ligue 1+ 2 à 10…) : les premières chaînes, les autres repliées derrière « ▾ N autres chaînes »
 const FAM_OPEN = new Set(LS.get('dev.famOpen', []));
 const famHidden = (f, j) => f.subs[j].extra && !FAM_OPEN.has(f.t) && !(S.current && f.subs[j].list.includes(S.current));
@@ -1448,39 +1466,34 @@ function tvForYou() {
    ce soir, sport avec les blasons des équipes (ESPN). Les cases des chaînes restent dessous (« Toutes les chaînes »). ---------- */
 const TV_TH = [['P', 'Sport'], ['F', 'Films'], ['S', 'Séries'], ['I', 'Info'], ['J', 'Jeunesse'], ['D', 'Documentaires'], ['E', 'Divertissement'], ['M', 'Magazines']];
 function tvCard(f, i, j, p, opt) {
-  const x = f.subs[j], c = x.list[0], logo = logoUrl(x.label) || c.logo || '', now = Date.now(), live = p && p.start <= now && p.end > now;
+  const x = f.subs[j], c = x.list[0], logo = logoUrl(x.label) || c.logo || '', la = altAttr(logo, c.logo), now = Date.now(), live = p && p.start <= now && p.end > now;
   const im = p && p.img, sp = p && p.th === 'P' && /\s(\/|-|vs\.?)\s/.test(p.title) ? p.title : '';
   const meta = p ? (opt && opt.soir ? hm(p.start) : hm(p.start) + '–' + hm(p.end)) : 'Programme inconnu';
-  return `<button class="tvc" data-play="${i}:${j}" title="${esc((p ? p.title + ' · ' : '') + x.label)}"${sp ? ` data-crest="${esc(sp)}"` : ''}>
+  return `<button class="tvc" data-play="${i}:${j}"${p ? '' : ` data-tepg="${i}:${j}"`} title="${esc((p ? p.title + ' · ' : '') + x.label)}"${sp ? ` data-crest="${esc(sp)}"` : ''}>
     <span class="tvi${im ? '' : ' nol'}">${im ? `<img class="ti" src="${esc(im)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentNode.classList.add('nol');this.remove()">` : ''}
-      <span class="tlg">${logo ? `<img src="${esc(logo)}" alt="" loading="lazy" onerror="this.remove()">` : `<b>${esc(initials(x.label))}</b>`}</span>
-      <span class="tch">${logo ? `<img src="${esc(logo)}" alt="" loading="lazy" data-n="${esc(x.label)}" onerror="this.parentNode.textContent=this.dataset.n">` : esc(x.label)}</span>
+      <span class="tlg">${logo ? `<img src="${esc(logo)}"${la} alt="" loading="lazy" referrerpolicy="no-referrer" onerror="logoFail(this,'rm!')">` : `<b>${esc(initials(x.label))}</b>`}</span>
+      <span class="tch">${logo ? `<img src="${esc(logo)}"${la} alt="" loading="lazy" referrerpolicy="no-referrer" data-n="${esc(x.label)}" onerror="logoFail(this,'nm!')">` : esc(x.label)}</span>
       ${live ? `<span class="bar"><i style="width:${pct(p)}%"></i></span>` : ''}</span>
     <span class="tvn">${esc(p ? p.title : x.label)}</span><span class="tvs">${esc((p && p.sub ? p.sub + ' · ' : '') + meta)}</span></button>`;
 }
-function tvRow(title, cards, sub) {
-  if (cards.length < 2) return '';
+function tvRow(title, cards, sub, min) {
+  if (cards.length < (min || 2)) return '';
   return `<div class="hsec tvrow"><h2>${esc(title)}${sub ? ` <small>${esc(sub)}</small>` : ''}</h2><div class="vwrap"><button class="varr l" data-arr="-1" aria-label="Précédents"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><div class="vscroll">${cards.join('')}</div><button class="varr r" data-arr="1" aria-label="Suivants"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button></div></div>`;
 }
+/* Accueil TV : une rangée par bouquet (Canal+, beIN Sports…), comme Films & séries ; vignette = programme en cours
+   (image du guide XML TV Fr, sinon logo de la chaîne). Chaînes seules d'une même section regroupées dans une rangée. */
 function tvRows(fams) {
   const G = GUIDE.data;
-  if (!G) { if (!tvRows.ld) { tvRows.ld = 1; loadGuide().then(d => { if (d && document.body.classList.contains('homeview') && !document.body.classList.contains('vod') && !document.body.classList.contains('agenda')) renderHome(); }); } return ''; }
-  const now = Date.now(), cur = [], soir = [], seen = new Set();
-  const t0 = new Date(); t0.setHours(20, 45, 0, 0); const t1 = new Date(t0); t1.setHours(21, 30, 0, 0);
-  fams.forEach((f, i) => f.subs.forEach((x, j) => {
-    if (famHidden(f, j)) return;
-    const c = x.list[0]; if (seen.has(c)) return; seen.add(c);
-    const l = guideList(c, G) || []; const p = l.find(q => q.start <= now && q.end > now);
-    if (p && p.th !== 'X') cur.push({ f, i, j, p });
-    if (now < t1) { const q = l.find(q => q.start >= t0 - 15 * 60e3 && q.start <= t1); if (q && q.th !== 'X' && q.end - q.start >= 40 * 60e3) soir.push({ f, i, j, p: q }); }
-  }));
-  let h = '';
-  TV_TH.forEach(([t, lab]) => {
-    const l = cur.filter(x => x.p.th === t).sort((a, b) => (t === 'P' ? (/\s(\/|-|vs)\s/.test(b.p.title) - /\s(\/|-|vs)\s/.test(a.p.title)) : 0) || b.p.start - a.p.start);
-    h += tvRow(lab, l.map(x => tvCard(x.f, x.i, x.j, x.p)), t === 'P' ? 'en ce moment' : 'en ce moment');
+  if (!G && !tvRows.ld) { tvRows.ld = 1; loadGuide().then(d => { if (d && document.body.classList.contains('homeview') && !document.body.classList.contains('vod') && !document.body.classList.contains('agenda')) renderHome(); }); }
+  const now = Date.now(), prog = c => { const l = G && guideList(c, G) || []; return l.find(q => q.start <= now && q.end > now); };
+  const cards = f => f.subs.map((x, j) => tvCard(f, fams.indexOf(f), j, prog(x.list[0])));
+  let h = '', solo = [], soloSec = '';
+  const flush = () => { if (solo.length) h += tvRow(solo.length > 1 ? soloSec : solo[0].f.t, solo.map(x => x.c), '', 1); solo = []; };
+  fams.forEach(f => {
+    if (f.subs.length > 1) { flush(); h += tvRow(f.t, cards(f), '', 1); return; }
+    if (f.sec !== soloSec) flush(); soloSec = f.sec; solo.push({ f, c: cards(f)[0] });
   });
-  if (soir.length) h += tvRow('Ce soir', soir.sort((a, b) => a.i - b.i || a.j - b.j).map(x => tvCard(x.f, x.i, x.j, x.p, { soir: 1 })), 'vers 21 h');
-  if (h) { h += '<div class="hsec"><h2>Toutes les chaînes</h2></div>'; setTimeout(tvCrests, 0); }
+  flush(); setTimeout(tvCrests, 0);
   return h;
 }
 // Blasons des équipes (sport) : match trouvé chez ESPN (mêmes recherches que les statistiques du match), gardé 12 h
@@ -1506,42 +1519,23 @@ async function tvCrests() {
     tvi.insertAdjacentHTML('beforeend', `<span class="crest">${v.map(u => `<img src="${esc(u)}" alt="" loading="lazy">`).join('<i>–</i>')}</span>`);
   }
 }
+// Onglet TV : Chaînes | Agenda (l'agenda sport n'a plus de bouton dans la barre du haut)
+const tvTabs = on => `<div class="vtop tvtabs">${[['tv', 'Chaînes'], ['agenda', 'Agenda']].map(([k, l]) => `<button class="chip${on === k ? ' on' : ''}" data-tvt="${k}">${l}</button>`).join('')}</div>`;
+document.addEventListener('click', e => { const b = e.target.closest('[data-tvt]'); if (!b || b.classList.contains('on')) return;
+  setHomeView(true, true, b.dataset.tvt === 'agenda' ? 'agenda' : ''); });
 function renderHome() {
   const fams = homeIndex();
   S.tiles = fams;
   if (!S.pl) { $('#homeInner').innerHTML = '<div class="empty">Ajoutez ou déverrouillez une liste pour voir l\'accueil.<br><br><button class="btn primary" onclick="openModal(\'plModal\')">Listes</button></div>'; return; }
   if (!fams.length) { $('#homeInner').innerHTML = '<div class="empty">Aucune des principales chaînes françaises n\'a été trouvée dans cette liste.<br>Toutes ses chaînes restent dans le menu ☰.</div>'; return; }
-  let h = '', sec = '';
+  let h = tvTabs('tv'), sec = '';
   // Mes équipes : leurs matchs des prochaines 24 h (agenda chargé en coulisse si besoin)
   if (myTeams().length) {
     if (!AGENDA.events && !AGENDA._ld) { AGENDA._ld = 1; loadAgenda().then(() => { AGENDA._ld = 0; const b = document.body.classList; if (b.contains('homeview') && !b.contains('agenda') && !b.contains('vod')) renderHome(); }).catch(() => { AGENDA._ld = 0; }); }
     const te = teamEvents(24); S.teamEv = te;
-    if (te.length) h += `<div class="hsec"><h2>Vos équipes</h2><div class="brand fy"><div class="chs">${te.map((e, k) => `<button class="chr" data-tev="${k}" title="${esc(e.title)}"><span class="lg">${imgOr(logoUrl(e.tv[0].label) || e.tv[0].list[0].logo, initials(e.tv[0].label), '')}</span><span class="m"><span class="l">${esc(e.title)}</span><span class="e">${evLine(e)}</span></span></button>`).join('')}</div></div></div>`;
+    if (te.length) h += `<div class="hsec"><h2>Vos équipes</h2><div class="brand fy"><div class="chs">${te.map((e, k) => `<button class="chr" data-tev="${k}" title="${esc(e.title)}"><span class="lg">${imgOrA(logoUrl(e.tv[0].label), e.tv[0].list[0].logo, initials(e.tv[0].label), '')}</span><span class="m"><span class="l">${esc(e.title)}</span><span class="e">${evLine(e)}</span></span></button>`).join('')}</div></div></div>`;
   }
-  // Rangées en vignettes (comme Films & séries) : en ce moment par thème, ce soir ; image de l'émission (guide), sinon logo
   h += tvRows(fams);
-  // Pour vous en ce moment : mêmes lignes que dans les cases (même lancement, même programme en cours)
-  const fy = tvForYou().map(lab => { for (let i = 0; i < fams.length; i++) { const j = fams[i].subs.findIndex(x => x.label === lab); if (j >= 0) return [i, j]; } return null; }).filter(Boolean);
-  if (fy.length) h += `<div class="hsec"><h2>Pour vous en ce moment</h2><div class="brand fy"><div class="chs">${fy.map(([i, j]) => { const x = fams[i].subs[j], c = x.list[0], q = chInfo(c).q, cur = S.current && x.list.includes(S.current);
-    return `<button class="chr${cur ? ' on' : ''}" data-play="${i}:${j}" title="Regarder ${esc(x.label)}"><span class="lg">${imgOr(logoUrl(x.label) || c.logo, initials(x.label), '')}</span><span class="m"><span class="l">${esc(x.label)} <span class="qb${q === 4 ? ' k4' : ''}">${QLBL[q]}</span></span><span class="e" data-epg="${i}:${j}"></span></span></button>`; }).join('')}</div></div></div>`;
-  fams.forEach((f, i) => {
-    if (f.sec !== sec) { h += (sec ? '</div></div>' : '') + `<div class="hsec"><h2>${esc(f.sec)}</h2><div class="brands">`; sec = f.sec; }
-    const on = S.current && f.subs.some(x => x.list.includes(S.current));
-    h += `<div class="brand${on ? ' on' : ''}">
-      <button class="sq" data-play="${i}:0" title="Regarder ${esc(f.subs[0].label)}">
-        ${imgOr(brandLogo(f.t) || logoUrl(f.subs[0].label), f.t, 'txt')}
-        <span class="cnt">${f.subs.length > 1 ? f.subs.length + ' chaînes' : ''}</span>
-        <span class="play"><svg viewBox="0 0 24 24"><path d="M7 4v16l13-8z"/></svg></span>
-      </button>
-      <div class="chs">${f.subs.map((x, j) => { const c = x.list[0], q = chInfo(c).q, cur = S.current && x.list.includes(S.current);
-        if (famHidden(f, j)) return '';
-        return `<button class="chr${cur ? ' on' : ''}" data-play="${i}:${j}" title="Regarder ${esc(x.label)}">
-          <span class="lg">${imgOr(logoUrl(x.label) || c.logo, initials(x.label), '')}</span>
-          <span class="m"><span class="l">${esc(x.label)} <span class="qb${q === 4 ? ' k4' : ''}">${QLBL[q]}</span></span><span class="e" data-epg="${i}:${j}"></span></span>
-        </button>`; }).join('')}${famMore(f, i)}</div>
-    </div>`;
-  });
-  h += '</div></div>';
   $('#homeInner').innerHTML = h;
   fillTileEpg();
 }
@@ -1611,9 +1605,9 @@ function searchExtras(q, want) {
 const evLine = e => `${e.start <= Date.now() ? '<b style="color:#e5322d">EN DIRECT</b>' : esc(dayLabel(e.start)) + ' ' + hm(e.start)} · ${esc(e.tv.map(x => x.label).join(', '))}`;
 function extrasHtml(X, kind) {
   let h = '';
-  if (X.ev.length) h += `<h2>Matchs</h2><div class="brand"><div class="chs">${X.ev.map((e, k) => `<button class="chr" data-xev="${k}" title="${esc(e.title)}"><span class="lg">${imgOr(logoUrl(e.tv[0].label) || e.tv[0].list[0].logo, initials(e.tv[0].label), '')}</span><span class="m"><span class="l">${esc(e.title)}</span><span class="e">${evLine(e)}</span></span></button>`).join('')}</div></div>`;
+  if (X.ev.length) h += `<h2>Matchs</h2><div class="brand"><div class="chs">${X.ev.map((e, k) => `<button class="chr" data-xev="${k}" title="${esc(e.title)}"><span class="lg">${imgOrA(logoUrl(e.tv[0].label), e.tv[0].list[0].logo, initials(e.tv[0].label), '')}</span><span class="m"><span class="l">${esc(e.title)}</span><span class="e">${evLine(e)}</span></span></button>`).join('')}</div></div>`;
   if (X.vod.length) h += `<h2>Films et séries</h2><div class="brand"><div class="chs">${X.vod.map((it, k) => `<button class="chr" data-xvod="${k}" title="${esc(it.name)}"><span class="lg xpo">${coverOf(it) ? `<img src="${esc(posterUrl(coverOf(it)))}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}</span><span class="m"><span class="l">${esc(it.name)}</span><span class="e">${esc([it.kind === 'series' ? 'Série' : 'Film', it.year, it.rating ? '★ ' + it.rating.toFixed(1) : ''].filter(Boolean).join(' · '))}</span></span></button>`).join('')}</div></div>`;
-  if (X.ch.length) h += `<h2>Chaînes</h2><div class="brand"><div class="chs">${X.ch.map((c, k) => `<button class="chr" data-xch="${k}" title="Regarder ${esc(niceName(c))}"><span class="lg">${imgOr(chLogo(c), initials(niceName(c)), '')}</span><span class="m"><span class="l">${esc(niceName(c))} <span class="qb${chInfo(c).q === 4 ? ' k4' : ''}">${QLBL[chInfo(c).q]}</span></span><span class="e" data-xepg="${k}"></span></span></button>`).join('')}</div></div>`;
+  if (X.ch.length) h += `<h2>Chaînes</h2><div class="brand"><div class="chs">${X.ch.map((c, k) => `<button class="chr" data-xch="${k}" title="Regarder ${esc(niceName(c))}"><span class="lg">${imgOrA(chLogo(c), c.logo, initials(niceName(c)), '')}</span><span class="m"><span class="l">${esc(niceName(c))} <span class="qb${chInfo(c).q === 4 ? ' k4' : ''}">${QLBL[chInfo(c).q]}</span></span><span class="e" data-xepg="${k}"></span></span></button>`).join('')}</div></div>`;
   return h;
 }
 // clic sur un résultat croisé (colonne de gauche ou page Films & séries)
@@ -1636,7 +1630,7 @@ function renderHomeList(resetScroll) {
       if (n >= 400) return;
       const l = by.get(g).slice(0, 400 - n); n += l.length;
       h += `<h2>${esc(g || 'Sans catégorie')} <span style="font-weight:500">· ${by.get(g).length}</span></h2><div class="brand"><div class="chs">` + l.map(c => { const k = res.push(c) - 1, q = chInfo(c).q;
-        return `<button class="chr" data-hs="${k}" title="${esc(c.name)}"><span class="lg">${imgOr(chLogo(c), initials(niceName(c)), '')}</span><span class="m"><span class="l">${esc(niceName(c))} <span class="qb${q === 4 ? ' k4' : ''}">${QLBL[q]}</span></span><span class="e">${esc(c.name)}</span></span></button>`; }).join('') + '</div></div>';
+        return `<button class="chr" data-hs="${k}" title="${esc(c.name)}"><span class="lg">${imgOrA(chLogo(c), c.logo, initials(niceName(c)), '')}</span><span class="m"><span class="l">${esc(niceName(c))} <span class="qb${q === 4 ? ' k4' : ''}">${QLBL[q]}</span></span><span class="e">${esc(c.name)}</span></span></button>`; }).join('') + '</div></div>';
     });
     if (S.view.length > 400) h += '<p class="hint" style="padding:6px 4px">Plus de 400 chaînes trouvées : précisez la recherche.</p>';
     const X = box._x = searchExtras(S.query, ['vod', 'ev']), xh = extrasHtml(X);
@@ -1648,12 +1642,12 @@ function renderHomeList(resetScroll) {
   }
   // Favoris (étoile) en tête : les catégories n'existent plus, c'est ici qu'on les retrouve
   const favs = S.channels.filter(c => S.fav.has(c.url)); box._favs = favs;
-  if (favs.length) h += '<h2>Favoris</h2><div class="brand"><div class="chs">' + favs.map((c, k) => `<button class="chr" data-hf="${k}" title="Regarder ${esc(c.name)}"><span class="lg">${imgOr(chLogo(c), initials(niceName(c)), '')}</span><span class="m"><span class="l">${esc(niceName(c))} <span class="qb${chInfo(c).q === 4 ? ' k4' : ''}">${QLBL[chInfo(c).q]}</span></span></span></button>`).join('') + '</div></div>';
+  if (favs.length) h += '<h2>Favoris</h2><div class="brand"><div class="chs">' + favs.map((c, k) => `<button class="chr" data-hf="${k}" title="Regarder ${esc(c.name)}"><span class="lg">${imgOrA(chLogo(c), c.logo, initials(niceName(c)), '')}</span><span class="m"><span class="l">${esc(niceName(c))} <span class="qb${chInfo(c).q === 4 ? ' k4' : ''}">${QLBL[chInfo(c).q]}</span></span></span></button>`).join('') + '</div></div>';
   fams.forEach((f, i) => {
     if (f.sec !== sec) { h += `<h2>${esc(f.sec)}</h2>`; sec = f.sec; }
     h += `<div class="brand"><div class="sqs">${imgOr(brandLogo(f.t) || logoUrl(f.subs[0].label), f.t, 'txt')}</div><div class="chs">${f.subs.map((x, j) => { const c = x.list[0], q = chInfo(c).q;
       if (famHidden(f, j)) return '';
-      return `<button class="chr" data-hp="${i}:${j}" title="Regarder ${esc(x.label)}"><span class="lg">${imgOr(logoUrl(x.label) || c.logo, initials(x.label), '')}</span>
+      return `<button class="chr" data-hp="${i}:${j}" title="Regarder ${esc(x.label)}"><span class="lg">${imgOrA(logoUrl(x.label), c.logo, initials(x.label), '')}</span>
         <span class="m"><span class="l">${esc(x.label)} <span class="qb${q === 4 ? ' k4' : ''}">${QLBL[q]}</span></span><span class="e" data-hpe="${i}:${j}"></span></span></button>`; }).join('')}${famMore(f, i)}</div></div>`;
   });
   box.innerHTML = h;
@@ -3206,6 +3200,7 @@ function fillTileEpg() {
     const list = await getEpg(x.list[0], 2);
     if (!list || !list.length) return;
     const p = list[0];
+    document.querySelectorAll(`[data-tepg="${i}:${j}"]`).forEach(el => { el.querySelector('.tvn').textContent = p.title; el.querySelector('.tvs').textContent = hm(p.start) + '–' + hm(p.end); });
     document.querySelectorAll(`[data-epg="${i}:${j}"]`).forEach(el => {
       el.innerHTML = `<span class="et"><b>${esc(p.title)}</b> · ${hm(p.start)}–${hm(p.end)}</span><span class="bar" style="display:block;width:100%"><i style="width:${pct(p)}%"></i></span>`;
       el.title = p.title + (p.desc ? ' — ' + p.desc : '') + (list[1] ? '\nEnsuite (' + hm(list[1].start) + ') : ' + list[1].title : '');
@@ -3525,7 +3520,7 @@ function teamEvents(hours) { const now = Date.now(); return (AGENDA.events || []
 async function renderAgenda(force) {
   const box = $('#agendaInner');
   if (!S.pl) { box.innerHTML = '<div class="empty">Ajoutez ou déverrouillez une liste pour voir l\'agenda.</div>'; return; }
-  if (!AGENDA.events || force || AGENDA.pl !== S.pl) box.innerHTML = '<h2>Agenda sport</h2><div class="spin" style="margin:40px auto"></div><p class="hint" style="text-align:center">Lecture du programme TV…</p>';
+  if (!AGENDA.events || force || AGENDA.pl !== S.pl) box.innerHTML = tvTabs('agenda') + '<div class="spin" style="margin:40px auto"></div><p class="hint" style="text-align:center">Lecture du programme TV…</p>';
   const evs = await loadAgenda(force);
   if (!document.body.classList.contains('agenda')) return;
   const now = Date.now(), upcoming = evs.filter(e => e.end > now);
@@ -3540,7 +3535,7 @@ async function renderAgenda(force) {
   if (!has(AGENDA.sport)) AGENDA.sport = 'Tous';
   const list = ofDay.filter(e => AGENDA.sport === 'Tous' || sportOf(e) === AGENDA.sport);
   const liveNow = upcoming.filter(e => e.start <= now);
-  let h = `<h2 style="display:flex;justify-content:space-between;align-items:center">Agenda sport <button class="btn" id="agRefresh" style="height:30px;font-size:12px;text-transform:none;letter-spacing:0">↻ Actualiser</button></h2>`;
+  let h = tvTabs('agenda').replace('</div>', '<button class="chip" id="agRefresh" title="Actualiser l\'agenda">↻</button></div>');
   if (!upcoming.length) { box.innerHTML = h + '<div class="empty">Aucun match ou course trouvé dans les programmes de vos chaînes sport.<br>Le programme fourni par l\'abonnement est peut-être incomplet.</div>'; return; }
   h += `<div class="ag-days">${days.map(d => { const e = upcoming.find(x => dayKey(x.start) === d); return `<button class="chip${d === AGENDA.day ? ' on' : ''}" data-day="${d}">${dayLabel(e.start)}</button>`; }).join('')}</div>`;
   h += `<div class="ag-sports">${sports.map(n => `<button class="chip${n === AGENDA.sport ? ' on' : ''}" data-sport="${esc(n)}"${has(n) ? '' : ' disabled title="Rien ce jour-là"'}>${esc(n)}</button>`).join('')}</div>`;
@@ -3555,7 +3550,7 @@ async function renderAgenda(force) {
       <div><div class="sp">${my ? '★ ' : ''}${esc(e.sport)}${e.comp ? ' · ' + esc(e.comp) : ''}${live ? '<span class="live">EN DIRECT</span>' : ''}</div>
         <div class="t">${esc(e.title)}</div>${e.desc && !pre ? `<div class="d">${esc(e.desc)}</div>` : ''}
         ${live ? `<div class="bar" style="max-width:320px"><i style="width:${pct(e)}%"></i></div><button class="btn primary evgo" data-evgo="${pre ? 'm' : ''}${k}"><svg class="pli" viewBox="0 0 24 24"><path d="M8 6.5v11l9-5.5z"/></svg>Regarder sur ${esc(e.tv[0].label)}</button>` : ''}
-        <div class="tv">${e.tv.map((x, j) => { const q = chInfo(x.list[0]).q; return `<button data-ev="${pre ? 'm' : ''}${k}:${j}" title="${live ? 'Regarder' : 'Ouvrir la chaîne (commence à ' + hm(e.start) + ')'}"><span class="lg">${imgOr(logoUrl(x.label) || x.list[0].logo, '', '')}</span>${esc(x.label)} <span class="qb${q === 4 ? ' k4' : ''}">${QLBL[q]}</span></button>`; }).join('')}</div>
+        <div class="tv">${e.tv.map((x, j) => { const q = chInfo(x.list[0]).q; return `<button data-ev="${pre ? 'm' : ''}${k}:${j}" title="${live ? 'Regarder' : 'Ouvrir la chaîne (commence à ' + hm(e.start) + ')'}"><span class="lg">${imgOrA(logoUrl(x.label), x.list[0].logo, '', '')}</span>${esc(x.label)} <span class="qb${q === 4 ? ' k4' : ''}">${QLBL[q]}</span></button>`; }).join('')}</div>
       </div></div>`;
   };
   if (mine.length) h += `<h3 class="ag-h">Vos équipes</h3>` + mine.map((e, k) => evHtml(e, k, true)).join('') + `<h3 class="ag-h">Tous les matchs</h3>`;
@@ -3569,7 +3564,7 @@ async function renderAgenda(force) {
       <div><div class="sp">${esc(e.sport)}${e.comp ? ' · ' + esc(e.comp) : ''}${live ? '<span class="live">EN DIRECT</span>' : ''}</div>
         <div class="t">${esc(e.title)}</div>${e.desc ? `<div class="d">${esc(e.desc)}</div>` : ''}
         ${live ? `<div class="bar" style="max-width:320px"><i style="width:${pct(e)}%"></i></div>` : ''}
-        <div class="tv">${e.tv.map((x, j) => { const q = chInfo(x.list[0]).q; return `<button data-ev="${k}:${j}" title="${live ? 'Regarder' : 'Ouvrir la chaîne (commence à ' + hm(e.start) + ')'}"><span class="lg">${imgOr(logoUrl(x.label) || x.list[0].logo, '', '')}</span>${esc(x.label)} <span class="qb${q === 4 ? ' k4' : ''}">${QLBL[q]}</span></button>`; }).join('')}${(e.missing || []).map(n => `<span class="chip" style="opacity:.5;height:38px;display:inline-flex;align-items:center" title="Chaîne absente de votre liste">${esc(n)}</span>`).join('')}</div>
+        <div class="tv">${e.tv.map((x, j) => { const q = chInfo(x.list[0]).q; return `<button data-ev="${k}:${j}" title="${live ? 'Regarder' : 'Ouvrir la chaîne (commence à ' + hm(e.start) + ')'}"><span class="lg">${imgOrA(logoUrl(x.label), x.list[0].logo, '', '')}</span>${esc(x.label)} <span class="qb${q === 4 ? ' k4' : ''}">${QLBL[q]}</span></button>`; }).join('')}${(e.missing || []).map(n => `<span class="chip" style="opacity:.5;height:38px;display:inline-flex;align-items:center" title="Chaîne absente de votre liste">${esc(n)}</span>`).join('')}</div>
       </div></div>`;
   }).join('') || '<div class="empty">Rien pour ce sport ce jour-là.</div>';
   AGENDA.shown = list;
