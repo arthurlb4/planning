@@ -1715,7 +1715,7 @@ window.appClosing = () => {
       if (r.dataset.rv) return; r.dataset.rv = 1;
       // déjà sous les yeux au moment de l'affichage : animé aussi (l'ensemble de la page arrive en cascade)
       r.querySelectorAll('.poster,.tvc,.chr').forEach((p, i) => { if (i < 14) p.style.setProperty('--d', (i * 0.035).toFixed(3) + 's'); });
-      // déjà à l'écran : en cascade seulement à l'arrivée sur la page (pas en changeant d'onglet, ni pendant une recherche)
+      // déjà à l'écran : en cascade seulement à l'arrivée sur la page ou sur un onglet de Films & séries (pas pendant une recherche)
       const vis = r.getBoundingClientRect().top < innerHeight;
       if (vis && !(S.arrive && Date.now() - S.arrive < 15000)) return;   // (préparation de la page parfois longue : sources en ligne)
       if (vis && r.querySelector('.poster,.tvc')) S.arrUsed = true;   // cascade d'arrivée jouée : une seule fois
@@ -5159,9 +5159,7 @@ async function renderVod() {
   const st = $('#vod').scrollTop;
   box.innerHTML = h;
   if (bg) { $('#vod').scrollTop = st; V.lastTab = V.tab; vodPost(box); return; }
-  // changement d'onglet : seul le contenu sous les onglets fond doucement (onglets et recherche restent en place)
-  if (V.lastTab !== V.tab && box.animate && !matchMedia('(prefers-reduced-motion: reduce)').matches)
-    box.querySelectorAll(':scope > :not(.vtop)').forEach(el => el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: 'ease-out' }));
+  // changement d'onglet : contenu en cascade (S.arrive posé au clic), onglets et recherche restent en place
   V.lastTab = V.tab;
   vodPost(box);
   const qi = $('#vodQ'); if (V.q) { qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); }
@@ -5178,8 +5176,6 @@ function vodPost(box) {
 function vodQuick(arrive) {
   const c = VQ[V.tab]; if (!c || c.pl !== S.pl || V.q || V.cat) return false;
   const box = $('#vodInner'); V.shown = c.shown.slice(); box.innerHTML = c.h;
-  if (!arrive && box.animate && !matchMedia('(prefers-reduced-motion: reduce)').matches)
-    box.querySelectorAll(':scope > :not(.vtop)').forEach(el => el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: 'ease-out' }));
   V.lastTab = V.tab; vodPost(box);
   V.bgFor = V.tab; setTimeout(renderVod, 400);
   return true;
@@ -5308,6 +5304,7 @@ $('#vodInner').addEventListener('click', e => {
 // onglet : allumé tout de suite et contenu effacé (ou page gardée affichée), puis la page se prépare
 function vodTab(t) {
   if (t.classList.contains('on') && !V.q) return; V.tab = t.dataset.tab; V.q = ''; V.cat = null;
+  S.arrive = Date.now();   // nouvel onglet : rangées en cascade, comme à l'arrivée sur la page
   document.querySelectorAll('#vodInner .vtop [data-tab]').forEach(b => b.classList.toggle('on', b === t));
   $('#vodInner').querySelectorAll(':scope > :not(.vtop)').forEach(el => { el.style.transition = 'opacity .12s'; el.style.opacity = '0'; });
   $('#vod').scrollTop = 0; if (!vodQuick()) requestAnimationFrame(() => setTimeout(renderVod, 0));
