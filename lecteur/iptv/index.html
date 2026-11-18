@@ -3542,8 +3542,14 @@ setInterval(() => { if (S.current) { nowEpg(S.current); renderGuideSide(false); 
 var RP = { ids: null, tz: "" };
 async function replayLoad(force) {
   const x = epgCtx(); if (!x || !S.pl) { RP.ids = new Map(); return RP; }
-  const ck = 'replay1:' + S.pl.id, c = !force && await DB.cacheGet(ck).catch(() => null);
-  if (c && c.data && Date.now() - c.at < 24 * 3600e3) { RP.ids = new Map(c.data.ids); RP.tz = c.data.tz || ''; return RP; }
+  /* gardé par serveur (pas par liste), 30 jours : utilisé tout de suite au lancement ; plus vieux d'un jour → vérifié à
+     nouveau en coulisse (le bouton Début est déjà là pendant ce temps) */
+  const ck = 'replay2:' + x.base, c = !force && await DB.cacheGet(ck).catch(() => null);
+  if (c && c.data && Date.now() - c.at < 30 * 864e5) {
+    RP.ids = new Map(c.data.ids); RP.tz = c.data.tz || '';
+    if (Date.now() - c.at > 864e5 && !replayLoad.bg) { replayLoad.bg = 1; setTimeout(() => replayLoad(true).catch(() => {}).finally(() => { replayLoad.bg = 0; }), 30000); }
+    return RP;
+  }
   const api = x.base + '/player_api.php?username=' + encodeURIComponent(x.user) + '&password=' + encodeURIComponent(x.pass);
   // seulement les catégories des chaînes de l'accueil TV et des favoris (quelques-unes, rapide) au lieu des ~50 000 chaînes
   const info = JSON.parse(await fetchText(api));
@@ -7861,7 +7867,7 @@ async function replayCheck() {
     const l = JSON.parse(await fetchText(api + '&action=get_live_streams')); if (!Array.isArray(l)) throw new Error('réponse illisible');
     const a = l.filter(s => String(s.tv_archive) === '1'), days = Math.max(0, ...a.map(s => +s.tv_archive_duration || 0));
     S.replay = new Map(a.map(s => [String(s.stream_id), +s.tv_archive_duration || 0]));
-    RP.ids = new Map(a.map(s => [String(s.stream_id), +s.tv_archive_duration || 1])); if (S.pl) DB.cachePut({ id: 'replay1:' + S.pl.id, at: Date.now(), data: { ids: [...RP.ids], tz: RP.tz } });   // replay utilisable tout de suite
+    RP.ids = new Map(a.map(s => [String(s.stream_id), +s.tv_archive_duration || 1])); { const x2 = epgCtx(); if (x2) DB.cachePut({ id: 'replay2:' + x2.base, at: Date.now(), data: { ids: [...RP.ids], tz: RP.tz } }); }   // replay utilisable tout de suite
     // ce qui compte : les chaînes de l'accueil TV (repérées par leur numéro dans l'adresse …/live/…/123.ts)
     const idOf = c => (/\/(\d+)(\.\w+)?$/.exec(c.url || '') || [])[1], home = [];
     homeIndex().forEach(f => f.subs.forEach(x => { const d = x.list.map(c => S.replay.get(idOf(c))).find(v => v != null); if (d != null) home.push(x.label + ' (' + d + ' j)'); }));
