@@ -164,7 +164,8 @@ public class Mpv
     {
         if (ExitPending) { if (FullSized(r)) return; ExitPending = false; }
         if (rect == null || rect.ToJsonString() != r?.ToJsonString()) lastRectAt = Environment.TickCount64;
-        rect = r; if (f.Sizing && !f.RatioLock) return; if (f.InvokeRequired) f.BeginInvoke(Place); else Place(); }   // pendant le geste : seulement le calcul par marges
+        bool miniChg = ((bool?)rect?["mini"] ?? false) != ((bool?)r?["mini"] ?? false);
+        rect = r; if (miniChg) f.BeginInvoke(FitChild); if (f.Sizing && !f.RatioLock) return; if (f.InvokeRequired) f.BeginInvoke(Place); else Place(); }   // pendant le geste : seulement le calcul par marges
     long holdUntil;
     public bool Holding => Environment.TickCount64 < holdUntil;
     // la page est revenue à la bonne taille (fin du voile) : sa position est la bonne, plus besoin d'attendre
@@ -224,7 +225,9 @@ public class Mpv
         int W = f.Video.Width, H = f.Video.Height, x = 0, y = 0, w = W, h = H;
         if (aspect > 0 && W > 0 && H > 0)
         {
-            if ((double)W / H > aspect) { w = (int)Math.Round(H * aspect); x = (W - w) / 2; } else { h = (int)Math.Round(W / aspect); y = (H - h) / 2; }
+            // mini lecteur : l'image remplit le cadre (recadrée sur les bords) au lieu de garder des bandes noires
+            bool cover = (bool?)rect?["mini"] ?? false;
+            if (((double)W / H > aspect) != cover) { w = (int)Math.Round(H * aspect); x = (W - w) / 2; } else { h = (int)Math.Round(W / aspect); y = (H - h) / 2; }
         }
         var ib = new Rectangle(x, y, Math.Max(1, w), Math.Max(1, h));
         if (f.Video.Inner.Bounds != ib) f.Video.Inner.Bounds = ib;
