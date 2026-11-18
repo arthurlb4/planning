@@ -417,7 +417,12 @@ function pxServe(req, res, u) {
       if (/mpegurl|m3u/i.test(ct) || /\.m3u8?(\?|$)/i.test(path)) {
         // liste HLS : adresses complètes réécrites pour passer elles aussi par ici
         const parts = []; up.on('data', d => parts.push(d)); up.on('end', () => {
-          const t = Buffer.concat(parts).toString('utf8').replace(/(https?):\/\/([^\/\s"']+)/g, (x, p, h) => self + p + '/' + h);
+          // toutes les adresses de la liste (absolues, « /chemin » ou relatives) rendues complètes depuis l'adresse finale du
+          // serveur (après redirections), puis passées par ici
+          const base = proto + '://' + hostport + path, px = v => { try { const n = new URL(v, base); return self + n.protocol.replace(':', '') + '/' + n.host + n.pathname + n.search; } catch (e) { return v; } };
+          const t = Buffer.concat(parts).toString('utf8').split(/\r?\n/).map(l => { const x = l.trim(); if (!x) return l;
+            if (x[0] === '#') return l.replace(/URI="([^"]+)"/g, (m0, v) => 'URI="' + px(v) + '"');
+            return px(x); }).join('\n');
           res.writeHead(up.statusCode, { 'Content-Type': ct || 'application/vnd.apple.mpegurl', 'Access-Control-Allow-Origin': '*' }); res.end(t);
         }); return;
       }
