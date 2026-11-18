@@ -4262,6 +4262,22 @@ async function jfTmdbAll() {
 }
 const tmIdOf = it => it && it.tmdb ? (it.kind === 'series' ? 's' : 'm') + it.tmdb : '';
 const pendPosters = l => l.map(x => posterHtml(x.it, V.shown.push(x.it) - 1, 0, { pct: x.pct, lab: (x.size ? torMo(x.size) + ' · ' : '') + (x.pct < 99.5 ? 'téléchargement ' + x.pct + ' %' : 'en cours de rangement') })).join('');
+/* Accueil : titres de Jellyfin jamais regardés (ni dans Jellyfin, ni dans l'appli) — arrivés par Radarr, Sonarr ou
+   qBittorrent sans passer par une lecture. Rien d'affiché s'il n'y en a pas. */
+async function toWatchRow(kinds) {
+  const jc = jfConf(); if (!jc) return '';
+  const types = kinds.map(k => k === 'm' ? 'Movie' : 'Series').join(',');
+  const j = await Promise.race([jfGet('/Users/' + jc.uid + '/Items?Recursive=true&Filters=IsUnplayed&Fields=' + JF_FIELDS + '&IncludeItemTypes=' + types + '&SortBy=DateCreated&SortOrder=Descending&Limit=40'), new Promise(r => setTimeout(() => r(null), 2500))]);
+  const seen = new Set(seenAll().map(e => e.k)), hist = new Set(histAll().map(e => e.k));
+  const l = ((j && j.Items) || []).filter(x => {
+    const ud = x.UserData || {}; if (ud.Played || ud.PlaybackPositionTicks > 0 || (x.Type === 'Series' && ud.PlayedPercentage > 0)) return false;
+    const tm = (x.ProviderIds || {}).Tmdb; if (!tm) return true;
+    const k = itemKey(virtItem((x.Type === 'Series' ? 's' : 'm') + tm, { t: x.Name, y: x.ProductionYear || 0 }));
+    return !seen.has(k) && !hist.has(k);
+  }).slice(0, 20);
+  if (!l.length) return '';
+  return `<div class="vrow" data-dd="keep"><h3>À voir dans Ma médiathèque<small>${l.length} titre${l.length > 1 ? 's' : ''} jamais regardé${l.length > 1 ? 's' : ''}</small></h3><div class="vwrap"><div class="vscroll">${jfPosters(l)}</div></div></div>`;
+}
 async function medRow(kinds) {
   const to = (p, ms, d) => Promise.race([Promise.resolve(p).catch(() => d), new Promise(r => setTimeout(() => r(d), ms))]), jc = jfConf();
   const types = kinds.map(k => k === 'm' ? 'Movie' : 'Series').join(',');
@@ -4456,7 +4472,7 @@ async function vodCineFilter(box) {
   const memo = new Map();
   for (const row of [...box.querySelectorAll('.vrow')]) {
     if (!row.querySelector('.poster[data-v]:not([data-jfv])')) continue;   // rangée sans affiche du catalogue (Ma médiathèque…) : jamais retirée
-    const h3 = (row.querySelector('h3') || {}).textContent || '', cine = row.dataset.cine === '1', mine = /^Ma liste/.test(h3), pers = mine || /^(Reprendre|Téléchargés|Ma médiathèque)/.test(h3);
+    const h3 = (row.querySelector('h3') || {}).textContent || '', cine = row.dataset.cine === '1', mine = /^Ma liste/.test(h3), pers = mine || /^(Reprendre|Téléchargés|Ma médiathèque|À voir dans Ma médiathèque)/.test(h3);
     for (const p of [...row.querySelectorAll('.poster[data-v]:not([data-jfv])')]) {
       const it = V.shown[+p.dataset.v]; if (!it || it.kind !== 'movie' || (!it.tor && !cine)) continue;
       const k = itemKey(it); if (!memo.has(k)) memo.set(k, relState(it).catch(() => 'ok'));
@@ -4757,8 +4773,8 @@ async function renderVod() {
     if (hist.length) h += `<div class="vrow"><h3>Reprendre</h3><div class="vwrap"><div class="vscroll">${hist.slice(0, 20).map(({ e, it }) => posterHtml(it, V.shown.push(it) - 1, 0, { pct: e.dur ? e.pos / e.dur * 100 : 0, lab: e.lab || (e.dur ? 'reste ' + fmtDur(e.dur - e.pos) : '') }).replace('<button class="poster"', `<button class="poster" data-hist="${esc(e.k)}"`).replace('<div class="im">', `<div class="im"><span class="hxb"><span data-histv="${esc(e.k)}" title="Marquer comme vu">✓</span><span data-histx="${esc(e.k)}" title="Retirer de Reprendre">✕</span></span>`)).join('')}</div></div></div>`;
     const ml = myListItems(kinds);
     if (ml.length) h += vodRow('Ma liste', '', ml, false, true);
-    // Ma médiathèque : en cours sur ce PC (pas encore dans Jellyfin), puis derniers arrivés dans Jellyfin
-    JF.shown = []; h += await medRow(kinds).catch(() => '');
+    // À voir dans Ma médiathèque : seulement ce qui n'a jamais été regardé (le reste est dans son onglet)
+    JF.shown = []; h += await toWatchRow(kinds).catch(() => '');
     let bc = '';
     if (POP) {
       const FY = await Promise.race([forYou(kinds).catch(() => null), new Promise(r => setTimeout(() => r(null), 6000))]);
