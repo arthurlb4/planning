@@ -501,6 +501,22 @@ module.exports = function handleTorrent(req, res, u) {
     });
     return true;
   }
+  /* Supprimer un torrent et ses fichiers (corbeille de la page) : fermé dans l'appli, retiré de qBittorrent avec ses fichiers,
+     ou fichiers effacés du dossier de téléchargement ; oublié de l'index. Seulement depuis la page du lecteur. */
+  if (u.pathname === '/torrent/delete' && req.method === 'POST') {
+    const o0 = String(req.headers.origin || '');
+    if (o0 && !/^https?:\/\/((www|tv\.lecteur)\.)?franceinfoplanning\.com(:\d+)?$/.test(o0)) { json({ error: 'refusé' }, 403); return true; }
+    (async () => {
+      const h = String(u.searchParams.get('id') || '').toLowerCase(); if (!/^[0-9a-f]{40}$/.test(h)) return json({ error: 'id' }, 400);
+      const o = idxRead(), e = o[h], t = c.get(h);
+      if (t) await new Promise(r => { try { t.destroy({ destroyStore: true }, () => r()); } catch (er) { r(); } });
+      if (await qbtUp(QBT)) await qbt('/api/v2/torrents/delete', { method: 'POST', body: new URLSearchParams({ hashes: h, deleteFiles: 'true' }) }).catch(() => {});
+      if (e && e.name) try { fs.rmSync(path.join(e.dir || DIR, e.name), { recursive: true, force: true }); } catch (er) {}
+      delete o[h]; idxWrite(o); QB.delete(h); QL.at = 0;
+      json({ ok: true });
+    })().catch(er => json({ error: er.message }, 500));
+    return true;
+  }
   // torrents gardés sur le PC (lus depuis moins d'une semaine) : nom, taille, part reçue, dernière lecture
   if (u.pathname === '/torrent/list') { (async () => {
     const o = idxRead(), qh = Object.keys(o).filter(h => o[h].qbt), qp = {};
