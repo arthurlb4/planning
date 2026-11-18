@@ -7096,9 +7096,12 @@ function natMove() {
 function setSolo(on, win) {
   natMove();
   if (S.engine === 'mpv' && window.desktop && window.desktop.natif) window.desktop.win.act('hold');   // appli native : la vidéo suit la fenêtre, pas la mise en page intermédiaire
+  // depuis le mini lecteur : on y revient en sortant du plein écran (même page derrière)
+  { const B = document.body.classList; if (on && B.contains('homeview') && B.contains('mini')) S.soloMini = S.lastPage || ''; else if (on) S.soloMini = null; }
   if (on) setHomeView(false);
   const b = document.body.classList;
   b.toggle('solo', !!on); b.toggle('solowin', !!on && !!win);
+  if (!on && S.soloMini != null) { const pg = S.soloMini; S.soloMini = null; setHomeView(true, true, pg); }
   const fs = document.fullscreenElement || document.webkitFullscreenElement;
   if (on && !win && !fs && !window.PREFER_NATIVE && document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
   if ((!on || win) && fs && document.exitFullscreen) document.exitFullscreen().catch(() => {});
@@ -7106,7 +7109,7 @@ function setSolo(on, win) {
 const isFull = () => document.body.classList.contains('solo') && !document.body.classList.contains('solowin');
 const isWin = () => document.body.classList.contains('solowin');
 document.addEventListener('fullscreenchange', () => { natMove(); });
-document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && isFull()) document.body.classList.remove('solo', 'ui'); });
+document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement && isFull()) { document.body.classList.remove('ui'); setSolo(false); } });
 try { video.controlsList.add('nofullscreen'); video.disablePictureInPicture = true; } catch (e) {}
 if (!NATIVE_CTRL()) video.controls = false;          // barre de l'appli : pas celle du navigateur, même à l'arrêt
 $('#soloBtn').onclick = () => setSolo(true);
