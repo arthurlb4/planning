@@ -3423,7 +3423,16 @@ function fail(c) {
   // ceux des chaînes ; les deux doivent passer par la même connexion
   const host = u => { try { return new URL(u).hostname; } catch (e) { return ''; } };
   const hosts = [...new Set([S.pl && S.pl.url ? host(S.pl.url) : '', host(c.url), ...(S.tries || []).map(x => host(x.u))].filter(Boolean))];
-  const why = refused
+  /* navigateur : la box renvoie sa page d'avertissement à la place du serveur (réponse sans « #EXTM3U ») → serveur bloqué par
+     la box ; le navigateur doit utiliser un DNS sécurisé (l'appli Windows, elle, contourne toute seule) */
+  const boxBlock = !refused && !window.desktop && (S.tries || []).some(x => /EXTM3U|manifestParsingError/i.test(x.why || ''));
+  const ua = navigator.userAgent, dohHow = /Edg\//.test(ua) ? 'Edge : Paramètres › Confidentialité, recherche et services › Sécurité › « Utiliser un DNS sécurisé » → Cloudflare (1.1.1.1)'
+    : /Firefox\//.test(ua) ? 'Firefox : Paramètres › Vie privée et sécurité › « DNS via HTTPS » › Protection renforcée → Cloudflare'
+    : APPLE_WEBKIT ? 'iPhone / Mac : installez l\'appli gratuite « 1.1.1.1 » (Cloudflare), ou activez le relais privé iCloud'
+    : 'Chrome : Paramètres › Confidentialité et sécurité › Sécurité › « Utiliser un DNS sécurisé » → Cloudflare (1.1.1.1)';
+  const why = boxBlock
+    ? 'Le serveur IPTV est <b>bloqué par votre box</b> (elle renvoie sa page d\'avertissement à la place des chaînes). Activez le DNS sécurisé du navigateur, puis fermez-le et rouvrez-le :<br><b>' + esc(dohHow) + '</b>' + (mixed ? '<br>Puis ouvrez le lecteur en http (bouton ci-dessous).' : '') + '<br>L\'appli Windows, elle, passe toute seule.'
+    : refused
     ? 'Le serveur IPTV <b>refuse la connexion</b> (erreur 403 ou 511) : il bloque l\'adresse d\'où vous vous connectez. Souvent un VPN actif (les fournisseurs bloquent leurs adresses), ou votre adresse bannie par le fournisseur (trop de connexions). Essayez sans VPN, ou depuis une autre connexion (4G) ; si ça ne passe nulle part, le fournisseur doit la débloquer.'
       + (hosts.length ? '<br><br>Pour garder le VPN : mettez <b>tous</b> ces serveurs dans les exceptions du VPN (la liste et les chaînes doivent passer par la même connexion), puis reconnectez-le : <b>' + hosts.map(esc).join('</b>, <b>') + '</b>' : '')
     : mixed && !APPLE_WEBKIT && !window.desktop
@@ -3438,7 +3447,8 @@ function fail(c) {
     // navigateur d'ordinateur (pas l'appli) : adresse du lecteur en http, sur laquelle Chrome, Edge ou Firefox ne forcent pas le https
     (!refused && mixed && !APPLE_WEBKIT && !window.desktop ? `<a class="btn primary" href="http://tv.lecteur.franceinfoplanning.com:8080/">Ouvrir le lecteur en http</a>` : '') +
     `<button class="btn${mixed && APPLE_WEBKIT ? '' : ' primary'}" onclick="openVlc(S.current)">Ouvrir dans VLC</button>`,
-    refused ? 'Serveur IPTV qui refuse la connexion (VPN actif ?). Pour garder le VPN, mettez dans ses exceptions : <b id="vpnHosts">' + hosts.map(esc).join(', ') + '</b>, puis reconnectez-le.'
+    boxBlock ? 'Serveur bloqué par votre box : activez le DNS sécurisé du navigateur (' + esc(dohHow) + '), puis rouvrez-le.'
+      : refused ? 'Serveur IPTV qui refuse la connexion (VPN actif ?). Pour garder le VPN, mettez dans ses exceptions : <b id="vpnHosts">' + hosts.map(esc).join(', ') + '</b>, puis reconnectez-le.'
       : mixed && !APPLE_WEBKIT && !window.desktop ? 'Chaîne en http, bloquée sur cette page en https : ouvrez le lecteur à son adresse en http (bouton ci-dessous), puis redéverrouillez « Mon abonnement ».' : '');
   // appli : comme nslookup, le vrai serveur derrière chaque alias et ses adresses (les exceptions du VPN suivent mal les alias)
   if (refused && window.desktop && window.desktop.remux && hosts.length) Promise.all(hosts.map(h => fetch(window.desktop.remux + '/dns?h=' + encodeURIComponent(h)).then(r => r.json()).catch(() => null))).then(L => {
