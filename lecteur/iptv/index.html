@@ -2351,7 +2351,7 @@ async function torFindMovie(titles, year) {
    atteinte), avertissement de limite, ou refus (429) ; plus de recherche pendant 1 h. Une fois les recherches finies,
    l'accueil est redessiné à la même place. */
 const IX = { q: [], run: 0, n: 0, found: 0, queued: new Set(), virt: new Map(), base: null, checking: null };
-const IX_MAX = 60;
+const IX_MAX = 400;                                     // recherches au plus par lancement de l'appli
 const ixOn = () => torOk() && !!prwConf() && vpnOk() && !(LS.get('dev.ixstop', 0) > Date.now());
 function ixHalt(why) { LS.set('dev.ixstop', Date.now() + 3600e3); IX.q.length = 0; console.warn('Recommandations torrent arrêtées 1 h : ' + why); }
 // état des indexeurs dans Prowlarr : ceux en pause, et les avertissements de limite
@@ -2379,7 +2379,7 @@ const ixGet = () => { const o = LS.get('dev.ix', {}); return o && typeof o === '
 function ixVirtual(id, m) {
   if (vodSrc() !== 'tor' || !/^[ms]/.test(id) || !m || !m.t) return null;
   const c = ixGet()[id];
-  if (c && !c.ok && Date.now() - c.at < 7 * 864e5) return null;
+  if (c && !c.ok && Date.now() - c.at < 14 * 864e5) return null;
   return virtItem(id, m, c && c.ok ? { q: c.q, s: c.s } : {});
 }
 // rien trouvé dans les indexeurs pour ce titre : retenu (il n'est plus proposé pendant une semaine)
@@ -2387,7 +2387,7 @@ function ixNone(it) { if (!it || !it.tmdb) return; const o = ixGet(); o[(it.kind
 // titre hors abonnement (fiche TMDB) : « tor » marque qu'il ne vient pas du serveur IPTV
 function virtItem(id, m, tor) {
   let v = IX.virt.get(id);
-  if (!v) { v = { kind: id[0] === 's' ? 'series' : 'movie', id: 't' + id.slice(1), tmdb: +id.slice(1), name: m.t, year: m.y || 0, cover: m.p ? 'https://image.tmdb.org/t/p/w342' + m.p : '', ol: m.l || '', tor: tor || {}, services: [], cats: [], rating: 0, added: 0 }; IX.virt.set(id, v); }
+  if (!v) { v = { kind: id[0] === 's' ? 'series' : 'movie', id: 't' + id.slice(1), tmdb: +id.slice(1), name: m.t, year: m.y || 0, cover: m.p ? 'https://image.tmdb.org/t/p/w342' + m.p : '', ol: m.l || '', tor: tor || {}, services: [], cats: [], rating: 0, added: 0, orig: m.o || '' }; IX.virt.set(id, v); }
   return v;
 }
 function ixQueue(id, m) {
@@ -2404,14 +2404,42 @@ function ixNext() {
   }
   while (IX.run < 2 && IX.q.length && ixOn() && !(IX.n && IX.n % 10 === 0 && IX.lastCheck !== IX.n)) {
     const [id, m] = IX.q.shift(); IX.run++; IX.n++;
-    (id[0] === 's' ? torFindSeason([m.t, m.o], 1).then(l => l.filter(x => x._p.ep == null)) : torFindMovie([m.t, m.o], m.y)).then(rel => {
-      const ok = rel.filter(x => (x.seeders || 0) >= 3 && !(x._t || torTags(x.title)).cam), g = { kind: id[0] === 's' ? 'series' : 'movie', tm: { lang: m.l || '' } }, bx = ok.length ? torBest(ok, g) : null;
+    (id[0] === 's' ? torFindSeason([m.t, m.o], 1) : torFindMovie([m.t, m.o], m.y)).then(rel => {
+      const ok = rel.filter(x => (x.seeders || 0) >= (id[0] === 's' ? 1 : 3) && !(x._t || torTags(x.title)).cam), g = { kind: id[0] === 's' ? 'series' : 'movie', tm: { lang: m.l || '' } }, bx = ok.length ? torBest(ok, g) : null;
       const o = ixGet(); o[id] = bx ? { ok: 1, q: torQ(bx), s: bx.size || 0, at: Date.now() } : { ok: 0, at: Date.now() };
       const k = Object.keys(o); if (k.length > 1500) k.slice(0, k.length - 1500).forEach(x => delete o[x]);
-      LS.set('dev.ix', o); if (bx) IX.found++;
-    }).catch(() => {}).finally(() => { IX.run--; if (!IX.q.length && !IX.run && IX.found) { IX.found = 0; ixRefresh(); } ixNext(); });
+      LS.set('dev.ix', o); if (!bx) ixHide(id);
+    }).catch(() => {}).finally(() => { IX.run--; setTimeout(ixNext, 1000); });
   }
 }
+/* Catalogue en mode torrent : chaque titre affiché est cherché dans les indexeurs, ceux de l'écran d'abord (puis le reste de
+   la page) ; introuvable → retiré (et plus proposé pendant 2 semaines). Trouvé : gardé 30 jours sans nouvelle recherche. */
+const ixIdOf = it => it && it.tor && it.tmdb ? (it.kind === 'series' ? 's' : 'm') + it.tmdb : '';
+function ixHide(id) {
+  document.querySelectorAll('#vod .poster[data-v]:not([data-jfv])').forEach(p => {
+    if (ixIdOf(V.shown[+p.dataset.v]) !== id) return;
+    const row = p.closest('.vrow'); p.style.transition = 'opacity .3s'; p.style.opacity = '0';
+    setTimeout(() => { p.remove(); if (row && !row.querySelector('.poster')) row.remove(); }, 300);
+  });
+}
+function ixScan() {
+  if (vodSrc() !== 'tor' || !document.body.classList.contains('vod') || ['jf', 'hist'].includes(V.tab) || !ixOn()) return;
+  const o = ixGet(), now = Date.now(), vh = innerHeight, vw = innerWidth, vis = [], rest = [];
+  document.querySelectorAll('#vod .poster[data-v]:not([data-jfv])').forEach(p => {
+    const it = V.shown[+p.dataset.v], id = ixIdOf(it); if (!id) return;
+    const c = o[id];
+    if (c && !c.ok && now - c.at < 14 * 864e5) { ixHide(id); return; }
+    if (c && c.ok && now - c.at < 30 * 864e5) return;
+    const r = p.getBoundingClientRect(), on = r.bottom > 0 && r.top < vh && r.right > 0 && r.left < vw;
+    (on ? vis : rest).push([id, { t: it.name, o: it.orig || '', y: it.year || 0, l: it.ol || '' }]);
+  });
+  // file refaite dans l'ordre : écran d'abord
+  IX.q.forEach(([id]) => IX.queued.delete(id)); IX.q.length = 0;
+  for (const [id, m] of vis.concat(rest)) if (!IX.queued.has(id) && IX.n + IX.q.length < IX_MAX) { IX.queued.add(id); IX.q.push([id, m]); }
+  ixNext();
+}
+// défilement : les titres arrivés à l'écran passent devant
+document.addEventListener('scroll', e => { if (e.target.closest && e.target.closest('#vod')) { clearTimeout(ixScan.t); ixScan.t = setTimeout(ixScan, 600); } }, true);
 // accueil redessiné avec les films trouvés, au même endroit (pas pendant un aperçu, une fiche ouverte ou un glissement)
 async function ixRefresh() {
   const b = document.body.classList;
@@ -4696,6 +4724,7 @@ async function renderVod() {
   vodDedupe(box);
   if (!V.q && !V.cat && !['jf', 'hist'].includes(V.tab)) vodSeenFilter(box);   // pas sur Ma médiathèque ni l'Historique
   vodCineFilter(box);
+  setTimeout(ixScan, 500);
   const qi = $('#vodQ'); if (V.q) { qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); }
 }
 /* Recherche d'une plateforme (« netflix », « prime », « disney »…) : ses classements en tête des résultats — top 10 France
