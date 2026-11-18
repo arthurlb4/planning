@@ -707,6 +707,8 @@ body.vtools #prevBtn,body.vtools #nextBtn,body.vtools #soloBtn,body.vtools #solo
 #vbar svg text{font:700 7.5px system-ui,sans-serif;fill:#fff;stroke:none}
 /* chaîne lue par mpv : pas de barre de temps ni de saut de 10 s */
 body.mpvlive #vbRange,body.mpvlive #vbBack,body.mpvlive #vbFwd{display:none!important}
+/* triangle « lecture » des boutons (Lecture, Reprendre…) : arrondi comme celui du lecteur */
+.pli{width:14px;height:14px;fill:currentColor;stroke:currentColor;stroke-width:3.2;stroke-linejoin:round;vertical-align:-2px;margin-right:5px;flex:none}
 #vbPlay .ipa{display:none}#vbPlay.on .ip{display:none}#vbPlay.on .ipa{display:block}
 /* style arrondi : lecture en triangle aux angles bien ronds (trait épais), pause en deux barres fines arrondies */
 #vbPlay .ip,#vodTrailer .trplay .ip{stroke-width:3.4;stroke-linejoin:round}#vbPlay .ipa,#vodTrailer .trplay .ipa{stroke:none}
@@ -1832,7 +1834,7 @@ async function prwSearch(q, kind) {
 function torRowHtml(x, i) {
   const cat = (x.categories || []).map(c => c.id).find(Boolean) || 0, q = torQ(x), ser = cat >= 5000 && cat < 6000;
   return `<div class="trow${x._best ? ' tbest' : ''}" data-ti="${i}"><div class="tmn"><div class="tmt" style="margin:0">${q ? `<span class="tbg${q === '4K' ? ' k4' : ''}">${q}</span>` : ''}<b style="font-size:14px;color:var(--text)">${esc(torMo(x.size))}</b>${x._best ? '<span class="tbg k4">★ MEILLEUR CHOIX</span>' : ''}</div></div>
-    <div class="tac"><button class="btn primary sm" data-tpl="${i}">▶ Lire</button><button class="chip" data-tpa="${i}" data-c="${ser ? 'series' : 'films'}" title="Télécharger en entier avec qBittorrent et ranger dans Ma médiathèque">＋ ${ser ? 'Séries' : 'Films'}</button></div></div>`;
+    <div class="tac"><button class="btn primary sm" data-tpl="${i}"><svg class="pli" viewBox="0 0 24 24"><path d="M8 6.5v11l9-5.5z"/></svg>Lire</button><button class="chip" data-tpa="${i}" data-c="${ser ? 'series' : 'films'}" title="Télécharger en entier avec qBittorrent et ranger dans Ma médiathèque">＋ ${ser ? 'Séries' : 'Films'}</button></div></div>`;
 }
 async function torQbt(x, cat, b) {
   if (!vpnOk()) { toastLong(VPN_MSG); return false; }
@@ -1982,7 +1984,7 @@ async function torFicheMore(g) {
   const sub = $('#torSub');
   if (sub && V.data && V.data.items) {
     const id = (g.kind === 'series' ? 's' : 'm') + tm.id, it = popMatch(id, popIndex(V.data.items), { [id]: { k: id[0], t: tm.name, o: tm.orig, y: tm.year, p: tm.poster, l: tm.lang } });
-    if (it) { const k = V.shown.push(it) - 1; sub.insertAdjacentHTML('beforeend', `<button class="btn primary" data-tsub="${k}">▶ Dans votre abonnement</button>`); }
+    if (it) { const k = V.shown.push(it) - 1; sub.insertAdjacentHTML('beforeend', `<button class="btn primary" data-tsub="${k}"><svg class="pli" viewBox="0 0 24 24"><path d="M8 6.5v11l9-5.5z"/></svg>Dans votre abonnement</button>`); }
   }
   const d = await tmdb('/' + (g.kind === 'series' ? 'tv/' : 'movie/') + tm.id, { append_to_response: 'credits' }).catch(() => null);
   if (!d || TOR.groups[TOR.open] !== g) return;
@@ -2826,7 +2828,7 @@ function showNow(c, idle) {
   qualBtnUpdate(c);
   $('#nowLogo').outerHTML = logoHtml(c).replace('class="logo"', 'class="logo" id="nowLogo"');
   updateNowFav(); nowEpg(c);
-  if (idle) setStatus('msg', '<span class="hint">Dernière chaîne regardée</span>', '<button class="btn primary" onclick="play(S.current)">▶ Reprendre</button>');
+  if (idle) setStatus('msg', '<span class="hint">Dernière chaîne regardée</span>', '<button class="btn primary" onclick="play(S.current)"><svg class="pli" viewBox="0 0 24 24"><path d="M8 6.5v11l9-5.5z"/></svg>Reprendre</button>');
 }
 function updateNowFav() { const on = S.current && S.fav.has(S.current.url); $('#nowFav').classList.toggle('on', !!on); }
 
@@ -2991,7 +2993,7 @@ async function play(c, alts) {
       const p = video.play();
       if (p && p.catch) p.catch(e => {
         if (t !== token) return;
-        if (e && e.name === 'NotAllowedError') setStatus('msg', '', '<button class="btn primary" onclick="video.play();setStatus(null)">▶ Lire</button>');
+        if (e && e.name === 'NotAllowedError') setStatus('msg', '', '<button class="btn primary" onclick="video.play();setStatus(null)"><svg class="pli" viewBox="0 0 24 24"><path d="M8 6.5v11l9-5.5z"/></svg>Lire</button>');
       });
     } catch (e) { ko('exception · ' + (e && e.message || e)); }
   };
@@ -3528,7 +3530,7 @@ async function renderAgenda(force) {
       <div class="h">${pre ? `<small style="margin:0 0 2px">${esc(dayLabel(e.start))}</small>` : ''}${hm(e.start)}<small>${hm(e.end)}</small></div>
       <div><div class="sp">${my ? '★ ' : ''}${esc(e.sport)}${e.comp ? ' · ' + esc(e.comp) : ''}${live ? '<span class="live">EN DIRECT</span>' : ''}</div>
         <div class="t">${esc(e.title)}</div>${e.desc && !pre ? `<div class="d">${esc(e.desc)}</div>` : ''}
-        ${live ? `<div class="bar" style="max-width:320px"><i style="width:${pct(e)}%"></i></div><button class="btn primary evgo" data-evgo="${pre ? 'm' : ''}${k}">▶ Regarder sur ${esc(e.tv[0].label)}</button>` : ''}
+        ${live ? `<div class="bar" style="max-width:320px"><i style="width:${pct(e)}%"></i></div><button class="btn primary evgo" data-evgo="${pre ? 'm' : ''}${k}"><svg class="pli" viewBox="0 0 24 24"><path d="M8 6.5v11l9-5.5z"/></svg>Regarder sur ${esc(e.tv[0].label)}</button>` : ''}
         <div class="tv">${e.tv.map((x, j) => { const q = chInfo(x.list[0]).q; return `<button data-ev="${pre ? 'm' : ''}${k}:${j}" title="${live ? 'Regarder' : 'Ouvrir la chaîne (commence à ' + hm(e.start) + ')'}"><span class="lg">${imgOr(logoUrl(x.label) || x.list[0].logo, '', '')}</span>${esc(x.label)} <span class="qb${q === 4 ? ' k4' : ''}">${QLBL[q]}</span></button>`; }).join('')}</div>
       </div></div>`;
   };
@@ -3769,7 +3771,7 @@ function hovOpen(poster) {
   el.style.width = w + 'px'; el.style.left = Math.max(10, Math.min(innerWidth - w - 10, r.left + r.width / 2 - w / 2)) + 'px';
   const snd = LS.get('pref.hoverSound', false);
   el.innerHTML = `<div class="md" style="background-image:url('${esc(posterUrl(it.cover || ''))}')"><button class="snd${snd ? ' on' : ''}" title="Son"><svg viewBox="0 0 24 24"><path d="M5 9.5h3l4.5-3.5v12L8 14.5H5z"/><path class="iv" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" fill="none"/><path class="im" d="M16 9l5 6M21 9l-5 6" fill="none"/></svg></button></div>
-    <div class="bd"><div class="bt"><button class="btn primary" data-hplay>▶ ${it.kind === 'series' ? 'Épisodes' : 'Lecture'}</button><button class="btn" data-hinfo>Plus d'infos</button></div>
+    <div class="bd"><div class="bt"><button class="btn primary" data-hplay><svg class="pli" viewBox="0 0 24 24"><path d="M8 6.5v11l9-5.5z"/></svg>${it.kind === 'series' ? 'Épisodes' : 'Lecture'}</button><button class="btn" data-hinfo>Plus d'infos</button></div>
     <div class="ti">${esc(it.name)}</div><div class="mt">${esc([it.year, noteTxt(it), it.kind === 'series' ? 'Série' : 'Film', (it.services || []).join(', ')].filter(Boolean).join(' · '))}</div></div>`;
   document.body.appendChild(el); HOV.el = el;
   const h = el.offsetHeight; el.style.top = Math.max(10, Math.min(innerHeight - h - 10, r.top + r.height / 2 - h / 2)) + 'px';
@@ -3829,7 +3831,7 @@ function hovInline(poster, it) {
       if (poster.closest('.vgrid')) { const g = poster.closest('.vgrid').getBoundingClientRect(), a = poster.getBoundingClientRect(), over = a.left + w - g.right;
         if (over > 0) poster.style.marginLeft = -Math.min(over, a.left - g.left) + 'px'; }
       if (LS.get('pref.hoverSound', false)) setTimeout(() => { try { f.contentWindow.postMessage(JSON.stringify({ event: 'command', func: 'unMute', args: [] }), '*'); } catch (e) {} }, 250);
-      poster.insertAdjacentHTML('beforeend', `<span class="xpb"><span class="bt"><span class="btn primary" data-hplay>▶ ${it.kind === 'series' ? 'Épisodes' : 'Lecture'}</span><span class="btn" data-hinfo>Plus d'infos</span><span class="hfb">${fbButtons(it, 'fbi').replace(/<button /g, '<span ').replace(/<\/button>/g, '</span>')}</span></span>
+      poster.insertAdjacentHTML('beforeend', `<span class="xpb"><span class="bt"><span class="btn primary" data-hplay><svg class="pli" viewBox="0 0 24 24"><path d="M8 6.5v11l9-5.5z"/></svg>${it.kind === 'series' ? 'Épisodes' : 'Lecture'}</span><span class="btn" data-hinfo>Plus d'infos</span><span class="hfb">${fbButtons(it, 'fbi').replace(/<button /g, '<span ').replace(/<\/button>/g, '</span>')}</span></span>
         <span class="mt">${esc([noteTxt(it), (it.services || []).join(', ')].filter(Boolean).join(' · '))}</span></span>`);
       setTimeout(() => { const sc = poster.closest('.vscroll'); if (!sc || HOV.el !== poster || HOV.pinned) return; const a = poster.getBoundingClientRect(), bb = sc.getBoundingClientRect();
         if (a.right > bb.right - 8) { HOV.auto = Date.now(); sc.scrollBy({ left: a.right - bb.right + 16, behavior: 'smooth' }); } }, 320);
@@ -5207,16 +5209,16 @@ async function openVod(it) {
   const flat = it.kind === 'series' ? epFlat(eps) : [];
   if (it.kind === 'movie') {
     const vs = vodVars(it), pick = vodPick(it), url = it.tor ? '' : vodUrl('movie', pick.id, pick.ext), pos = url ? LS.get('pos.' + url, 0) : 0;
-    if (it.tor) h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-tgo>▶ ${torLast(it) ? 'Reprendre' : 'Lecture'}</button><button class="btn icon" data-pmenu title="Autres sources et versions"><svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>${it.kind === 'movie' && torOk() ? dlIco(0, 'data-mdl', 'Télécharger ce film sur ce PC (qBittorrent)') : ''}</div><p class="hint" style="margin-top:8px">Pas dans votre abonnement : trouvé dans vos indexeurs (torrent).</p>`;
-    else if (vodSrc() === 'tor') h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-tgo>▶ ${torLast(it) ? 'Reprendre' : 'Lecture'}</button><button class="btn icon" data-pmenu title="Abonnement IPTV et autres versions"><svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button><button class="btn" data-vlc="${esc(url)}">VLC</button>${it.kind === 'movie' && torOk() ? dlIco(0, 'data-mdl', 'Télécharger ce film sur ce PC (qBittorrent)') : ''}</div>`;
-    else h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-pmenu>▶ ${pos > 60 ? 'Reprendre à ' + fmtDur(pos) : 'Lecture'}<svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>${pos > 60 ? `<button class="btn" data-pm="${esc(url)}" data-zero>Depuis le début</button>` : ''}${listBtn}<button class="btn" data-vlc="${esc(url)}">VLC</button></div>`;
+    if (it.tor) h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-tgo><svg class="pli" viewBox="0 0 24 24"><path d="M8 6.5v11l9-5.5z"/></svg>${torLast(it) ? 'Reprendre' : 'Lecture'}</button><button class="btn icon" data-pmenu title="Autres sources et versions"><svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>${it.kind === 'movie' && torOk() ? dlIco(0, 'data-mdl', 'Télécharger ce film sur ce PC (qBittorrent)') : ''}</div><p class="hint" style="margin-top:8px">Pas dans votre abonnement : trouvé dans vos indexeurs (torrent).</p>`;
+    else if (vodSrc() === 'tor') h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-tgo><svg class="pli" viewBox="0 0 24 24"><path d="M8 6.5v11l9-5.5z"/></svg>${torLast(it) ? 'Reprendre' : 'Lecture'}</button><button class="btn icon" data-pmenu title="Abonnement IPTV et autres versions"><svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button><button class="btn" data-vlc="${esc(url)}">VLC</button>${it.kind === 'movie' && torOk() ? dlIco(0, 'data-mdl', 'Télécharger ce film sur ce PC (qBittorrent)') : ''}</div>`;
+    else h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-pmenu><svg class="pli" viewBox="0 0 24 24"><path d="M8 6.5v11l9-5.5z"/></svg>${pos > 60 ? 'Reprendre à ' + fmtDur(pos) : 'Lecture'}<svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>${pos > 60 ? `<button class="btn" data-pm="${esc(url)}" data-zero>Depuis le début</button>` : ''}${listBtn}<button class="btn" data-vlc="${esc(url)}">VLC</button></div>`;
     setTimeout(() => jfLink(it).catch(() => {}), 0);
   } else if (!flat.length) h += it.tor ? (torOk() && prwConf() ? '' : '<p class="hint" style="margin-top:14px">Série absente de votre abonnement : pas d\'épisode à lire ici (les torrents se lisent dans l\'appli Windows).</p>') : `<div class="row" style="margin-top:14px">${listBtn}</div><p class="hint" style="margin-top:14px">Aucun épisode trouvé.</p>`;
   else {
     // Reprendre l'épisode en cours (ou le suivant à voir), sinon le premier
     let k0 = hist ? flat.findIndex(x => epUrl(x) === hist.url) : -1; if (k0 < 0) k0 = 0;
     const x0 = flat[k0], u0 = epUrl(x0), p0 = LS.get('pos.' + u0, 0) || (hist && hist.url === u0 ? hist.pos : 0);
-    h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-epk="${k0}">▶ ${hist ? (p0 > 60 ? 'Reprendre ' : 'Regarder ') + 'S' + x0.s + 'E' + x0.n : 'Regarder S' + x0.s + 'E' + x0.n}</button>${listBtn}</div>`;
+    h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-epk="${k0}"><svg class="pli" viewBox="0 0 24 24"><path d="M8 6.5v11l9-5.5z"/></svg>${hist ? (p0 > 60 ? 'Reprendre ' : 'Regarder ') + 'S' + x0.s + 'E' + x0.n : 'Regarder S' + x0.s + 'E' + x0.n}</button>${listBtn}</div>`;
     const seasons = [...new Set(flat.map(x => x.s))];
     const cur = LS.get('season.' + it.id, x0.s), sel = seasons.includes(+cur) ? +cur : seasons[0];
     h += `<div class="row" style="margin-top:14px"><select class="field" id="seasonSel" style="width:auto;margin:0">${seasons.map(n => `<option value="${n}"${n === sel ? ' selected' : ''}>Saison ${n}</option>`).join('')}</select></div><div class="eps">`;
@@ -6319,7 +6321,7 @@ function nextEpBox(auto) {
   const c = S.current; if (!c || !c.next || !c.it) return;
   let b = $('#nextBox');
   if (!b) { b = document.createElement('div'); b.id = 'nextBox'; $('#screen').appendChild(b); }
-  b.innerHTML = `<span><small>Épisode suivant</small><b>${esc('S' + c.next.s + 'E' + c.next.n)}</b></span><button class="btn primary" data-nx>▶ Épisode suivant</button><button class="btn" data-nxx aria-label="Fermer">✕</button>`;
+  b.innerHTML = `<span><small>Épisode suivant</small><b>${esc('S' + c.next.s + 'E' + c.next.n)}</b></span><button class="btn primary" data-nx><svg class="pli" viewBox="0 0 24 24"><path d="M8 6.5v11l9-5.5z"/></svg>Épisode suivant</button><button class="btn" data-nxx aria-label="Fermer">✕</button>`;
   const go = b.querySelector('[data-nx]');
   go.onclick = () => nextEpGo();
   b.querySelector('[data-nxx]').onclick = () => { nextEpHalt(); NXT.url = c.url; b.remove(); };
