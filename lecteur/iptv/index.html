@@ -799,6 +799,8 @@ body.playing #screen.idle #vbar{transform:translateY(8px)}
 #vbar .live{display:none;height:24px;padding:0 9px 0 20px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:.06em;color:#fff;background:rgba(255,255,255,.12);position:relative}
 #vbar .live::before{content:'';position:absolute;left:9px;top:50%;width:6px;height:6px;margin-top:-3px;border-radius:50%;background:#9d9b95}
 #vbar .live.edge::before{background:#e5322d}
+#vbar .rstart{display:none;height:24px;padding:0 10px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:.04em;color:#fff;background:rgba(255,255,255,.12)}
+#vbar .rstart:hover{background:rgba(255,255,255,.22)}#vbar.hasrp .rstart{display:inline-block}
 body.live #vbar .live{display:inline-block}
 body.live #vbar .tm{display:none}
 @media (max-width:760px){#vbVol{display:none}}
@@ -864,6 +866,8 @@ body.hassrc #vbar .vsrc{display:inline-flex}
 #trackMenu .subofs b{min-width:48px;text-align:center;color:var(--text);font-weight:500}
 #guide .pg{padding:10px 0;border-bottom:.5px solid var(--border)}
 #guide .pg.past{opacity:.45}
+#guide .pg.rp{cursor:pointer;border-radius:10px;padding-left:8px;padding-right:8px;margin:0 -8px;transition:background-color .15s,opacity .15s}#guide .pg.rp:hover{background:var(--bg3);opacity:1}#guide .pg.rp.past{opacity:.75}
+#guide .pg .tm .pli{width:11px;height:11px;fill:var(--blue);vertical-align:-1px;margin-right:5px}
 #guide .dy{position:sticky;top:54px;background:var(--bg0);font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);font-weight:500;padding:12px 0 4px;z-index:1}
 body.solo #guide .dy{background:rgba(14,14,13,.95)}
 #guide .pg .tm{color:var(--text3);font-size:12px}
@@ -964,6 +968,7 @@ h1,h2,h3,h4,h5,h6,b,strong,th,summary{font-weight:500}
         <input type="range" id="vbRange" min="0" max="100" step="0.1" value="0" aria-label="Position">
         <span class="tm" id="vbDur">0:00</span>
         <button class="live" id="vbLive" title="Revenir au direct">DIRECT</button>
+        <button class="rstart" id="vbStart" title="Reprendre l'émission en cours depuis son début (replay)">Début</button>
         <button class="vsrc" id="vbSrc" title="Changer de torrent"><span id="vbSrcL">Torrent</span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
         <button class="vb" id="vbMute" title="Couper le son (M)"><svg viewBox="0 0 24 24"><path d="M5 9.5h3l4.5-3.5v12L8 14.5H5z"/><path class="iv" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" fill="none"/><path class="im" d="M16 9l5 6M21 9l-5 6" fill="none"/></svg></button>
         <input type="range" id="vbVol" min="0" max="1" step="0.05" value="1" aria-label="Volume">
@@ -1243,6 +1248,7 @@ function usePlaylist(id) {
   S.group = 'home';
   $('#plName').textContent = p.name + ' · ' + S.channels.length.toLocaleString('fr-FR') + ' chaînes';
   renderGroups(); applyFilter(true); renderPlaylists();
+  clearTimeout(replayLoad.t); RP.ids = null; replayLoad.t = setTimeout(() => replayLoad().catch(() => {}), 20000);
   setHomeView(S.group === 'home' && !S.current);
   const lastUrl = LS.get('last.' + p.id);
   if (typeof renderFreeLists === 'function') renderFreeLists();
@@ -3344,6 +3350,52 @@ async function nowEpg(c) {
   findMatch(c);
 }
 setInterval(() => { if (S.current) { nowEpg(S.current); renderGuideSide(false); } const b = document.body.classList; if (b.contains('homeview') && !b.contains('agenda') && !b.contains('vod')) fillTileEpg(); }, window.PREFER_NATIVE ? 300000 : 60000);
+/* ---------- Replay (abonnement Xtream) : chaînes dont le serveur garde les programmes passés (tv_archive, N jours).
+   Liste demandée une fois par jour en coulisse (seules les chaînes avec replay sont gardées). Programme passé lu par
+   l'adresse « timeshift » du serveur (heure de début à l'heure du serveur, durée en minutes), comme un film : barre de
+   lecture, avance, recul. Rien ne s'affiche sur les chaînes sans replay. ---------- */
+var RP = { ids: null, tz: "" };
+async function replayLoad(force) {
+  const x = epgCtx(); if (!x || !S.pl) { RP.ids = new Map(); return RP; }
+  const ck = 'replay1:' + S.pl.id, c = !force && await DB.cacheGet(ck).catch(() => null);
+  if (c && c.data && Date.now() - c.at < 24 * 3600e3) { RP.ids = new Map(c.data.ids); RP.tz = c.data.tz || ''; return RP; }
+  const api = x.base + '/player_api.php?username=' + encodeURIComponent(x.user) + '&password=' + encodeURIComponent(x.pass);
+  const info = JSON.parse(await fetchText(api)), l = JSON.parse(await fetchText(api + '&action=get_live_streams'));
+  if (!Array.isArray(l)) throw new Error('réponse illisible');
+  const ids = l.filter(s => String(s.tv_archive) === '1').map(s => [String(s.stream_id), +s.tv_archive_duration || 1]);
+  RP.ids = new Map(ids); RP.tz = (info && info.server_info && info.server_info.timezone) || '';
+  DB.cachePut({ id: ck, at: Date.now(), data: { ids, tz: RP.tz } });
+  if (S.current && !S.current.vod) { vbarUpdate(); renderGuideSide(false); }
+  return RP;
+}
+function archDays(c) { return (RP.ids && c && !c.vod && RP.ids.get(streamId(c) || '')) || 0; }
+// heure à l'heure du serveur : « AAAA-MM-JJ:HH-MM »
+function rpTime(t) {
+  let o; try { o = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: RP.tz || undefined, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(t)).map(p => [p.type, p.value])); }
+  catch (e) { o = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(t)).map(p => [p.type, p.value])); }
+  return o.year + '-' + o.month + '-' + o.day + ':' + o.hour + '-' + o.minute;
+}
+function replayUrl(c, start, end) {
+  const m = /^(https?:\/\/[^/]+)\/live\/([^/]+)\/([^/]+)\/(\d+)/.exec(c.url || ''); if (!m) return '';
+  const st = Math.floor(start / 60000) * 60000, dur = Math.max(1, Math.ceil((end - st) / 60000) + 1);
+  return `${m[1]}/timeshift/${m[2]}/${m[3]}/${dur}/${rpTime(st)}/${m[4]}.ts`;
+}
+// programme passé (ou en cours, depuis son début) lu comme un film ; « Retour au direct » ramène sur la chaîne
+function playReplay(c, p) {
+  const url = replayUrl(c, p.start, Math.min(p.end, Date.now() + 6 * 3600e3)); if (!url) { toast('Replay impossible pour cette chaîne'); return; }
+  play({ name: niceName(c) + ' · ' + p.title, url, group: 'Replay · ' + new Date(p.start).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) + ' ' + hm(p.start), logo: c.logo, n: 0, chno: '', vod: true, key: '', replayOf: c, rp: p });
+}
+// programmes passés de la chaîne (serveur : tout ce qu'il garde, sinon le guide XML TV Fr)
+async function pastEpg(c) {
+  const days = archDays(c), since = Date.now() - days * 864e5, now = Date.now(), x = epgCtx(), id = streamId(c);
+  let l = [];
+  if (x && id) try {
+    const j = JSON.parse(await fetchText(x.base + '/player_api.php?username=' + encodeURIComponent(x.user) + '&password=' + encodeURIComponent(x.pass) + '&action=get_simple_data_table&stream_id=' + id));
+    l = (j.epg_listings || []).map(e => ({ title: b64txt(e.title).trim(), desc: b64txt(e.description).trim(), start: +e.start_timestamp * 1000, end: +e.stop_timestamp * 1000 })).filter(p => p.title && p.end <= now && p.start >= since);
+  } catch (e) {}
+  if (!l.length) { const G = GUIDE.data, gid = G && guideId(c, G); if (gid) l = G.ch[gid].filter(p => p[1] * 1000 <= now && p[0] * 1000 >= since).map(p => ({ title: p[2], desc: [p[3], p[4]].filter(Boolean).join(' — '), start: p[0] * 1000, end: p[1] * 1000 })); }
+  return l.sort((a, b) => a.start - b.start);
+}
 // Programme de la chaîne dans le panneau de droite (comme les stats de match) : suit la chaîne en cours, regroupé par jour,
 // programme en cours mis en avant et amené en vue
 $('#guideBtn').onclick = () => { if (!$('#side').hidden && SIDE.mode === 'guide') toggleSide(false); else toggleSide(true, 'guide'); };
@@ -3351,16 +3403,20 @@ async function renderGuideSide(scroll) {
   const c = S.current, box = $('#guide'); if (!c || c.vod || SIDE.mode !== 'guide' || $('#side').hidden) return;
   $('#matchTitle').textContent = 'Programme · ' + niceName(c);
   if (scroll) box.innerHTML = '<div class="spin" style="margin:30px auto"></div>';
-  const list = await getEpg(c, 40);
+  const ad = archDays(c), [list, past] = await Promise.all([getEpg(c, 40), ad ? pastEpg(c) : []]);
   if (S.current !== c || SIDE.mode !== 'guide') return;
   const now = Date.now(); let day = '', h = '';
-  (list || []).forEach(p => {
+  const all = past.concat((list || []).filter(p => !past.length || p.start >= past[past.length - 1].end - 60e3)); SIDE.rp = all;
+  if (ad) h += `<p class="hint" style="margin:0 0 6px">Replay : les ${ad} derniers jours, touchez un programme passé pour le revoir.</p>`;
+  all.forEach((p, k) => {
     const d = new Date(p.start).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
     if (d !== day) { day = d; h += `<div class="dy">${esc(d)}</div>`; }
     const on = p.start <= now && p.end > now;
-    h += `<div class="pg${on ? ' on' : p.end <= now ? ' past' : ''}"><div class="tm">${hm(p.start)} – ${hm(p.end)}</div><div class="ti">${esc(p.title)}</div>${p.desc ? `<div class="ds">${esc(p.desc)}</div>` : ''}${on ? `<div class="bar"><i style="width:${pct(p)}%"></i></div>` : ''}</div>`;
+    const rp = ad && p.start <= now && p.start >= now - ad * 864e5;
+    h += `<div class="pg${on ? ' on' : p.end <= now ? ' past' : ''}${rp ? ' rp' : ''}"${rp ? ` data-rp="${k}" title="Revoir depuis le début"` : ''}><div class="tm">${rp ? '<svg class="pli" viewBox="0 0 24 24"><path d="M8 6.5v11l9-5.5z"/></svg>' : ''}${hm(p.start)} – ${hm(p.end)}</div><div class="ti">${esc(p.title)}</div>${p.desc ? `<div class="ds">${esc(p.desc)}</div>` : ''}${on ? `<div class="bar"><i style="width:${pct(p)}%"></i></div>` : ''}</div>`;
   });
   box.innerHTML = h || '<p class="hint">Pas de programme trouvé pour cette chaîne.</p>';
+  box.onclick = e => { const b = e.target.closest('[data-rp]'); if (b && SIDE.rp[+b.dataset.rp]) playReplay(c, SIDE.rp[+b.dataset.rp]); };
   const cur = box.querySelector('.pg.on');
   if (scroll && cur) { const sd = $('#side'); sd.scrollTop += cur.getBoundingClientRect().top - sd.getBoundingClientRect().top - 110; }
 }
@@ -5698,7 +5754,7 @@ async function playMpv(c, t) {
   const pos = c.vod ? LS.get(posK(c.url), 0) : 0, start = pos > 60 ? pos : 0;
   document.body.classList.toggle('mpvlive', !c.vod); S.mpvLive = c.vod ? null : { c, t0: 0 };
   setStatus('load');
-  const r = await M.play({ url: c.url, title: c.vod ? c.name : niceName(c), live: !c.vod, start, vol: video.muted ? 0 : video.volume, alang: LS.get('pref.audio', 'fr'), slang: LS.get('pref.sub', 'off'), rect: mpvRect(), under: NAT, subArgs: NAT ? mpvSubArgs() : [] }).catch(e => ({ error: e.message }));
+  const r = await M.play({ url: c.url, title: c.vod ? c.name : niceName(c), live: !c.vod, iptv: !c.vod || !!c.replayOf, start, vol: video.muted ? 0 : video.volume, alang: LS.get('pref.audio', 'fr'), slang: LS.get('pref.sub', 'off'), rect: mpvRect(), under: NAT, subArgs: NAT ? mpvSubArgs() : [] }).catch(e => ({ error: e.message }));
   if (t !== token) return;
   if (!r || r.error) { document.body.classList.remove('mpv', 'nat'); S.engine = ''; S.noMpv = c.url; toast('Lecteur intégré indisponible (' + ((r && r.error) || '?') + ') : ancien lecteur'); return play(c); }
   if (c.vod) setStatus(null); if (start > 60) toast('Reprise à ' + fmtDur(start));
@@ -5748,6 +5804,7 @@ function mpvBack() {
   const c = S.current;
   if (c && S.mpvSt.pos > 30) { LS.set(posK(c.url), Math.floor(S.mpvSt.pos)); try { histTrack(c); } catch (e) {} }
   window.desktop.mpv.stop(); S.engine = ''; document.body.classList.remove('mpv');
+  if (c && c.replayOf) { play(c.replayOf); return; }    // replay fini ou quitté : retour au direct de la chaîne
   if (V.back) $('#vodBack').click(); else { stopAll(); setHomeView(true, true, 'vod'); }
 }
 async function playRemux(c, t) {
@@ -5887,17 +5944,19 @@ function liveTarget(w) {
   return isFinite(sync) && sync > 0 ? Math.min(sync, w[1] - 3) : Math.max(w[0], w[1] - 12);
 }
 const atLive = w => !w || video.currentTime >= liveTarget(w) - 6;
-/* mpv en direct : on peut revenir dans ce que mpv garde en mémoire derrière la lecture (768 Mo : ≈ 10 min en HD, moins
-   en 4K), depuis le début de la lecture de la chaîne. Fin de la fenêtre = bout de ce qui est reçu (le direct). */
+/* mpv en direct : on peut revenir dans ce que mpv garde en mémoire derrière la lecture (4 Go sur le disque : ≈ 1 h en HD,
+   20 min en 4K), depuis le début de la lecture de la chaîne. Fin de la fenêtre = bout de ce qui est reçu (le direct). */
 function mpvLiveWin() {
   const M = S.mpvSt, L = S.mpvLive; if (!L || L.c !== S.current || !L.t0) return null;
   const end = Math.max(M.cache || 0, M.pos || 0); if (!end) return null;
-  const back = 768 * 1048576 * 8 / Math.max(2e6, (M.vbr || 6e6) * 1.15) * 0.85, lo = Math.max(L.t0, end - back);
+  const back = 4096 * 1048576 * 8 / Math.max(2e6, (M.vbr || 6e6) * 1.15) * 0.85, lo = Math.max(L.t0, end - back);
   return end - lo > 15 ? [lo, end] : null;
 }
 const mpvAtLive = w => !w || (S.mpvSt.pos || 0) >= w[1] - 12;
 function vbarUpdate() {
   if (!S.current) return;
+  { const c = S.current, b = $('#vbStart'), on = !!c.replayOf || archDays(c) > 0; $('#vbar').classList.toggle('hasrp', on);
+    if (on) { const t = c.replayOf ? 'Retour au direct' : 'Début'; if (b.textContent !== t) b.textContent = t; } }
   epUi(); srcUi();
   if (S.engine === 'mpv' && NAT) {
     const M = S.mpvSt, rg = $('#vbRange'), dur = M.dur || 0, cur = M.pos || 0;
@@ -6016,6 +6075,13 @@ setInterval(() => {
     return;
   }
 }, 4000);   // une vignette toutes les 4 s au plus (chacune fait décoder une image du film à ffmpeg : le PC doit rester fluide)
+$('#vbStart').onclick = async () => {
+  const c = S.current; if (!c) return;
+  if (c.replayOf) return play(c.replayOf);
+  const l = await getEpg(c, 2), p = l && l.find(q => q.start <= Date.now() && q.end > Date.now());
+  if (!p) { toast('Programme en cours inconnu : ouvrez le Programme (panneau de droite) pour choisir'); return; }
+  playReplay(c, p);
+};
 $('#vbLive').onclick = () => { if (mpvOn()) { const w = mpvLiveWin(); if (w && !mpvAtLive(w)) mpvC(['seek', w[1] - 4, 'absolute']); if (S.mpvSt.paused) mpvC(['set_property', 'pause', false]); return; } const w = liveWin(); if (w && !atLive(w)) video.currentTime = liveTarget(w); if (video.paused) video.play().catch(() => {}); vbarUpdate(); };
 const mpvOn = () => S.engine === 'mpv' && NAT;
 const MPV_INFO = new Set(['w', 'h', 'vcodec', 'acodec', 'ach', 'fps', 'vbr', 'hwdec', 'gamma']);

@@ -34,14 +34,20 @@ public class Mpv
             "--alang=" + (lang.TryGetValue(al, out var a1) ? a1 : al), sl != "off" ? "--slang=" + (lang.TryGetValue(sl, out var s1) ? s1 : sl) : "--sid=no",
             "--sub-auto=fuzzy", "--msg-level=all=no", "--no-terminal" };
         double start = (double?)o["start"] ?? 0; if (start > 1) args.Add("--start=" + Math.Floor(start));
-        // chaîne en direct : même nom que l'appli auprès du serveur IPTV, et reconnexion si le flux coupe
-        if ((bool?)o["live"] == true)
+        // serveur IPTV (direct ou replay) : même nom que l'appli auprès de lui, et reconnexion si le flux coupe
+        if ((bool?)o["iptv"] == true || (bool?)o["live"] == true)
         {
             args.Add("--user-agent=LecteurIPTV/" + Application.ProductVersion.Split('+')[0] + " (Windows)");
             args.Add("--stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=5");
+        }
+        if ((bool?)o["live"] == true)
+        {
             args.Add("--cache=yes"); args.Add("--demuxer-readahead-secs=8");
-            // retour en arrière dans le direct : 768 Mo gardés derrière la lecture, et recherche permise dans ce qui est gardé
-            args.Add("--demuxer-max-back-bytes=768MiB"); args.Add("--demuxer-seekable-cache=yes"); args.Add("--force-seekable=yes");
+            // retour en arrière dans le direct : 4 Go gardés derrière la lecture, sur le disque (fichier temporaire effacé à la
+            // fermeture) plutôt qu'en mémoire, et recherche permise dans ce qui est gardé
+            var cdir = Path.Combine(Path.GetTempPath(), "lecteur-mpv-cache"); try { Directory.CreateDirectory(cdir); } catch { }
+            args.Add("--cache-on-disk=yes"); args.Add("--cache-dir=" + cdir);
+            args.Add("--demuxer-max-back-bytes=4GiB"); args.Add("--demuxer-seekable-cache=yes"); args.Add("--force-seekable=yes");
         }
         if (o["subArgs"] is JsonArray sa) foreach (var x in sa) { var v = (string)x; if (v != null && v.StartsWith("--sub-") && v.Length < 100 && !v.Contains('\n')) args.Add(v); }
         foreach (var x in args) psi.ArgumentList.Add(x);
