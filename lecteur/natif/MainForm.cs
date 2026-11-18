@@ -335,11 +335,11 @@ public class MainForm : Form
         if (big) { var fb = new Rectangle(Point.Empty, ClientSize); if (Video.Bounds != fb) { Video.Bounds = fb; mpv.FitChild(); } }
         if (veilT == null)
         {
-            veilT = new System.Windows.Forms.Timer { Interval = 15 };
+            veilT = new System.Windows.Forms.Timer { Interval = 10 };
             veilT.Tick += (s, e) =>
             {
                 long now = Environment.TickCount64;
-                if (now - veilAt < 40 || (!(mpv?.PageSettled(sizeAt, 50) ?? true) && now - veilAt < 700)) return;
+                if (now - veilAt < 20 || (!(mpv?.PageSettled(sizeAt, 25) ?? true) && now - veilAt < 700)) return;
                 Unveil();
             };
         }
@@ -351,7 +351,7 @@ public class MainForm : Form
         // la vidéo va d'abord à sa place (position déjà donnée par la page à sa nouvelle taille), la page revient par-dessus
         // une image plus tard : on ne voit jamais la vidéo à une taille intermédiaire
         mpv?.Release();
-        var t = new System.Windows.Forms.Timer { Interval = 20 }; t.Tick += (s, e) => { t.Stop(); t.Dispose(); try { target.SetRoot(root); dcomp.Commit(); } catch { } }; t.Start();
+        var t = new System.Windows.Forms.Timer { Interval = 10 }; t.Tick += (s, e) => { t.Stop(); t.Dispose(); try { target.SetRoot(root); dcomp.Commit(); } catch { } }; t.Start();
     }
     void SetFull(bool on)
     {
