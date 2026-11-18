@@ -34,6 +34,13 @@ public class Mpv
             "--alang=" + (lang.TryGetValue(al, out var a1) ? a1 : al), sl != "off" ? "--slang=" + (lang.TryGetValue(sl, out var s1) ? s1 : sl) : "--sid=no",
             "--sub-auto=fuzzy", "--msg-level=all=no", "--no-terminal" };
         double start = (double?)o["start"] ?? 0; if (start > 1) args.Add("--start=" + Math.Floor(start));
+        // chaîne en direct : même nom que l'appli auprès du serveur IPTV, et reconnexion si le flux coupe
+        if ((bool?)o["live"] == true)
+        {
+            args.Add("--user-agent=LecteurIPTV/" + Application.ProductVersion.Split('+')[0] + " (Windows)");
+            args.Add("--stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=5");
+            args.Add("--cache=yes"); args.Add("--demuxer-readahead-secs=8");
+        }
         if (o["subArgs"] is JsonArray sa) foreach (var x in sa) { var v = (string)x; if (v != null && v.StartsWith("--sub-") && v.Length < 100 && !v.Contains('\n')) args.Add(v); }
         foreach (var x in args) psi.ArgumentList.Add(x);
         try { proc = Process.Start(psi); } catch (Exception e) { return new JsonObject { ["error"] = e.Message }; }
