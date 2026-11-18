@@ -40,6 +40,19 @@ def icon(el):
     m = SFR.match(src)
     return int(m.group(1)) if m else (src if src.startswith('https://') else '')
 
+# Images en largeur (16/9) : sources qui livrent toujours ce format. L'image d'une émission qui vient de SFR (parfois une
+# affiche en hauteur) ou qui n'en a pas est remplacée par l'image en largeur de la même émission ailleurs dans le guide
+# (même chaîne d'abord, puis une autre chaîne pour un titre assez précis).
+WIDE = [r'^https://img\d\.oqee\.net/pictures/\d+/wide', r'^https://focus\.telerama\.fr/\d+x\d+/', r'^https://thumb\.canalplus\.pro/http/unsafe/640x360/',
+        r'^https://www\.programme-tv\.net/imgre/fit/.*/640x360/']
+def wide_rank(src):
+    for i, rx in enumerate(WIDE):
+        if isinstance(src, str) and re.search(rx, src): return i
+    return None
+
+def tkey(t):
+    return key(re.sub(r'\s*[-:(].*$', '', t or '')) or key(t)
+
 def ts(v):
     return int(datetime.strptime(v, '%Y%m%d%H%M%S %z').timestamp())
 
@@ -47,7 +60,7 @@ def main():
     raw = open(sys.argv[1], 'rb').read()
     now = int(time.time())
     lo, hi = now - 2 * 3600, now + 30 * 3600
-    names, ch = {}, {}
+    names, ch, wide = {}, {}, {}
     for _, el in ET.iterparse(io.BytesIO(gzip.decompress(raw)), events=('end',)):
         if el.tag == 'channel':
             names[el.get('id')] = (el.findtext('display-name') or '').strip(); el.clear(); continue
@@ -55,16 +68,33 @@ def main():
         cid = el.get('channel', '')
         try: start, end = ts(el.get('start')), ts(el.get('stop'))
         except Exception: el.clear(); continue
-        if end < lo or start > hi: el.clear(); continue
         title = (el.findtext('title') or '').strip()
+        if end < lo or start > hi:                   # hors de la fenêtre : seulement pour les images en largeur
+            src = icon(el); r = wide_rank(src)
+            if r is not None and title:
+                for k2 in ((cid, tkey(title)), ('*', tkey(title))):
+                    if k2 not in wide or r < wide[k2][0]: wide[k2] = (r, src)
+            el.clear(); continue
         sub = (el.findtext('sub-title') or '').strip()
         desc = re.sub(r'\s+', ' ', (el.findtext('desc') or '').strip())
         img, th = icon(el), theme([c.text for c in el.findall('category')])
         el.clear()
         if not title: continue
         if len(desc) > 300: desc = desc[:297].rsplit(' ', 1)[0] + '…'
+        r = wide_rank(img)
+        if r is not None:
+            for k2 in ((cid, tkey(title)), ('*', tkey(title))):
+                if k2 not in wide or r < wide[k2][0]: wide[k2] = (r, img)
         ch.setdefault(cid, []).append([start, end, title, sub, desc, img, th])
-    for l in ch.values(): l.sort(key=lambda p: p[0])
+    swapped = 0
+    for cid, l in ch.items():
+        l.sort(key=lambda p: p[0])
+        for p in l:
+            if wide_rank(p[5]) is not None: continue
+            if p[5] and not isinstance(p[5], int): continue          # autre source d'image : gardée telle quelle
+            t = tkey(p[2]); w = wide.get((cid, t)) or (len(t) >= 10 and wide.get(('*', t)))
+            if w: p[5] = w[1]; swapped += 1
+    print('images en largeur trouvées pour', swapped, 'émissions', file=sys.stderr)
     k = {}
     for cid in ch:                                   # identifiant d'abord (« France2.fr » → france2), puis nom affiché
         base = re.sub(r'\.[a-z]{2}$', '', cid)
