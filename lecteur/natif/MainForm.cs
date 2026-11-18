@@ -70,6 +70,11 @@ public class MainForm : Form
                 m.Result = IntPtr.Zero; return;
             case WM_NCHITTEST:
                 m.Result = (IntPtr)HitTest(m.LParam); return;
+            case 0x0231: sizing = true; sizeHid = false; break;          // début d'un déplacement / redimensionnement à la souris
+            case 0x0232:                                                   // fin : la vidéo réapparaît une fois la page recalée
+                sizing = false;
+                if (sizeHid) { sizeHid = false; var t = new System.Windows.Forms.Timer { Interval = 180 }; t.Tick += (s2, e2) => { t.Stop(); t.Dispose(); Post(new JsonObject { ["t"] = "mpv", ["st"] = new JsonObject { ["moving"] = false } }); }; t.Start(); }
+                break;
             case WM_SETCURSOR:
                 if ((m.LParam.ToInt64() & 0xFFFF) == HTCLIENT && comp != null) { SetCursor(cursor != IntPtr.Zero ? cursor : LoadCursor(IntPtr.Zero, 32512)); m.Result = (IntPtr)1; return; }
                 break;
@@ -319,9 +324,13 @@ public class MainForm : Form
     }
 
     Size lastClient, moveSize;
+    /* redimensionnement à la souris pendant une lecture : la vidéo est cachée (noir) le temps du geste, puis réapparaît à
+       sa place — la suivre image par image donnait des saccades et des proportions faussées */
+    bool sizing, sizeHid;
     protected override void OnResize(EventArgs e)
     {
         base.OnResize(e);
+        if (sizing && !sizeHid && Video.Visible && lastClient.Width > 0 && ClientSize != lastClient && !full) { sizeHid = true; Post(new JsonObject { ["t"] = "mpv", ["st"] = new JsonObject { ["moving"] = true } }); }
         // vidéo agrandie tout de suite dans la même proportion que la fenêtre (la page donne ensuite la zone exacte)
         // plein écran : la vidéo occupe toujours toute la fenêtre, à chaque étape du changement de taille (sinon elle restait
         // décalée, à la place qu'elle avait à côté de la liste, le temps que la page se remette en page)
