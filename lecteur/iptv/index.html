@@ -1686,6 +1686,8 @@ function setHomeView(on, mini, page) {
   // arrivée sur Films & séries : la page s'affiche d'abord (seulement ses onglets), puis le contenu arrive en cascade — sinon l'ancienne
   // page restait près d'une seconde à l'écran pendant la préparation du catalogue
   if (on && page === 'agenda') renderAgenda();
+  // déjà ouverte pendant cette session : la page gardée arrive tout de suite (en cascade), recalculée derrière
+  else if (on && page === 'vod' && S.arrive && Date.now() - S.arrive < 50 && vodQuick(true)) {}
   else if (on && page === 'vod') { if (S.arrive && Date.now() - S.arrive < 50) { $('#vodInner').querySelectorAll(':scope > :not(.vtop)').forEach(el => el.remove()); } if (S.arrive && Date.now() - S.arrive < 50) requestAnimationFrame(() => setTimeout(() => { if (document.body.classList.contains('vod')) renderVod(); }, 0)); else renderVod(); }
   else if (on) renderHome();
 }
@@ -1715,7 +1717,7 @@ window.appClosing = () => {
       r.querySelectorAll('.poster,.tvc,.chr').forEach((p, i) => { if (i < 14) p.style.setProperty('--d', (i * 0.035).toFixed(3) + 's'); });
       // déjà à l'écran : en cascade seulement à l'arrivée sur la page (pas en changeant d'onglet, ni pendant une recherche)
       const vis = r.getBoundingClientRect().top < innerHeight;
-      if (vis && !(S.arrive && Date.now() - S.arrive < 3000)) return;
+      if (vis && !(S.arrive && Date.now() - S.arrive < 15000)) return;   // (préparation de la page parfois longue : sources en ligne)
       if (vis && r.querySelector('.poster,.tvc')) S.arrUsed = true;   // cascade d'arrivée jouée : une seule fois
       r.classList.add('rv0'); io.observe(r);
     });
@@ -5173,10 +5175,10 @@ function vodPost(box) {
 }
 /* Clic sur Accueil, Films ou Séries : la page déjà calculée pour cet onglet s'affiche tout de suite (avant : attente de toutes
    les sources, TMDB, Netflix, SensCritique, Jellyfin… à chaque clic), puis elle est recalculée derrière */
-function vodQuick() {
+function vodQuick(arrive) {
   const c = VQ[V.tab]; if (!c || c.pl !== S.pl || V.q || V.cat) return false;
   const box = $('#vodInner'); V.shown = c.shown.slice(); box.innerHTML = c.h;
-  if (box.animate && !matchMedia('(prefers-reduced-motion: reduce)').matches)
+  if (!arrive && box.animate && !matchMedia('(prefers-reduced-motion: reduce)').matches)
     box.querySelectorAll(':scope > :not(.vtop)').forEach(el => el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: 'ease-out' }));
   V.lastTab = V.tab; vodPost(box);
   V.bgFor = V.tab; setTimeout(renderVod, 400);
