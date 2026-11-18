@@ -3430,7 +3430,11 @@ function fail(c) {
     : /Firefox\//.test(ua) ? 'Firefox : Paramètres › Vie privée et sécurité › « DNS via HTTPS » › Protection renforcée → Cloudflare'
     : APPLE_WEBKIT ? 'iPhone / Mac : installez l\'appli gratuite « 1.1.1.1 » (Cloudflare), ou activez le relais privé iCloud'
     : 'Chrome : Paramètres › Confidentialité et sécurité › Sécurité › « Utiliser un DNS sécurisé » → Cloudflare (1.1.1.1)';
-  const why = boxBlock
+  // 458 (et 406, 429 sur une chaîne) : l'abonnement est déjà en cours de lecture ailleurs (connexions simultanées limitées)
+  const busy = !refused && (S.tries || []).some(x => /\b(458|406)\b/.test(x.why || ''));
+  const why = busy
+    ? 'L\'abonnement est <b>déjà utilisé ailleurs</b> (erreur 458) : le fournisseur limite le nombre de lectures en même temps. Arrêtez la lecture sur l\'autre appareil ou l\'autre appli (appli Windows, VLC, télé…), attendez une minute, puis relancez la chaîne.'
+    : boxBlock
     ? 'Le serveur IPTV est <b>bloqué par votre box</b> (elle renvoie sa page d\'avertissement à la place des chaînes). Activez le DNS sécurisé du navigateur, puis fermez-le et rouvrez-le :<br><b>' + esc(dohHow) + '</b>' + (mixed ? '<br>Puis ouvrez le lecteur en http (bouton ci-dessous).' : '') + '<br>L\'appli Windows, elle, passe toute seule.'
     : refused
     ? 'Le serveur IPTV <b>refuse la connexion</b> (erreur 403 ou 511) : il bloque l\'adresse d\'où vous vous connectez. Souvent un VPN actif (les fournisseurs bloquent leurs adresses), ou votre adresse bannie par le fournisseur (trop de connexions). Essayez sans VPN, ou depuis une autre connexion (4G) ; si ça ne passe nulle part, le fournisseur doit la débloquer.'
@@ -3447,7 +3451,8 @@ function fail(c) {
     // navigateur d'ordinateur (pas l'appli) : adresse du lecteur en http, sur laquelle Chrome, Edge ou Firefox ne forcent pas le https
     (!refused && mixed && !APPLE_WEBKIT && !window.desktop ? `<a class="btn primary" href="http://tv.lecteur.franceinfoplanning.com:8080/">Ouvrir le lecteur en http</a>` : '') +
     `<button class="btn${mixed && APPLE_WEBKIT ? '' : ' primary'}" onclick="openVlc(S.current)">Ouvrir dans VLC</button>`,
-    boxBlock ? 'Serveur bloqué par votre box : activez le DNS sécurisé du navigateur (' + esc(dohHow) + '), puis rouvrez-le.'
+    busy ? 'Abonnement déjà en lecture sur un autre appareil : arrêtez-la là-bas, attendez une minute, puis relancez.'
+      : boxBlock ? 'Serveur bloqué par votre box : activez le DNS sécurisé du navigateur (' + esc(dohHow) + '), puis rouvrez-le.'
       : refused ? 'Serveur IPTV qui refuse la connexion (VPN actif ?). Pour garder le VPN, mettez dans ses exceptions : <b id="vpnHosts">' + hosts.map(esc).join(', ') + '</b>, puis reconnectez-le.'
       : mixed && !APPLE_WEBKIT && !window.desktop ? 'Chaîne en http, bloquée sur cette page en https : ouvrez le lecteur à son adresse en http (bouton ci-dessous), puis redéverrouillez « Mon abonnement ».' : '');
   // appli : comme nslookup, le vrai serveur derrière chaque alias et ses adresses (les exceptions du VPN suivent mal les alias)
