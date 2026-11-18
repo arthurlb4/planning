@@ -320,7 +320,25 @@ public class MainForm : Form
     }
     protected override void OnMove(EventArgs e) { base.OnMove(e); try { comp?.NotifyParentWindowPositionChanged(); } catch { } }
     protected override void OnActivated(EventArgs e) { base.OnActivated(e); try { comp?.MoveFocus(CoreWebView2MoveFocusReason.Programmatic); } catch { } }
-    protected override void OnFormClosing(FormClosingEventArgs e) { SaveBounds(); mpv.Stop(); backend?.Stop(Updater.Pending); Updater.InstallOnExit(); base.OnFormClosing(e); }
+    /* Fermeture en deux temps : la page enregistre d'abord ce qui est en cours (position du film, Reprendre), puis le
+       navigateur intégré est fermé proprement et on attend qu'il ait écrit ses données sur le disque ; sinon les
+       dernières modifications (gardées en mémoire quelques secondes par Chromium) sont perdues. 4 s au plus. */
+    bool closeReady;
+    protected override async void OnFormClosing(FormClosingEventArgs e)
+    {
+        if (!closeReady && web != null && webEnv != null)
+        {
+            e.Cancel = true; closeReady = true;
+            try { await Task.WhenAny(web.ExecuteScriptAsync("window.appClosing && window.appClosing()"), Task.Delay(1500)); } catch { }
+            try { await Task.WhenAny(web.ExecuteScriptAsync("1"), Task.Delay(500)); } catch { }
+            mpv.Stop();
+            var gone = new TaskCompletionSource();
+            try { webEnv.BrowserProcessExited += (s2, a2) => gone.TrySetResult(); comp?.Close(); comp = null; web = null; } catch { gone.TrySetResult(); }
+            await Task.WhenAny(gone.Task, Task.Delay(4000));
+            BeginInvoke(Close); return;
+        }
+        SaveBounds(); mpv.Stop(); backend?.Stop(Updater.Pending); Updater.InstallOnExit(); base.OnFormClosing(e);
+    }
 
     // ---------- taille et position gardées d'une fois sur l'autre
     string StateFile => Path.Combine(DataDir, "fenetre.json");
