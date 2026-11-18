@@ -152,6 +152,14 @@ public class Mpv
         if (r == null || ((bool?)r["hidden"] ?? false)) return false;
         double k = f.Scale; return (double)r["w"]! * k >= f.ClientSize.Width - 4 && (double)r["h"]! * k >= f.ClientSize.Height - 4;
     }
+    // dernière position reçue de la page, mise en page à la taille actuelle de la fenêtre, et rien n'a bougé depuis ms millisecondes
+    public bool PageSettled(long since, int ms)
+    {
+        var r = rect; if (r == null) return false;
+        double k = f.Scale, vw = (double?)r["vw"] ?? 0, vh = (double?)r["vh"] ?? 0;
+        if (Math.Abs(vw * k - f.ClientSize.Width) > 3 || Math.Abs(vh * k - f.ClientSize.Height) > 3) return false;
+        long now = Environment.TickCount64; return now - Math.Max(since, lastRectAt) >= ms;
+    }
     public void Rect(JsonObject r)
     {
         if (ExitPending) { if (FullSized(r)) return; ExitPending = false; }
@@ -169,7 +177,7 @@ public class Mpv
         var t = new System.Windows.Forms.Timer { Interval = ms + 10 };
         t.Tick += (s, e) =>
         {
-            if (Holding) { t.Interval = 30; return; }
+            if (Holding || f.Veiled) { t.Interval = 30; return; }
             long now = Environment.TickCount64;
             if (!Full && (ExitPending || now - lastRectAt < 100) && now - t0 < 1500) { t.Interval = 30; return; }
             ExitPending = false;
@@ -191,7 +199,7 @@ public class Mpv
     }
     public void Place()
     {
-        if (f.IsDisposed || Holding) return;
+        if (f.IsDisposed || Holding || f.Veiled) return;
         var r = rect; bool on = proc != null && r != null && !((bool?)r["hidden"] ?? false);
         if (!on) { if (f.Video.Visible) f.Video.Visible = false; return; }
         if (Full) { var fb = new Rectangle(Point.Empty, f.ClientSize); if (f.Video.Bounds != fb) { f.Video.Bounds = fb; FitChild(); } if (!f.Video.Visible) f.Video.Visible = true; return; }

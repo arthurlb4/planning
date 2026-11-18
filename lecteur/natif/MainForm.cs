@@ -227,7 +227,7 @@ public class MainForm : Form
                 if (a == "min") WindowState = FormWindowState.Minimized;
                 else if (a == "max") WindowState = WindowState == FormWindowState.Maximized ? FormWindowState.Normal : FormWindowState.Maximized;
                 else if (a == "close") Close();
-                else if (a == "hold") mpv?.Hold(250);
+                else if (a == "hold") { mpv?.Hold(250); Veil(); }
                 else if (a == "ratio1") { RatioLock = true; FitRatio(); }   // pleine fenêtre : fenêtre aux proportions de la vidéo
                 else if (a == "ratio0") RatioLock = false;   // la page change de mise en page (plein écran) : la coque garde la vidéo en place
                 break;
@@ -319,9 +319,40 @@ public class MainForm : Form
             normal = new RECT { Left = normal.Left, Top = normal.Top, Right = normal.Right, Bottom = normal.Bottom } };
         try { SetWindowPlacement(Handle, ref wp); } catch { Bounds = normal; WindowState = max ? FormWindowState.Maximized : FormWindowState.Normal; }
     }
+    /* Voile : pendant un changement de mise en page (plein écran, pleine fenêtre), la page garde une image ou deux son ancienne
+       taille (des morceaux de page et de lecteur apparaissaient par-dessus la vidéo). La page est retirée de l'affichage (elle
+       continue de vivre, clavier compris) et la vidéo remplit la fenêtre ; elle revient dès qu'elle s'est redessinée à la
+       nouvelle taille, puis la vidéo reprend sa place. */
+    public bool Veiled; long veilAt, sizeAt; System.Windows.Forms.Timer veilT;
+    void Veil()
+    {
+        if (comp == null || target == null || mpv == null || !Video.Visible) return;
+        veilAt = Environment.TickCount64;
+        if (!Veiled) { Veiled = true; try { target.SetRoot(null!); dcomp.Commit(); } catch { } }
+        var fb = new Rectangle(Point.Empty, ClientSize); if (Video.Bounds != fb) { Video.Bounds = fb; mpv.FitChild(); }
+        if (veilT == null)
+        {
+            veilT = new System.Windows.Forms.Timer { Interval = 15 };
+            veilT.Tick += (s, e) =>
+            {
+                long now = Environment.TickCount64;
+                if (now - veilAt < 40 || (!(mpv?.PageSettled(sizeAt, 50) ?? true) && now - veilAt < 700)) return;
+                Unveil();
+            };
+        }
+        veilT.Start();
+    }
+    void Unveil()
+    {
+        veilT?.Stop(); if (!Veiled) return; Veiled = false;
+        try { target.SetRoot(root); dcomp.Commit(); } catch { }
+        // la vidéo reprend sa place une image plus tard (la page est déjà affichée par-dessus, elle cache le surplus)
+        var t = new System.Windows.Forms.Timer { Interval = 20 }; t.Tick += (s, e) => { t.Stop(); t.Dispose(); mpv?.Place(); }; t.Start();
+    }
     void SetFull(bool on)
     {
         if (on == full) return; full = on;
+        Veil();
         // pendant le changement : la vidéo est placée par la coque (plein écran : tout l'écran ; retour : sa place d'avant),
         // les positions envoyées par la page pendant sa nouvelle mise en page sont ignorées un instant
         mpv?.Hold(150);
@@ -340,7 +371,8 @@ public class MainForm : Form
             // puis agrandie (même taille : pas d'animation de Windows), et enfin sa taille « normale » d'avant gardée pour plus tard
             if (fullPrev == FormWindowState.Maximized) { Bounds = Screen.FromControl(this).WorkingArea; WindowState = FormWindowState.Maximized; SetPlacement(normalBounds, true); }
             else { Bounds = normalBounds; WindowState = fullPrev; }
-            if (Video.Visible && prevVideo.Width > 0) { Video.Bounds = prevVideo; mpv?.FitChild(); }
+            if (Veiled) { if (Video.Visible) { Video.Bounds = new Rectangle(Point.Empty, ClientSize); mpv?.FitChild(); } }   // remise en place au retour de la page
+            else if (Video.Visible && prevVideo.Width > 0) { Video.Bounds = prevVideo; mpv?.FitChild(); }
         }
         Post(new JsonObject { ["t"] = "win", ["st"] = new JsonObject { ["max"] = WindowState == FormWindowState.Maximized, ["full"] = full } });
     }
@@ -379,6 +411,8 @@ public class MainForm : Form
                 : new Rectangle(v.X, v.Y, Math.Max(1, v.Width + dW), Math.Max(1, v.Height + dH));
             mpv?.FitChild();
         }
+        if (ClientSize != lastClient) sizeAt = Environment.TickCount64;
+        if (Veiled && Video.Visible) { var vb = new Rectangle(Point.Empty, ClientSize); if (Video.Bounds != vb) { Video.Bounds = vb; mpv?.FitChild(); } }
         if (ClientSize.Width > 0) lastClient = ClientSize;
 
         if (comp != null) comp.Bounds = new Rectangle(Point.Empty, ClientSize);
