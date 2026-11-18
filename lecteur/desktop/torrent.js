@@ -82,7 +82,22 @@ setTimeout(() => {
   rangeTick();
   if (/^node(\.exe)?$/i.test(path.basename(process.execPath))) qbtUp(QBT).then(up => up && RG.autorunSetup(process.execPath, path.join(__dirname, 'ranger.js')).then(r => RG.log('qBittorrent, fin de téléchargement : ' + r)).catch(() => {}));
 }, 60e3);
-setInterval(rangeTick, 10 * 60e3); setInterval(cleanup, 6 * 3600e3);
+setInterval(rangeTick, 10 * 60e3);
+/* qBittorrent coupé du réseau (pastille rouge) alors que le VPN est actif : il est resté accroché à l'ancienne carte du VPN,
+   recréée à chaque connexion (qBittorrent lancé avant le VPN, ou VPN reconnecté depuis). Vu deux fois de suite : redémarré
+   (5 min au moins entre deux), sans toucher à son réglage de carte réseau (jamais de téléchargement sans VPN) */
+const QW = { off: 0, at: 0 };
+async function qbtWatch() {
+  if (blocked || !(await qbtUp(QBT))) { QW.off = 0; return; }
+  const i = await qbt('/api/v2/transfer/info').catch(() => null);
+  if (!i || i.connection_status !== 'disconnected') { QW.off = 0; return; }
+  if (++QW.off < 2 || Date.now() - QW.at < 5 * 60e3) return;
+  QW.off = 0; QW.at = Date.now(); RG.log('qBittorrent coupé du réseau : redémarré');
+  await qbt('/api/v2/app/shutdown', { method: 'POST', body: form({}) }).catch(() => {});
+  for (let k = 0; k < 30 && await qbtUp(QBT); k++) await pause(1000);
+  await qbtEnsure(QBT).catch(e => RG.log('qBittorrent pas relancé : ' + e.message));
+}
+setInterval(() => { qbtWatch().catch(() => {}); }, 60e3); setInterval(cleanup, 6 * 3600e3);
 // à la fermeture de l'appli : torrents fermés, fichiers gardés ; ceux assez avancés passent à qBittorrent au lancement suivant
 process.on('exit', () => { try { if (client) client.torrents.forEach(t => idxTouch(t, worth(t) ? { give: 1, w: [...(t._watched || [])] } : null)); } catch (e) {} try { if (client) client.destroy(); } catch (e) {} });
 
@@ -582,6 +597,7 @@ module.exports = function handleTorrent(req, res, u) {
     }
     json(out); })().catch(e => json({ error: e.message }, 500)); return true;
   }
+  if (u.pathname === '/torrent/ping') { json({ ok: true }); return true; }   // réveil du module (surveillance, rangement)
   // rangement tout de suite (Paramètres) : compte rendu par torrent
   if (u.pathname === '/torrent/ranger') { RG.rangeAll().then(r => json({ ok: true, r }), e => json({ error: e.message }, 502)); return true; }
   if (u.pathname === '/torrent/prefetch') {
