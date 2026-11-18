@@ -119,7 +119,7 @@ public class MainForm : Form
     {
         base.OnHandleCreated(e);
         // Windows 11 : coins arrondis et liseré fin autour de la fenêtre (Windows les retire de lui-même quand elle est agrandie)
-        try { int round = 2; DwmSetWindowAttribute(Handle, 33, ref round, 4); int col = 0x003A3A38; DwmSetWindowAttribute(Handle, 34, ref col, 4); } catch { }
+        Frame(true);
         try { await Init(); }
         catch (Exception ex) { MessageBox.Show(this, "Démarrage impossible : " + ex.Message, "Lecteur IPTV", MessageBoxButtons.OK, MessageBoxIcon.Error); }
     }
@@ -287,6 +287,7 @@ public class MainForm : Form
         // les positions envoyées par la page pendant sa nouvelle mise en page sont ignorées un instant
         mpv?.Hold(150);
         if (mpv != null) { mpv.Full = on; mpv.ExitPending = !on; }
+        Frame(!on);
         if (on)
         {
             prevVideo = Video.Bounds; fullPrev = WindowState; normalBounds = Bounds;
@@ -325,6 +326,8 @@ public class MainForm : Form
     }
     protected override void OnMove(EventArgs e) { base.OnMove(e); try { comp?.NotifyParentWindowPositionChanged(); } catch { } }
     [System.Runtime.InteropServices.DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr h, int attr, ref int v, int size);
+    // coins arrondis et liseré (Windows 11) ; retirés en plein écran (la fenêtre y garde l'état « normal », Windows ne le fait pas seul)
+    void Frame(bool on) { try { int round = on ? 2 : 1; DwmSetWindowAttribute(Handle, 33, ref round, 4); int col = on ? 0x003A3A38 : unchecked((int)0xFFFFFFFE); DwmSetWindowAttribute(Handle, 34, ref col, 4); } catch { } }
     // clavier rendu à la page (la fenêtre vidéo de mpv le prend en s'ouvrant : F, espace, flèches ne marchaient qu'après un clic)
     public void FocusPage()
     {
