@@ -3251,7 +3251,7 @@ async function play(c, alts) {
   if (S.extFor !== c.url) { S.extCues = null; S.extOfs = 0; S.extFor = c.url; clearCues(subT('f')); subT('f').mode = 'disabled'; subT('r').mode = 'disabled'; }
   document.body.classList.add('playing');
   document.body.classList.toggle('vodplay', !!c.vod); document.body.classList.toggle('rplay', !!c.replayOf);   // replay : Programme de la chaîne gardé
-  document.body.classList.toggle('live', !c.vod);
+  document.body.classList.toggle('live', !c.vod || !!c.rpLive);   // différé jusqu'au direct : bouton DIRECT gardé
   S.sel = S.view.indexOf(c); renderRows(true); scrollToSel();
   if (!c.vod && typeof vpnNote === 'function') vpnNote(c.url);       // serveur de la chaîne : pour les exceptions du VPN
   // chaînes récentes et dernière chaîne : propres à la liste en cours (aucune liste : film lu par torrent ou Ma médiathèque)
@@ -3646,7 +3646,7 @@ function playReplay(c, p) {
   const url = replayUrl(archCh(c) || c, p.start, end); if (!url) { toast('Replay impossible pour cette chaîne'); return; }
   const ofs = p.at ? Math.round((p.start - Math.floor(p.start / 60000) * 60000) / 1000) : rpOfs(c);   // différé (barre) : à la seconde ; programme : pub sautée (appris)
   if (ofs > 0 && LS.get(posK(url), 0) < ofs) LS.set(posK(url), ofs);
-  play({ name: niceName(c) + ' · ' + p.title, url, group: 'Replay · ' + new Date(p.start).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) + ' ' + hm(p.start), logo: c.logo, n: 0, chno: '', vod: true, key: '', replayOf: c, rp: p });
+  play({ name: niceName(c) + ' · ' + p.title, url, group: 'Replay · ' + new Date(p.start).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) + ' ' + hm(p.start), logo: c.logo, n: 0, chno: '', vod: true, key: '', replayOf: c, rp: p, rpSeg: Math.floor(p.start / 60000) * 60000, rpLive: end > Date.now() - 10 * 60e3 });
 }
 // programmes passés de la chaîne (serveur : tout ce qu'il garde, sinon le guide XML TV Fr)
 async function pastEpg(c) {
@@ -6330,6 +6330,13 @@ function vbarUpdate() {
       $('#vbPlay').classList.toggle('on', !M.paused); $('#vbMute').classList.toggle('off', video.muted || !video.volume); return;
     }
     $('#vbar').classList.remove('atlive');
+    /* différé (jusqu'au direct) : barre du direct gardée — 2 dernières heures, position = retard sur le direct, bouton DIRECT gris */
+    const C = S.current; if (C.rpLive && C.replayOf) {
+      const span = rpSpan(C.replayOf) || RP_SPAN, behind = Math.max(0, (Date.now() - (C.rpSeg + cur * 1000)) / 1000);
+      rg.min = 0; rg.max = span; if (!rg.matches(':active')) rg.value = Math.max(0, span - behind);
+      $('#vbCur').textContent = '−' + fmtT(behind); $('#vbDur').textContent = ''; $('#vbLive').classList.remove('edge');
+      rg.style.setProperty('--p', (+rg.value / span * 100) + '%'); $('#vbPlay').classList.toggle('on', !M.paused); $('#vbMute').classList.toggle('off', video.muted || !video.volume); return;
+    }
     $('#vbCur').textContent = fmtT(cur); $('#vbDur').textContent = dur ? fmtT(dur) : '--:--';
     rg.min = 0; rg.max = Math.max(1, Math.floor(dur || cur + 3600)); if (!rg.matches(':active')) rg.value = Math.floor(cur);
     [rg, $('#vbVol')].forEach(r => { const a = +r.min || 0, b = +r.max || 1; r.style.setProperty('--p', Math.max(0, Math.min(100, ((+r.value - a) / (b - a || 1)) * 100)) + '%'); });
@@ -6384,7 +6391,12 @@ function seekBy(d) {
 $('#vbBack').onclick = () => seekBy(-10);
 $('#vbFwd').onclick = () => seekBy(10);
 $('#vbRange').addEventListener('input', e => { if (S.engine !== 'remux' && !mpvOn()) video.currentTime = +e.target.value; });
-$('#vbRange').addEventListener('change', e => { if (S.engine === 'remux') remuxStart(+e.target.value); else if (mpvOn()) { if (S.current && !S.current.vod && rpSpan(S.current)) { liveAt(S.current, Math.max(0, rpSpan(S.current) - +e.target.value)); return; } rpLearn(+e.target.value); const w = S.current && !S.current.vod && mpvLiveWin(); if (w) mpvBehind(w[1] - +e.target.value > mpvGap() + 3); mpvC(['seek', w ? Math.min(+e.target.value, w[1] - mpvGap()) : +e.target.value, 'absolute']); } });
+$('#vbRange').addEventListener('change', e => { if (S.engine === 'remux') remuxStart(+e.target.value); else if (mpvOn()) { const C = S.current;
+    if (C && C.rpLive && C.replayOf) { const span = rpSpan(C.replayOf) || RP_SPAN, behind = Math.max(0, span - +e.target.value), t = Date.now() - behind * 1000, dur = S.mpvSt.dur || 0;
+      if (behind < 20) { play(C.replayOf); return; }                                            // tout au bout : le direct
+      if (t >= C.rpSeg && t <= C.rpSeg + dur * 1000) { mpvC(['seek', (t - C.rpSeg) / 1000, 'absolute']); return; }   // dans le différé en cours
+      playReplay(C.replayOf, { title: 'Différé', start: t, end: Date.now(), at: true }); return; }
+    if (S.current && !S.current.vod && rpSpan(S.current)) { liveAt(S.current, Math.max(0, rpSpan(S.current) - +e.target.value)); return; } rpLearn(+e.target.value); const w = S.current && !S.current.vod && mpvLiveWin(); if (w) mpvBehind(w[1] - +e.target.value > mpvGap() + 3); mpvC(['seek', w ? Math.min(+e.target.value, w[1] - mpvGap()) : +e.target.value, 'absolute']); } });
 /* Survol de la barre de lecture : moment visé, et pour un torrent (appli Windows) l'image à cet endroit quand ce passage
    est déjà téléchargé. Pas d'image pour l'abonnement IPTV : il faudrait une seconde connexion au serveur, que la plupart
    des abonnements refusent (le film en cours serait coupé). */
@@ -6392,7 +6404,7 @@ const VTH = { t: 0, key: '', imgs: new Map() };
 function vthHide() { const b = $('#vbThumb'); if (b) b.hidden = true; clearTimeout(VTH.t); }
 $('#vbRange').addEventListener('pointermove', e => {
   const rg = e.currentTarget, c = S.current; if (!c) return vthHide();
-  if (!c.vod) { const sp = S.engine === 'mpv' ? rpSpan(c) : 0, w = sp ? [0, sp] : S.engine === 'mpv' ? mpvLiveWin() : liveWin(); if (!w) return vthHide();
+  if (!c.vod || (c.rpLive && c.replayOf)) { const sp = S.engine === 'mpv' ? (c.replayOf ? rpSpan(c.replayOf) || RP_SPAN : rpSpan(c)) : 0, w = sp ? [0, sp] : S.engine === 'mpv' ? mpvLiveWin() : liveWin(); if (!w) return vthHide();
     const r = rg.getBoundingClientRect(), f = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), sc = $('#screen').getBoundingClientRect(), back = (1 - f) * (w[1] - w[0]);
     let b = $('#vbThumb'); if (!b) { b = document.createElement('div'); b.id = 'vbThumb'; b.innerHTML = '<div class="im"></div><span></span>'; $('#screen').appendChild(b); }
     b.hidden = false; b.classList.remove('img'); b.querySelector('span').textContent = back < 12 ? 'Direct' : '−' + fmtT(back);
@@ -6444,7 +6456,7 @@ $('#vbStart').onclick = async () => {
   if (!p) { toast('Programme en cours inconnu : ouvrez le Programme (panneau de droite) pour choisir'); return; }
   playReplay(c, p);
 };
-$('#vbLive').onclick = () => { if (mpvOn()) { const w = mpvLiveWin(); if (w && !mpvAtLive(w)) mpvC(['seek', w[1] - mpvGap(), 'absolute']); mpvBehind(false); if (S.mpvSt.paused) mpvC(['set_property', 'pause', false]); return; } const w = liveWin(); if (w && !atLive(w)) video.currentTime = liveTarget(w); if (video.paused) video.play().catch(() => {}); vbarUpdate(); };
+$('#vbLive').onclick = () => { if (S.current && S.current.replayOf) { play(S.current.replayOf); return; } if (mpvOn()) { const w = mpvLiveWin(); if (w && !mpvAtLive(w)) mpvC(['seek', w[1] - mpvGap(), 'absolute']); mpvBehind(false); if (S.mpvSt.paused) mpvC(['set_property', 'pause', false]); return; } const w = liveWin(); if (w && !atLive(w)) video.currentTime = liveTarget(w); if (video.paused) video.play().catch(() => {}); vbarUpdate(); };
 const mpvOn = () => S.engine === 'mpv' && NAT;
 const MPV_INFO = new Set(['w', 'h', 'vcodec', 'acodec', 'ach', 'fps', 'vbr', 'hwdec', 'gamma']);
 const mpvC = a => window.desktop.mpv.cmd(a);
