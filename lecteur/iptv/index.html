@@ -6097,7 +6097,10 @@ function mpvLiveWin() {
   const back = 4096 * 1048576 * 8 / Math.max(2e6, (M.vbr || 6e6) * 1.15) * 0.85, lo = Math.max(L.t0, end - back);
   return end - lo > 15 ? [lo, end] : null;
 }
-const mpvAtLive = w => !w || (S.mpvSt.pos || 0) >= w[1] - 12;
+/* au direct tant qu'on n'a pas reculé soi-même : mpv lit avec une réserve (jusqu'à 30 s sur certaines chaînes, quand le
+   serveur envoie d'avance) ; la position n'est donc pas comparée au bout de ce qui est reçu */
+const mpvAtLive = w => { const L = S.mpvLive; return !w || !L || !L.back; };
+const mpvBehind = on => { const L = S.mpvLive; if (L) L.back = on; };
 function vbarUpdate() {
   if (!S.current) return;
   { const c = S.current, b = $('#vbStart'), on = !!c.replayOf || archDays(c) > 0; $('#vbar').classList.toggle('hasrp', on);
@@ -6151,7 +6154,8 @@ function seekBy(d) {
     if (S.current && !S.current.vod) { const w = mpvLiveWin(); if (!w) { toast('Pas encore de retour possible sur ce direct'); return; }
       const cur = S.mpvSt.pos || 0, t = Math.max(w[0] + 1, Math.min(w[1] - 4, cur + d));
       if (d > 0 && mpvAtLive(w)) { toast('Vous êtes au direct'); return; }
-      mpvC(['seek', t, 'absolute+exact']); return; }
+      if (d > 0 && cur + d >= w[1] - 4) { mpvBehind(false); mpvC(['seek', w[1] - 4, 'absolute']); return; }   // avancé jusqu'au bout : de nouveau au direct
+      mpvBehind(true); mpvC(['seek', t, 'absolute+exact']); return; }
     mpvC(['seek', d, 'relative+exact']); return;
   }
   if (S.engine === 'remux') return remuxStart(curPos() + d);
@@ -6167,7 +6171,7 @@ function seekBy(d) {
 $('#vbBack').onclick = () => seekBy(-10);
 $('#vbFwd').onclick = () => seekBy(10);
 $('#vbRange').addEventListener('input', e => { if (S.engine !== 'remux' && !mpvOn()) video.currentTime = +e.target.value; });
-$('#vbRange').addEventListener('change', e => { if (S.engine === 'remux') remuxStart(+e.target.value); else if (mpvOn()) { const w = S.current && !S.current.vod && mpvLiveWin(); mpvC(['seek', w ? Math.min(+e.target.value, w[1] - 4) : +e.target.value, 'absolute']); } });
+$('#vbRange').addEventListener('change', e => { if (S.engine === 'remux') remuxStart(+e.target.value); else if (mpvOn()) { const w = S.current && !S.current.vod && mpvLiveWin(); if (w) mpvBehind(+e.target.value < w[1] - 15); mpvC(['seek', w ? Math.min(+e.target.value, w[1] - 4) : +e.target.value, 'absolute']); } });
 /* Survol de la barre de lecture : moment visé, et pour un torrent (appli Windows) l'image à cet endroit quand ce passage
    est déjà téléchargé. Pas d'image pour l'abonnement IPTV : il faudrait une seconde connexion au serveur, que la plupart
    des abonnements refusent (le film en cours serait coupé). */
@@ -6227,7 +6231,7 @@ $('#vbStart').onclick = async () => {
   if (!p) { toast('Programme en cours inconnu : ouvrez le Programme (panneau de droite) pour choisir'); return; }
   playReplay(c, p);
 };
-$('#vbLive').onclick = () => { if (mpvOn()) { const w = mpvLiveWin(); if (w && !mpvAtLive(w)) mpvC(['seek', w[1] - 4, 'absolute']); if (S.mpvSt.paused) mpvC(['set_property', 'pause', false]); return; } const w = liveWin(); if (w && !atLive(w)) video.currentTime = liveTarget(w); if (video.paused) video.play().catch(() => {}); vbarUpdate(); };
+$('#vbLive').onclick = () => { if (mpvOn()) { const w = mpvLiveWin(); if (w && !mpvAtLive(w)) mpvC(['seek', w[1] - 4, 'absolute']); mpvBehind(false); if (S.mpvSt.paused) mpvC(['set_property', 'pause', false]); return; } const w = liveWin(); if (w && !atLive(w)) video.currentTime = liveTarget(w); if (video.paused) video.play().catch(() => {}); vbarUpdate(); };
 const mpvOn = () => S.engine === 'mpv' && NAT;
 const MPV_INFO = new Set(['w', 'h', 'vcodec', 'acodec', 'ach', 'fps', 'vbr', 'hwdec', 'gamma']);
 const mpvC = a => window.desktop.mpv.cmd(a);
