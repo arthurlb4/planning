@@ -783,7 +783,7 @@ body.tvswitch #home,body.tvswitch #agenda{animation:none!important}.tvtabs .chip
 /* boutons : s'enfoncent légèrement au clic */
 .btn,.chip,.vb,.pnb,#vbar .live,.vsrc{transition:transform .14s var(--ease),background-color .2s,color .2s,border-color .2s}
 .btn:active,.chip:active,.vb:active,.pnb:active,#vbar .live:active,.vsrc:active{transform:scale(.94)}
-.chip.on{animation:chipOn .3s var(--spring)}.vtop .chip.on{animation:none}
+.chip.on{animation:chipOn .3s var(--spring)}.vtop .chip.on{animation:none}.vtop .chip{transition:transform .14s var(--ease)}   /* onglets : couleur changée sans fondu */
 @keyframes chipOn{from{transform:scale(.92)}}
 /* étoile, favoris, j'aime : petit rebond quand on l'active */
 .vt.star.on svg,#nowFav.on svg,.fbi.on,[data-fb].on{animation:pop .35s var(--spring)}
@@ -4931,7 +4931,7 @@ async function forYou(kinds) {
 }
 function popList(idsArr, P, meta, kinds) { const seen = new Set(), out = []; for (const id of idsArr) { if (!kinds.includes(id[0])) continue; const it = popMatch(id, P, meta) || (V.data && V.data.noSub && meta[id] && meta[id].t ? virtItem(id, meta[id]) : ixVirtual(id, meta[id])); if (it && !seen.has(it)) { seen.add(it); out.push(it); } } return out; }
 async function renderVod() {
-  const box = $('#vodInner');
+  const box = $('#vodInner'), tab0 = V.tab;
   // Sans liste (ou liste sans films : pas de connexion Xtream) : catalogue vide, les rangées viennent de TMDB et chaque titre
   // se lit par les autres sources (torrent, Ma médiathèque)
   // mode torrent (Paramètres › Lecture) : le serveur IPTV n'est pas interrogé, tout le catalogue vient de TMDB et se lit en torrent
@@ -5148,16 +5148,39 @@ async function renderVod() {
       <div class="row"><input class="field" id="tmdbKey" type="password" placeholder="Clé d'API TMDB" value="${esc(key)}" autocomplete="off" spellcheck="false" style="flex:1;min-width:0;margin:0"><button class="chip" data-tmdb>Enregistrer</button>${key ? '<button class="chip" data-tmdbre>↻</button>' : '<button class="chip" data-tmdbin>Activer la clé intégrée</button>'}</div></div>`;
     if (!key) h = h.replace('<div class="vrow">', tbox + '<div class="vrow">');   // sans clé : réglage en haut (avec la clé : Paramètres › Sources)
   }
+  // Accueil, Films, Séries : page gardée (affichée tout de suite au prochain clic sur l'onglet, voir vodQuick) ; recalculée
+  // derrière, elle ne remplace l'affichage que si elle a changé
+  const ck = !V.q && !V.cat && ['home', 'movie', 'series'].includes(V.tab) ? V.tab : null, bg = V.bgFor === V.tab; V.bgFor = null;
+  if (V.tab !== tab0) return;   // onglet changé pendant le calcul : un autre calcul est en cours
+  if (ck) { const c = VQ[ck]; VQ[ck] = { h, shown: V.shown.slice(), pl: S.pl }; if (bg && c && c.h === h) { V.shown = c.shown; return; } }
+  if (bg && V.tab !== ck) return;
+  const st = $('#vod').scrollTop;
   box.innerHTML = h;
+  if (bg) { $('#vod').scrollTop = st; V.lastTab = V.tab; vodPost(box); return; }
   // changement d'onglet : seul le contenu sous les onglets fond doucement (onglets et recherche restent en place)
   if (V.lastTab !== V.tab && box.animate && !matchMedia('(prefers-reduced-motion: reduce)').matches)
     box.querySelectorAll(':scope > :not(.vtop)').forEach(el => el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: 'ease-out' }));
   V.lastTab = V.tab;
+  vodPost(box);
+  const qi = $('#vodQ'); if (V.q) { qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); }
+}
+const VQ = {};
+function vodPost(box) {
   vodDedupe(box);
   if (!V.q && !V.cat && !['jf', 'hist'].includes(V.tab)) vodSeenFilter(box);   // pas sur Ma médiathèque ni l'Historique
   vodCineFilter(box);
   ixScan(); setTimeout(() => jfTmFill().catch(() => {}), 300);
-  const qi = $('#vodQ'); if (V.q) { qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); }
+}
+/* Clic sur Accueil, Films ou Séries : la page déjà calculée pour cet onglet s'affiche tout de suite (avant : attente de toutes
+   les sources, TMDB, Netflix, SensCritique, Jellyfin… à chaque clic), puis elle est recalculée derrière */
+function vodQuick() {
+  const c = VQ[V.tab]; if (!c || c.pl !== S.pl || V.q || V.cat) return false;
+  const box = $('#vodInner'); V.shown = c.shown.slice(); box.innerHTML = c.h;
+  if (box.animate && !matchMedia('(prefers-reduced-motion: reduce)').matches)
+    box.querySelectorAll(':scope > :not(.vtop)').forEach(el => el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: 'ease-out' }));
+  V.lastTab = V.tab; vodPost(box);
+  V.bgFor = V.tab; setTimeout(renderVod, 400);
+  return true;
 }
 /* Recherche d'une plateforme (« netflix », « prime », « disney »…) : ses classements en tête des résultats — top 10 France
    (Netflix), populaires et nouveautés (TMDB), et le meilleur de votre catalogue rattaché à elle */
@@ -5276,13 +5299,19 @@ $('#vodInner').addEventListener('click', e => {
   const hs = e.target.closest('[data-hist]'); if (hs) { resumeHist(hs.dataset.hist); return; }
   const t = e.target.closest('[data-tab]'), c = e.target.closest('[data-cat]'), p = e.target.closest('[data-v]');
   // onglet : allumé tout de suite et contenu effacé, puis la page se prépare (sinon on attendait la fin de la préparation)
-  if (t) { if (t.classList.contains('on') && !V.q) return; V.tab = t.dataset.tab; V.q = ''; V.cat = null;
-    document.querySelectorAll('#vodInner .vtop [data-tab]').forEach(b => b.classList.toggle('on', b === t));
-    $('#vodInner').querySelectorAll(':scope > :not(.vtop)').forEach(el => { el.style.transition = 'opacity .12s'; el.style.opacity = '0'; });
-    $('#vod').scrollTop = 0; requestAnimationFrame(() => setTimeout(renderVod, 0)); }
+  if (t) vodTab(t);
   else if (c) { V.tab = 'cats'; V.cat = c.dataset.cat || null; renderVod(); $('#vod').scrollTop = 0; }
   else if (p) openVod(V.shown[+p.dataset.v]);
 });
+// onglet : allumé tout de suite et contenu effacé (ou page gardée affichée), puis la page se prépare
+function vodTab(t) {
+  if (t.classList.contains('on') && !V.q) return; V.tab = t.dataset.tab; V.q = ''; V.cat = null;
+  document.querySelectorAll('#vodInner .vtop [data-tab]').forEach(b => b.classList.toggle('on', b === t));
+  $('#vodInner').querySelectorAll(':scope > :not(.vtop)').forEach(el => { el.style.transition = 'opacity .12s'; el.style.opacity = '0'; });
+  $('#vod').scrollTop = 0; if (!vodQuick()) requestAnimationFrame(() => setTimeout(renderVod, 0));
+}
+// dès l'appui sur le bouton de la souris (comme les onglets d'un navigateur), sans attendre qu'il soit relâché
+$('#vodInner').addEventListener('pointerdown', e => { if (e.button || e.pointerType === 'touch') return; const t = e.target.closest('.vtop [data-tab]'); if (t) vodTab(t); });
 $('#vodBtn').onclick = () => { document.body.classList.remove('drawer'); setSolo(false); setHomeView(true, true, 'vod'); };
 const fmtDur = s => { s = +s || 0; if (!s) return ''; const h = Math.floor(s / 3600), m = Math.round(s % 3600 / 60); return h ? `${h} h ${String(m).padStart(2, '0')}` : `${m} min`; };
 function vodUrl(kind, id, ext) { const x = epgCtx(); return `${x.base}/${kind}/${encodeURIComponent(x.user)}/${encodeURIComponent(x.pass)}/${id}.${ext || 'mp4'}`; }
