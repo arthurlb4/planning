@@ -954,6 +954,8 @@ h1,h2,h3,h4,h5,h6,b,strong,th,summary{font-weight:500}
       <div class="row"><input class="field" id="bPass" placeholder="Mot de passe" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" style="flex:1;min-width:0;margin:0"><button class="btn primary" id="bBtn">Déverrouiller</button></div>
       <div class="err" id="bErr"></div>
     </div>
+    <div id="subHostBox" class="srow" style="display:none"><div class="st"><b>Serveur de « Mon abonnement »</b><small>Nouveau serveur donné par votre fournisseur : seul le serveur change, vos identifiants restent chiffrés. Réglage partagé entre vos appareils.</small></div>
+      <div class="sc" style="display:flex;gap:8px;flex-wrap:wrap"><input class="field" id="subHost" placeholder="nouveau-serveur.com:8080 (avec le port s'il y en a un)" autocomplete="off" spellcheck="false" style="width:220px;margin:0"><button class="btn" id="subHostBtn">Changer</button></div></div>
     <h3>Mes listes</h3>
     <div id="plList"></div>
     <details class="padd" id="addBox"><summary>＋ Ajouter une liste</summary>
@@ -6779,6 +6781,7 @@ function copyNames() {
 }
 function renderPlaylists() {
   $('#builtinBox').style.display = S.playlists.some(p => p.id === 'builtin') ? 'none' : '';
+  { const bp = S.playlists.find(p => p.id === 'builtin'), sb = $('#subHostBox'); if (sb) { sb.style.display = bp ? '' : 'none'; const i = $('#subHost'); if (bp && i && document.activeElement !== i) { try { const u = new URL(bp.url); i.value = u.host; } catch (e) {} } } }
   if (window.renderSync) renderSync();
   const own = S.playlists.filter(p => !p.extra);       // les listes gratuites sont gérées dans « Chaînes gratuites »
   $('#plList').innerHTML = own.length ? own.map(p => `
@@ -7198,7 +7201,32 @@ async function useBuiltinTmdb(pass) {
   if (!LS.get('pref.trakt', '')) useBuiltinTrakt(pass).catch(() => {});        // BetaSeries aussi        // sous-titres OpenSubtitles activés du même coup
   return k;
 }
-const unlockBuiltin = pass => decEnc(BUILTIN, pass);
+/* Serveur de « Mon abonnement » remplacé (le fournisseur en donne un nouveau) : seul le serveur (et son port) de l'adresse
+   déchiffrée change, identifiants intacts ; réglage pref.subhost, synchronisé (pas un secret) */
+function subHost(url) {
+  const h = String(LS.get('pref.subhost', '') || '').trim(); if (!h) return url;
+  try { const u = new URL(url), n = new URL(/^https?:\/\//i.test(h) ? h : 'http://' + h); u.protocol = n.protocol; u.hostname = n.hostname; u.port = n.port; return u.toString(); } catch (e) { return url; }   // port tapé, sinon celui par défaut
+}
+async function subHostApply(quiet) {
+  const p = S.playlists.find(x => x.id === 'builtin'); if (!p || !p.url) return;
+  const url = subHost(p.url); if (url === p.url) return;
+  const text = await fetchPlaylist(url);
+  await savePlaylist(Object.assign({}, p, { url, text }));
+  if (!quiet) toast('« Mon abonnement » passe sur le nouveau serveur');
+}
+$('#subHostBtn').onclick = async () => {
+  const b = $('#subHostBtn'), v = $('#subHost').value.trim(); if (!v) return;
+  let host; try { host = new URL(/^https?:\/\//i.test(v) ? v : 'http://' + v); } catch (e) { return toastLong('Serveur illisible : mettez par exemple nouveau-serveur.com:8080'); }
+  const old = LS.get('pref.subhost', '');
+  LS.set('pref.subhost', host.protocol + '//' + host.host);
+  b.disabled = true; b.textContent = 'Chargement…';
+  try { await subHostApply(); }
+  catch (e) { LS.set('pref.subhost', old); toastLong('Nouveau serveur injoignable : ' + e.message); }
+  b.disabled = false; b.textContent = 'Changer';
+};
+// serveur changé sur un autre appareil (synchro) : appliqué ici aussi, une fois les listes chargées
+setTimeout(() => subHostApply(true).catch(() => {}), 15000);
+const unlockBuiltin = pass => decEnc(BUILTIN, pass).then(subHost);
 $('#bBtn').onclick = async () => {
   const b = $('#bBtn'), err = $('#bErr'), pass = $('#bPass').value.trim().toLowerCase();
   if (!pass) return;
