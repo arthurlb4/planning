@@ -167,6 +167,8 @@ public class Mpv
         rect = r; if (f.Sizing && !f.RatioLock) return; if (f.InvokeRequired) f.BeginInvoke(Place); else Place(); }   // pendant le geste : seulement le calcul par marges
     long holdUntil;
     public bool Holding => Environment.TickCount64 < holdUntil;
+    // la page est revenue à la bonne taille (fin du voile) : sa position est la bonne, plus besoin d'attendre
+    public void Release() { holdUntil = 0; ExitPending = false; Place(); }
     // la coque place elle-même la vidéo pendant ms millisecondes, puis reprend la position donnée par la page
     public void Hold(int ms)
     {

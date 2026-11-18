@@ -347,7 +347,7 @@ public class MainForm : Form
         veilT?.Stop(); if (!Veiled) return; Veiled = false;
         try { target.SetRoot(root); dcomp.Commit(); } catch { }
         // la vidéo reprend sa place une image plus tard (la page est déjà affichée par-dessus, elle cache le surplus)
-        var t = new System.Windows.Forms.Timer { Interval = 20 }; t.Tick += (s, e) => { t.Stop(); t.Dispose(); mpv?.Place(); }; t.Start();
+        var t = new System.Windows.Forms.Timer { Interval = 20 }; t.Tick += (s, e) => { t.Stop(); t.Dispose(); mpv?.Release(); }; t.Start();
     }
     void SetFull(bool on)
     {
