@@ -206,7 +206,7 @@ public class MainForm : Form
                 _ = mpv.PlayAsync(o).ContinueWith(x => Reply(id, x.IsCompletedSuccessfully ? x.Result : new JsonObject { ["error"] = "mpv" }), TaskScheduler.FromCurrentSynchronizationContext());
                 break;
             case "mpvStop": mpv.Stop(); break;
-            case "mpvRect": { var rr = m["r"] as JsonObject; mpv.Rect(rr); if (veilFull != null && rr != null && !((bool?)rr["hidden"] ?? false) && mpv.FullSized(rr) == veilFull) Unveil(40); break; }
+            case "mpvRect": mpv.Rect(m["r"] as JsonObject); break;
             case "mpvCmd": mpv.Cmd(m["a"] as JsonArray); break;
             case "vpn": Post(new JsonObject { ["t"] = "vpn", ["v"] = Vpn((string)m["pat"] ?? "") }); break;
             case "vlc": Reply((int)m["id"]!, OpenVlc((string)m["url"], (string)m["name"])); break;
@@ -280,23 +280,6 @@ public class MainForm : Form
 
     // ---------- plein écran (F11 ou double-clic sur le lecteur : demandé par la page)
     bool full; Rectangle normalBounds, prevVideo; FormWindowState fullPrev;
-    /* Passage en plein écran (ou retour) : la page est cachée le temps qu'elle se redessine à la nouvelle taille (sinon
-       l'ancienne mise en page — barre du lecteur, liste — apparaît une ou deux images par-dessus la vidéo) ; remontrée dès
-       qu'elle envoie la nouvelle place de la vidéo, 400 ms au plus. Seulement pendant une lecture par mpv. */
-    bool? veilFull; System.Windows.Forms.Timer? veilT;
-    void Veil(bool on)
-    {
-        if (comp == null || !Video.Visible) return;
-        veilFull = on; try { comp.IsVisible = false; } catch { }
-        Unveil(400);
-    }
-    void Unveil(int ms)
-    {
-        veilT?.Stop(); veilT?.Dispose();
-        veilT = new System.Windows.Forms.Timer { Interval = Math.Max(1, ms) };
-        veilT.Tick += (s, e) => { veilT?.Stop(); veilFull = null; try { if (comp != null) comp.IsVisible = true; } catch { } };
-        veilT.Start();
-    }
     void SetFull(bool on)
     {
         if (on == full) return; full = on;
@@ -305,7 +288,7 @@ public class MainForm : Form
         mpv?.Hold(150);
         if (mpv != null) { mpv.Full = on; mpv.ExitPending = !on; }
         Frame(!on);
-        Veil(on);
+        _ = Task.Run(async () => { foreach (var ms in new[] { 100, 400 }) { await Task.Delay(ms); FocusPage(); } });   // clavier gardé par la page (F de nouveau)
         if (on)
         {
             prevVideo = Video.Bounds; fullPrev = WindowState; normalBounds = Bounds;
