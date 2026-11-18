@@ -779,7 +779,7 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 /* boutons : s'enfoncent légèrement au clic */
 .btn,.chip,.vb,.pnb,#vbar .live,.vsrc{transition:transform .14s var(--ease),background-color .2s,color .2s,border-color .2s}
 .btn:active,.chip:active,.vb:active,.pnb:active,#vbar .live:active,.vsrc:active{transform:scale(.94)}
-.chip.on{animation:chipOn .3s var(--spring)}
+.chip.on{animation:chipOn .3s var(--spring)}.vtop .chip.on{animation:none}
 @keyframes chipOn{from{transform:scale(.92)}}
 /* étoile, favoris, j'aime : petit rebond quand on l'active */
 .vt.star.on svg,#nowFav.on svg,.fbi.on,[data-fb].on{animation:pop .35s var(--spring)}
@@ -1663,6 +1663,8 @@ window.appClosing = () => {
       if (r.dataset.rv) return; r.dataset.rv = 1;
       // déjà sous les yeux au moment de l'affichage : animé aussi (l'ensemble de la page arrive en cascade)
       r.querySelectorAll('.poster,.tvc,.chr').forEach((p, i) => { if (i < 14) p.style.setProperty('--d', (i * 0.035).toFixed(3) + 's'); });
+      // déjà à l'écran à l'affichage : pas de glissement (le fondu de la page ou de l'onglet suffit)
+      if (r.getBoundingClientRect().top < innerHeight) return;
       r.classList.add('rv0'); io.observe(r);
     });
   };
@@ -5022,7 +5024,9 @@ async function renderVod() {
     if (!key) h = h.replace('<div class="vrow">', tbox + '<div class="vrow">');   // sans clé : réglage en haut (avec la clé : Paramètres › Sources)
   }
   box.innerHTML = h;
-  if (V.lastTab !== V.tab && box.animate && !matchMedia('(prefers-reduced-motion: reduce)').matches) box.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: 'cubic-bezier(.2,.8,.2,1)' });
+  // changement d'onglet : seul le contenu sous les onglets fond doucement (onglets et recherche restent en place)
+  if (V.lastTab !== V.tab && box.animate && !matchMedia('(prefers-reduced-motion: reduce)').matches)
+    box.querySelectorAll(':scope > :not(.vtop)').forEach(el => el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: 'ease-out' }));
   V.lastTab = V.tab;
   vodDedupe(box);
   if (!V.q && !V.cat && !['jf', 'hist'].includes(V.tab)) vodSeenFilter(box);   // pas sur Ma médiathèque ni l'Historique
