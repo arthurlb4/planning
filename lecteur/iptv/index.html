@@ -765,6 +765,7 @@ body.vtools #prevBtn,body.vtools #nextBtn,body.vtools #soloBtn,body.vtools #solo
 /* changement d'onglet (TV, Films & séries, Agenda) : léger fondu et glissement */
 @keyframes viewIn{from{opacity:0;transform:translateY(10px)}}
 body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.homeview.vod #vod{animation:viewIn .3s cubic-bezier(.2,.8,.2,1)}
+body.tvswitch #home,body.tvswitch #agenda{animation:none!important}.tvtabs .chip.on{animation:none}
 .modal.open .sheet{animation:viewIn .25s cubic-bezier(.2,.8,.2,1)}
 @media (prefers-reduced-motion:reduce){body.homeview #home,body.homeview #agenda,body.homeview #vod,.modal.open .sheet{animation:none}}
 /* ---------- Animations (toutes coupées si Windows demande moins d'animations) ---------- */
@@ -1591,7 +1592,11 @@ const tvTab = () => { const t = LS.get('dev.tvtab', 'gen'); return ['gen', 'spor
 const tvTabs = on => `<div class="vtop tvtabs">${TV_TABS.map(([k, l]) => `<button class="chip${on === k ? ' on' : ''}" data-tvt="${k}">${l}</button>`).join('')}</div>`;
 document.addEventListener('click', e => { const b = e.target.closest('[data-tvt]'); if (!b || b.classList.contains('on')) return;
   if (b.dataset.tvt !== 'agenda') LS.set('dev.tvtab', b.dataset.tvt);
+  // d'un onglet TV à l'autre : la page ne glisse pas (passage direct, comme entre Généralistes et Sport)
+  const B = document.body.classList; B.add('tvswitch'); clearTimeout(tvFade.t); tvFade.t = setTimeout(() => B.remove('tvswitch'), 500); S.tvFade = true;
   setHomeView(true, true, b.dataset.tvt === 'agenda' ? 'agenda' : ''); });
+// onglets TV (Généralistes, Sport, Favoris, Agenda) : passage direct de l'un à l'autre, sans animation
+function tvFade() { S.tvFade = false; }
 function renderHome() {
   const fams = homeIndex();
   S.tiles = fams;
@@ -1608,7 +1613,7 @@ function renderHome() {
       const G = GUIDE.data, now = Date.now(), prog = c => { const l = G && guideList(c, G) || []; return l.find(q => q.start <= now && q.end > now); };
       h += `<div class="hsec tvrow"><h2>Favoris <small>${favs.length}</small></h2><div class="tvgrid">${F.subs.map((x, j) => tvCard(F, i, j, prog(x.list[0]))).join('')}</div></div>`;
     }
-    $('#homeInner').innerHTML = h; fillTileEpg(); return;
+    $('#homeInner').innerHTML = h; tvFade($('#homeInner')); fillTileEpg(); return;
   }
   // Mes équipes (onglet Sport) : leurs matchs des prochaines 24 h (agenda chargé en coulisse si besoin)
   if (tab === 'sport' && myTeams().length) {
@@ -1617,7 +1622,7 @@ function renderHome() {
     if (te.length) h += `<div class="hsec"><h2>Vos équipes</h2><div class="brand fy"><div class="chs">${te.map((e, k) => `<button class="chr" data-tev="${k}" title="${esc(e.title)}"><span class="lg">${imgOrA(logoUrl(e.tv[0].label), e.tv[0].list[0].logo, initials(e.tv[0].label), '')}</span><span class="m"><span class="l">${esc(e.title)}</span><span class="e">${evLine(e)}</span></span></button>`).join('')}</div></div></div>`;
   }
   h += tvRows(fams, tab === 'sport' ? 'Sport' : 'Généralistes');
-  $('#homeInner').innerHTML = h;
+  $('#homeInner').innerHTML = h; tvFade($('#homeInner'));
   fillTileEpg();
 }
 // Pages (accueil, agenda) ; mini = la chaîne en cours continue dans un coin
