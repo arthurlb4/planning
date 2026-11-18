@@ -227,7 +227,8 @@ public class MainForm : Form
                 if (a == "min") WindowState = FormWindowState.Minimized;
                 else if (a == "max") WindowState = WindowState == FormWindowState.Maximized ? FormWindowState.Normal : FormWindowState.Maximized;
                 else if (a == "close") Close();
-                else if (a == "hold") { mpv?.Hold(250); Veil(); }
+                else if (a == "hold" || a == "hold1") { mpv?.Hold(250); Veil(true); }   // hold1 : entrée en pleine fenêtre
+                else if (a == "hold0") { mpv?.Hold(250); Veil(false); }   // sortie
                 else if (a == "ratio1") { RatioLock = true; FitRatio(); }   // pleine fenêtre : fenêtre aux proportions de la vidéo
                 else if (a == "ratio0") RatioLock = false;   // la page change de mise en page (plein écran) : la coque garde la vidéo en place
                 break;
@@ -323,13 +324,15 @@ public class MainForm : Form
        taille (des morceaux de page et de lecteur apparaissaient par-dessus la vidéo). La page est retirée de l'affichage (elle
        continue de vivre, clavier compris) et la vidéo remplit la fenêtre ; elle revient dès qu'elle s'est redessinée à la
        nouvelle taille, puis la vidéo reprend sa place. */
-    public bool Veiled; long veilAt, sizeAt; System.Windows.Forms.Timer veilT;
-    void Veil()
+    // big : la vidéo remplit la fenêtre pendant le voile (entrée en plein écran / pleine fenêtre) ; sinon elle reste où elle est
+    // (sortie : le fond de la fenêtre a la couleur de la page, la vidéo va directement à sa place, sans étape intermédiaire)
+    public bool Veiled; bool veilBig; Rectangle preVeil; long veilAt, sizeAt; System.Windows.Forms.Timer veilT;
+    void Veil(bool big)
     {
         if (comp == null || target == null || mpv == null || !Video.Visible) return;
-        veilAt = Environment.TickCount64;
-        if (!Veiled) { Veiled = true; try { target.SetRoot(null!); dcomp.Commit(); } catch { } }
-        var fb = new Rectangle(Point.Empty, ClientSize); if (Video.Bounds != fb) { Video.Bounds = fb; mpv.FitChild(); }
+        veilAt = Environment.TickCount64; veilBig = big;
+        if (!Veiled) { preVeil = Video.Bounds; Veiled = true; try { target.SetRoot(null!); dcomp.Commit(); } catch { } }
+        if (big) { var fb = new Rectangle(Point.Empty, ClientSize); if (Video.Bounds != fb) { Video.Bounds = fb; mpv.FitChild(); } }
         if (veilT == null)
         {
             veilT = new System.Windows.Forms.Timer { Interval = 15 };
@@ -345,14 +348,16 @@ public class MainForm : Form
     void Unveil()
     {
         veilT?.Stop(); if (!Veiled) return; Veiled = false;
-        try { target.SetRoot(root); dcomp.Commit(); } catch { }
-        // la vidéo reprend sa place une image plus tard (la page est déjà affichée par-dessus, elle cache le surplus)
-        var t = new System.Windows.Forms.Timer { Interval = 20 }; t.Tick += (s, e) => { t.Stop(); t.Dispose(); mpv?.Release(); }; t.Start();
+        // la vidéo va d'abord à sa place (position déjà donnée par la page à sa nouvelle taille), la page revient par-dessus
+        // une image plus tard : on ne voit jamais la vidéo à une taille intermédiaire
+        mpv?.Release();
+        var t = new System.Windows.Forms.Timer { Interval = 20 }; t.Tick += (s, e) => { t.Stop(); t.Dispose(); try { target.SetRoot(root); dcomp.Commit(); } catch { } }; t.Start();
     }
     void SetFull(bool on)
     {
         if (on == full) return; full = on;
-        Veil();
+        if (on && Video.Visible) prevVideo = Veiled ? preVeil : Video.Bounds;   // place d'avant (la page a pu déjà demander le voile)
+        Veil(on);
         // pendant le changement : la vidéo est placée par la coque (plein écran : tout l'écran ; retour : sa place d'avant),
         // les positions envoyées par la page pendant sa nouvelle mise en page sont ignorées un instant
         mpv?.Hold(150);
@@ -361,7 +366,7 @@ public class MainForm : Form
         _ = Task.Run(async () => { foreach (var ms in new[] { 100, 400 }) { await Task.Delay(ms); FocusPage(); } });   // clavier gardé par la page (F de nouveau)
         if (on)
         {
-            prevVideo = Video.Bounds; fullPrev = WindowState; normalBounds = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
+            fullPrev = WindowState; normalBounds = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
             WindowState = FormWindowState.Normal; Bounds = Screen.FromControl(this).Bounds;
             if (Video.Visible) { Video.Bounds = new Rectangle(Point.Empty, ClientSize); mpv?.FitChild(); }
         }
@@ -371,8 +376,7 @@ public class MainForm : Form
             // puis agrandie (même taille : pas d'animation de Windows), et enfin sa taille « normale » d'avant gardée pour plus tard
             if (fullPrev == FormWindowState.Maximized) { Bounds = Screen.FromControl(this).WorkingArea; WindowState = FormWindowState.Maximized; SetPlacement(normalBounds, true); }
             else { Bounds = normalBounds; WindowState = fullPrev; }
-            if (Veiled) { if (Video.Visible) { Video.Bounds = new Rectangle(Point.Empty, ClientSize); mpv?.FitChild(); } }   // remise en place au retour de la page
-            else if (Video.Visible && prevVideo.Width > 0) { Video.Bounds = prevVideo; mpv?.FitChild(); }
+            if (Video.Visible && prevVideo.Width > 0) { Video.Bounds = prevVideo; mpv?.FitChild(); }
         }
         Post(new JsonObject { ["t"] = "win", ["st"] = new JsonObject { ["max"] = WindowState == FormWindowState.Maximized, ["full"] = full } });
     }
@@ -412,7 +416,7 @@ public class MainForm : Form
             mpv?.FitChild();
         }
         if (ClientSize != lastClient) sizeAt = Environment.TickCount64;
-        if (Veiled && Video.Visible) { var vb = new Rectangle(Point.Empty, ClientSize); if (Video.Bounds != vb) { Video.Bounds = vb; mpv?.FitChild(); } }
+        if (Veiled && veilBig && Video.Visible) { var vb = new Rectangle(Point.Empty, ClientSize); if (Video.Bounds != vb) { Video.Bounds = vb; mpv?.FitChild(); } }
         if (ClientSize.Width > 0) lastClient = ClientSize;
 
         if (comp != null) comp.Bounds = new Rectangle(Point.Empty, ClientSize);
