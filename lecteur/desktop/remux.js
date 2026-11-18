@@ -217,6 +217,23 @@ module.exports = function startRemux(ffmpeg, findVlc) {
       res.setHeader('Access-Control-Allow-Headers', '*');
       if (req.method === 'OPTIONS') { res.statusCode = 204; return res.end(); }
       if (u.pathname === '/ping') return res.end('ok');
+      /* Blocage par la box (DNS) : l'adresse du serveur IPTV est remplacée par celle d'une page d'avertissement. La vraie adresse
+         est demandée à un DNS chiffré (Cloudflare, sinon Google), comme le font les autres applis IPTV.
+         /dnsblock?h=hôte → { blocked } ; /px/<http|https>/<hôte[:port]>/<chemin> → le flux, relayé par ici avec la vraie adresse */
+      if (u.pathname === '/dnsblock') {
+        res.setHeader('Content-Type', 'application/json');
+        const h0 = String(u.searchParams.get('h') || '').toLowerCase();
+        if (!/^[a-z0-9.-]{1,253}$/.test(h0)) return res.end(JSON.stringify({ error: 'nom invalide' }));
+        (async () => {
+          const sys = await require('dns').promises.lookup(h0, { all: true }).then(l => l.map(x => x.address)).catch(() => []);
+          const doh = await dohA(h0).catch(() => []);
+          const bad = a => /^(0\.|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|::1|fe80)/.test(a);
+          const blocked = !!doh.length && (!sys.length || sys.every(bad) || !sys.some(a => doh.includes(a)));
+          res.end(JSON.stringify({ blocked, sys, doh }));
+        })().catch(e => res.end(JSON.stringify({ error: e.message })));
+        return;
+      }
+      if (u.pathname.startsWith('/px/')) { pxServe(req, res, u); return; }
       // Prowlarr installé sur ce PC : adresse et clé lues dans son config.xml (l'appli le règle toute seule)
       if (u.pathname === '/arr/conf') {
         res.setHeader('Content-Type', 'application/json');
@@ -366,3 +383,48 @@ module.exports = function startRemux(ffmpeg, findVlc) {
     srv.listen(0, '127.0.0.1', () => resolve(srv.address().port));
   });
 };
+
+/* ---------- DNS chiffré et relais (contournement du blocage DNS de la box) ---------- */
+const DOH = new Map();
+async function dohA(host) {
+  const c = DOH.get(host); if (c && Date.now() - c.at < 30 * 60e3) return c.ips;
+  let ips = [];
+  for (const base of ['https://cloudflare-dns.com/dns-query', 'https://dns.google/resolve']) {
+    try {
+      const r = await fetch(base + '?name=' + encodeURIComponent(host) + '&type=A', { headers: { accept: 'application/dns-json' }, signal: AbortSignal.timeout(5000) });
+      const j = await r.json(); ips = (j.Answer || []).filter(a => a.type === 1).map(a => a.data); if (ips.length) break;
+    } catch (e) {}
+  }
+  if (ips.length) DOH.set(host, { at: Date.now(), ips });
+  return ips;
+}
+function pxServe(req, res, u) {
+  const m = /^\/px\/(https?)\/([^/]+)(\/.*)?$/.exec(u.pathname); if (!m) { res.statusCode = 400; return res.end(); }
+  const self = 'http://' + req.headers.host + '/px/';
+  const go = (proto, hostport, path, left) => {
+    const [host, port] = hostport.split(':'), mod = require(proto === 'https' ? 'https' : 'http');
+    const headers = { 'User-Agent': req.headers['user-agent'] || 'LecteurIPTV', Accept: '*/*' }; if (req.headers.range) headers.Range = req.headers.range;
+    const rq = mod.request({ host, port: port || (proto === 'https' ? 443 : 80), path, method: 'GET', headers, servername: host,
+      lookup: (h, o, cb) => dohA(h).then(ips => ips.length ? (o && o.all ? cb(null, ips.map(a => ({ address: a, family: 4 }))) : cb(null, ips[0], 4)) : require('dns').lookup(h, o, cb), e => require('dns').lookup(h, o, cb)) }, up => {
+      if (up.statusCode >= 300 && up.statusCode < 400 && up.headers.location && left > 0) {
+        up.resume(); const n = new URL(up.headers.location, proto + '://' + hostport + path);
+        return go(n.protocol.replace(':', ''), n.host, n.pathname + n.search, left - 1);
+      }
+      const ct = String(up.headers['content-type'] || '');
+      if (/mpegurl|m3u/i.test(ct) || /\.m3u8?(\?|$)/i.test(path)) {
+        // liste HLS : adresses complètes réécrites pour passer elles aussi par ici
+        const parts = []; up.on('data', d => parts.push(d)); up.on('end', () => {
+          const t = Buffer.concat(parts).toString('utf8').replace(/(https?):\/\/([^\/\s"']+)/g, (x, p, h) => self + p + '/' + h);
+          res.writeHead(up.statusCode, { 'Content-Type': ct || 'application/vnd.apple.mpegurl', 'Access-Control-Allow-Origin': '*' }); res.end(t);
+        }); return;
+      }
+      const h = { 'Access-Control-Allow-Origin': '*' }; for (const k of ['content-type', 'content-length', 'content-range', 'accept-ranges']) if (up.headers[k]) h[k] = up.headers[k];
+      res.writeHead(up.statusCode, h); up.pipe(res);
+      req.on('close', () => up.destroy());
+    });
+    rq.on('error', e => { if (!res.headersSent) { res.statusCode = 502; res.end(String(e.message)); } else res.destroy(); });
+    req.on('close', () => rq.destroy());
+    rq.end();
+  };
+  go(m[1], m[2], (m[3] || '/') + (u.search || ''), 5);
+}

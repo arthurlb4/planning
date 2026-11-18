@@ -3290,7 +3290,7 @@ async function play(c, alts) {
     if (t !== token) return;
     stopEngines();
     if (++i >= chain.length) return fail(c);
-    const [eng, url] = chain[i];
+    const [eng, url0] = chain[i], url = pxUrl(url0);
     let done = false, timer;
     const ok = () => { if (done || t !== token) return; done = true; clearTimeout(timer); setStatus(null); video.controls = !window.PREFER_NATIVE && NATIVE_CTRL(); document.body.classList.toggle('cbar', !NATIVE_CTRL()); S.engine = eng; vbarUpdate(); S.playUrl = url; S.master = null; vodResume(); setTimeout(applyTrackPrefs, 300); if (eng !== 'hls') S.found = null; if (!$('#stats').hidden) refreshStats(); audioWatch(c, t, url); };
     const ko = why => {
@@ -6034,7 +6034,8 @@ async function playMpv(c, t) {
   const pos = c.vod ? LS.get(posK(c.url), 0) : 0, start = pos > 60 || (c.replayOf && pos > 5) ? pos : 0;
   document.body.classList.toggle('mpvlive', !c.vod); S.mpvLive = c.vod ? null : { c, t0: 0 };
   setStatus('load');
-  const r = await M.play({ wait: c.vod ? 4 : liveWait(c), url: c.url, title: c.vod ? c.name : niceName(c), live: !c.vod, iptv: !c.vod || !!c.replayOf, start, vol: video.muted ? 0 : video.volume, alang: LS.get('pref.audio', 'fr'), slang: LS.get('pref.sub', 'off'), rect: mpvRect(), under: NAT, subArgs: NAT ? mpvSubArgs() : [] }).catch(e => ({ error: e.message }));
+  await dnsCheck(c.url); if (t !== token) return;
+  const r = await M.play({ wait: c.vod ? 4 : liveWait(c), url: pxUrl(c.url), title: c.vod ? c.name : niceName(c), live: !c.vod, iptv: !c.vod || !!c.replayOf, start, vol: video.muted ? 0 : video.volume, alang: LS.get('pref.audio', 'fr'), slang: LS.get('pref.sub', 'off'), rect: mpvRect(), under: NAT, subArgs: NAT ? mpvSubArgs() : [] }).catch(e => ({ error: e.message }));
   if (t !== token) return;
   if (!r || r.error) { document.body.classList.remove('mpv', 'nat'); S.engine = ''; S.noMpv = c.url; toast('Lecteur intégré indisponible (' + ((r && r.error) || '?') + ') : ancien lecteur'); return play(c); }
   if (c.vod) setStatus(null); if (start > 0 && c.replayOf && start === rpOfs(c.replayOf)) toast('Début du programme (pub sautée : ' + fmtDur(start) + ')'); else if (start > 60) toast('Reprise à ' + fmtDur(start));
@@ -6500,7 +6501,7 @@ function setSub(i, remember) {
     if (was && c0 && c0.url) setSub.t = setTimeout(() => {
       if (S.current !== c0 || S.engine !== 'mpv' || S.mpvSt.paused || curPos() > p0 + 1) return;
       const aid = S.mpvSt.aid, opt = 'start=' + Math.max(0, Math.floor(p0)) + ',sid=' + (id >= 0 ? id : 'no') + (aid ? ',aid=' + aid : '');
-      mpvC(['loadfile', c0.url, 'replace', '-1', opt]);
+      mpvC(['loadfile', pxUrl(c0.url), 'replace', '-1', opt]);
     }, 4000);
     if (remember) { LS.set('pref.sub', t ? (lang2(t.lang) || t.title || 'on') : 'off'); if (t) LS.set('pref.sublast', { lang: lang2(t.lang) || '', name: t.title || '', i: String(i) }); }
     setTimeout(renderTrackMenu, 300); return;
@@ -7483,14 +7484,35 @@ function stopAll() { torRelease(S.current); token++; stopEngines(); unfreeze(); 
 
 /* Liste par adresse : directement si le serveur l'accepte, sinon via le serveur de l'app (CORS, adresse en http, blocage) */
 const RELAY = 'https://planning-gcal.arthur-lebreton94.workers.dev/iptv/m3u?url=';
+/* Serveur IPTV bloqué par la box (DNS) : flux et appels au serveur relayés par le serveur local de l'appli, qui trouve la
+   vraie adresse par un DNS chiffré. Vérifié une fois par jour et par serveur (appli Windows seulement). */
+const DNSB = { m: LS.get('dev.dnsblock', {}) || {}, p: {} };
+const pxHost = u => { try { return new URL(u).host; } catch (e) { return ''; } };
+function pxUrl(url) {
+  if (!window.desktop || !window.desktop.remux || !/^https?:/i.test(url || '')) return url;
+  const x = new URL(url), e = DNSB.m[x.hostname]; if (!e || !e.b) return url;
+  return window.desktop.remux + '/px/' + x.protocol.replace(':', '') + '/' + x.host + x.pathname + x.search;
+}
+function dnsCheck(url) {
+  if (!window.desktop || !window.desktop.remux) return Promise.resolve(false);
+  let h = ''; try { h = new URL(url).hostname; } catch (e) { return Promise.resolve(false); }
+  if (!h || /^(127\.|localhost)/.test(h)) return Promise.resolve(false);
+  const e = DNSB.m[h]; if (e && Date.now() - e.at < 864e5) return Promise.resolve(!!e.b);
+  if (DNSB.p[h]) return DNSB.p[h];
+  return DNSB.p[h] = fetch(window.desktop.remux + '/dnsblock?h=' + encodeURIComponent(h), { signal: AbortSignal.timeout(8000) }).then(r => r.json()).then(j => {
+    if (j && j.blocked != null) { DNSB.m[h] = { b: !!j.blocked, at: Date.now() }; LS.set('dev.dnsblock', DNSB.m); if (j.blocked) toast('Serveur bloqué par la box : passage par un DNS chiffré'); }
+    return !!(j && j.blocked);
+  }).catch(() => false).finally(() => { delete DNSB.p[h]; });
+}
 async function fetchText(url) {
+  await dnsCheck(url).catch(() => false); const url0 = url; url = pxUrl(url);   // relais du site : toujours l'adresse d'origine
   // Toujours un essai direct : bloqué tout de suite dans un navigateur si l'adresse est en http, mais permis dans l'appli Windows
   // (réponse gardée pour le message d'erreur : c'est celle qui compte avec un VPN)
   let pc = '';
   try { const res = await fetch(url, { cache: 'no-store' }); if (res.ok) return await res.text(); pc = 'Depuis ce PC : le serveur répond ' + res.status; }
   catch (e) { if (window.desktop) pc = 'Depuis ce PC : serveur injoignable'; }
   let res;
-  try { res = await fetch(RELAY + encodeURIComponent(url), { cache: 'no-store' }); }
+  try { res = await fetch(RELAY + encodeURIComponent(url0), { cache: 'no-store' }); }
   catch (e) { throw new Error((pc ? pc + '. ' : '') + 'Impossible de joindre le serveur de l\'app. Vérifiez votre connexion, ou téléchargez le fichier puis importez-le.'); }
   if (res.ok) return res.text();
   const msg = (await res.text().catch(() => '')).slice(0, 200);
