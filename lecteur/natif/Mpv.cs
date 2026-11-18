@@ -146,7 +146,7 @@ public class Mpv
     // plein écran : la vidéo occupe tout l'écran (le lecteur de la page aussi), placée par la coque sans attendre la page ;
     // sortie : positions encore « plein écran » envoyées par la page (pas encore remise en page) ignorées jusqu'à la vraie
     public bool Full, ExitPending;
-    bool FullSized(JsonObject r)
+    public bool FullSized(JsonObject r)
     {
         if (r == null || ((bool?)r["hidden"] ?? false)) return false;
         double k = f.Scale; return (double)r["w"]! * k >= f.ClientSize.Width - 4 && (double)r["h"]! * k >= f.ClientSize.Height - 4;
