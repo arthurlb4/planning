@@ -169,6 +169,7 @@ Etape 'Jellyfin'
 Ok 'première configuration dans le navigateur : http://localhost:8096 (bibliothèques Films et Séries à ajouter, voir le guide)'
 
 Write-Host ''
-Write-Host 'Terminé. Suite dans le guide (LISEZ-MOI.md) : comptes de connexion, bibliothèques Jellyfin.' -ForegroundColor Cyan
-Start-Process 'http://localhost:8096'
+Write-Host 'Terminé. Le mode d''emploi de la suite s''ouvre (indexeur dans Prowlarr, Jellyfin, VPN).' -ForegroundColor Cyan
+$guide = Join-Path $PSScriptRoot 'Guide.html'
+if (Test-Path $guide) { Start-Process $guide } else { Start-Process 'http://localhost:8096' }
 Read-Host 'Entrée pour fermer'

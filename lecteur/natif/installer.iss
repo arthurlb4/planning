@@ -20,6 +20,8 @@ Compression=lzma2/fast
 SolidCompression=yes
 WizardStyle=modern
 CloseApplications=yes
+; mode d'emploi de ce qui reste à faire (indexeur, Jellyfin, VPN…), montré avant la dernière page
+InfoAfterFile=..\mediatheque\Guide.txt
 
 [Languages]
 Name: "fr"; MessagesFile: "compiler:Languages\French.isl"
