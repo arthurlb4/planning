@@ -280,6 +280,15 @@ public class MainForm : Form
 
     // ---------- plein écran (F11 ou double-clic sur le lecteur : demandé par la page)
     bool full; Rectangle normalBounds, prevVideo; FormWindowState fullPrev;
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    struct WINDOWPLACEMENT { public int length, flags, showCmd; public POINT min, max; public RECT normal; }
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool SetWindowPlacement(IntPtr h, ref WINDOWPLACEMENT p);
+    void SetPlacement(Rectangle normal, bool max)
+    {
+        var wp = new WINDOWPLACEMENT { length = System.Runtime.InteropServices.Marshal.SizeOf<WINDOWPLACEMENT>(), showCmd = max ? 3 : 1,
+            normal = new RECT { Left = normal.Left, Top = normal.Top, Right = normal.Right, Bottom = normal.Bottom } };
+        try { SetWindowPlacement(Handle, ref wp); } catch { Bounds = normal; WindowState = max ? FormWindowState.Maximized : FormWindowState.Normal; }
+    }
     void SetFull(bool on)
     {
         if (on == full) return; full = on;
@@ -291,13 +300,16 @@ public class MainForm : Form
         _ = Task.Run(async () => { foreach (var ms in new[] { 100, 400 }) { await Task.Delay(ms); FocusPage(); } });   // clavier gardé par la page (F de nouveau)
         if (on)
         {
-            prevVideo = Video.Bounds; fullPrev = WindowState; normalBounds = Bounds;
+            prevVideo = Video.Bounds; fullPrev = WindowState; normalBounds = WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
             WindowState = FormWindowState.Normal; Bounds = Screen.FromControl(this).Bounds;
             if (Video.Visible) { Video.Bounds = new Rectangle(Point.Empty, ClientSize); mpv?.FitChild(); }
         }
         else
         {
-            Bounds = normalBounds; WindowState = fullPrev;
+            // agrandie avant : remise agrandie d'un seul coup (sans passer par une taille intermédiaire où la page se décalait),
+            // sa taille « normale » gardée pour plus tard
+            if (fullPrev == FormWindowState.Maximized) SetPlacement(normalBounds, true);
+            else { Bounds = normalBounds; WindowState = fullPrev; }
             if (Video.Visible && prevVideo.Width > 0) { Video.Bounds = prevVideo; mpv?.FitChild(); }
         }
         Post(new JsonObject { ["t"] = "win", ["st"] = new JsonObject { ["max"] = WindowState == FormWindowState.Maximized, ["full"] = full } });
