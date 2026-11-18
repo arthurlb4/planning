@@ -46,7 +46,7 @@ public class Mpv
             // retour en arrière dans le direct : 4 Go gardés derrière la lecture, sur le disque (fichier temporaire effacé à la
             // fermeture) plutôt qu'en mémoire, et recherche permise dans ce qui est gardé
             var cdir = Path.Combine(Path.GetTempPath(), "lecteur-mpv-cache"); try { Directory.CreateDirectory(cdir); } catch { }
-            args.Add("--cache-on-disk=yes"); args.Add("--cache-dir=" + cdir);
+            args.Add("--cache-on-disk=yes"); args.Add("--demuxer-cache-dir=" + cdir);
             args.Add("--demuxer-max-back-bytes=4GiB"); args.Add("--demuxer-seekable-cache=yes"); args.Add("--force-seekable=yes");
         }
         if (o["subArgs"] is JsonArray sa) foreach (var x in sa) { var v = (string)x; if (v != null && v.StartsWith("--sub-") && v.Length < 100 && !v.Contains('\n')) args.Add(v); }
