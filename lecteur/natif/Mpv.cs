@@ -156,7 +156,7 @@ public class Mpv
     {
         if (ExitPending) { if (FullSized(r)) return; ExitPending = false; }
         if (rect == null || rect.ToJsonString() != r?.ToJsonString()) lastRectAt = Environment.TickCount64;
-        rect = r; if (f.Sizing) return; if (f.InvokeRequired) f.BeginInvoke(Place); else Place(); }
+        rect = r; if (f.InvokeRequired) f.BeginInvoke(Place); else Place(); }
     long holdUntil;
     public bool Holding => Environment.TickCount64 < holdUntil;
     // la coque place elle-même la vidéo pendant ms millisecondes, puis reprend la position donnée par la page

@@ -350,6 +350,9 @@ public class MainForm : Form
         // plein écran : la vidéo occupe toujours toute la fenêtre, à chaque étape du changement de taille (sinon elle restait
         // décalée, à la place qu'elle avait à côté de la liste, le temps que la page se remette en page)
         if (Video.Visible && mpv != null && mpv.Full) { var fb = new Rectangle(Point.Empty, ClientSize); if (Video.Bounds != fb) { Video.Bounds = fb; mpv.FitChild(); } }
+        // pendant qu'on tire un bord : la place de la vidéo vient seulement de la page (seule à connaître la vraie mise en page :
+        // lecteur au format 16/9, liste, barre du bas) — l'estimation faite ici était fausse et la faisait déborder
+        else if (Sizing) { }
         else if (Video.Visible && !(mpv?.Holding ?? false) && lastClient.Width > 0 && lastClient.Height > 0 && ClientSize.Width > 0 && ClientSize != lastClient)
         {
             /* pendant qu'on tire un bord : la liste à gauche, les panneaux et la barre du bas gardent leur taille, seul le lecteur
