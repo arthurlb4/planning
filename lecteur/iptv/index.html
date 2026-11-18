@@ -3396,18 +3396,22 @@ function epgSlot(fn) { return new Promise(res => { const go = async () => { epgB
 const GUIDE_URL = 'https://planning-gcal.arthur-lebreton94.workers.dev/iptv/agenda';   // guide joint au fichier de l'agenda
 const GUIDE = { data: null, at: 0, loading: null };
 function loadGuide() {
-  if (GUIDE.data && Date.now() - GUIDE.at < 60 * 60000) return Promise.resolve(GUIDE.data);
+  // guide gardé 15 min : un guide reconstruit (toutes les 3 h, ou après un changement) arrive vite sans relancer l'appli
+  if (GUIDE.data && Date.now() - GUIDE.at < 15 * 60000) return Promise.resolve(GUIDE.data);
   if (GUIDE.loading) return GUIDE.loading;
   GUIDE.loading = (async () => {
     try {
-      if (!GUIDE.data) { const c = await DB.cacheGet('guide1').catch(() => null); if (c && Date.now() - c.at < 60 * 60000 && c.data) { GUIDE.data = c.data; GUIDE.at = c.at; return c.data; } }
+      if (!GUIDE.data) { const c = await DB.cacheGet('guide1').catch(() => null); if (c && Date.now() - c.at < 15 * 60000 && c.data) { GUIDE.data = c.data; GUIDE.at = c.at; return c.data; } }
       const r = await fetch(GUIDE_URL, { cache: 'no-cache' }); if (!r.ok) throw new Error('guide ' + r.status);
       const j = await r.json(), d = j && (j.guide || j); if (!d || !d.ch || !Object.keys(d.ch).length) throw new Error('guide vide');
       d.nfx = (j && j.nfx) || null;          // top 10 Netflix en France, joint au même fichier
       d.wiki = (j && j.wiki) || null;        // films et séries les plus consultés sur Wikipédia, films primés (Wikidata)
+      const fresh = GUIDE.data && GUIDE.data.at !== d.at;
       GUIDE.data = d; GUIDE.at = Date.now(); DB.cachePut({ id: 'guide1', at: GUIDE.at, data: d });
+      // nouveau guide : accueil TV redessiné (nouvelles images, programmes)
+      if (fresh) { S.channels.forEach(c => { delete c._gid; }); const b = document.body.classList; if (b.contains('homeview') && !b.contains('vod') && !b.contains('agenda')) setTimeout(renderHome, 0); }
       return d;
-    } catch (e) { GUIDE.at = Date.now() - 50 * 60000; return GUIDE.data; }   // réessai dans 10 min, ancien guide gardé
+    } catch (e) { GUIDE.at = Date.now() - 5 * 60000; return GUIDE.data; }   // réessai dans 10 min, ancien guide gardé
     finally { GUIDE.loading = null; }
   })();
   return GUIDE.loading;
