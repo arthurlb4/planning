@@ -545,6 +545,7 @@ body.hasmatch #nowScore{display:inline}
 #vodTrailer .trtag{position:absolute;left:10px;top:10px;font-size:11px;font-weight:500;padding:3px 8px;border-radius:6px;background:rgba(0,0,0,.7);color:#fff;pointer-events:none}
 body.homeview #channels,body.homeview #player{display:none}
 .tvrow .vscroll{gap:14px}
+.tvgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:18px 14px}.tvgrid .tvc{width:auto}
 .tvc{flex:none;width:272px;display:flex;flex-direction:column;gap:3px;text-align:left;color:var(--text);cursor:pointer;border-radius:12px;padding:0}
 .tvc .tvi{position:relative;display:block;width:100%;aspect-ratio:16/9;border-radius:12px;overflow:hidden;background:linear-gradient(135deg,var(--bg3),var(--bg2));border:.5px solid var(--border);transition:transform .18s,box-shadow .18s}
 .tvc:hover .tvi{transform:scale(1.035);box-shadow:0 10px 26px rgba(0,0,0,.5)}
@@ -1544,7 +1545,7 @@ function tvRow(title, cards, sub, min) {
 }
 /* Accueil TV : une rangée par bouquet (Canal+, beIN Sports…), comme Films & séries ; vignette = programme en cours
    (image du guide XML TV Fr, sinon logo de la chaîne). Chaînes seules d'une même section regroupées dans une rangée. */
-function tvRows(fams) {
+function tvRows(fams, sec) {
   const G = GUIDE.data;
   if (!G && !tvRows.ld) { tvRows.ld = 1; loadGuide().then(d => { if (d && document.body.classList.contains('homeview') && !document.body.classList.contains('vod') && !document.body.classList.contains('agenda')) renderHome(); }); }
   const now = Date.now(), prog = c => { const l = G && guideList(c, G) || []; return l.find(q => q.start <= now && q.end > now); };
@@ -1552,6 +1553,7 @@ function tvRows(fams) {
   let h = '', solo = [], soloSec = '';
   const flush = () => { if (solo.length) h += tvRow(solo.length > 1 ? soloSec : solo[0].f.t, solo.map(x => x.c), '', 1); solo = []; };
   fams.forEach(f => {
+    if (sec && f.sec !== sec) return;
     if (f.subs.length > 1) { flush(); h += tvRow(f.t, cards(f), '', 1); return; }
     if (f.sec !== soloSec) flush(); soloSec = f.sec; solo.push({ f, c: cards(f)[0] });
   });
@@ -1582,22 +1584,37 @@ async function tvCrests() {
   }
 }
 // Onglet TV : Chaînes | Agenda (l'agenda sport n'a plus de bouton dans la barre du haut)
-const tvTabs = on => `<div class="vtop tvtabs">${[['tv', 'Chaînes'], ['agenda', 'Agenda']].map(([k, l]) => `<button class="chip${on === k ? ' on' : ''}" data-tvt="${k}">${l}</button>`).join('')}</div>`;
+const TV_TABS = [['gen', 'Généralistes'], ['sport', 'Sport'], ['fav', 'Favoris'], ['agenda', 'Agenda']];
+const tvTab = () => { const t = LS.get('dev.tvtab', 'gen'); return ['gen', 'sport', 'fav'].includes(t) ? t : 'gen'; };
+const tvTabs = on => `<div class="vtop tvtabs">${TV_TABS.map(([k, l]) => `<button class="chip${on === k ? ' on' : ''}" data-tvt="${k}">${l}</button>`).join('')}</div>`;
 document.addEventListener('click', e => { const b = e.target.closest('[data-tvt]'); if (!b || b.classList.contains('on')) return;
+  if (b.dataset.tvt !== 'agenda') LS.set('dev.tvtab', b.dataset.tvt);
   setHomeView(true, true, b.dataset.tvt === 'agenda' ? 'agenda' : ''); });
 function renderHome() {
   const fams = homeIndex();
   S.tiles = fams;
   if (!S.pl) { $('#homeInner').innerHTML = '<div class="empty">Ajoutez ou déverrouillez une liste pour voir l\'accueil.<br><br><button class="btn primary" onclick="openModal(\'plModal\')">Listes</button></div>'; return; }
   if (!fams.length) { $('#homeInner').innerHTML = '<div class="empty">Aucune des principales chaînes françaises n\'a été trouvée dans cette liste.<br>Toutes ses chaînes restent dans le menu ☰.</div>'; return; }
-  let h = tvTabs('tv'), sec = '';
-  // Mes équipes : leurs matchs des prochaines 24 h (agenda chargé en coulisse si besoin)
-  if (myTeams().length) {
+  const tab = tvTab();
+  let h = tvTabs(tab), sec = '';
+  // Favoris (⭐ du lecteur) : en grille, n'importe quelle chaîne de la liste
+  if (tab === 'fav') {
+    const favs = S.channels.filter(c => S.fav.has(c.url));
+    if (!favs.length) h += '<div class="empty">Pas encore de favori.<br>Touchez l\'étoile ☆ dans la barre du lecteur pour ajouter la chaîne en cours.</div>';
+    else {
+      const F = { t: 'Favoris', sec: 'fav', subs: favs.map(c => ({ label: niceName(c), list: [c] })) }, i = fams.length; S.tiles = fams.concat([F]);
+      const G = GUIDE.data, now = Date.now(), prog = c => { const l = G && guideList(c, G) || []; return l.find(q => q.start <= now && q.end > now); };
+      h += `<div class="hsec tvrow"><h2>Favoris <small>${favs.length}</small></h2><div class="tvgrid">${F.subs.map((x, j) => tvCard(F, i, j, prog(x.list[0]))).join('')}</div></div>`;
+    }
+    $('#homeInner').innerHTML = h; fillTileEpg(); return;
+  }
+  // Mes équipes (onglet Sport) : leurs matchs des prochaines 24 h (agenda chargé en coulisse si besoin)
+  if (tab === 'sport' && myTeams().length) {
     if (!AGENDA.events && !AGENDA._ld) { AGENDA._ld = 1; loadAgenda().then(() => { AGENDA._ld = 0; const b = document.body.classList; if (b.contains('homeview') && !b.contains('agenda') && !b.contains('vod')) renderHome(); }).catch(() => { AGENDA._ld = 0; }); }
     const te = teamEvents(24); S.teamEv = te;
     if (te.length) h += `<div class="hsec"><h2>Vos équipes</h2><div class="brand fy"><div class="chs">${te.map((e, k) => `<button class="chr" data-tev="${k}" title="${esc(e.title)}"><span class="lg">${imgOrA(logoUrl(e.tv[0].label), e.tv[0].list[0].logo, initials(e.tv[0].label), '')}</span><span class="m"><span class="l">${esc(e.title)}</span><span class="e">${evLine(e)}</span></span></button>`).join('')}</div></div></div>`;
   }
-  h += tvRows(fams);
+  h += tvRows(fams, tab === 'sport' ? 'Sport' : 'Généralistes');
   $('#homeInner').innerHTML = h;
   fillTileEpg();
 }
