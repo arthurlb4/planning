@@ -2752,6 +2752,9 @@ function jfClick(e) {
   }
   const p = e.target.closest('[data-jfv]'); if (!p) return false;
   const x = JF.shown[+p.dataset.jfv]; if (!x) return true;
+  // film reconnu par TMDB : sa fiche (bande-annonce, infos), « Lecture » lit le fichier de Jellyfin
+  const tm = (x.ProviderIds || {}).Tmdb;
+  if (x.Type === 'Movie' && tm && LS.get('pref.tmdb', '')) { const it = virtItem('m' + tm, { t: x.Name, y: x.ProductionYear || 0 }); it.jfx = x; if (!it.cover) it.cover = jfImg(x); openVod(it); return true; }
   if (x.Type === 'Series') jfSeries(x); else jfPlay(x);
   return true;
 }
@@ -5457,10 +5460,12 @@ async function openVod(it) {
   const flat = it.kind === 'series' ? epFlat(eps) : [];
   if (it.kind === 'movie') {
     const vs = vodVars(it), pick = vodPick(it), url = it.tor ? '' : vodUrl('movie', pick.id, pick.ext), pos = url ? LS.get('pos.' + url, 0) : 0;
-    if (it.tor) h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-tgo><svg class="pli" viewBox="0 0 24 24"><path d="M8 6.5v11l9-5.5z"/></svg>${torLast(it) ? 'Reprendre' : 'Lecture'}</button><button class="btn icon" data-pmenu title="Autres sources et versions"><svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>${it.kind === 'movie' && torOk() ? dlIco(0, 'data-mdl', 'Télécharger ce film sur ce PC (qBittorrent)') : ''}</div><p class="hint" style="margin-top:8px">Pas dans votre abonnement : trouvé dans vos indexeurs (torrent).</p>`;
+    if (it.jfx) { JF.link = it.jfx; JF.for = it; const ud = it.jfx.UserData || {}, jp = ud.PlaybackPositionTicks ? ud.PlaybackPositionTicks / 1e7 : 0;
+      h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-jfplay><svg class="pli" viewBox="0 0 24 24"><path d="M8 6.5v11l9-5.5z"/></svg>${jp > 60 ? 'Reprendre à ' + fmtDur(jp) : 'Lecture'}</button><span class="hint" style="align-self:center">Dans Ma médiathèque</span></div>`; }
+    else if (it.tor) h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-tgo><svg class="pli" viewBox="0 0 24 24"><path d="M8 6.5v11l9-5.5z"/></svg>${torLast(it) ? 'Reprendre' : 'Lecture'}</button><button class="btn icon" data-pmenu title="Autres sources et versions"><svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>${it.kind === 'movie' && torOk() ? dlIco(0, 'data-mdl', 'Télécharger ce film sur ce PC (qBittorrent)') : ''}</div><p class="hint" style="margin-top:8px">Pas dans votre abonnement : trouvé dans vos indexeurs (torrent).</p>`;
     else if (vodSrc() === 'tor') h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-tgo><svg class="pli" viewBox="0 0 24 24"><path d="M8 6.5v11l9-5.5z"/></svg>${torLast(it) ? 'Reprendre' : 'Lecture'}</button><button class="btn icon" data-pmenu title="Abonnement IPTV et autres versions"><svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button><button class="btn" data-vlc="${esc(url)}">VLC</button>${it.kind === 'movie' && torOk() ? dlIco(0, 'data-mdl', 'Télécharger ce film sur ce PC (qBittorrent)') : ''}</div>`;
     else h += `<div class="row" style="margin-top:14px"><button class="btn primary" data-pmenu><svg class="pli" viewBox="0 0 24 24"><path d="M8 6.5v11l9-5.5z"/></svg>${pos > 60 ? 'Reprendre à ' + fmtDur(pos) : 'Lecture'}<svg class="chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>${pos > 60 ? `<button class="btn" data-pm="${esc(url)}" data-zero>Depuis le début</button>` : ''}${listBtn}<button class="btn" data-vlc="${esc(url)}">VLC</button></div>`;
-    setTimeout(() => jfLink(it).catch(() => {}), 0);
+    if (!it.jfx) setTimeout(() => jfLink(it).catch(() => {}), 0);
   } else if (!flat.length) h += it.tor ? (torOk() && prwConf() ? '' : '<p class="hint" style="margin-top:14px">Série absente de votre abonnement : pas d\'épisode à lire ici (les torrents se lisent dans l\'appli Windows).</p>') : `<div class="row" style="margin-top:14px">${listBtn}</div><p class="hint" style="margin-top:14px">Aucun épisode trouvé.</p>`;
   else {
     // Reprendre l'épisode en cours (ou le suivant à voir), sinon le premier
