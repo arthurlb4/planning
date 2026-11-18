@@ -3267,7 +3267,9 @@ async function play(c, alts) {
 
 
   // Appli Windows avec mpv : films, épisodes et torrents lus par mpv (tout format, sans conversion) ; ancien lecteur en secours
-  if (c.vod && window.desktop && window.desktop.mpv && (NAT || LS.get('pref.mpvwin', false) === true) && S.noMpv !== c.url) return playMpv(c, t);
+  if (c.vod && window.desktop && window.desktop.mpv && (NAT ? LS.get('pref.mpvvod', true) !== false : LS.get('pref.mpvwin', false) === true) && S.noMpv !== c.url) return playMpv(c, t);
+  // appli native sans mpv pour les films : lecteur de la page, le serveur local convertit à la volée ce qu'il ne lit pas
+  if (c.vod && NAT && window.desktop.remux && LS.get('pref.mpvvod', true) === false) return playRemux(c, t);
   // appli native : chaînes en direct aussi par mpv (tous formats, son Dolby sans conversion) ; lecteur de la page en secours
   if (!c.vod && NAT && window.desktop.mpv && S.noMpv !== c.url && LS.get('pref.mpvlive', true) !== false) return playMpv(c, t);
   // Appli Windows : film MKV (ou autre format que Chromium ne lit pas) converti à la volée par ffmpeg
@@ -8281,8 +8283,10 @@ function renderNormBox() {
   // torrents permis sur cet appareil (coupé : ni recherche, ni lecture, ni téléchargement, module torrent jamais démarré)
   const torSw = window.desktop && window.desktop.remux ? srow('Torrents sur cet appareil', 'À couper sur une appli installée ailleurs que chez vous : plus aucune recherche dans les indexeurs, lecture ni téléchargement de torrent ici', swi('id="torChk"', LS.get('dev.tor', true) !== false)) : '';
   const mpvLive = NAT ? srow('Chaînes lues par mpv', 'Tous les formats et le son Dolby sans conversion ; le lecteur de la page prend le relais si une chaîne ne passe pas', swi('id="mpvLiveChk"', LS.get('pref.mpvlive', true) !== false)) : '';
-  b.innerHTML = window.desktop ? '<div class="dlbox" style="margin-top:8px">' + torSw + mpvLive + src + nat + mp + srow('Volume égalisé entre les chaînes', 'Chaînes trop fortes ou trop faibles ramenées au même niveau', swi('id="normChk"', normWanted())) + '</div>' : '';
+  const mpvVod = NAT ? srow('Films et séries lus par mpv', 'Tous les formats et le son Dolby sans conversion. Coupé : lecteur de la page (fenêtre redimensionnée sans décalage), le serveur local convertit ce qu\'il ne lit pas', swi('id="mpvVodChk"', LS.get('pref.mpvvod', true) !== false)) : '';
+  b.innerHTML = window.desktop ? '<div class="dlbox" style="margin-top:8px">' + torSw + mpvLive + mpvVod + src + nat + mp + srow('Volume égalisé entre les chaînes', 'Chaînes trop fortes ou trop faibles ramenées au même niveau', swi('id="normChk"', normWanted())) + '</div>' : '';
   const mc = $('#mpvChk'); if (mc) mc.onchange = e => LS.set('pref.mpvwin', e.target.checked);
+  const mv = $('#mpvVodChk'); if (mv) mv.onchange = e => { LS.set('pref.mpvvod', e.target.checked); toast(e.target.checked ? 'Films et séries lus par mpv' : 'Films et séries lus par le lecteur de la page (conversion par le serveur local)'); };
   const ml = $('#mpvLiveChk'); if (ml) ml.onchange = e => { LS.set('pref.mpvlive', e.target.checked); toast(e.target.checked ? 'Chaînes lues par mpv' : 'Chaînes lues par le lecteur de la page'); };
   const tc = $('#torChk'); if (tc) tc.onchange = e => { LS.set('dev.tor', e.target.checked); V.pop = null; IX.virt && IX.virt.clear && IX.virt.clear(); renderNormBox(); if (typeof prwSettings === 'function') prwSettings(); toast(e.target.checked ? 'Torrents permis sur cet appareil' : 'Torrents coupés sur cet appareil'); };
   const vs = $('#vodSrcSel'); if (vs) vs.onchange = e => { LS.set('dev.vodsrc', e.target.value); V.pop = null; IX.virt && IX.virt.clear && IX.virt.clear(); toast(e.target.value === 'tor' ? 'Films et séries : torrent (catalogue complet)' : 'Films et séries : abonnement IPTV seulement'); };
