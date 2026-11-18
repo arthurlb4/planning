@@ -18,6 +18,19 @@ namespace LecteurNatif;
 /* Cadre de la vidéo : « transparent » pour la souris (elle passe à la fenêtre, donc à la page posée au-dessus) */
 public class VideoPanel : Panel
 {
+    /* cadre intérieur, toujours aux proportions exactes de la vidéo et centré (noir autour) : mpv y est attaché (--wid) et se
+       met lui-même à la taille de ce cadre. Avant, mpv suivait le grand cadre pendant que l'appli le remettait au format de la
+       vidéo : les deux se battaient pendant qu'on tire un bord (image étirée puis écrasée) */
+    public readonly InnerPanel Inner = new() { BackColor = Color.Black };
+    public VideoPanel() { Controls.Add(Inner); }
+    public class InnerPanel : Panel
+    {
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == WM_NCHITTEST) { m.Result = (IntPtr)(-1); return; }
+            base.WndProc(ref m);
+        }
+    }
     protected override void WndProc(ref Message m)
     {
         if (m.Msg == WM_NCHITTEST) { m.Result = (IntPtr)(-1); return; }   // HTTRANSPARENT
@@ -395,7 +408,7 @@ public class MainForm : Form
         try
         {
             // fenêtre de mpv désactivée : elle ne peut plus prendre le clavier (la souris passe déjà au travers)
-            for (IntPtr h = Natif.FindWindowEx(Video.Handle, IntPtr.Zero, null, null); h != IntPtr.Zero; h = Natif.FindWindowEx(Video.Handle, h, null, null)) Natif.EnableWindow(h, false);
+            for (IntPtr h = Natif.FindWindowEx(Video.Inner.Handle, IntPtr.Zero, null, null); h != IntPtr.Zero; h = Natif.FindWindowEx(Video.Inner.Handle, h, null, null)) Natif.EnableWindow(h, false);
             if (Form.ActiveForm == this || ContainsFocus) { Natif.SetFocus(Handle); comp?.MoveFocus(CoreWebView2MoveFocusReason.Programmatic); }
         }
         catch { }

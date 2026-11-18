@@ -27,7 +27,7 @@ public class Mpv
         var lang = new Dictionary<string, string> { ["fr"] = "fre,fra,fr,french", ["en"] = "eng,en" };
         string al = (string)o["alang"] ?? "fr", sl = (string)o["slang"] ?? "off";
         var psi = new ProcessStartInfo(Exe) { UseShellExecute = false, CreateNoWindow = true };
-        var args = new List<string> { (string)o["url"], "--wid=" + f.Video.Handle.ToInt64(), "--input-ipc-server=\\\\.\\pipe\\" + name,
+        var args = new List<string> { (string)o["url"], "--wid=" + f.Video.Inner.Handle.ToInt64(), "--input-ipc-server=\\\\.\\pipe\\" + name,
             "--force-media-title=" + ((string)o["title"] ?? ""), "--hwdec=auto-safe", "--keep-open=yes", "--idle=no", "--osc=no", "--osd-level=0",
             "--input-default-bindings=no", "--input-vo-keyboard=no", "--no-input-cursor", "--input-cursor-passthrough=yes", "--cursor-autohide=no", "--background=color", "--background-color=#000000",
             "--volume=" + Math.Round(Math.Clamp((double?)o["vol"] ?? 1, 0, 1) * 100),
@@ -212,16 +212,17 @@ public class Mpv
     public void FitChild()
     {
         if (f.IsDisposed) return;
-        int W = f.Video.Width, H = f.Video.Height, x = 0, y = 0, w = W, h = H; var ph = f.Video.Handle;
+        int W = f.Video.Width, H = f.Video.Height, x = 0, y = 0, w = W, h = H;
         if (aspect > 0 && W > 0 && H > 0)
         {
             if ((double)W / H > aspect) { w = (int)Math.Round(H * aspect); x = (W - w) / 2; } else { h = (int)Math.Round(W / aspect); y = (H - h) / 2; }
         }
-        // pendant qu'on tire un bord : l'image garde sa taille (seulement recentrée), sinon Windows étire la dernière image
-        // à chaque mouvement et les proportions changent ; remise à la bonne taille au lâcher
-        // pendant qu'on tire un bord, l'image suit la fenêtre, toujours au format exact de la vidéo (pas de déformation)
         childW = w; childH = h;
-        Natif.EnumChildWindows(ph, (c, l) => { if (Natif.GetParent(c) == ph) Natif.SetWindowPos(c, IntPtr.Zero, x, y, w, h, 0x0014); return true; }, IntPtr.Zero);
+        var ib = new Rectangle(x, y, Math.Max(1, w), Math.Max(1, h));
+        if (f.Video.Inner.Bounds != ib) f.Video.Inner.Bounds = ib;
+        // fenêtre de mpv mise tout de suite à la taille du cadre intérieur (mpv le fait aussi, un peu plus tard)
+        var ph = f.Video.Inner.Handle;
+        Natif.EnumChildWindows(ph, (c, l) => { if (Natif.GetParent(c) == ph) Natif.SetWindowPos(c, IntPtr.Zero, 0, 0, ib.Width, ib.Height, 0x0014); return true; }, IntPtr.Zero);
     }
 
     public void Stop()
