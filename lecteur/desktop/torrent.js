@@ -504,7 +504,11 @@ module.exports = function handleTorrent(req, res, u) {
   // torrents gardés sur le PC (lus depuis moins d'une semaine) : nom, taille, part reçue, dernière lecture
   if (u.pathname === '/torrent/list') { (async () => {
     const o = idxRead(), qh = Object.keys(o).filter(h => o[h].qbt), qp = {};
-    if (qh.length && await qbtUp(QBT)) { const l = await qbt('/api/v2/torrents/info?hashes=' + qh.join('|')).catch(() => null); (Array.isArray(l) ? l : []).forEach(x => { qp[x.hash] = x.progress; }); }
+    let qOk = false;
+    if (qh.length && await qbtUp(QBT)) { const l = await qbt('/api/v2/torrents/info?hashes=' + qh.join('|')).catch(() => null); if (Array.isArray(l)) { qOk = true; l.forEach(x => { qp[x.hash] = x.state === 'missingFiles' ? -1 : x.progress; }); } }
+    // fichiers supprimés à la main (explorateur Windows) : retirés de la liste (et de l'index, pour ceux gardés par l'appli)
+    const gone = Object.keys(o).filter(h => !c.get(h) && (o[h].qbt ? qp[h] === -1 || (qOk && qp[h] == null) : o[h].name && !fs.existsSync(path.join(o[h].dir || DIR, o[h].name))));
+    if (gone.length) { gone.forEach(h => delete o[h]); idxWrite(o); }
     const out = Object.entries(o).map(([id, e]) => {
       let pct = 0;
       const t = c.get(id); if (t && t.ready) pct = t.progress || 0;

@@ -3965,6 +3965,8 @@ async function vodSeenFilter(box) {
   const rows = [...box.querySelectorAll('.vrow')].filter(r => r.dataset.dd !== 'keep');
   const memo = new Map();
   for (const row of rows) {
+    // rangée sans affiche du catalogue (Ma médiathèque, boutons…) : pas concernée, jamais retirée
+    if (!row.querySelector('.poster[data-v]')) continue;
     for (const p of [...row.querySelectorAll('.poster[data-v]')]) {
       const it = V.shown[+p.dataset.v]; if (!it) continue;
       const k = itemKey(it); if (!memo.has(k)) memo.set(k, seenState(it).catch(() => ''));
@@ -4174,6 +4176,7 @@ async function nowPlaying() {
 async function vodCineFilter(box) {
   const memo = new Map();
   for (const row of [...box.querySelectorAll('.vrow')]) {
+    if (!row.querySelector('.poster[data-v]')) continue;   // rangée sans affiche du catalogue (Ma médiathèque…) : jamais retirée
     const h3 = (row.querySelector('h3') || {}).textContent || '', cine = row.dataset.cine === '1', mine = /^Ma liste/.test(h3), pers = mine || /^(Reprendre|Téléchargés|Ma médiathèque)/.test(h3);
     for (const p of [...row.querySelectorAll('.poster[data-v]')]) {
       const it = V.shown[+p.dataset.v]; if (!it || it.kind !== 'movie' || (!it.tor && !cine)) continue;
@@ -4440,7 +4443,7 @@ async function renderVod() {
     h += await jfRender();
   } else if (V.tab === 'hist') {
     // Historique : regroupé par jour, le plus récent d'abord
-    const l = seenAll().map(e => ({ e, it: itemByKey(e.k) })).filter(x => x.it);
+    const l = seenAll().map(e => ({ e, it: itemOf(e) })).filter(x => x.it);
     if (!l.length) h += '<div class="empty">Rien pour l\'instant : les films et séries regardés au moins 5 minutes apparaîtront ici (sur tous vos appareils).</div>';
     const day = t => { const d = new Date(t), d0 = new Date(); d0.setHours(0, 0, 0, 0); const n = Math.round((d0 - new Date(d).setHours(0, 0, 0, 0)) / 864e5);
       return n === 0 ? 'Aujourd\'hui' : n === 1 ? 'Hier' : n < 7 ? d.toLocaleDateString('fr-FR', { weekday: 'long' }).replace(/^./, x => x.toUpperCase()) : d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: d.getFullYear() === d0.getFullYear() ? undefined : 'numeric' }); };
@@ -4470,7 +4473,7 @@ async function renderVod() {
     if (!document.body.classList.contains('vod')) return;
     const kinds = V.tab === 'movie' ? ['m'] : V.tab === 'series' ? ['s'] : ['m', 's'];
     // Reprendre (films commencés, épisode en cours ou suivant de chaque série) et Ma liste
-    const hist = histAll().map(e => ({ e, it: itemByKey(e.k) })).filter(x => x.it && kinds.includes(x.e.k[0]));
+    const hist = histAll().map(e => ({ e, it: itemOf(e) })).filter(x => x.it && kinds.includes(x.e.k[0]));
     if (hist.length) h += `<div class="vrow"><h3>Reprendre</h3><div class="vwrap"><div class="vscroll">${hist.slice(0, 20).map(({ e, it }) => posterHtml(it, V.shown.push(it) - 1, 0, { pct: e.dur ? e.pos / e.dur * 100 : 0, lab: e.lab || (e.dur ? 'reste ' + fmtDur(e.dur - e.pos) : '') }).replace('<button class="poster"', `<button class="poster" data-hist="${esc(e.k)}"`).replace('<div class="im">', `<div class="im"><span class="hxb"><span data-histv="${esc(e.k)}" title="Marquer comme vu">✓</span><span data-histx="${esc(e.k)}" title="Retirer de Reprendre">✕</span></span>`)).join('')}</div></div></div>`;
     const ml = myListItems(kinds);
     if (ml.length) h += vodRow('Ma liste', '', ml, false, true);
@@ -4615,7 +4618,7 @@ async function renderVod() {
   }
   box.innerHTML = h;
   vodDedupe(box);
-  if (!V.q && !V.cat) vodSeenFilter(box);
+  if (!V.q && !V.cat && !['jf', 'hist'].includes(V.tab)) vodSeenFilter(box);   // pas sur Ma médiathèque ni l'Historique
   vodCineFilter(box);
   const qi = $('#vodQ'); if (V.q) { qi.focus(); qi.setSelectionRange(qi.value.length, qi.value.length); }
 }
@@ -4926,6 +4929,40 @@ function fbSet(it, k) {
 const FB_ICON = { list: '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>', listOn: '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>', like: '<svg viewBox="0 0 24 24"><path d="M7 11v9H4v-9zM7 11l4-7c1.5 0 2.5 1 2.2 2.6L12.6 10H19a2 2 0 0 1 2 2.3l-1.2 6A2 2 0 0 1 17.8 20H7"/></svg>', seen: '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>', no: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M6 6l12 12"/></svg>' };
 const FB_LAB = { list: 'Ma liste', like: 'J\'aime', seen: 'Déjà vu', no: 'Ne pas recommander' };
 const fbButtons = (it, cls) => { const f = Object.assign({}, fbOf(it) || {}, { list: inMyList(it) }); return ['list', 'like', 'seen', 'no'].map(k => `<button class="${cls}${f[k] ? ' on' : ''}" data-fb="${k}" title="${k === 'list' ? (f.list ? 'Retirer de Ma liste' : 'Ajouter à Ma liste') : FB_LAB[k]}">${k === 'list' && f.list ? FB_ICON.listOn : FB_ICON[k]}${cls === 'fbb' ? '<span>' + FB_LAB[k] + '</span>' : ''}</button>`).join(''); };
+/* Titre, année et affiche de chaque film ou série regardé (synchronisés) : l'Historique et Reprendre le retrouvent même sans
+   le catalogue de l'abonnement (mode torrent, autre appareil, autre abonnement), par son identifiant TMDB */
+function itMetaPut(it) {
+  if (!it || !it.name) return; const o = LS.get('vod.itmeta', {}) || {}, k = itemKey(it), tm = it.tmdb || (/^t(\d+)$/.exec(String(it.id)) || [])[1] || 0;
+  const e = { n: it.name, y: it.year || 0, c: it.cover || '', tm: +tm || 0, at: Date.now() };
+  if (o[k] && o[k].n === e.n && o[k].c === e.c && o[k].tm === e.tm) return;
+  o[k] = e; const ks = Object.keys(o); if (ks.length > 600) ks.sort((a, b) => o[a].at - o[b].at).slice(0, ks.length - 600).forEach(x => delete o[x]);
+  LS.set('vod.itmeta', o);
+}
+// titres d'avant (sans nom gardé) : nom et affiche cherchés sur TMDB une fois, puis l'onglet est redessiné
+const IMM = { q: new Map(), busy: false, tried: new Set() };
+function itMetaMiss(k, kind, tm) {
+  if (IMM.tried.has(k) || !LS.get('pref.tmdb', '')) return; IMM.tried.add(k); IMM.q.set(k, [kind, tm]);
+  if (IMM.busy) return; IMM.busy = true;
+  setTimeout(async () => {
+    let got = 0; const o = LS.get('vod.itmeta', {}) || {};
+    for (const [k2, [kd, id]] of [...IMM.q].slice(0, 30)) {
+      IMM.q.delete(k2);
+      const d = await tmdb('/' + (kd === 's' ? 'tv/' : 'movie/') + id, {}).catch(() => null); if (!d) continue;
+      o[k2] = { n: d.title || d.name || '', y: +String(d.release_date || d.first_air_date || '').slice(0, 4) || 0, c: d.poster_path ? 'https://image.tmdb.org/t/p/w342' + d.poster_path : '', tm: id, at: Date.now() }; got++;
+    }
+    if (got) LS.set('vod.itmeta', o);
+    IMM.busy = false;
+    if (got && document.body.classList.contains('vod')) renderVod();
+  }, 300);
+}
+function itemOf(e) {
+  const it = itemByKey(e.k); if (it) return it;
+  const M = (LS.get('vod.itmeta', {}) || {})[e.k] || {}, g = /^([ms])t(\d+)$/.exec(e.g || '') || /^([ms])t(\d+)$/.exec(e.k || ''), tm = M.tm || (g ? +g[2] : 0);
+  if (!tm) return null;
+  const meta = (TM.data && TM.data.meta && TM.data.meta[e.k[0] + tm]) || (M.n ? { t: M.n, y: M.y } : null);
+  if (!meta || !meta.t) { itMetaMiss(e.k, e.k[0], tm); return null; }
+  const v = virtItem(e.k[0] + tm, meta); if (!v.cover && M.c) v.cover = M.c; return v;
+}
 function seenPut(k, lab, fin) {
   const l = seenAll(), o = l.find(x => x.k === k);
   if (o && l[0] === o && o.lab === lab && (o.f || !fin) && Date.now() - o.at < 30 * 60e3) return;   // déjà à jour : pas d'écriture toutes les 5 s
@@ -4933,7 +4970,8 @@ function seenPut(k, lab, fin) {
 }
 function histTrack(c, ended) {
   if (!c || !c.vod || !c.it) return;
-  const pos = Math.floor(curPos() || 0), dur = Math.floor((S.engine === 'remux' && S.remux && S.remux.info && S.remux.info.duration) || (isFinite(video.duration) ? video.duration : 0));
+  itMetaPut(c.it);
+  const pos = Math.floor(curPos() || 0), dur = Math.floor((S.engine === 'mpv' && S.mpvSt.dur) || (S.engine === 'remux' && S.remux && S.remux.info && S.remux.info.duration) || (isFinite(video.duration) ? video.duration : 0));
   const done = ended || (dur > 300 && pos > dur * 0.95);
   const k = itemKey(c.it);
   if (done || pos >= 300) seenPut(k, c.ep ? 'S' + c.ep.s + 'E' + c.ep.n : '', done);
