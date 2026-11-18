@@ -40,6 +40,8 @@ public class Mpv
             args.Add("--user-agent=LecteurIPTV/" + Application.ProductVersion.Split('+')[0] + " (Windows)");
             args.Add("--stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=5");
             args.Add("--cache=yes"); args.Add("--demuxer-readahead-secs=8");
+            // retour en arrière dans le direct : 768 Mo gardés derrière la lecture, et recherche permise dans ce qui est gardé
+            args.Add("--demuxer-max-back-bytes=768MiB"); args.Add("--demuxer-seekable-cache=yes"); args.Add("--force-seekable=yes");
         }
         if (o["subArgs"] is JsonArray sa) foreach (var x in sa) { var v = (string)x; if (v != null && v.StartsWith("--sub-") && v.Length < 100 && !v.Contains('\n')) args.Add(v); }
         foreach (var x in args) psi.ArgumentList.Add(x);

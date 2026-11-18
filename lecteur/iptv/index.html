@@ -665,6 +665,8 @@ body.vodplay #sidesBtn{display:none}
    à droite ; clic sur l'image = retour au lecteur, ✕ = arrêt */
 body.homeview.mini #player{display:flex;position:fixed;right:18px;bottom:18px;width:min(var(--miniw,clamp(560px,52vw,840px)),calc(100vw - 36px));height:auto;z-index:35;border-radius:14px;overflow:hidden;box-shadow:0 14px 44px rgba(0,0,0,.65);border:.5px solid var(--border);animation:miniIn .28s ease}
 @keyframes miniIn{from{opacity:0;transform:translateY(24px) scale(.94)}}
+/* appli native : la vidéo (mpv) ne peut pas suivre une animation image par image → changements de taille instantanés */
+html.natapp body.homeview.mini #player{animation:none}html.natapp main{transition:none}
 body.homeview.mini #screen{flex:none;aspect-ratio:16/9;width:100%;cursor:pointer}
 body.homeview.mini #now,body.homeview.mini #stats,body.homeview.mini #trackMenu,body.homeview.mini #qualMenu,body.homeview.mini #vbar{display:none!important}
 body.homeview.mini #miniBar{display:flex;position:absolute;top:0;left:0;right:0;align-items:center;gap:6px;padding:8px 8px 18px 12px;background:linear-gradient(rgba(0,0,0,.75),transparent);z-index:5;opacity:0;transition:opacity .2s}
@@ -714,7 +716,8 @@ body.vtools #prevBtn,body.vtools #nextBtn,body.vtools #soloBtn,body.vtools #solo
 #vbar #vbBack svg,#vbar #vbFwd svg{fill:none}
 #vbar svg text{font:700 7.5px system-ui,sans-serif;fill:#fff;stroke:none}
 /* chaîne lue par mpv : pas de barre de temps ni de saut de 10 s */
-body.mpvlive #vbRange,body.mpvlive #vbBack,body.mpvlive #vbFwd{display:none!important}
+/* direct : curseur seulement au survol, jamais quand on est au direct (barre pleine, bouton DIRECT rouge) */
+#vbar.atlive #vbRange::-webkit-slider-thumb{opacity:0!important}#vbar.atlive #vbRange::-moz-range-thumb{opacity:0!important}
 /* triangle « lecture » des boutons (Lecture, Reprendre…) : arrondi comme celui du lecteur */
 .pli{width:14px;height:14px;fill:currentColor;stroke:currentColor;stroke-width:3.2;stroke-linejoin:round;vertical-align:-2px;margin-right:5px;flex:none}
 #vbPlay .ipa{display:none}#vbPlay.on .ip{display:none}#vbPlay.on .ipa{display:block}
@@ -5570,8 +5573,17 @@ if (window.desktop && window.desktop.natif) document.documentElement.classList.a
 function natHole(r) {
   const on = NAT && S.engine === 'mpv' && r && !r.hidden;
   document.body.classList.toggle('nat', on);
-  if (on) { const x1 = Math.round(r.x), y1 = Math.round(r.y), x2 = Math.round(r.x + r.w), y2 = Math.round(r.y + r.h);
-    document.body.style.setProperty('--hole', `polygon(evenodd, 0 0, 100% 0, 100% 100%, 0 100%, 0 0, ${x1}px ${y1}px, ${x2}px ${y1}px, ${x2}px ${y2}px, ${x1}px ${y2}px, ${x1}px ${y1}px)`); }
+  /* trou aux coins arrondis comme le lecteur (mini lecteur) ; les pages (accueil, agenda, films) sont percées aussi, sinon
+     leurs vignettes passent par-dessus la vidéo du mini lecteur. Hors du trou, la page recouvre les coins carrés de mpv. */
+  const pages = ['home', 'agenda', 'vod'].map(id => document.getElementById(id)).filter(Boolean);
+  if (!on) { pages.forEach(p => p.style.clipPath = ''); return; }
+  const rad = parseFloat(getComputedStyle($('#player')).borderTopLeftRadius) || 0;
+  const hole = (ox, oy) => { const x1 = r.x - ox, y1 = r.y - oy, x2 = x1 + r.w, y2 = y1 + r.h, k = Math.min(rad, r.w / 2, r.h / 2), f = n => Math.round(n * 2) / 2;
+    return `path(evenodd, 'M-9999 -9999 H99999 V99999 H-9999 Z M${f(x1 + k)} ${f(y1)} H${f(x2 - k)}` + (k ? ` A${k} ${k} 0 0 1 ${f(x2)} ${f(y1 + k)}` : '') + ` V${f(y2 - k)}` + (k ? ` A${k} ${k} 0 0 1 ${f(x2 - k)} ${f(y2)}` : '')
+      + ` H${f(x1 + k)}` + (k ? ` A${k} ${k} 0 0 1 ${f(x1)} ${f(y2 - k)}` : '') + ` V${f(y1 + k)}` + (k ? ` A${k} ${k} 0 0 1 ${f(x1 + k)} ${f(y1)}` : '') + ` Z')`; };
+  document.body.style.setProperty('--hole', hole(0, 0));
+  const mini = document.body.classList.contains('mini');
+  pages.forEach(p => { if (!mini || getComputedStyle(p).display === 'none') { p.style.clipPath = ''; return; } const b = p.getBoundingClientRect(); p.style.clipPath = hole(b.left, b.top); });
 }
 // apparence des sous-titres (Paramètres › Lecture) traduite en réglages de mpv
 function mpvSubArgs() {
@@ -5587,7 +5599,7 @@ async function playMpv(c, t) {
   const M = window.desktop.mpv;
   stopEngines(); S.engine = 'mpv'; S.mpvSt = {}; S.playUrl = c.url; document.body.classList.add('mpv'); document.body.classList.remove('natready');
   const pos = c.vod ? LS.get(posK(c.url), 0) : 0, start = pos > 60 ? pos : 0;
-  document.body.classList.toggle('mpvlive', !c.vod);
+  document.body.classList.toggle('mpvlive', !c.vod); S.mpvLive = c.vod ? null : { c, t0: 0 };
   setStatus('load');
   const r = await M.play({ url: c.url, title: c.vod ? c.name : niceName(c), live: !c.vod, start, vol: video.muted ? 0 : video.volume, alang: LS.get('pref.audio', 'fr'), slang: LS.get('pref.sub', 'off'), rect: mpvRect(), under: NAT, subArgs: NAT ? mpvSubArgs() : [] }).catch(e => ({ error: e.message }));
   if (t !== token) return;
@@ -5778,12 +5790,30 @@ function liveTarget(w) {
   return isFinite(sync) && sync > 0 ? Math.min(sync, w[1] - 3) : Math.max(w[0], w[1] - 12);
 }
 const atLive = w => !w || video.currentTime >= liveTarget(w) - 6;
+/* mpv en direct : on peut revenir dans ce que mpv garde en mémoire derrière la lecture (768 Mo : ≈ 10 min en HD, moins
+   en 4K), depuis le début de la lecture de la chaîne. Fin de la fenêtre = bout de ce qui est reçu (le direct). */
+function mpvLiveWin() {
+  const M = S.mpvSt, L = S.mpvLive; if (!L || L.c !== S.current || !L.t0) return null;
+  const end = Math.max(M.cache || 0, M.pos || 0); if (!end) return null;
+  const back = 768 * 1048576 * 8 / Math.max(2e6, (M.vbr || 6e6) * 1.15) * 0.85, lo = Math.max(L.t0, end - back);
+  return end - lo > 15 ? [lo, end] : null;
+}
+const mpvAtLive = w => !w || (S.mpvSt.pos || 0) >= w[1] - 12;
 function vbarUpdate() {
   if (!S.current) return;
   epUi(); srcUi();
   if (S.engine === 'mpv' && NAT) {
     const M = S.mpvSt, rg = $('#vbRange'), dur = M.dur || 0, cur = M.pos || 0;
-    if (!S.current.vod) { $('#vbCur').textContent = 'Direct'; $('#vbDur').textContent = ''; $('#vbPlay').classList.toggle('on', !M.paused); $('#vbMute').classList.toggle('off', video.muted || !video.volume); return; }
+    if (!S.current.vod) {
+      const L = S.mpvLive; if (L && L.c === S.current && !L.t0 && cur > 0) L.t0 = cur;
+      const w = mpvLiveWin(), at = mpvAtLive(w);
+      if (w) { rg.min = w[0]; rg.max = w[1]; if (!rg.matches(':active')) rg.value = at ? w[1] : cur; }
+      $('#vbCur').textContent = at || !w ? 'Direct' : '−' + fmtT(Math.max(0, w[1] - cur)); $('#vbDur').textContent = '';
+      $('#vbLive').classList.toggle('edge', at); $('#vbar').classList.toggle('atlive', at);
+      rg.style.setProperty('--p', w ? Math.max(0, Math.min(100, (+rg.value - w[0]) / (w[1] - w[0]) * 100)) + '%' : '100%');
+      $('#vbPlay').classList.toggle('on', !M.paused); $('#vbMute').classList.toggle('off', video.muted || !video.volume); return;
+    }
+    $('#vbar').classList.remove('atlive');
     $('#vbCur').textContent = fmtT(cur); $('#vbDur').textContent = dur ? fmtT(dur) : '--:--';
     rg.min = 0; rg.max = Math.max(1, Math.floor(dur || cur + 3600)); if (!rg.matches(':active')) rg.value = Math.floor(cur);
     [rg, $('#vbVol')].forEach(r => { const a = +r.min || 0, b = +r.max || 1; r.style.setProperty('--p', Math.max(0, Math.min(100, ((+r.value - a) / (b - a || 1)) * 100)) + '%'); });
@@ -5801,7 +5831,7 @@ function vbarUpdate() {
   } else if (live) {
     const w = liveWin();
     if (w) { rg.min = w[0]; rg.max = w[1]; if (!drag) rg.value = video.currentTime; }
-    $('#vbLive').classList.toggle('edge', atLive(w));
+    $('#vbLive').classList.toggle('edge', atLive(w)); $('#vbar').classList.toggle('atlive', atLive(w));
   } else {
     const dur = isFinite(video.duration) ? video.duration : 0;
     $('#vbCur').textContent = fmtT(video.currentTime); $('#vbDur').textContent = dur ? fmtT(dur) : '--:--';
@@ -5815,7 +5845,14 @@ function vbarUpdate() {
 setInterval(vbarUpdate, 500);
 ['play', 'pause', 'volumechange', 'seeked', 'loadedmetadata'].forEach(ev => video.addEventListener(ev, vbarUpdate));
 function seekBy(d) {
-  if (mpvOn()) { mpvC(['seek', d, 'relative']); return; }
+  // seek exact : sans lui mpv saute à l'image clé la plus proche (souvent 15 s au lieu de 10)
+  if (mpvOn()) {
+    if (S.current && !S.current.vod) { const w = mpvLiveWin(); if (!w) { toast('Pas encore de retour possible sur ce direct'); return; }
+      const cur = S.mpvSt.pos || 0, t = Math.max(w[0] + 1, Math.min(w[1] - 4, cur + d));
+      if (d > 0 && mpvAtLive(w)) { toast('Vous êtes au direct'); return; }
+      mpvC(['seek', t, 'absolute+exact']); return; }
+    mpvC(['seek', d, 'relative+exact']); return;
+  }
   if (S.engine === 'remux') return remuxStart(curPos() + d);
   if (S.current && !S.current.vod) {
     const w = liveWin(); if (!w) { toast('Pas de retour possible sur ce direct'); return; }
@@ -5829,14 +5866,19 @@ function seekBy(d) {
 $('#vbBack').onclick = () => seekBy(-10);
 $('#vbFwd').onclick = () => seekBy(10);
 $('#vbRange').addEventListener('input', e => { if (S.engine !== 'remux' && !mpvOn()) video.currentTime = +e.target.value; });
-$('#vbRange').addEventListener('change', e => { if (S.engine === 'remux') remuxStart(+e.target.value); else if (mpvOn()) mpvC(['seek', +e.target.value, 'absolute']); });
+$('#vbRange').addEventListener('change', e => { if (S.engine === 'remux') remuxStart(+e.target.value); else if (mpvOn()) { const w = S.current && !S.current.vod && mpvLiveWin(); mpvC(['seek', w ? Math.min(+e.target.value, w[1] - 4) : +e.target.value, 'absolute']); } });
 /* Survol de la barre de lecture : moment visé, et pour un torrent (appli Windows) l'image à cet endroit quand ce passage
    est déjà téléchargé. Pas d'image pour l'abonnement IPTV : il faudrait une seconde connexion au serveur, que la plupart
    des abonnements refusent (le film en cours serait coupé). */
 const VTH = { t: 0, key: '', imgs: new Map() };
 function vthHide() { const b = $('#vbThumb'); if (b) b.hidden = true; clearTimeout(VTH.t); }
 $('#vbRange').addEventListener('pointermove', e => {
-  const rg = e.currentTarget, c = S.current; if (!c || !c.vod) return vthHide();
+  const rg = e.currentTarget, c = S.current; if (!c) return vthHide();
+  if (!c.vod) { const w = S.engine === 'mpv' ? mpvLiveWin() : liveWin(); if (!w) return vthHide();
+    const r = rg.getBoundingClientRect(), f = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), sc = $('#screen').getBoundingClientRect(), back = (1 - f) * (w[1] - w[0]);
+    let b = $('#vbThumb'); if (!b) { b = document.createElement('div'); b.id = 'vbThumb'; b.innerHTML = '<div class="im"></div><span></span>'; $('#screen').appendChild(b); }
+    b.hidden = false; b.classList.remove('img'); b.querySelector('span').textContent = back < 12 ? 'Direct' : '−' + fmtT(back);
+    b.style.left = Math.max(8, Math.min(sc.width - 78, e.clientX - sc.left - 35)) + 'px'; return; }
   const r = rg.getBoundingClientRect(), f = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
   const dur = S.engine === 'mpv' ? S.mpvSt.dur || 0 : S.engine === 'remux' && S.remux && S.remux.info ? S.remux.info.duration || 0 : isFinite(video.duration) ? video.duration : 0; if (!dur) return vthHide();
   const t = f * dur, sc = $('#screen').getBoundingClientRect();
@@ -5877,7 +5919,7 @@ setInterval(() => {
     return;
   }
 }, 4000);   // une vignette toutes les 4 s au plus (chacune fait décoder une image du film à ffmpeg : le PC doit rester fluide)
-$('#vbLive').onclick = () => { const w = liveWin(); if (w && !atLive(w)) video.currentTime = liveTarget(w); if (video.paused) video.play().catch(() => {}); vbarUpdate(); };
+$('#vbLive').onclick = () => { if (mpvOn()) { const w = mpvLiveWin(); if (w && !mpvAtLive(w)) mpvC(['seek', w[1] - 4, 'absolute']); if (S.mpvSt.paused) mpvC(['set_property', 'pause', false]); return; } const w = liveWin(); if (w && !atLive(w)) video.currentTime = liveTarget(w); if (video.paused) video.play().catch(() => {}); vbarUpdate(); };
 const mpvOn = () => S.engine === 'mpv' && NAT;
 const MPV_INFO = new Set(['w', 'h', 'vcodec', 'acodec', 'ach', 'fps', 'vbr', 'hwdec', 'gamma']);
 const mpvC = a => window.desktop.mpv.cmd(a);
