@@ -1559,12 +1559,13 @@ function tvBackdrop(title) {
   const k = norm(title || '').replace(/\s*[-:(].*$/, '').trim(); if (k.length < 3 || !LS.get('pref.tmdb', '')) return Promise.resolve('');
   if (TVBD.has(k)) return TVBD.get(k);
   const p = (async () => {
-    const ck = 'tvbd1:' + k, c = await DB.cacheGet(ck).catch(() => null); if (c && Date.now() - c.at < 30 * 864e5) return c.data;
+    const ck = 'tvbd2:' + k, c = await DB.cacheGet(ck).catch(() => null); if (c && Date.now() - c.at < 30 * 864e5) return c.data;
     const q = String(title).replace(/\s*[-:(].*$/, '').trim();
     const r = await tmdb('/search/multi', { query: q }).catch(() => null), l = ((r && r.results) || []).filter(x => x.backdrop_path && (x.media_type === 'tv' || x.media_type === 'movie'));
     // titre identique, ou l'un commence par l'autre (titre assez long) : jamais une émission au hasard
-    const nq = norm(q), nm = y => norm(y.name || y.title || '');
-    const x = l.find(y => nm(y) === nq) || l.find(y => nm(y).length >= 6 && nq.length >= 6 && (nm(y).startsWith(nq) || nq.startsWith(nm(y))));
+    // comparaison sans ponctuation : « C dans l'air » = « C dans l’air » (apostrophe typographique sur TMDB)
+    const flat = t => norm(t).replace(/[^a-z0-9]+/g, ' ').trim(), nq = flat(q), nms = y => [flat(y.name || y.title || ''), flat(y.original_name || y.original_title || '')].filter(Boolean);
+    const x = l.find(y => nms(y).includes(nq)) || l.find(y => nms(y).some(n => n.length >= 6 && nq.length >= 6 && (n.startsWith(nq) || nq.startsWith(n))));
     const u = x ? 'https://image.tmdb.org/t/p/w780' + x.backdrop_path : '';
     DB.cachePut({ id: ck, at: Date.now(), data: u }); return u;
   })().catch(() => '');
