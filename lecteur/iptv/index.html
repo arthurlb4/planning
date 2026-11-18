@@ -567,11 +567,15 @@ body.homeview #channels,body.homeview #player{display:none}
 .tvc .bar{position:absolute;left:0;right:0;bottom:0;height:4px;background:rgba(255,255,255,.18)}.tvc .bar i{display:block;height:100%;background:#e5322d}
 .tvc .tvn{display:block;max-width:100%;min-width:0;font-size:14px;font-weight:500;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tvc .tvs{display:block;max-width:100%;min-width:0;font-size:12px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-/* tuile de marque en tête de rangée TV : cercle fin, sans fond, logo au centre, à la hauteur des images */
+/* tuile de marque en tête de rangée TV : capsule verticale à la hauteur des images, halo à la couleur de la marque derrière
+   le logo ; reste collée à gauche quand on fait défiler la rangée (les vignettes glissent dessous) */
 .tvrow.hbt{margin-top:26px}
-.tbt{flex:none;width:150px;height:153px;display:flex;align-items:center;justify-content:center}
-.tbt span{width:128px;height:128px;border-radius:50%;border:1px solid var(--border);display:flex;align-items:center;justify-content:center}
-.tbt img{max-width:62%;max-height:38%;object-fit:contain;filter:drop-shadow(0 2px 6px rgba(0,0,0,.45))}.tbt b{font-size:15px;font-weight:600;color:var(--text);text-align:center;padding:0 10px}
+.tbt{flex:none;position:sticky;left:0;z-index:3;width:112px;height:153px;border-radius:56px;display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(60% 45% at 50% 50%,color-mix(in srgb,var(--bc,#fff) 42%,transparent),transparent 80%),linear-gradient(180deg,#252524,#1c1c1b);
+  box-shadow:0 0 0 .5px rgba(255,255,255,.06) inset,12px 0 20px -12px rgba(0,0,0,.9)}
+.tbt::before{content:'';position:absolute;top:-2px;bottom:-2px;left:-4px;right:50%;background:var(--bg);z-index:-1}   /* bord gauche plein : les vignettes ne dépassent pas autour des coins arrondis */
+.tbt span{display:contents}
+.tbt img{max-width:74%;max-height:32%;object-fit:contain;filter:drop-shadow(0 2px 8px rgba(0,0,0,.5))}.tbt b{font-size:15px;font-weight:600;color:var(--text);text-align:center;padding:0 10px}
 .hsec h2 small{text-transform:none;letter-spacing:0;font-size:12px;color:var(--text3);margin-left:6px}
 .hsec h2,#agenda h2{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--text3);margin:22px 2px 12px;font-weight:500}
 .brands{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;align-items:start}
@@ -1587,11 +1591,14 @@ function tvCard(f, i, j, p, opt) {
       ${live ? `<span class="bar"><i style="width:${pct(p)}%"></i></span>` : ''}</span>
     <span class="tvn">${esc(p ? p.title : x.label)}</span><span class="tvs">${esc((p && p.sub ? p.sub + ' · ' : '') + meta)}</span></button>`;
 }
+// couleur du halo de chaque marque (tuile en tête de rangée)
+const BRAND_COLOR = { 'TF1': '#2563ff', 'France Télévisions': '#22a6ff', 'M6': '#ff4d3d', 'Canal+': '#ffffff', 'beIN SPORTS': '#8b3dff',
+  'Eurosport': '#3d5bff', 'RMC Sport': '#ff3b3b', 'DAZN · Ligue 1+': '#d7ff3d', "L'Équipe": '#ff2a2a', 'Info': '#ff4d3d' };
 function tvRow(title, cards, sub, min) {
   if (cards.length < (min || 2)) return '';
   // marque connue : tuile ronde avec son logo en tête de rangée, à la place du titre (nom écrit si le logo ne charge pas)
   const bl = brandLogo(title);
-  const tile = bl ? `<div class="tbt" title="${esc(title)}"><span><img src="${esc(bl)}" alt="${esc(title)}" referrerpolicy="no-referrer" onerror="this.replaceWith(Object.assign(document.createElement('b'),{textContent:this.alt}))"></span></div>` : '';
+  const tile = bl ? `<div class="tbt" title="${esc(title)}"${BRAND_COLOR[title] ? ` style="--bc:${BRAND_COLOR[title]}"` : ''}><span><img src="${esc(bl)}" alt="${esc(title)}" referrerpolicy="no-referrer" onerror="this.replaceWith(Object.assign(document.createElement('b'),{textContent:this.alt}))"></span></div>` : '';
   return `<div class="hsec tvrow${bl ? ' hbt' : ''}">${bl ? '' : `<h2>${esc(title)}${sub ? ` <small>${esc(sub)}</small>` : ''}</h2>`}<div class="vwrap"><button class="varr l" data-arr="-1" aria-label="Précédents"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><div class="vscroll">${tile}${cards.join('')}</div><button class="varr r" data-arr="1" aria-label="Suivants"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button></div></div>`;
 }
 /* Accueil TV : une rangée par bouquet (Canal+, beIN Sports…), comme Films & séries ; vignette = programme en cours
