@@ -6780,7 +6780,7 @@ function toggleSubs() {
 // Clic sur l'image : pause / reprise (double-clic : plein écran) ; pas sur la barre des contrôles du navigateur
 let clickT;
 video.addEventListener('click', e => {
-  if (document.body.classList.contains('mini')) { setHomeView(false); return; }   // mini lecteur : retour au lecteur
+  // mini lecteur : clic = pause comme dans le lecteur (double-clic ou bouton Agrandir : retour au lecteur)
   // un menu ouvert (audio et sous-titres, qualité) : ce clic sert juste à le fermer, la lecture ne change pas
   const menus = ['#trackMenu', '#qualMenu'].map(q => $(q)).filter(m => m && !m.hidden);
   if (menus.length) { menus.forEach(m => { m.hidden = true; }); return; }
@@ -6788,15 +6788,16 @@ video.addEventListener('click', e => {
   if (video.controls && e.offsetY > video.clientHeight - 60) return;   // barre du lecteur d'Apple
   clearTimeout(clickT); clickT = setTimeout(() => { video.paused ? video.play() : video.pause(); }, 220);
 });
-video.addEventListener('dblclick', () => clearTimeout(clickT));
+video.addEventListener('dblclick', () => { clearTimeout(clickT); if (document.body.classList.contains('mini') && document.body.classList.contains('homeview')) setHomeView(false); });
 $('#screen').addEventListener('click', e => {
   if (!mpvOn() || e.target !== $('#screen') && e.target !== video) return;
-  if (document.body.classList.contains('mini')) { setHomeView(false); return; }
   const menus = ['#trackMenu', '#qualMenu', '#epMenu', '#srcMenu'].map(q => $(q)).filter(m => m && !m.hidden);
   if (menus.length) { menus.forEach(m => { m.hidden = true; }); return; }
   clearTimeout(clickT); clickT = setTimeout(() => mpvC(['cycle', 'pause']), 220);
 });
-$('#screen').addEventListener('dblclick', e => { if (!mpvOn() || e.target !== $('#screen') && e.target !== video) return; clearTimeout(clickT); setSolo(!document.body.classList.contains('solo')); });
+$('#screen').addEventListener('dblclick', e => { if (!mpvOn() || e.target !== $('#screen') && e.target !== video) return; clearTimeout(clickT);
+  if (document.body.classList.contains('mini') && document.body.classList.contains('homeview')) { setHomeView(false); return; }   // mini : retour au lecteur
+  setSolo(!document.body.classList.contains('solo')); });
 
 /* ---------- Statistiques du match en cours : ESPN (site.api.espn.com, données publiques, en anglais). Le match est repéré
    d'après l'agenda (guide TV) ou le programme de la chaîne ; les noms français sont traduits pour retrouver les équipes. ---------- */
@@ -7367,7 +7368,7 @@ $('#soloBtn').onclick = () => setSolo(true);
 $('#soloExit').onclick = () => setSolo(false);
 document.addEventListener('mousemove', () => { if (!document.body.classList.contains('solo')) return; document.body.classList.add('ui'); clearTimeout(soloT); soloT = setTimeout(() => document.body.classList.remove('ui'), 2500); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.body.classList.contains('solo') && !document.fullscreenElement) { e.preventDefault(); setSolo(false); } });
-video.addEventListener('dblclick', () => setSolo(!document.body.classList.contains('solo')));
+video.addEventListener('dblclick', () => { const B = document.body.classList; if (B.contains('mini') && B.contains('homeview')) return; setSolo(!B.contains('solo')); });
 // Boutons sur l'image : estompés après 3 s sans mouvement pendant la lecture
 let idleT;
 // (en plein écran, le titre et les boutons du haut aussi)
