@@ -73,7 +73,7 @@ public class MainForm : Form
             // redimensionnement à la souris : pendant le geste, la vidéo suit seulement le calcul fait ici (les positions de la
             // page, en retard d'une image ou deux, la faisaient sauter) ; à la fin, la page reprend la main
             case 0x0231: Sizing = true; break;
-            case 0x0232: Sizing = false; BeginInvoke(() => mpv?.Place()); break;
+            case 0x0232: Sizing = false; BeginInvoke(() => { mpv?.Place(); mpv?.FitChild(); }); break;
             case WM_SETCURSOR:
                 if ((m.LParam.ToInt64() & 0xFFFF) == HTCLIENT && comp != null) { SetCursor(cursor != IntPtr.Zero ? cursor : LoadCursor(IntPtr.Zero, 32512)); m.Result = (IntPtr)1; return; }
                 break;

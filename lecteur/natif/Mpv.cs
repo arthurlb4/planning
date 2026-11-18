@@ -196,7 +196,7 @@ public class Mpv
     // fenêtre de mpv dans le cadre : remise à la taille du cadre tout de suite (sinon bande noire après un changement de taille)
     // fenêtre de mpv au format exact de la vidéo, centrée dans le cadre (bandes noires autour) : même pendant un
     // redimensionnement, où Windows étire un instant la dernière image, l'image garde ses proportions
-    double aspect;
+    double aspect; int childW, childH;
     public void FitChild()
     {
         if (f.IsDisposed) return;
@@ -205,6 +205,10 @@ public class Mpv
         {
             if ((double)W / H > aspect) { w = (int)Math.Round(H * aspect); x = (W - w) / 2; } else { h = (int)Math.Round(W / aspect); y = (H - h) / 2; }
         }
+        // pendant qu'on tire un bord : l'image garde sa taille (seulement recentrée), sinon Windows étire la dernière image
+        // à chaque mouvement et les proportions changent ; remise à la bonne taille au lâcher
+        if (f.Sizing && childW > 0) { w = childW; h = childH; x = (W - w) / 2; y = (H - h) / 2; }
+        else { childW = w; childH = h; }
         Natif.EnumChildWindows(ph, (c, l) => { if (Natif.GetParent(c) == ph) Natif.SetWindowPos(c, IntPtr.Zero, x, y, w, h, 0x0014); return true; }, IntPtr.Zero);
     }
 
