@@ -165,8 +165,15 @@ public class Mpv
         if (ExitPending) { if (FullSized(r)) return; ExitPending = false; }
         if (rect == null || rect.ToJsonString() != r?.ToJsonString()) lastRectAt = Environment.TickCount64;
         bool miniChg = ((bool?)rect?["mini"] ?? false) != ((bool?)r?["mini"] ?? false);
+        // mini lecteur qui change de taille (coin tiré, animation d'ouverture) : vidéo agrandie le temps du geste (voir Place)
+        if (((bool?)r?["mini"] ?? false) && rect != null && r != null && ((double?)rect["w"] != (double?)r["w"] || (double?)rect["h"] != (double?)r["h"]))
+        {
+            bool was = MiniGrowing; miniGrowUntil = Environment.TickCount64 + 220;
+            if (!was) f.BeginInvoke(() => { var t = new System.Windows.Forms.Timer { Interval = 60 }; t.Tick += (s, e) => { if (MiniGrowing) return; t.Stop(); t.Dispose(); Place(); }; t.Start(); });
+        }
         rect = r; if (miniChg) f.BeginInvoke(FitChild); if (f.Sizing && !f.RatioLock) return; if (f.InvokeRequired) f.BeginInvoke(Place); else Place(); }   // pendant le geste : seulement le calcul par marges
-    long holdUntil;
+    long holdUntil, miniGrowUntil;
+    bool MiniGrowing => Environment.TickCount64 < miniGrowUntil;
     public bool Holding => Environment.TickCount64 < holdUntil;
     // la page est revenue à la bonne taille (fin du voile) : sa position est la bonne, plus besoin d'attendre
     public void Release() { holdUntil = 0; ExitPending = false; Place(); }
@@ -211,6 +218,14 @@ public class Mpv
         int x2 = (int)Math.Ceiling(((double)r["x"]! + (double)r["w"]!) * k) + 2, y2 = (int)Math.Ceiling(((double)r["y"]! + (double)r["h"]!) * k) + 2;
         x = Math.Max(0, x); y = Math.Max(0, y); x2 = Math.Min(f.ClientSize.Width, x2); y2 = Math.Min(f.ClientSize.Height, y2);
         var b = new Rectangle(x, y, Math.Max(1, x2 - x), Math.Max(1, y2 - y));
+        /* mini lecteur en train de changer de taille : la vidéo suit le cadre de la page avec une ou deux images de retard (deux
+           programmes différents), ce qui laissait des bandes noires. Elle est donc un peu plus grande que le cadre, qui la masque
+           (léger zoom pendant le geste) ; taille exacte au lâcher */
+        if (MiniGrowing && ((bool?)r["mini"] ?? false))
+        {
+            int m = Math.Max(40, (int)(Math.Max(b.Width, b.Height) * 0.18));
+            b = Rectangle.Intersect(Rectangle.Inflate(b, m, m), new Rectangle(Point.Empty, f.ClientSize));
+        }
         if (f.Video.Bounds != b) { f.Video.Bounds = b; FitChild(); }
         if (!f.Video.Visible) f.Video.Visible = true;
     }
