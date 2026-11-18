@@ -1677,7 +1677,9 @@ window.appClosing = () => {
       // déjà sous les yeux au moment de l'affichage : animé aussi (l'ensemble de la page arrive en cascade)
       r.querySelectorAll('.poster,.tvc,.chr').forEach((p, i) => { if (i < 14) p.style.setProperty('--d', (i * 0.035).toFixed(3) + 's'); });
       // déjà à l'écran : en cascade seulement à l'arrivée sur la page (pas en changeant d'onglet, ni pendant une recherche)
-      if (r.getBoundingClientRect().top < innerHeight && !(S.arrive && Date.now() - S.arrive < 3000)) return;
+      const vis = r.getBoundingClientRect().top < innerHeight;
+      if (vis && !(S.arrive && Date.now() - S.arrive < 3000)) return;
+      if (vis && r.querySelector('.poster,.tvc')) S.arrUsed = true;   // cascade d'arrivée jouée : une seule fois
       r.classList.add('rv0'); io.observe(r);
     });
   };
@@ -1687,7 +1689,8 @@ window.appClosing = () => {
     im.classList.add('fi'); const done = () => im.classList.add('ld');
     im.addEventListener('load', done, { once: true }); im.addEventListener('error', done, { once: true });
   });
-  const mo = new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1) { prep(n.matches && n.matches(ROWS) ? n.parentNode : n); imgs(n.parentNode || n); } });
+  const mo = new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1) { prep(n.matches && n.matches(ROWS) ? n.parentNode : n); imgs(n.parentNode || n); }
+    if (S.arrUsed) { S.arrUsed = false; S.arrive = 0; } });   // la page redessinée juste après (données arrivées) n'est pas réanimée
   ['#homeInner', '#agendaInner', '#vodInner'].forEach(sel => { const el = document.querySelector(sel); if (el) mo.observe(el, { childList: true, subtree: true }); });
 })();
 /* ---------- Liste des chaînes (n'affiche que les lignes visibles : tient des dizaines de milliers d'entrées) ---------- */
