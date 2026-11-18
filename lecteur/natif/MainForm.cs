@@ -80,8 +80,12 @@ public class MainForm : Form
             }
             // redimensionnement à la souris : pendant le geste, la vidéo suit seulement le calcul fait ici (les positions de la
             // page, en retard d'une image ou deux, la faisaient sauter) ; à la fin, la page reprend la main
-            case 0x0231: Sizing = true; break;
-            case 0x0232: Sizing = false; BeginInvoke(() => { mpv?.Place(); mpv?.FitChild(); }); break;
+            case 0x0231: Sizing = true; sizeHid = false; break;
+            case 0x0232:
+                Sizing = false; BeginInvoke(() => { mpv?.Place(); mpv?.FitChild(); });
+                // vidéo cachée pendant le geste : réapparaît une fois la page recalée
+                if (sizeHid) { sizeHid = false; var t = new System.Windows.Forms.Timer { Interval = 160 }; t.Tick += (s2, e2) => { t.Stop(); t.Dispose(); Post(new JsonObject { ["t"] = "mpv", ["st"] = new JsonObject { ["moving"] = false } }); }; t.Start(); }
+                break;
             case WM_SETCURSOR:
                 if ((m.LParam.ToInt64() & 0xFFFF) == HTCLIENT && comp != null) { SetCursor(cursor != IntPtr.Zero ? cursor : LoadCursor(IntPtr.Zero, 32512)); m.Result = (IntPtr)1; return; }
                 break;
@@ -342,7 +346,7 @@ public class MainForm : Form
         double a = mpv?.Aspect ?? 0; if (!RatioLock || a <= 0 || full || WindowState != FormWindowState.Normal) return;
         int h = (int)Math.Round(Width / a); if (Math.Abs(h - Height) > 1) Height = Math.Max(MinimumSize.Height, h);
     }
-    public bool Sizing;
+    public bool Sizing; bool sizeHid;
     protected override void OnResize(EventArgs e)
     {
         base.OnResize(e);
@@ -352,7 +356,14 @@ public class MainForm : Form
         if (Video.Visible && mpv != null && mpv.Full) { var fb = new Rectangle(Point.Empty, ClientSize); if (Video.Bounds != fb) { Video.Bounds = fb; mpv.FitChild(); } }
         // pendant qu'on tire un bord : la place de la vidéo vient seulement de la page (seule à connaître la vraie mise en page :
         // lecteur au format 16/9, liste, barre du bas) — l'estimation faite ici était fausse et la faisait déborder
-        else if (Sizing) { }
+        else if (Sizing)
+        {
+            /* lecteur normal : la page et mpv ne peuvent pas se redessiner exactement ensemble pendant le geste (sauts,
+               proportions faussées) → image cachée (noir) le temps du geste, remise à sa place au lâcher. Pleine fenêtre :
+               l'image suit (fenêtre aux proportions de la vidéo, ça marche bien) */
+            if (RatioLock) { var fb = new Rectangle(Point.Empty, ClientSize); if (Video.Visible && Video.Bounds != fb) { Video.Bounds = fb; mpv?.FitChild(); } }
+            else if (!sizeHid && Video.Visible && ClientSize != lastClient) { sizeHid = true; Post(new JsonObject { ["t"] = "mpv", ["st"] = new JsonObject { ["moving"] = true } }); }
+        }
         else if (Video.Visible && !(mpv?.Holding ?? false) && lastClient.Width > 0 && lastClient.Height > 0 && ClientSize.Width > 0 && ClientSize != lastClient)
         {
             /* pendant qu'on tire un bord : la liste à gauche, les panneaux et la barre du bas gardent leur taille, seul le lecteur
