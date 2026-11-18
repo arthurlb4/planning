@@ -3620,6 +3620,16 @@ function replayUrl(c, start, end) {
   return `${m[1]}/timeshift/${m[2]}/${m[3]}/${dur}/${rpTime(st)}/${m[4]}.ts`;
 }
 // programme passé (ou en cours, depuis son début) lu comme un film ; « Retour au direct » ramène sur la chaîne
+/* Barre de lecture d'une chaîne avec replay : les 4 dernières heures. Dans ce que mpv garde en mémoire → retour en arrière
+   simple ; plus loin → différé depuis ce moment (replay jusqu'à maintenant, puis le direct). */
+const RP_SPAN = 4 * 3600;
+function rpSpan(c) { const d = archDays(c); return d ? Math.min(RP_SPAN, d * 86400) : 0; }
+function liveAt(c, behind) {
+  const w = mpvLiveWin(), inMem = w ? Math.max(0, w[1] - w[0] - mpvGap()) : 0;
+  if (behind <= inMem + 2) { if (!w) return; mpvBehind(behind > mpvGap() + 3); mpvC(['seek', Math.max(w[0] + 1, w[1] - mpvGap() - behind), 'absolute']); return; }
+  const t = Date.now() - behind * 1000;
+  playReplay(c, { title: 'Différé', start: t, end: Date.now(), at: true });
+}
 /* Début du programme : les heures du guide sont celles annoncées, l'émission commence souvent après la pub. Quand on avance
    dans les 10 premières minutes d'un replay, ce saut est retenu pour la chaîne et appliqué aux replays suivants. */
 const rpOfs = c => ((LS.get('dev.rpofs', {}) || {})[liveKey(c)] || 0);
@@ -3632,7 +3642,8 @@ function playReplay(c, p) {
   // émission en cours : seulement jusqu'à maintenant (le serveur refuse ce qui n'est pas encore enregistré) ; à la fin, le direct
   const live = p.end > Date.now(), end = live ? Date.now() - 30e3 : p.end;
   const url = replayUrl(archCh(c) || c, p.start, end); if (!url) { toast('Replay impossible pour cette chaîne'); return; }
-  const ofs = rpOfs(c); if (ofs > 0 && LS.get(posK(url), 0) < ofs) LS.set(posK(url), ofs);   // pub d'avant le programme sautée (appris)
+  const ofs = p.at ? Math.round((p.start - Math.floor(p.start / 60000) * 60000) / 1000) : rpOfs(c);   // différé (barre) : à la seconde ; programme : pub sautée (appris)
+  if (ofs > 0 && LS.get(posK(url), 0) < ofs) LS.set(posK(url), ofs);
   play({ name: niceName(c) + ' · ' + p.title, url, group: 'Replay · ' + new Date(p.start).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) + ' ' + hm(p.start), logo: c.logo, n: 0, chno: '', vod: true, key: '', replayOf: c, rp: p });
 }
 // programmes passés de la chaîne (serveur : tout ce qu'il garde, sinon le guide XML TV Fr)
@@ -6304,11 +6315,12 @@ function vbarUpdate() {
     const M = S.mpvSt, rg = $('#vbRange'), dur = M.dur || 0, cur = M.pos || 0;
     if (!S.current.vod) {
       const L = S.mpvLive; if (L && L.c === S.current && !L.t0 && cur > 0) L.t0 = cur;
-      const w = mpvLiveWin(), at = mpvAtLive(w);
-      if (w) { rg.min = w[0]; rg.max = w[1]; if (!rg.matches(':active')) rg.value = at ? w[1] : cur; }
+      const w = mpvLiveWin(), at = mpvAtLive(w), span = rpSpan(S.current);
+      if (span) { const behind = at || !w ? 0 : Math.max(0, w[1] - cur - mpvGap()); rg.min = 0; rg.max = span; if (!rg.matches(':active')) rg.value = span - behind; }
+      else if (w) { rg.min = w[0]; rg.max = w[1]; if (!rg.matches(':active')) rg.value = at ? w[1] : cur; }
       $('#vbCur').textContent = at || !w ? 'Direct' : '−' + fmtT(Math.max(0, w[1] - cur - mpvGap())); $('#vbDur').textContent = '';
       $('#vbLive').classList.toggle('edge', at); $('#vbar').classList.toggle('atlive', at);
-      rg.style.setProperty('--p', w ? Math.max(0, Math.min(100, (+rg.value - w[0]) / (w[1] - w[0]) * 100)) + '%' : '100%');
+      rg.style.setProperty('--p', span ? (+rg.value / span * 100) + '%' : w ? Math.max(0, Math.min(100, (+rg.value - w[0]) / (w[1] - w[0]) * 100)) + '%' : '100%');
       $('#vbPlay').classList.toggle('on', !M.paused); $('#vbMute').classList.toggle('off', video.muted || !video.volume); return;
     }
     $('#vbar').classList.remove('atlive');
@@ -6366,7 +6378,7 @@ function seekBy(d) {
 $('#vbBack').onclick = () => seekBy(-10);
 $('#vbFwd').onclick = () => seekBy(10);
 $('#vbRange').addEventListener('input', e => { if (S.engine !== 'remux' && !mpvOn()) video.currentTime = +e.target.value; });
-$('#vbRange').addEventListener('change', e => { if (S.engine === 'remux') remuxStart(+e.target.value); else if (mpvOn()) { rpLearn(+e.target.value); const w = S.current && !S.current.vod && mpvLiveWin(); if (w) mpvBehind(w[1] - +e.target.value > mpvGap() + 3); mpvC(['seek', w ? Math.min(+e.target.value, w[1] - mpvGap()) : +e.target.value, 'absolute']); } });
+$('#vbRange').addEventListener('change', e => { if (S.engine === 'remux') remuxStart(+e.target.value); else if (mpvOn()) { if (S.current && !S.current.vod && rpSpan(S.current)) { liveAt(S.current, Math.max(0, rpSpan(S.current) - +e.target.value)); return; } rpLearn(+e.target.value); const w = S.current && !S.current.vod && mpvLiveWin(); if (w) mpvBehind(w[1] - +e.target.value > mpvGap() + 3); mpvC(['seek', w ? Math.min(+e.target.value, w[1] - mpvGap()) : +e.target.value, 'absolute']); } });
 /* Survol de la barre de lecture : moment visé, et pour un torrent (appli Windows) l'image à cet endroit quand ce passage
    est déjà téléchargé. Pas d'image pour l'abonnement IPTV : il faudrait une seconde connexion au serveur, que la plupart
    des abonnements refusent (le film en cours serait coupé). */
@@ -6374,7 +6386,7 @@ const VTH = { t: 0, key: '', imgs: new Map() };
 function vthHide() { const b = $('#vbThumb'); if (b) b.hidden = true; clearTimeout(VTH.t); }
 $('#vbRange').addEventListener('pointermove', e => {
   const rg = e.currentTarget, c = S.current; if (!c) return vthHide();
-  if (!c.vod) { const w = S.engine === 'mpv' ? mpvLiveWin() : liveWin(); if (!w) return vthHide();
+  if (!c.vod) { const sp = S.engine === 'mpv' ? rpSpan(c) : 0, w = sp ? [0, sp] : S.engine === 'mpv' ? mpvLiveWin() : liveWin(); if (!w) return vthHide();
     const r = rg.getBoundingClientRect(), f = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), sc = $('#screen').getBoundingClientRect(), back = (1 - f) * (w[1] - w[0]);
     let b = $('#vbThumb'); if (!b) { b = document.createElement('div'); b.id = 'vbThumb'; b.innerHTML = '<div class="im"></div><span></span>'; $('#screen').appendChild(b); }
     b.hidden = false; b.classList.remove('img'); b.querySelector('span').textContent = back < 12 ? 'Direct' : '−' + fmtT(back);
