@@ -1535,7 +1535,29 @@ function tvForYou() {
    ce soir, sport avec les blasons des équipes (ESPN). Les cases des chaînes restent dessous (« Toutes les chaînes »). ---------- */
 const TV_TH = [['P', 'Sport'], ['F', 'Films'], ['S', 'Séries'], ['I', 'Info'], ['J', 'Jeunesse'], ['D', 'Documentaires'], ['E', 'Divertissement'], ['M', 'Magazines']];
 // image d'émission en hauteur (affiche) : montrée entière, sur un fond flou de la même image, au lieu d'être tronquée
-function tviFit(im) { if (im.naturalWidth && im.naturalHeight > im.naturalWidth * 1.05) { const t = im.parentNode; t.classList.add('por'); t.style.setProperty('--tib', 'url("' + im.src.replace(/"/g, '%22') + '")'); } }
+function tviFit(im) {
+  if (!im.naturalWidth || im.naturalHeight <= im.naturalWidth * 1.05) return;
+  const t = im.parentNode; t.classList.add('por'); t.style.setProperty('--tib', 'url("' + im.src.replace(/"/g, '%22') + '")');
+  // affiche en hauteur : image de fond de l'émission sur TMDB (en largeur) si elle existe, à la place
+  const ti = im.closest('.tvc') && im.closest('.tvc').querySelector('.tvn'); if (ti) tvBackdrop(ti.textContent).then(u => { if (u && im.isConnected) { im.onload = null; im.src = u; t.classList.remove('por'); } });
+}
+/* Image de fond (16/9) d'une émission sur TMDB, cherchée par son titre (séries, films, documentaires) ; gardée 30 jours */
+const TVBD = new Map();
+function tvBackdrop(title) {
+  const k = norm(title || '').replace(/\s*[-:(].*$/, '').trim(); if (k.length < 3 || !LS.get('pref.tmdb', '')) return Promise.resolve('');
+  if (TVBD.has(k)) return TVBD.get(k);
+  const p = (async () => {
+    const ck = 'tvbd1:' + k, c = await DB.cacheGet(ck).catch(() => null); if (c && Date.now() - c.at < 30 * 864e5) return c.data;
+    const q = String(title).replace(/\s*[-:(].*$/, '').trim();
+    const r = await tmdb('/search/multi', { query: q }).catch(() => null), l = ((r && r.results) || []).filter(x => x.backdrop_path && (x.media_type === 'tv' || x.media_type === 'movie'));
+    // titre identique, ou l'un commence par l'autre (titre assez long) : jamais une émission au hasard
+    const nq = norm(q), nm = y => norm(y.name || y.title || '');
+    const x = l.find(y => nm(y) === nq) || l.find(y => nm(y).length >= 6 && nq.length >= 6 && (nm(y).startsWith(nq) || nq.startsWith(nm(y))));
+    const u = x ? 'https://image.tmdb.org/t/p/w780' + x.backdrop_path : '';
+    DB.cachePut({ id: ck, at: Date.now(), data: u }); return u;
+  })().catch(() => '');
+  TVBD.set(k, p); return p;
+}
 function tvCard(f, i, j, p, opt) {
   const x = f.subs[j], c = x.list[0], logo = logoUrl(x.label) || c.logo || '', la = altAttr(logo, c.logo), now = Date.now(), live = p && p.start <= now && p.end > now;
   const im = p && p.img, sp = p && p.th === 'P' && /\s(\/|-|vs\.?)\s/.test(p.title) ? p.title : '';
