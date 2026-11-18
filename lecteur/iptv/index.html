@@ -3572,8 +3572,19 @@ function replayUrl(c, start, end) {
   return `${m[1]}/timeshift/${m[2]}/${m[3]}/${dur}/${rpTime(st)}/${m[4]}.ts`;
 }
 // programme passé (ou en cours, depuis son début) lu comme un film ; « Retour au direct » ramène sur la chaîne
+/* Début du programme : les heures du guide sont celles annoncées, l'émission commence souvent après la pub. Quand on avance
+   dans les 10 premières minutes d'un replay, ce saut est retenu pour la chaîne et appliqué aux replays suivants. */
+const rpOfs = c => ((LS.get('dev.rpofs', {}) || {})[liveKey(c)] || 0);
+function rpLearn(to) {
+  const c = S.current; if (!c || !c.replayOf || c.rpLearned) return;
+  const from = curPos(); if (from > 600 || to <= from + 5 || to > 900) return;
+  c.rpLearned = true; const o = LS.get('dev.rpofs', {}) || {}; o[liveKey(c.replayOf)] = Math.round(Math.max(0, Math.min(900, to))); LS.set('dev.rpofs', o);
+}
 function playReplay(c, p) {
-  const url = replayUrl(archCh(c) || c, p.start, Math.min(p.end, Date.now() + 6 * 3600e3)); if (!url) { toast('Replay impossible pour cette chaîne'); return; }
+  // émission en cours : seulement jusqu'à maintenant (le serveur refuse ce qui n'est pas encore enregistré) ; à la fin, le direct
+  const live = p.end > Date.now(), end = live ? Date.now() - 30e3 : p.end;
+  const url = replayUrl(archCh(c) || c, p.start, end); if (!url) { toast('Replay impossible pour cette chaîne'); return; }
+  const ofs = rpOfs(c); if (ofs > 0 && LS.get(posK(url), 0) < ofs) LS.set(posK(url), ofs);   // pub d'avant le programme sautée (appris)
   play({ name: niceName(c) + ' · ' + p.title, url, group: 'Replay · ' + new Date(p.start).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) + ' ' + hm(p.start), logo: c.logo, n: 0, chno: '', vod: true, key: '', replayOf: c, rp: p });
 }
 // programmes passés de la chaîne (serveur : tout ce qu'il garde, sinon le guide XML TV Fr)
@@ -5991,13 +6002,13 @@ function mpvSubArgs() {
 async function playMpv(c, t) {
   const M = window.desktop.mpv;
   stopEngines(); S.engine = 'mpv'; S.mpvSt = {}; S.playUrl = c.url; document.body.classList.add('mpv'); document.body.classList.remove('natready');
-  const pos = c.vod ? LS.get(posK(c.url), 0) : 0, start = pos > 60 ? pos : 0;
+  const pos = c.vod ? LS.get(posK(c.url), 0) : 0, start = pos > 60 || (c.replayOf && pos > 5) ? pos : 0;
   document.body.classList.toggle('mpvlive', !c.vod); S.mpvLive = c.vod ? null : { c, t0: 0 };
   setStatus('load');
   const r = await M.play({ wait: c.vod ? 4 : liveWait(c), url: c.url, title: c.vod ? c.name : niceName(c), live: !c.vod, iptv: !c.vod || !!c.replayOf, start, vol: video.muted ? 0 : video.volume, alang: LS.get('pref.audio', 'fr'), slang: LS.get('pref.sub', 'off'), rect: mpvRect(), under: NAT, subArgs: NAT ? mpvSubArgs() : [] }).catch(e => ({ error: e.message }));
   if (t !== token) return;
   if (!r || r.error) { document.body.classList.remove('mpv', 'nat'); S.engine = ''; S.noMpv = c.url; toast('Lecteur intégré indisponible (' + ((r && r.error) || '?') + ') : ancien lecteur'); return play(c); }
-  if (c.vod) setStatus(null); if (start > 60) toast('Reprise à ' + fmtDur(start));
+  if (c.vod) setStatus(null); if (start > 0 && c.replayOf && start === rpOfs(c.replayOf)) toast('Début du programme (pub sautée : ' + fmtDur(start) + ')'); else if (start > 60) toast('Reprise à ' + fmtDur(start));
   mpvSync(); if (NAT) vbarUpdate();
   // chaîne : attente affichée jusqu'à la première image ; rien au bout de 15 s → lecteur de la page (et ses autres qualités)
   if (!c.vod) setTimeout(() => { if (t !== token || S.current !== c || S.engine !== 'mpv' || S.mpvSt.pos > 0) return; S.noMpv = c.url; window.desktop.mpv.stop(); document.body.classList.remove('mpv', 'mpvlive'); S.engine = ''; play(c, S.alts); }, 15000);
@@ -6290,6 +6301,7 @@ function seekBy(d) {
       if (d > 0 && mpvAtLive(w)) { toast('Vous êtes au direct'); return; }
       if (d > 0 && w[1] - (cur + d) <= mpvGap() + 3) { mpvBehind(false); mpvC(['seek', w[1] - mpvGap(), 'absolute']); return; }   // revenu jusqu'au direct
       mpvBehind(true); mpvC(['seek', Math.min(t, w[1] - mpvGap()), 'absolute+exact']); return; }
+    if (d > 0) rpLearn(curPos() + d);
     mpvC(['seek', d, 'relative+exact']); return;
   }
   if (S.engine === 'remux') return remuxStart(curPos() + d);
@@ -6305,7 +6317,7 @@ function seekBy(d) {
 $('#vbBack').onclick = () => seekBy(-10);
 $('#vbFwd').onclick = () => seekBy(10);
 $('#vbRange').addEventListener('input', e => { if (S.engine !== 'remux' && !mpvOn()) video.currentTime = +e.target.value; });
-$('#vbRange').addEventListener('change', e => { if (S.engine === 'remux') remuxStart(+e.target.value); else if (mpvOn()) { const w = S.current && !S.current.vod && mpvLiveWin(); if (w) mpvBehind(w[1] - +e.target.value > mpvGap() + 3); mpvC(['seek', w ? Math.min(+e.target.value, w[1] - mpvGap()) : +e.target.value, 'absolute']); } });
+$('#vbRange').addEventListener('change', e => { if (S.engine === 'remux') remuxStart(+e.target.value); else if (mpvOn()) { rpLearn(+e.target.value); const w = S.current && !S.current.vod && mpvLiveWin(); if (w) mpvBehind(w[1] - +e.target.value > mpvGap() + 3); mpvC(['seek', w ? Math.min(+e.target.value, w[1] - mpvGap()) : +e.target.value, 'absolute']); } });
 /* Survol de la barre de lecture : moment visé, et pour un torrent (appli Windows) l'image à cet endroit quand ce passage
    est déjà téléchargé. Pas d'image pour l'abonnement IPTV : il faudrait une seconde connexion au serveur, que la plupart
    des abonnements refusent (le film en cours serait coupé). */
