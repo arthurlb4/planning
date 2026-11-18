@@ -120,6 +120,9 @@ public class MainForm : Form
         base.OnHandleCreated(e);
         // Windows 11 : coins arrondis et liseré fin autour de la fenêtre (Windows les retire de lui-même quand elle est agrandie)
         Frame(true);
+        // animations de Windows coupées pour cette fenêtre : passer de « agrandie » au plein écran (et retour) la faisait
+        // « zoomer » en transparence ; ça coupe aussi celles de réduire / agrandir (passage direct)
+        try { int off = 1; DwmSetWindowAttribute(Handle, 3, ref off, 4); } catch { }
         try { await Init(); }
         catch (Exception ex) { MessageBox.Show(this, "Démarrage impossible : " + ex.Message, "Lecteur IPTV", MessageBoxButtons.OK, MessageBoxIcon.Error); }
     }
@@ -287,10 +290,7 @@ public class MainForm : Form
     {
         var wp = new WINDOWPLACEMENT { length = System.Runtime.InteropServices.Marshal.SizeOf<WINDOWPLACEMENT>(), showCmd = max ? 3 : 1,
             normal = new RECT { Left = normal.Left, Top = normal.Top, Right = normal.Right, Bottom = normal.Bottom } };
-        // sans l'animation d'agrandissement de Windows (la fenêtre « zoomait » en transparence en sortant du plein écran)
-        int off = 1; try { DwmSetWindowAttribute(Handle, 3, ref off, 4); } catch { }
         try { SetWindowPlacement(Handle, ref wp); } catch { Bounds = normal; WindowState = max ? FormWindowState.Maximized : FormWindowState.Normal; }
-        BeginInvoke(() => { int on = 0; try { DwmSetWindowAttribute(Handle, 3, ref on, 4); } catch { } });
     }
     void SetFull(bool on)
     {
