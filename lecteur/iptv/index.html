@@ -7478,10 +7478,13 @@ async function replayCheck() {
     const api = x.base + '/player_api.php?username=' + encodeURIComponent(x.user) + '&password=' + encodeURIComponent(x.pass);
     const l = JSON.parse(await fetchText(api + '&action=get_live_streams')); if (!Array.isArray(l)) throw new Error('réponse illisible');
     const a = l.filter(s => String(s.tv_archive) === '1'), days = Math.max(0, ...a.map(s => +s.tv_archive_duration || 0));
-    const fr = a.filter(s => chInfo({ name: s.name, group: '' }).fr);
     S.replay = new Map(a.map(s => [String(s.stream_id), +s.tv_archive_duration || 0]));
+    // ce qui compte : les chaînes de l'accueil TV (repérées par leur numéro dans l'adresse …/live/…/123.ts)
+    const idOf = c => (/\/(\d+)(\.\w+)?$/.exec(c.url || '') || [])[1], home = [];
+    homeIndex().forEach(f => f.subs.forEach(x => { const d = x.list.map(c => S.replay.get(idOf(c))).find(v => v != null); if (d != null) home.push(x.label + ' (' + d + ' j)'); }));
     out.innerHTML = !a.length ? 'Aucune chaîne avec replay sur ce serveur.'
-      : `<b>${a.length.toLocaleString('fr-FR')}</b> chaîne${a.length > 1 ? 's' : ''} avec replay sur ${l.length.toLocaleString('fr-FR')} (jusqu'à ${days} jour${days > 1 ? 's' : ''}), dont ${fr.length} françaises${fr.length ? ' : ' + esc(fr.slice(0, 8).map(s => s.name).join(', ')) + (fr.length > 8 ? '…' : '') : ''}.`;
+      : `<b>${a.length.toLocaleString('fr-FR')}</b> chaîne${a.length > 1 ? 's' : ''} avec replay sur ${l.length.toLocaleString('fr-FR')} (jusqu'à ${days} jour${days > 1 ? 's' : ''}).<br>`
+        + (home.length ? `Dans votre accueil TV : <b>${home.length}</b> — ${esc(home.join(', '))}.` : 'Aucune chaîne de votre accueil TV n\'a le replay.');
   } catch (e) { out.textContent = 'Vérification impossible : ' + (e.message || e); }
 }
 $('#replayBtn').onclick = replayCheck;
