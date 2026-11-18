@@ -756,6 +756,39 @@ body.vtools #prevBtn,body.vtools #nextBtn,body.vtools #soloBtn,body.vtools #solo
 body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.homeview.vod #vod{animation:viewIn .3s cubic-bezier(.2,.8,.2,1)}
 .modal.open .sheet{animation:viewIn .25s cubic-bezier(.2,.8,.2,1)}
 @media (prefers-reduced-motion:reduce){body.homeview #home,body.homeview #agenda,body.homeview #vod,.modal.open .sheet{animation:none}}
+/* ---------- Animations (toutes coupées si Windows demande moins d'animations) ---------- */
+:root{--ease:cubic-bezier(.2,.8,.2,1);--spring:cubic-bezier(.34,1.4,.64,1)}
+/* rangées : glissent en place à leur arrivée à l'écran, leurs vignettes l'une après l'autre */
+.rv0{opacity:0;transform:translateY(16px)}
+.rv1{opacity:1;transform:none;transition:opacity .45s var(--ease),transform .5s var(--ease)}
+.rv0 .poster,.rv0 .tvc,.rv0 .chr{opacity:0;transform:translateY(10px) scale(.98)}
+.rv1 .poster,.rv1 .tvc,.rv1 .chr{opacity:1;transform:none;transition:opacity .4s var(--ease) var(--d,0s),transform .45s var(--ease) var(--d,0s),width .3s var(--ease)}
+/* images : fondu quand elles arrivent (affiches, vignettes, logos) */
+.fi{opacity:0}.fi.ld{opacity:1;transition:opacity .45s ease}
+/* boutons : s'enfoncent légèrement au clic */
+.btn,.chip,.vb,.pnb,#vbar .live,.vsrc{transition:transform .14s var(--ease),background-color .2s,color .2s,border-color .2s}
+.btn:active,.chip:active,.vb:active,.pnb:active,#vbar .live:active,.vsrc:active{transform:scale(.94)}
+.chip.on{animation:chipOn .3s var(--spring)}
+@keyframes chipOn{from{transform:scale(.92)}}
+/* étoile, favoris, j'aime : petit rebond quand on l'active */
+.vt.star.on svg,#nowFav.on svg,.fbi.on,[data-fb].on{animation:pop .35s var(--spring)}
+@keyframes pop{0%{transform:scale(.7)}60%{transform:scale(1.18)}100%{transform:none}}
+/* menus du lecteur (pistes, épisodes, sources, infos) : s'ouvrent depuis le bas */
+#trackMenu:not([hidden]),#srcMenu:not([hidden]),#epMenu:not([hidden]),#stats:not([hidden]){animation:menuIn .22s var(--ease);transform-origin:bottom right}
+#epMenu:not([hidden]){transform-origin:bottom left}
+@keyframes menuIn{from{opacity:0;transform:translateY(8px) scale(.97)}}
+/* message en bas : arrive avec un petit ressort */
+#toast{transition:opacity .25s,transform .35s var(--spring)}
+/* agenda : les matchs glissent en place */
+.ev{animation:viewIn .35s var(--ease) both}
+/* barre de lecture : apparaît et disparaît en glissant */
+#vbar{transition:opacity .3s,transform .3s var(--ease)}
+body.playing #screen.idle #vbar{transform:translateY(8px)}
+/* cases des chaînes (liste ☰) et sous-onglets : survol plus doux */
+.chr{transition:background-color .18s,transform .18s var(--ease)}.chr:hover{transform:translateX(2px)}
+.tvc .tvi{transition:transform .25s var(--ease),box-shadow .25s var(--ease)}
+@media (prefers-reduced-motion:reduce){.rv0,.rv0 *{opacity:1!important;transform:none!important}.rv1,.rv1 *,.fi,.fi.ld{transition:none!important}
+  .chip.on,.ev,#trackMenu,#srcMenu,#epMenu,#stats,.vt.star.on svg,#nowFav.on svg,.fbi.on,[data-fb].on{animation:none!important}.btn:active,.chip:active,.vb:active,.pnb:active{transform:none}}
 /* fiche : image du film floutée en fond (haut de la fiche), couleur du film en léger dégradé et sur le bouton Lecture */
 #vodModal .sheet.look{isolation:isolate;background:linear-gradient(180deg,color-mix(in srgb,var(--fc,var(--bg2)) 22%,var(--bg2)) 0,var(--bg2) 460px)}
 #vodModal .sheet.look::before{content:'';position:absolute;left:0;right:0;top:0;height:520px;z-index:-1;pointer-events:none;background:var(--vbd) center 20%/cover no-repeat;filter:blur(42px) saturate(1.25);opacity:.34;transform:scale(1.15);-webkit-mask:linear-gradient(#000 0,#000 35%,transparent 100%);mask:linear-gradient(#000 0,#000 35%,transparent 100%)}
@@ -1579,6 +1612,29 @@ $('#homeInner').addEventListener('click', e => {
   play(s.list[0], s.list.slice(1));
 });
 
+/* ---------- Animations : rangées qui apparaissent au défilement, images en fondu ---------- */
+(() => {
+  const calm = matchMedia('(prefers-reduced-motion: reduce)');
+  const io = 'IntersectionObserver' in window ? new IntersectionObserver(es => es.forEach(e => { if (!e.isIntersecting) return; e.target.classList.add('rv1'); e.target.classList.remove('rv0'); io.unobserve(e.target); setTimeout(() => e.target.classList.remove('rv1'), 1400); }), { rootMargin: '0px 0px -40px 0px' }) : null;
+  const ROWS = '.vrow,.tvrow,.hsec,.hgrid,.vgrid';
+  const prep = root => {
+    if (!io || calm.matches) return;
+    root.querySelectorAll(ROWS).forEach(r => {
+      if (r.dataset.rv) return; r.dataset.rv = 1;
+      // déjà sous les yeux au moment de l'affichage : animé aussi (l'ensemble de la page arrive en cascade)
+      r.querySelectorAll('.poster,.tvc,.chr').forEach((p, i) => { if (i < 14) p.style.setProperty('--d', (i * 0.035).toFixed(3) + 's'); });
+      r.classList.add('rv0'); io.observe(r);
+    });
+  };
+  const imgs = root => root.querySelectorAll('.poster .im img,.tvc .tvi img,.lg img,.sq img').forEach(im => {
+    if (im.dataset.fi) return; im.dataset.fi = 1;
+    if (im.complete && im.naturalWidth) return;          // déjà là : pas de fondu
+    im.classList.add('fi'); const done = () => im.classList.add('ld');
+    im.addEventListener('load', done, { once: true }); im.addEventListener('error', done, { once: true });
+  });
+  const mo = new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1) { prep(n.matches && n.matches(ROWS) ? n.parentNode : n); imgs(n.parentNode || n); } });
+  ['#homeInner', '#agendaInner', '#vodInner'].forEach(sel => { const el = document.querySelector(sel); if (el) mo.observe(el, { childList: true, subtree: true }); });
+})();
 /* ---------- Liste des chaînes (n'affiche que les lignes visibles : tient des dizaines de milliers d'entrées) ---------- */
 function applyFilter(resetScroll) {
   let base;
