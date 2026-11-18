@@ -1042,6 +1042,7 @@ h1,h2,h3,h4,h5,h6,b,strong,th,summary{font-weight:500}
     <h3>Synchronisation</h3>
     <div id="syncBox"></div>
     <h3 id="rgH" hidden>Ma médiathèque</h3>
+    <div class="dlbox" id="medBox" hidden><div class="srow"><div class="st"><b>Médiathèque</b><small>Installe ce qui manque (qBittorrent, Prowlarr, Radarr, Sonarr, Jellyfin), met à jour le reste et relie le tout. Une fenêtre s'ouvre et Windows demande l'autorisation. Seul votre indexeur reste à ajouter dans Prowlarr.</small></div><div class="sc"><button class="btn" id="medBtn">Installer / mettre à jour</button></div></div></div>
     <div class="dlbox" id="rgBox" hidden></div>
     <h3>Cet appareil</h3>
     <div class="dlbox"><div class="srow"><div class="st"><b>Oublier cet appareil</b><small>Efface d'ici votre abonnement, vos listes, réglages et historique (PC qui n'est pas le vôtre). Rien n'est effacé sur vos autres appareils.</small></div><div class="sc"><button class="btn" id="forgetBtn">Oublier</button></div></div></div>
@@ -1798,6 +1799,9 @@ function askText(msg, opt) {
 const TOR = { q: '', kind: 'all', qual: 'all', sort: 'best', res: null, err: '', busy: false, cur: null, curErr: '', curBusy: false, info: null, t: 0, hist: LS.get('dev.prwhist', []) };
 // Prowlarr et torrents : seulement dans l'appli installée (son module torrent et son VPN surveillé) ; dans un navigateur, sur un
 // autre PC par exemple, rien ne part vers les indexeurs ni vers un module torrent
+// Prowlarr installé sur ce PC et pas encore réglé dans l'appli : adresse et clé trouvées toutes seules (son config.xml)
+setTimeout(() => { if (typeof torAllowed !== 'function' || !torAllowed() || LS.get('dev.prowlarr', null)) return;
+  fetch(window.desktop.remux + '/arr/conf').then(r => r.ok ? r.json() : null).then(j => { if (j && j.prowlarr && !LS.get('dev.prowlarr', null)) { LS.set('dev.prowlarr', j.prowlarr); toast('Prowlarr trouvé sur ce PC et relié au lecteur'); } }).catch(() => {}); }, 4000);
 const prwConf = () => { if (!torOk()) return null; const c = LS.get('dev.prowlarr', null); return c && c.url && c.key ? c : null; };
 /* Torrents : appli installée seulement, et sur cet appareil seulement s'ils y sont permis (Paramètres › Lecture, « Torrents sur
    cet appareil ») et que Prowlarr y est relié. Appli installée ailleurs (sans Prowlarr) : coupés d'office, le module torrent
@@ -7428,6 +7432,8 @@ async function subHostApply(quiet) {
 }
 /* Oublier cet appareil : tout ce que l'appli a gardé dans ce navigateur (abonnement déchiffré, listes, réglages, historique)
    est effacé ; deux clics (pas de fenêtre de confirmation dans l'appli) */
+if (window.desktop && window.desktop.natif && window.desktop.remux) { $('#medBox').hidden = false;
+  $('#medBtn').onclick = () => fetch(window.desktop.remux + '/outils/mediatheque', { method: 'POST' }).then(r => r.text().then(t => toast(r.ok ? 'Installation de la médiathèque lancée : suivez la fenêtre qui s\'est ouverte' : 'Lancement impossible : ' + t)), () => toast('Le serveur local de l\'appli ne répond pas')); }
 $('#forgetBtn').onclick = async () => {
   const b = $('#forgetBtn');
   if (!b.dataset.sure) { b.dataset.sure = '1'; b.textContent = 'Confirmer l\'effacement'; b.classList.add('primary'); setTimeout(() => { delete b.dataset.sure; b.textContent = 'Oublier'; b.classList.remove('primary'); }, 5000); return; }

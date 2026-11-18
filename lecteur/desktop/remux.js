@@ -217,6 +217,31 @@ module.exports = function startRemux(ffmpeg, findVlc) {
       res.setHeader('Access-Control-Allow-Headers', '*');
       if (req.method === 'OPTIONS') { res.statusCode = 204; return res.end(); }
       if (u.pathname === '/ping') return res.end('ok');
+      // Prowlarr installé sur ce PC : adresse et clé lues dans son config.xml (l'appli le règle toute seule)
+      if (u.pathname === '/arr/conf') {
+        res.setHeader('Content-Type', 'application/json');
+        const fs = require('fs'), path = require('path'), env = process.env, out = {};
+        for (const [n, port] of [['Prowlarr', 9696], ['Radarr', 7878], ['Sonarr', 8989]]) {
+          for (const d of [env.ProgramData || 'C:\\ProgramData', env.LOCALAPPDATA, env.APPDATA].filter(Boolean)) {
+            let x; try { x = fs.readFileSync(path.join(d, n, 'config.xml'), 'utf8'); } catch (e) { continue; }
+            const tag = t => { const m = new RegExp('<' + t + '>([^<]*)</' + t + '>', 'i').exec(x); return m ? m[1].trim() : ''; };
+            const key = tag('ApiKey'), base = tag('UrlBase').replace(/^\/+|\/+$/g, '');
+            if (key) { out[n.toLowerCase()] = { url: 'http://127.0.0.1:' + (+tag('Port') || port) + (base ? '/' + base : ''), key }; break; }
+          }
+        }
+        return res.end(JSON.stringify(out));
+      }
+      // installation ou mise à jour de la médiathèque (script PowerShell livré avec l'appli, fenêtre visible, droits demandés
+      // par Windows) ; seulement depuis la page du lecteur
+      if (u.pathname === '/outils/mediatheque' && req.method === 'POST') {
+        const o = String(req.headers.origin || '');
+        if (o && !/^https:\/\/(www\.)?franceinfoplanning\.com$/.test(o)) { res.statusCode = 403; return res.end('refusé'); }
+        const ps = require('path').join(__dirname, '..', 'mediatheque', 'installer.ps1');
+        if (!require('fs').existsSync(ps)) { res.statusCode = 404; return res.end('script absent'); }
+        try { require('child_process').spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ps], { detached: true, stdio: 'ignore', windowsHide: false }).unref(); res.end('ok'); }
+        catch (e) { res.statusCode = 500; res.end(String(e.message || e)); }
+        return;
+      }
       // comme nslookup : vrai nom derrière un alias (CNAME) et adresses, pour les exceptions du VPN (serveur IPTV refusé)
       if (u.pathname === '/dns') {
         const dns = require('dns').promises, h0 = String(u.searchParams.get('h') || '').toLowerCase();

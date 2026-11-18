@@ -3,13 +3,17 @@
 # multimédia). Aucun indexeur n'est configuré.
 #
 # Ce que fait le script, dans l'ordre :
-#   1. installe les cinq logiciels avec winget (le gestionnaire d'applications de Windows) ;
+#   1. installe les cinq logiciels avec winget (le gestionnaire d'applications de Windows), ou les met à jour s'ils sont
+#      déjà là ;
 #   2. crée les dossiers de la médiathèque (Films, Séries, Téléchargements) ;
 #   3. règle qBittorrent : interface web sur le port 8085 (accessible seulement depuis ce PC), dossier de téléchargement ;
-#   4. relie Sonarr et Radarr à qBittorrent et à leurs dossiers (Séries / Films), par leur API locale.
+#   4. relie Sonarr et Radarr à qBittorrent et à leurs dossiers (Séries / Films), par leur API locale ;
+#   5. relie Prowlarr à Sonarr et Radarr (les indexeurs que vous ajoutez dans Prowlarr leur sont transmis).
+# Aucun indexeur n'est ajouté : c'est à vous de le faire dans Prowlarr (identifiants de votre tracker).
 # Il peut être relancé sans risque : ce qui est déjà fait est sauté.
 #
-# Lancement : double-clic sur « Installer.cmd » (demande les droits d'administrateur).
+# Lancement : double-clic sur « Installer.cmd », ou case cochée à la fin de l'installation du Lecteur IPTV, ou
+# Paramètres › Appareils du lecteur (demande les droits d'administrateur).
 
 # Médiathèque hors du dossier personnel : Sonarr, Radarr et Jellyfin tournent comme services Windows (compte système),
 # qui ne parcourent pas C:\Users\<nom> ; noms sans accents (plus sûr pour tous les logiciels)
@@ -33,11 +37,18 @@ if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
 }
 
 # 1. Logiciels
-Etape 'Installation des logiciels (quelques minutes)'
+Etape 'Installation et mise à jour des logiciels (quelques minutes)'
 $paquets = [ordered]@{ 'TeamSonarr.Sonarr' = 'Sonarr'; 'TeamRadarr.Radarr' = 'Radarr'; 'TeamProwlarr.Prowlarr' = 'Prowlarr'; 'qBittorrent.qBittorrent' = 'qBittorrent'; 'Jellyfin.Server' = 'Jellyfin' }
 foreach ($id in $paquets.Keys) {
   $deja = winget list --id $id --exact --accept-source-agreements 2>$null | Select-String -SimpleMatch $id
-  if ($deja) { Ok "$($paquets[$id]) déjà installé"; continue }
+  if ($deja) {
+    # déjà là : mise à jour si une version plus récente existe (code 0x8A15002B : rien à mettre à jour)
+    winget upgrade --id $id --exact --silent --accept-package-agreements --accept-source-agreements | Out-Null
+    if ($LASTEXITCODE -eq 0) { Ok "$($paquets[$id]) mis à jour" }
+    elseif ($LASTEXITCODE -eq -1978335189 -or $LASTEXITCODE -eq -1978335212) { Ok "$($paquets[$id]) déjà installé et à jour" }
+    else { Ok "$($paquets[$id]) déjà installé (mise à jour non faite, code $LASTEXITCODE)" }
+    continue
+  }
   winget install --id $id --exact --silent --accept-package-agreements --accept-source-agreements | Out-Null
   if ($LASTEXITCODE -eq 0) { Ok "$($paquets[$id]) installé" } else { Attention "$($paquets[$id]) : installation à vérifier (code $LASTEXITCODE)" }
 }
@@ -66,7 +77,10 @@ $hache = '@ByteArray(' + [Convert]::ToBase64String($sel) + ':' + [Convert]::ToBa
 $voulu = [ordered]@{
   'WebUI\Username' = 'admin'; 'WebUI\Password_PBKDF2' = '"' + $hache + '"'
   'WebUI\Enabled' = 'true'; 'WebUI\Port' = '8085'; 'WebUI\Address' = '127.0.0.1'; 'WebUI\LocalHostAuth' = 'false'
-  'Downloads\SavePath' = ($dl -replace '\\', '/') + '/'; 'Session\DefaultSavePath' = ($dl -replace '\\', '/') + '/'
+}
+# dossier de téléchargement : celui de la médiathèque, sauf si un dossier a déjà été choisi dans qBittorrent
+if (-not ($lignes | Where-Object { $_ -like 'Session\DefaultSavePath=*' -or $_ -like 'Downloads\SavePath=*' })) {
+  $voulu['Downloads\SavePath'] = ($dl -replace '\\', '/') + '/'; $voulu['Session\DefaultSavePath'] = ($dl -replace '\\', '/') + '/'
 }
 $lignes = [System.Collections.ArrayList]@($lignes)
 $pref = $lignes.IndexOf('[Preferences]'); if ($pref -lt 0) { [void]$lignes.Add('[Preferences]'); $pref = $lignes.Count - 1 }
@@ -130,9 +144,26 @@ function Relier($nom, $port, $dossier, $champCat, $cat) {
 Relier 'Sonarr' 8989 $series 'tvCategory' 'series'
 Relier 'Radarr' 7878 $films 'movieCategory' 'films'
 
-Etape 'Prowlarr'
+# 5. Prowlarr : Sonarr et Radarr ajoutés comme applications (synchronisation complète des indexeurs)
+Etape 'Réglage de Prowlarr'
 Start-Service 'Prowlarr' -ErrorAction SilentlyContinue
-Ok 'installé, sans aucun indexeur : http://localhost:9696'
+$pcle = CleApi 'Prowlarr'
+if (-not $pcle) { Attention 'Prowlarr : clé d''API introuvable (le service a-t-il démarré ?)' }
+elseif (-not (Attendre 'http://localhost:9696/api/v1' $pcle)) { Attention 'Prowlarr ne répond pas sur le port 9696' }
+else {
+  $ph = @{ 'X-Api-Key' = $pcle }
+  $apps = @(Invoke-RestMethod 'http://localhost:9696/api/v1/applications' -Headers $ph -ErrorAction SilentlyContinue)
+  foreach ($a in @(@{ n = 'Radarr'; p = 7878; cats = @(2000, 2010, 2020, 2030, 2040, 2045, 2050, 2060, 2070, 2080) }, @{ n = 'Sonarr'; p = 8989; cats = @(5000, 5010, 5020, 5030, 5040, 5045, 5050, 5070, 5080) })) {
+    if ($apps | Where-Object { $_.implementation -eq $a.n }) { Ok "$($a.n) déjà relié"; continue }
+    $acle = CleApi $a.n; if (-not $acle) { Attention "$($a.n) : clé d'API introuvable"; continue }
+    try {
+      Poster 'http://localhost:9696/api/v1/applications' $ph @{ name = $a.n; implementation = $a.n; configContract = "$($a.n)Settings"; syncLevel = 'fullSync'
+        fields = @(@{ name = 'prowlarrUrl'; value = 'http://localhost:9696' }, @{ name = 'baseUrl'; value = "http://localhost:$($a.p)" }, @{ name = 'apiKey'; value = $acle }, @{ name = 'syncCategories'; value = $a.cats }) }
+      Ok "$($a.n) relié (les indexeurs de Prowlarr lui sont transmis)"
+    } catch { Attention "$($a.n) non relié : $(Motif $_)" }
+  }
+  Ok 'interface : http://localhost:9696 — ajoutez-y votre indexeur (Indexers › Add Indexer) ; le Lecteur IPTV le trouve tout seul'
+}
 
 Etape 'Jellyfin'
 Ok 'première configuration dans le navigateur : http://localhost:8096 (bibliothèques Films et Séries à ajouter, voir le guide)'
