@@ -731,6 +731,27 @@ body.mpvlive #vbRange,body.mpvlive #vbBack,body.mpvlive #vbFwd{display:none!impo
 /* Torrent en lecture : morceaux reçus dans la barre de lecture, comme une zone tamponnée (fresque à la qBittorrent) */
 #vbar #vbRange.tbuf{background:linear-gradient(90deg,#fff var(--p,0%),transparent var(--p,0%)) 0 50%/100% 4px no-repeat,var(--tbuf) 0 50%/100% 4px no-repeat,linear-gradient(rgba(255,255,255,.18),rgba(255,255,255,.18)) 0 50%/100% 4px no-repeat}
 #vbVol{width:80px;flex:none}
+/* barre de lecture : fine au repos, épaissie au survol ou pendant qu'on la tire ; le rond n'apparaît qu'à ce moment */
+#vbar #vbRange{--bh:3px;background-size:100% var(--bh);transition:background-size .15s ease}
+#vbar #vbRange:hover,#vbar #vbRange:active{--bh:6px}
+#vbar #vbRange.tbuf{background-size:100% var(--bh),100% var(--bh),100% var(--bh)}
+#vbar #vbRange::-webkit-slider-thumb{transform:scale(0);transition:transform .15s ease}
+#vbar #vbRange:hover::-webkit-slider-thumb,#vbar #vbRange:active::-webkit-slider-thumb{transform:scale(1.15)}
+/* affiches : coins plus ronds, ombre douce qui grandit au survol (rendu « carte ») */
+.poster .im{border-radius:14px;transition:transform .2s ease,box-shadow .2s ease}
+.poster:hover .im{transform:scale(1.04);box-shadow:0 16px 34px rgba(0,0,0,.5)}
+/* changement d'onglet (TV, Films & séries, Agenda) : léger fondu et glissement */
+@keyframes viewIn{from{opacity:0;transform:translateY(10px)}}
+body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.homeview.vod #vod{animation:viewIn .3s cubic-bezier(.2,.8,.2,1)}
+.modal.open .sheet{animation:viewIn .25s cubic-bezier(.2,.8,.2,1)}
+@media (prefers-reduced-motion:reduce){body.homeview #home,body.homeview #agenda,body.homeview #vod,.modal.open .sheet{animation:none}}
+/* fiche : image du film floutée en fond (haut de la fiche), couleur du film en léger dégradé et sur le bouton Lecture */
+#vodModal .sheet.look{isolation:isolate;background:linear-gradient(180deg,color-mix(in srgb,var(--fc,var(--bg2)) 22%,var(--bg2)) 0,var(--bg2) 460px)}
+#vodModal .sheet.look::before{content:'';position:absolute;left:0;right:0;top:0;height:520px;z-index:-1;pointer-events:none;background:var(--vbd) center 20%/cover no-repeat;filter:blur(42px) saturate(1.25);opacity:.34;transform:scale(1.15);-webkit-mask:linear-gradient(#000 0,#000 35%,transparent 100%);mask:linear-gradient(#000 0,#000 35%,transparent 100%)}
+#vodModal .sheet.look #vodDetail .btn.primary{background:var(--fc,var(--blue));border-color:transparent;color:#fff}
+/* attente du lecteur (film, épisode) : affiche du film floutée et assombrie derrière le titre */
+#status{isolation:isolate}
+#status.bg::before{content:'';position:absolute;inset:0;z-index:-1;background:var(--sbg) center/cover no-repeat;filter:blur(32px) brightness(.42) saturate(1.2);transform:scale(1.12)}
 #vbar .live{display:none;height:24px;padding:0 9px 0 20px;border-radius:999px;font-size:11px;font-weight:600;letter-spacing:.06em;color:#fff;background:rgba(255,255,255,.12);position:relative}
 #vbar .live::before{content:'';position:absolute;left:9px;top:50%;width:6px;height:6px;margin-top:-3px;border-radius:50%;background:#9d9b95}
 #vbar .live.edge::before{background:#e5322d}
@@ -2685,6 +2706,9 @@ function setStatus(kind, msg, actions) {
   const c = S.current, ttl = kind === 'load' && c ? (c.vod ? c.name : niceName(c)) : '';
   el.innerHTML = (ttl ? `<div class="ldt">${esc(ttl)}</div>` : '') + (msg || kind === 'load' ? `<div class="msg">${msg || ''}</div>` : '') + (actions ? `<div class="actions">${actions}</div>` : '');
   if (kind === 'load') ldBar(null);
+  // film ou épisode : son affiche floutée derrière l'attente
+  const bg = kind === 'load' && c && c.vod && c.logo ? posterUrl(c.logo) : '';
+  el.classList.toggle('bg', !!bg); if (bg) el.style.setProperty('--sbg', 'url("' + bg.replace(/"/g, '%22') + '")');
 }
 // barre d'attente : false = cachée, null = reflet qui glisse (durée inconnue), 0 à 1 = part faite
 function ldBar(v) {
@@ -4634,6 +4658,8 @@ async function renderVod() {
     if (!key) h = h.replace('<div class="vrow">', tbox + '<div class="vrow">');   // sans clé : réglage en haut (avec la clé : Paramètres › Sources)
   }
   box.innerHTML = h;
+  if (V.lastTab !== V.tab && box.animate && !matchMedia('(prefers-reduced-motion: reduce)').matches) box.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'none' }], { duration: 260, easing: 'cubic-bezier(.2,.8,.2,1)' });
+  V.lastTab = V.tab;
   vodDedupe(box);
   if (!V.q && !V.cat && !['jf', 'hist'].includes(V.tab)) vodSeenFilter(box);   // pas sur Ma médiathèque ni l'Historique
   vodCineFilter(box);
@@ -5187,6 +5213,39 @@ function fuzzyHit(name, words) {
   const toks = norm(name).split(/[^a-z0-9]+/).filter(Boolean), full = norm(name);
   return words.every(w => full.includes(w) || (w.length >= 5 && toks.some(t => lev1(t, w))));
 }
+/* Fiche : image du film floutée en fond (l'affiche tout de suite, puis l'image de fond TMDB) et couleur dominante de
+   l'affiche (dégradé discret, bouton Lecture) */
+async function ficheLook(it) {
+  const sh = $('#vodModal .sheet'); if (!sh) return;
+  sh.classList.remove('look'); sh.style.removeProperty('--vbd'); sh.style.removeProperty('--fc');
+  const mine = () => V.open && V.open.it === it;
+  const set = u => { if (!u || !mine()) return; sh.style.setProperty('--vbd', 'url("' + u.replace(/"/g, '%22') + '")'); sh.classList.add('look'); };
+  const cov = coverOf(it) ? posterUrl(coverOf(it)) : '';
+  if (cov) { set(cov); filmColor(cov).then(c => { if (c && mine()) sh.style.setProperty('--fc', c); }); }
+  const ti = LS.get('pref.tmdb', '') ? await tmdbInfo(it).catch(() => null) : null, bd = ti && ti.d && ti.d.backdrop_path;
+  if (bd) set('https://image.tmdb.org/t/p/w780' + bd); else if (!cov && ti && ti.d && ti.d.poster_path) { const u = 'https://image.tmdb.org/t/p/w342' + ti.d.poster_path; set(u); filmColor(u).then(c => { if (c && mine()) sh.style.setProperty('--fc', c); }); }
+}
+// couleur dominante d'une image (moyenne des pixels colorés), ramenée à une teinte lisible sous un texte blanc ; null si
+// l'image ne peut pas être lue (serveur sans autorisation)
+const FCOL = new Map();
+function filmColor(url) {
+  if (FCOL.has(url)) return FCOL.get(url);
+  const p = new Promise(res => {
+    const im = new Image(); im.crossOrigin = 'anonymous'; im.referrerPolicy = 'no-referrer';
+    im.onload = () => { try {
+      const cv = document.createElement('canvas'); cv.width = 16; cv.height = 24; const g = cv.getContext('2d'); g.drawImage(im, 0, 0, 16, 24);
+      const d = g.getImageData(0, 0, 16, 24).data; let r = 0, gg = 0, b = 0, w = 0;
+      for (let i = 0; i < d.length; i += 4) { const mx = Math.max(d[i], d[i + 1], d[i + 2]), mn = Math.min(d[i], d[i + 1], d[i + 2]), sat = mx ? (mx - mn) / mx : 0, k = 0.15 + sat * sat; r += d[i] * k; gg += d[i + 1] * k; b += d[i + 2] * k; w += k; }
+      r /= w; gg /= w; b /= w;
+      const mx = Math.max(r, gg, b) / 255, mn = Math.min(r, gg, b) / 255, l0 = (mx + mn) / 2, dd = mx - mn;
+      let h = 0; if (dd) { const R = r / 255, G = gg / 255, B = b / 255; h = mx === R ? ((G - B) / dd) % 6 : mx === G ? (B - R) / dd + 2 : (R - G) / dd + 4; h = Math.round(h * 60 + 360) % 360; }
+      const s0 = dd ? dd / (1 - Math.abs(2 * l0 - 1)) : 0;
+      res(s0 < 0.12 ? null : 'hsl(' + h + ' ' + Math.round(Math.min(0.62, Math.max(0.35, s0)) * 100) + '% 42%)');
+    } catch (e) { res(null); } };
+    im.onerror = () => res(null); im.src = url;
+  });
+  FCOL.set(url, p); return p;
+}
 async function openVod(it) {
   if (!it) return;
   hovClose(true);
@@ -5232,6 +5291,7 @@ async function openVod(it) {
   $('#vodDetail').innerHTML = h + '</div></div>';
   showTrailer(it);
   V.open = { it, eps, cover, flat };
+  ficheLook(it);
   vodEnrich(it);
   vodTorLoad(it).catch(() => {});
   movDli();
@@ -6974,6 +7034,7 @@ function ptab(k) {
   if (!document.querySelector(`[data-ptabc="${k}"]`)) k = 'listes';
   document.querySelectorAll('[data-ptab]').forEach(b => b.classList.toggle('on', b.dataset.ptab === k));
   document.querySelectorAll('[data-ptabc]').forEach(c => c.classList.toggle('on', c.dataset.ptabc === k));
+  { const sec = document.querySelector(`[data-ptabc="${k}"]`); if (sec && sec.animate && ptab.last !== k && !matchMedia('(prefers-reduced-motion: reduce)').matches) sec.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 220, easing: 'cubic-bezier(.2,.8,.2,1)' }); ptab.last = k; }
   const ab = $('#addBox'); if (ab && !S.playlists.some(p => !p.extra)) ab.open = true;
   if (typeof renderFreeLists === 'function') renderFreeLists();
   if (typeof renderLangBox === 'function') renderLangBox();
