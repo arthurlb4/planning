@@ -1042,6 +1042,8 @@ h1,h2,h3,h4,h5,h6,b,strong,th,summary{font-weight:500}
       <div class="sc" style="display:flex;gap:8px;flex-wrap:wrap"><input class="field" id="subHost" placeholder="nouveau-serveur.com:8080 (avec le port s'il y en a un)" autocomplete="off" spellcheck="false" style="width:220px;margin:0"><button class="btn" id="subHostBtn">Changer</button></div></div>
     <div id="replayBox" class="srow" style="display:none"><div class="st"><b>Replay</b><small id="replayRes">Le serveur garde-t-il les programmes passés (retour au début, replay) ? Une seule question au serveur.</small></div>
       <div class="sc"><button class="btn" id="replayBtn">Vérifier</button></div></div>
+    <div id="diagBox" class="srow" style="display:none"><div class="st"><b>Diagnostic du serveur</b><small id="diagRes">Box qui bloque le serveur ? Adresse donnée par la box et par un DNS chiffré, puis un essai direct et un essai par le relais de l'appli.</small></div>
+      <div class="sc"><button class="btn" id="diagBtn">Tester</button></div></div>
     <h3>Mes listes</h3>
     <div id="plList"></div>
     <details class="padd" id="addBox"><summary>＋ Ajouter une liste</summary>
@@ -7440,7 +7442,7 @@ function copyNames() {
 }
 function renderPlaylists() {
   $('#builtinBox').style.display = S.playlists.some(p => p.id === 'builtin') ? 'none' : '';
-  { const rb = $('#replayBox'); if (rb) rb.style.display = epgCtx() ? '' : 'none'; } { const bp = S.playlists.find(p => p.id === 'builtin'), sb = $('#subHostBox'); if (sb) { sb.style.display = bp ? '' : 'none'; const i = $('#subHost'); if (bp && i && document.activeElement !== i) { try { const u = new URL(bp.url); i.value = u.host; } catch (e) {} } } }
+  { const rb = $('#replayBox'); if (rb) rb.style.display = epgCtx() ? '' : 'none'; const db = $('#diagBox'); if (db) db.style.display = epgCtx() && window.desktop && window.desktop.remux ? '' : 'none'; } { const bp = S.playlists.find(p => p.id === 'builtin'), sb = $('#subHostBox'); if (sb) { sb.style.display = bp ? '' : 'none'; const i = $('#subHost'); if (bp && i && document.activeElement !== i) { try { const u = new URL(bp.url); i.value = u.host; } catch (e) {} } } }
   if (window.renderSync) renderSync();
   const own = S.playlists.filter(p => !p.extra);       // les listes gratuites sont gérées dans « Chaînes gratuites »
   $('#plList').innerHTML = own.length ? own.map(p => `
@@ -7908,6 +7910,26 @@ async function replayCheck() {
   } catch (e) { out.textContent = 'Vérification impossible : ' + (e.message || e); }
 }
 $('#replayBtn').onclick = replayCheck;
+async function srvDiag() {
+  const x = epgCtx(), out = $('#diagRes'); if (!x || !window.desktop || !window.desktop.remux) { out.textContent = 'Seulement dans l\'appli Windows, avec un abonnement Xtream.'; return; }
+  const h = new URL(x.base).hostname, L = [];
+  const show = () => { out.innerHTML = L.map(l => esc(l)).join('<br>'); };
+  L.push('Serveur : ' + h + ' …'); show();
+  const d = await fetch(window.desktop.remux + '/dnsblock?h=' + encodeURIComponent(h), { signal: AbortSignal.timeout(10000) }).then(r => r.json()).catch(e => ({ error: e.message }));
+  L[0] = 'Serveur : ' + h; L.push(d.error ? 'Vérification DNS impossible : ' + d.error : 'Adresse donnée par la box : ' + ((d.sys || []).join(', ') || 'aucune') + ' · par le DNS chiffré : ' + ((d.doh || []).join(', ') || 'aucune') + ' → ' + (d.blocked ? 'BLOQUÉ par la box' : 'pas de blocage repéré'));
+  if (d.blocked != null) { DNSB.m[h] = { b: !!d.blocked, at: Date.now() }; LS.set('dev.dnsblock', DNSB.m); }
+  show();
+  const api = x.base + '/player_api.php?username=' + encodeURIComponent(x.user) + '&password=' + encodeURIComponent(x.pass);
+  const probe = async (lab, u) => { const t0 = Date.now(); try { const r = await fetch(u, { cache: 'no-store', signal: AbortSignal.timeout(12000) }); const t = (await r.text()).slice(0, 80).replace(/\s+/g, ' ');
+    L.push(lab + ' : réponse ' + r.status + ' en ' + (Date.now() - t0) + ' ms · ' + (/user_info/.test(t) ? 'compte OK' : '« ' + t + ' »')); } catch (e) { L.push(lab + ' : échec (' + (e.message || e) + ')'); } show(); };
+  await probe('Essai direct', api);
+  await probe('Essai par le relais de l\'appli', window.desktop.remux + '/px/' + new URL(x.base).protocol.replace(':', '') + '/' + new URL(x.base).host + '/player_api.php' + new URL(api).search);
+  // une chaîne de l'accueil, par le relais : premiers octets du flux
+  const ch = (homeIndex()[0] || { subs: [] }).subs[0]; const c = ch && ch.list[0];
+  if (c) await probe('Chaîne « ' + niceName(c) + ' » par le relais', window.desktop.remux + '/px/' + new URL(c.url).protocol.replace(':', '') + '/' + new URL(c.url).host + new URL(c.url).pathname);
+  L.push('Copiez ce texte dans la conversation si une ligne pose problème.'); show();
+}
+$('#diagBtn').onclick = srvDiag;
 async function subHostApply(quiet) {
   const p = S.playlists.find(x => x.id === 'builtin'); if (!p || !p.url) return;
   const url = subHost(p.url); if (url === p.url) return;

@@ -386,6 +386,7 @@ module.exports = function startRemux(ffmpeg, findVlc) {
 
 /* ---------- DNS chiffré et relais (contournement du blocage DNS de la box) ---------- */
 const DOH = new Map();
+const PX_UA = 'LecteurIPTV/' + ((() => { try { return require('./package.json').version; } catch (e) { return process.env.LECTEUR_VER || '1'; } })()) + ' (Windows)';
 async function dohA(host) {
   const c = DOH.get(host); if (c && Date.now() - c.at < 30 * 60e3) return c.ips;
   let ips = [];
@@ -403,7 +404,9 @@ function pxServe(req, res, u) {
   const self = 'http://' + req.headers.host + '/px/';
   const go = (proto, hostport, path, left) => {
     const [host, port] = hostport.split(':'), mod = require(proto === 'https' ? 'https' : 'http');
-    const headers = { 'User-Agent': req.headers['user-agent'] || 'LecteurIPTV', Accept: '*/*' }; if (req.headers.range) headers.Range = req.headers.range;
+    // nom de l'appli auprès du serveur (comme mpv) : un nom de navigateur est souvent refusé par les serveurs IPTV
+    const ua0 = String(req.headers['user-agent'] || ''), ua = !ua0 || /Mozilla|Chrome|Edg\//.test(ua0) ? PX_UA : ua0;
+    const headers = { 'User-Agent': ua, Accept: '*/*' }; if (req.headers.range) headers.Range = req.headers.range;
     const rq = mod.request({ host, port: port || (proto === 'https' ? 443 : 80), path, method: 'GET', headers, servername: host,
       lookup: (h, o, cb) => dohA(h).then(ips => ips.length ? (o && o.all ? cb(null, ips.map(a => ({ address: a, family: 4 }))) : cb(null, ips[0], 4)) : require('dns').lookup(h, o, cb), e => require('dns').lookup(h, o, cb)) }, up => {
       if (up.statusCode >= 300 && up.statusCode < 400 && up.headers.location && left > 0) {
