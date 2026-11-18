@@ -5114,7 +5114,10 @@ $('#vodInner').addEventListener('keydown', e => {
 window.addEventListener('resize', qsClose);
 $('#vod').addEventListener('scroll', () => { if (QS.el) qsClose(); }, { passive: true });
 let vodQT;
-$('#vodInner').addEventListener('input', e => { if (e.target.id !== 'vodQ') return; qsRender(); clearTimeout(vodQT); vodQT = setTimeout(() => { V.q = e.target.value; renderVod().then(() => { if (QS.el) qsRender(); }); }, 250); });
+let vodQH;
+$('#vodInner').addEventListener('input', e => { if (e.target.id !== 'vodQ') return; qsRender(); clearTimeout(vodQT); vodQT = setTimeout(() => { V.q = e.target.value; renderVod().then(() => { if (QS.el) qsRender(); }); }, 250);
+  // recherche gardée dans l'historique quand la frappe s'arrête 2 s (pas seulement avec Entrée)
+  clearTimeout(vodQH); const v = e.target.value; vodQH = setTimeout(() => { if (v.trim().length >= 3 && V.q === v) qHistPut(v); }, 2000); });
 $('#vodInner').addEventListener('click', e => {
   if (jfClick(e) || torClick(e)) return;
   if (e.target.closest('[data-reload]')) { V.force = true; V.data = null; renderVod(); return; }
@@ -5621,6 +5624,7 @@ function filmColor(url) {
   FCOL.set(url, p); return p;
 }
 async function openVod(it) {
+  if (V.q && document.body.classList.contains("vod")) qHistPut(V.q);   // fiche ouverte depuis une recherche : recherche gardée
   if (!it) return;
   hovClose(true);
   $('#vodModal h2 span').textContent = it.kind === 'series' ? 'Série' : 'Film'; $('#vodModal .sheet').classList.remove('hastr');
