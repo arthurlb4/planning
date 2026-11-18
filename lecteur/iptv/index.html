@@ -5268,7 +5268,11 @@ $('#vodInner').addEventListener('click', e => {
   if (hv || hx) { e.stopPropagation(); const k = (hv || hx).dataset[hv ? 'histv' : 'histx']; if (hv) seenPut(k, '', true); histDrop(k); toast(hv ? 'Marqué comme vu' : 'Retiré de Reprendre'); renderVod(); return; }
   const hs = e.target.closest('[data-hist]'); if (hs) { resumeHist(hs.dataset.hist); return; }
   const t = e.target.closest('[data-tab]'), c = e.target.closest('[data-cat]'), p = e.target.closest('[data-v]');
-  if (t) { V.tab = t.dataset.tab; V.q = ''; V.cat = null; renderVod(); $('#vod').scrollTop = 0; }
+  // onglet : allumé tout de suite et contenu effacé, puis la page se prépare (sinon on attendait la fin de la préparation)
+  if (t) { if (t.classList.contains('on') && !V.q) return; V.tab = t.dataset.tab; V.q = ''; V.cat = null;
+    document.querySelectorAll('#vodInner .vtop [data-tab]').forEach(b => b.classList.toggle('on', b === t));
+    $('#vodInner').querySelectorAll(':scope > :not(.vtop)').forEach(el => { el.style.transition = 'opacity .12s'; el.style.opacity = '0'; });
+    $('#vod').scrollTop = 0; requestAnimationFrame(() => setTimeout(renderVod, 0)); }
   else if (c) { V.tab = 'cats'; V.cat = c.dataset.cat || null; renderVod(); $('#vod').scrollTop = 0; }
   else if (p) openVod(V.shown[+p.dataset.v]);
 });
