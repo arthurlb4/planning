@@ -156,7 +156,7 @@ public class Mpv
     {
         if (ExitPending) { if (FullSized(r)) return; ExitPending = false; }
         if (rect == null || rect.ToJsonString() != r?.ToJsonString()) lastRectAt = Environment.TickCount64;
-        rect = r; if (f.InvokeRequired) f.BeginInvoke(Place); else Place(); }
+        rect = r; if (f.Sizing && !f.RatioLock) return; if (f.InvokeRequired) f.BeginInvoke(Place); else Place(); }   // pendant le geste : seulement le calcul par marges
     long holdUntil;
     public bool Holding => Environment.TickCount64 < holdUntil;
     // la coque place elle-même la vidéo pendant ms millisecondes, puis reprend la position donnée par la page
@@ -178,6 +178,17 @@ public class Mpv
         t.Start();
     }
     void Settled() { var t2 = new System.Windows.Forms.Timer { Interval = 20 }; t2.Tick += (s, e) => { t2.Stop(); t2.Dispose(); if (!Holding) f.Post(Msg(new JsonObject { ["moving"] = false })); }; t2.Start(); }
+    // place du lecteur pendant un redimensionnement : marges données par la page (liste, en-tête, barre du bas) gardées fixes
+    public Rectangle SizingBounds()
+    {
+        var r = rect; if (r == null || ((bool?)r["hidden"] ?? false) || f.RatioLock) return new Rectangle(Point.Empty, f.ClientSize);
+        double k = f.Scale, vw = (double?)r["vw"] ?? 0, vh = (double?)r["vh"] ?? 0; if (vw <= 0 || vh <= 0) return Rectangle.Empty;
+        double x = (double)r["x"]!, y = (double)r["y"]!, w = (double)r["w"]!, h = (double)r["h"]!;
+        int L = (int)Math.Floor(x * k), T = (int)Math.Floor(y * k), R = (int)Math.Floor((vw - x - w) * k), B = (int)Math.Floor((vh - y - h) * k);
+        // mini lecteur (petit, collé en bas à droite) : même taille, suit le coin
+        if (w < vw * 0.6 && R < 60 * k && B < 60 * k) return new Rectangle(f.ClientSize.Width - R - (int)Math.Ceiling(w * k), f.ClientSize.Height - B - (int)Math.Ceiling(h * k), (int)Math.Ceiling(w * k), (int)Math.Ceiling(h * k));
+        return new Rectangle(L, T, Math.Max(1, f.ClientSize.Width - L - R), Math.Max(1, f.ClientSize.Height - T - B));
+    }
     public void Place()
     {
         if (f.IsDisposed || Holding) return;

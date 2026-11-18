@@ -361,8 +361,9 @@ public class MainForm : Form
             /* lecteur normal : la page et mpv ne peuvent pas se redessiner exactement ensemble pendant le geste (sauts,
                proportions faussées) → image cachée (noir) le temps du geste, remise à sa place au lâcher. Pleine fenêtre :
                l'image suit (fenêtre aux proportions de la vidéo, ça marche bien) */
-            if (RatioLock) { var fb = new Rectangle(Point.Empty, ClientSize); if (Video.Visible && Video.Bounds != fb) { Video.Bounds = fb; mpv?.FitChild(); } }
-            else if (!sizeHid && Video.Visible && ClientSize != lastClient) { sizeHid = true; Post(new JsonObject { ["t"] = "mpv", ["st"] = new JsonObject { ["moving"] = true } }); }
+            // comme en pleine fenêtre : le lecteur = la fenêtre moins les marges fixes de la page (liste, barres), l'image y reste
+            // en 16/9 centrée ; tout calculé ici à chaque mouvement, sans attendre la page
+            if (Video.Visible && mpv != null) { var b = mpv.SizingBounds(); if (b.Width > 0 && Video.Bounds != b) { Video.Bounds = b; mpv.FitChild(); } }
         }
         else if (Video.Visible && !(mpv?.Holding ?? false) && lastClient.Width > 0 && lastClient.Height > 0 && ClientSize.Width > 0 && ClientSize != lastClient)
         {
