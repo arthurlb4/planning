@@ -287,7 +287,10 @@ public class MainForm : Form
     {
         var wp = new WINDOWPLACEMENT { length = System.Runtime.InteropServices.Marshal.SizeOf<WINDOWPLACEMENT>(), showCmd = max ? 3 : 1,
             normal = new RECT { Left = normal.Left, Top = normal.Top, Right = normal.Right, Bottom = normal.Bottom } };
+        // sans l'animation d'agrandissement de Windows (la fenêtre « zoomait » en transparence en sortant du plein écran)
+        int off = 1; try { DwmSetWindowAttribute(Handle, 3, ref off, 4); } catch { }
         try { SetWindowPlacement(Handle, ref wp); } catch { Bounds = normal; WindowState = max ? FormWindowState.Maximized : FormWindowState.Normal; }
+        BeginInvoke(() => { int on = 0; try { DwmSetWindowAttribute(Handle, 3, ref on, 4); } catch { } });
     }
     void SetFull(bool on)
     {
