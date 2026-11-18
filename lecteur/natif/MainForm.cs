@@ -309,9 +309,9 @@ public class MainForm : Form
         }
         else
         {
-            // agrandie avant : remise agrandie d'un seul coup (sans passer par une taille intermédiaire où la page se décalait),
-            // sa taille « normale » gardée pour plus tard
-            if (fullPrev == FormWindowState.Maximized) SetPlacement(normalBounds, true);
+            // agrandie avant : d'abord exactement la zone de travail de l'écran (même zone utile qu'agrandie : la page ne bouge pas),
+            // puis agrandie (même taille : pas d'animation de Windows), et enfin sa taille « normale » d'avant gardée pour plus tard
+            if (fullPrev == FormWindowState.Maximized) { Bounds = Screen.FromControl(this).WorkingArea; WindowState = FormWindowState.Maximized; SetPlacement(normalBounds, true); }
             else { Bounds = normalBounds; WindowState = fullPrev; }
             if (Video.Visible && prevVideo.Width > 0) { Video.Bounds = prevVideo; mpv?.FitChild(); }
         }
