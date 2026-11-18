@@ -2673,11 +2673,14 @@ function jfItem(x) {
 }
 function jfRow(title, list, prog) {
   if (!list.length) return '';
-  return `<div class="vrow"><h3>${esc(title)}</h3><div class="vwrap"><div class="vscroll">${list.map(x => { const it = jfItem(x), k = JF.shown.push(x) - 1, ud = x.UserData || {};
+  return `<div class="vrow"><h3>${esc(title)}</h3><div class="vwrap"><div class="vscroll">${jfPosters(list, prog)}</div></div></div>`;
+}
+function jfPosters(list, prog) {
+  return list.map(x => { const it = jfItem(x), k = JF.shown.push(x) - 1, ud = x.UserData || {};
     const pr = prog && ud.PlaybackPositionTicks && x.RunTimeTicks ? { pct: ud.PlaybackPositionTicks / x.RunTimeTicks * 100, lab: 'reste ' + fmtDur((x.RunTimeTicks - ud.PlaybackPositionTicks) / 1e7) } : null;
     // data-v aussi : aperçu au survol avec la bande-annonce (TMDB, via l'identifiant TMDB de Jellyfin) ; le clic reste à Jellyfin
     return posterHtml(it, V.shown.push(it) - 1, 0, pr).replace('<button class="poster"', '<button class="poster" data-jfv="' + k + '"')
-      .replace('<div class="im">', `<div class="im"><span class="hxb"><span data-jfdel="${k}" title="Supprimer de la médiathèque (fichiers effacés du disque)"><svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg></span></span>`); }).join('')}</div></div></div>`;
+      .replace('<div class="im">', `<div class="im"><span class="hxb"><span data-jfdel="${k}" title="Supprimer de la médiathèque (fichiers effacés du disque)"><svg viewBox="0 0 24 24"><path d="M5 7h14M10 7V5h4v2M7 7l1 12h8l1-12"/></svg></span></span>`); }).join('');
 }
 async function jfRender() {
   JF.shown = [];
@@ -2691,7 +2694,9 @@ async function jfRender() {
     const u = '/Users/' + c.uid + '/Items?Recursive=true&Fields=' + JF_FIELDS + '&IncludeItemTypes=';
     const [res, late, mov, ser] = await Promise.all([jfGet('/Users/' + c.uid + '/Items/Resume?Limit=20&MediaTypes=Video&Fields=' + JF_FIELDS), jfGet(u + 'Movie,Series&SortBy=DateCreated&SortOrder=Descending&Limit=30'),
       jfGet(u + 'Movie&SortBy=SortName'), jfGet(u + 'Series&SortBy=SortName')]);
-    let h = jfRow('Reprendre', res.Items || [], true) + jfRow('Ajoutés récemment', late.Items || []) + jfRow('Films', mov.Items || []) + jfRow('Séries', ser.Items || []);
+    const have = new Set([...(mov.Items || []), ...(ser.Items || [])].filter(x => (x.ProviderIds || {}).Tmdb).map(x => (x.Type === 'Series' ? 's' : 'm') + x.ProviderIds.Tmdb));
+    const pend = (await Promise.race([dlItems(['m', 's']).catch(() => []), new Promise(r => setTimeout(() => r([]), 2000))])).filter(x => !have.has(tmIdOf(x.it)));
+    let h = (pend.length ? `<div class="vrow" data-dd="keep"><h3>En cours sur ce PC<small>téléchargement ou rangement pas encore fini</small></h3><div class="vwrap"><div class="vscroll">${pendPosters(pend)}</div></div></div>` : '') + jfRow('Reprendre', res.Items || [], true) + jfRow('Ajoutés récemment', late.Items || []) + jfRow('Films', mov.Items || []) + jfRow('Séries', ser.Items || []);
     if (!h) h = '<div class="empty">Votre médiathèque est vide pour l\'instant : les films et séries rangés dans les dossiers de Jellyfin apparaîtront ici.</div>';
     return h;                                           // compte Jellyfin : dans Paramètres › Sources
   } catch (e) {
@@ -4232,20 +4237,39 @@ async function vodSeenFilter(box) {
     if (!row.querySelector('.poster[data-v]:not([data-jfv])')) row.remove();
   }
 }
-async function dlRow(kinds) {
-  if (!window.desktop || !window.desktop.remux || vodSrc() !== 'tor') return '';
-  const L = await fetch(window.desktop.remux + '/torrent/list').then(r => r.ok ? r.json() : null).catch(() => null); if (!Array.isArray(L) || !L.length) return '';
-  const M = LS.get('vod.tordl', {}) || {}, seen = new Set(), its = [], pr = [];
+/* Ma médiathèque, une seule rangée : en tête ce qui est sur ce PC mais pas encore dans Jellyfin (téléchargement ou
+   rangement en cours), puis les derniers arrivés dans Jellyfin ; un titre n'y apparaît qu'une fois. */
+async function dlItems(kinds) {
+  if (!window.desktop || !window.desktop.remux || vodSrc() !== 'tor') return [];
+  const L = await fetch(window.desktop.remux + '/torrent/list').then(r => r.ok ? r.json() : null).catch(() => null); if (!Array.isArray(L)) return [];
+  const M = LS.get('vod.tordl', {}) || {}, seen = new Set(), out = [];
   L.forEach(x => {
     const m = M[x.id]; if (!m) return;
     let it = itemByKey(m.k) || (V.data && V.data._gmap && V.data._gmap.get(m.g)) || null;
     if (!it && m.tmdb) { it = virtItem((m.kind === 'series' ? 's' : 'm') + m.tmdb, { t: m.n, y: m.y }); if (!it.cover && m.p) it.cover = m.p; }
     if (!it || !kinds.includes(it.kind === 'series' ? 's' : 'm')) return;
     const g = gKey(it); if (seen.has(g)) return; seen.add(g);
-    its.push(it); pr.push({ pct: Math.round(x.pct * 100), lab: torMo(x.size) + (x.pct < 0.995 ? ' · ' + Math.round(x.pct * 100) + ' %' : ' · complet') });
+    out.push({ it, pct: Math.round(x.pct * 100), size: x.size });
   });
-  if (!its.length) return '';
-  return `<div class="vrow" data-dd="keep"><h3>Téléchargés sur ce PC<small>gardés une semaine après la dernière lecture</small></h3><div class="vwrap"><div class="vscroll">${its.map((it, i) => posterHtml(it, V.shown.push(it) - 1, 0, pr[i])).join('')}</div></div></div>`;
+  return out;
+}
+// identifiants TMDB de tout ce qui est dans Jellyfin (« m603 », « s1399 »), gardés 1 min
+async function jfTmdbAll() {
+  if (JF.tm && Date.now() - JF.tm.at < 60e3) return JF.tm.set;
+  const j = await jfGet('/Users/' + jfConf().uid + '/Items?Recursive=true&IncludeItemTypes=Movie,Series&Fields=ProviderIds');
+  const set = new Set((j.Items || []).filter(x => (x.ProviderIds || {}).Tmdb).map(x => (x.Type === 'Series' ? 's' : 'm') + x.ProviderIds.Tmdb));
+  JF.tm = { at: Date.now(), set }; return set;
+}
+const tmIdOf = it => it && it.tmdb ? (it.kind === 'series' ? 's' : 'm') + it.tmdb : '';
+const pendPosters = l => l.map(x => posterHtml(x.it, V.shown.push(x.it) - 1, 0, { pct: x.pct, lab: (x.size ? torMo(x.size) + ' · ' : '') + (x.pct < 99.5 ? 'téléchargement ' + x.pct + ' %' : 'en cours de rangement') })).join('');
+async function medRow(kinds) {
+  const to = (p, ms, d) => Promise.race([Promise.resolve(p).catch(() => d), new Promise(r => setTimeout(() => r(d), ms))]), jc = jfConf();
+  const types = kinds.map(k => k === 'm' ? 'Movie' : 'Series').join(',');
+  const [dl, set, jl] = await Promise.all([to(dlItems(kinds), 2000, []), jc ? to(jfTmdbAll(), 2500, null) : null,
+    jc ? to(jfGet('/Users/' + jc.uid + '/Items?Recursive=true&Fields=' + JF_FIELDS + '&IncludeItemTypes=' + types + '&SortBy=DateCreated&SortOrder=Descending&Limit=20'), 2500, null) : null]);
+  const pend = dl.filter(x => !set || !set.has(tmIdOf(x.it))), jfl = (jl && jl.Items) || [];
+  if (!pend.length && !jfl.length) return '';
+  return `<div class="vrow" data-dd="keep"><h3>Ma médiathèque<small>${pend.length ? pend.length + ' en cours sur ce PC' + (jfl.length ? ' · puis les derniers arrivés' : '') : 'derniers arrivés'}</small></h3><div class="vwrap"><div class="vscroll">${pendPosters(pend)}${jfPosters(jfl)}</div></div></div>`;
 }
 function vodRow(title, sub, list, ranked, keep) { if (!list.length) return ''; return `<div class="vrow" data-dd="${ranked || keep ? 'keep' : 'dedupe'}"><h3>${esc(title)}${sub ? `<small>${esc(sub)}</small>` : ''}</h3><div class="vwrap"><button class="varr l" data-arr="-1" aria-label="Précédents"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><div class="vscroll">${list.map((it, k) => posterHtml(it, V.shown.push(it) - 1, Array.isArray(ranked) ? ranked[k] : ranked && k < 20 ? k + 1 : 0)).join('')}</div><button class="varr r" data-arr="1" aria-label="Suivants"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button></div></div>`; }
 
@@ -4733,10 +4757,8 @@ async function renderVod() {
     if (hist.length) h += `<div class="vrow"><h3>Reprendre</h3><div class="vwrap"><div class="vscroll">${hist.slice(0, 20).map(({ e, it }) => posterHtml(it, V.shown.push(it) - 1, 0, { pct: e.dur ? e.pos / e.dur * 100 : 0, lab: e.lab || (e.dur ? 'reste ' + fmtDur(e.dur - e.pos) : '') }).replace('<button class="poster"', `<button class="poster" data-hist="${esc(e.k)}"`).replace('<div class="im">', `<div class="im"><span class="hxb"><span data-histv="${esc(e.k)}" title="Marquer comme vu">✓</span><span data-histx="${esc(e.k)}" title="Retirer de Reprendre">✕</span></span>`)).join('')}</div></div></div>`;
     const ml = myListItems(kinds);
     if (ml.length) h += vodRow('Ma liste', '', ml, false, true);
-    // Téléchargés : torrents gardés sur ce PC (appli Windows) et derniers arrivés dans Ma médiathèque (Jellyfin)
-    h += await Promise.race([dlRow(kinds).catch(() => ''), new Promise(r => setTimeout(() => r(''), 2000))]);
-    if (V.tab === 'home' && jfConf()) { JF.shown = []; const jl = await Promise.race([jfGet('/Users/' + jfConf().uid + '/Items?Recursive=true&Fields=' + JF_FIELDS + '&IncludeItemTypes=Movie,Series&SortBy=DateCreated&SortOrder=Descending&Limit=20').catch(() => null), new Promise(r => setTimeout(() => r(null), 2500))]);
-      if (jl && jl.Items && jl.Items.length) h += jfRow('Ma médiathèque · ajoutés récemment', jl.Items).replace('class="vrow"', 'class="vrow" data-dd="keep"'); }
+    // Ma médiathèque : en cours sur ce PC (pas encore dans Jellyfin), puis derniers arrivés dans Jellyfin
+    JF.shown = []; h += await medRow(kinds).catch(() => '');
     let bc = '';
     if (POP) {
       const FY = await Promise.race([forYou(kinds).catch(() => null), new Promise(r => setTimeout(() => r(null), 6000))]);
