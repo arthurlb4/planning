@@ -1985,6 +1985,8 @@ setInterval(() => {
   const off = !vpnOk();
   if ((off || vpnGuard.was) && torOk()) fetch(window.desktop.remux + '/torrent/guard?block=' + (off ? 1 : 0)).catch(() => {});
   if (off && !vpnGuard.was && TOR.cur) toastLong('VPN coupé : torrent mis en pause, il reprendra dès que le VPN sera reconnecté');
+  // VPN allumé ou coupé : blocage de la box à revérifier (il ne vaut que sans VPN)
+  { const on = !!(vpnSt().on); if (vpnGuard.on != null && vpnGuard.on !== on && typeof DNSB !== 'undefined') { DNSB.m = {}; LS.set('dev.dnsblock', {}); } vpnGuard.on = on; }
   vpnGuard.was = off;
 }, 4000);
 // indexeurs actifs dans Prowlarr (diagnostic d'une recherche sans résultat)
@@ -7502,7 +7504,7 @@ function stopAll() { torRelease(S.current); token++; stopEngines(); unfreeze(); 
 /* Liste par adresse : directement si le serveur l'accepte, sinon via le serveur de l'app (CORS, adresse en http, blocage) */
 const RELAY = 'https://planning-gcal.arthur-lebreton94.workers.dev/iptv/m3u?url=';
 /* Serveur IPTV bloqué par la box (DNS) : flux et appels au serveur relayés par le serveur local de l'appli, qui trouve la
-   vraie adresse par un DNS chiffré. Vérifié une fois par jour et par serveur (appli Windows seulement). */
+   vraie adresse par un DNS chiffré. Revérifié toutes les 10 min et quand le VPN change (appli Windows seulement). */
 const DNSB = { m: LS.get('dev.dnsblock', {}) || {}, p: {} };
 const pxHost = u => { try { return new URL(u).host; } catch (e) { return ''; } };
 function pxUrl(url) {
@@ -7514,7 +7516,8 @@ function dnsCheck(url) {
   if (!window.desktop || !window.desktop.remux) return Promise.resolve(false);
   let h = ''; try { h = new URL(url).hostname; } catch (e) { return Promise.resolve(false); }
   if (!h || /^(127\.|localhost)/.test(h)) return Promise.resolve(false);
-  const e = DNSB.m[h]; if (e && Date.now() - e.at < 864e5) return Promise.resolve(!!e.b);
+  // 10 min seulement : le VPN allumé ou coupé change tout (avec le VPN, la box n'est plus en jeu et le relais peut gêner)
+  const e = DNSB.m[h]; if (e && Date.now() - e.at < 10 * 60e3) return Promise.resolve(!!e.b);
   if (DNSB.p[h]) return DNSB.p[h];
   return DNSB.p[h] = fetch(window.desktop.remux + '/dnsblock?h=' + encodeURIComponent(h), { signal: AbortSignal.timeout(8000) }).then(r => r.json()).then(j => {
     if (j && j.blocked != null) { DNSB.m[h] = { b: !!j.blocked, at: Date.now() }; LS.set('dev.dnsblock', DNSB.m); if (j.blocked) toast('Serveur bloqué par la box : passage par un DNS chiffré'); }
@@ -7523,6 +7526,7 @@ function dnsCheck(url) {
 }
 async function fetchText(url) {
   await dnsCheck(url).catch(() => false); const url0 = url; url = pxUrl(url);   // relais du site : toujours l'adresse d'origine
+  if (url !== url0) { try { const r = await fetch(url, { cache: 'no-store' }); if (r.ok) { const t = await r.text(); if (!/^\s*<(!doctype|html)/i.test(t)) return t; } } catch (e) {} url = url0; }   // relais de l'appli en échec : direct
   // Toujours un essai direct : bloqué tout de suite dans un navigateur si l'adresse est en http, mais permis dans l'appli Windows
   // (réponse gardée pour le message d'erreur : c'est celle qui compte avec un VPN)
   let pc = '';
