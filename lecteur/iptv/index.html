@@ -1005,9 +1005,13 @@ h1,h2,h3,h4,h5,h6,b,strong,th,summary{font-weight:500}
     <div id="appVer" hidden></div>
     <h3>Synchronisation</h3>
     <div id="syncBox"></div>
+    <h3 id="rgH" hidden>Ma médiathèque</h3>
+    <div class="dlbox" id="rgBox" hidden></div>
+    <h3>Cet appareil</h3>
+    <div class="dlbox"><div class="srow"><div class="st"><b>Oublier cet appareil</b><small>Efface d'ici votre abonnement, vos listes, réglages et historique (PC qui n'est pas le vôtre). Rien n'est effacé sur vos autres appareils.</small></div><div class="sc"><button class="btn" id="forgetBtn">Oublier</button></div></div></div>
     <h3>Télécharger l'appli</h3>
     <div class="dlbox">
-      <a class="dl" href="https://github.com/arthurlb4/planning/releases/download/iptv-desktop/Lecteur-IPTV-Installation.exe" download><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span><b>Windows</b><small>Installation dans votre profil, mises à jour automatiques · lit aussi les films MKV</small></span><i>Télécharger</i></a>
+      <a class="dl" href="https://github.com/arthurlb4/planning/releases/download/iptv-natif/Lecteur-IPTV-Natif-Installation.exe" download><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span><b>Windows</b><small>Installation dans votre profil, sans droits d'administrateur, mises à jour automatiques · lit tous les formats (mpv)</small></span><i>Télécharger</i></a>
       <a class="dl" href="https://github.com/arthurlb4/planning/releases/download/iptv-tv/Lecteur-IPTV-TV-installation.zip" download><svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M7 21h10"/></svg><span><b>Télé Samsung</b><small>Dézipper puis double-cliquer sur Installer-sur-la-TV.bat (PC sur le même réseau que la télé)</small></span><i>Télécharger</i></a>
       <div class="dl"><svg viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M11 18h2"/></svg><span><b>iPhone / iPad</b><small>Dans Safari : bouton Partager › « Sur l'écran d'accueil »</small></span></div>
     </div>
@@ -3055,7 +3059,7 @@ function fail(c) {
     const app = !!window.desktop;
     return setStatus('msg', '<b style="color:var(--text)">Ce film MKV ne se lit pas ' + (app ? 'ici' : 'dans le navigateur') + '</b><br><span class="hint">'
       + (app ? 'Le module de conversion de l\'appli n\'a pas démarré.' : 'Son Dolby ou format que le navigateur ne sait pas lire, et le serveur ne propose pas de version convertie. L\'appli Windows le lit (conversion intégrée), la télé Samsung et VLC aussi.') + '</span>',
-      (app ? '' : '<a class="btn primary" href="https://github.com/arthurlb4/planning/releases/download/iptv-desktop/Lecteur-IPTV-Installation.exe" download>Télécharger l\'appli Windows</a>')
+      (app ? '' : '<a class="btn primary" href="https://github.com/arthurlb4/planning/releases/download/iptv-natif/Lecteur-IPTV-Natif-Installation.exe" download>Télécharger l\'appli Windows</a>')
       + '<button class="btn" onclick="openVlc(S.current)">Ouvrir dans VLC</button><button class="btn" onclick="copyErr()">Copier le code d\'erreur</button>');
   }
   const mixed = location.protocol === 'https:' && /^http:/i.test(c.url);
@@ -3074,6 +3078,8 @@ function fail(c) {
   const why = refused
     ? 'Le serveur IPTV <b>refuse la connexion</b> (erreur 403 ou 511) : il bloque l\'adresse d\'où vous vous connectez. Souvent un VPN actif (les fournisseurs bloquent leurs adresses), ou votre adresse bannie par le fournisseur (trop de connexions). Essayez sans VPN, ou depuis une autre connexion (4G) ; si ça ne passe nulle part, le fournisseur doit la débloquer.'
       + (hosts.length ? '<br><br>Pour garder le VPN : mettez <b>tous</b> ces serveurs dans les exceptions du VPN (la liste et les chaînes doivent passer par la même connexion), puis reconnectez-le : <b>' + hosts.map(esc).join('</b>, <b>') + '</b>' : '')
+    : mixed && !APPLE_WEBKIT && !window.desktop
+    ? 'Ce flux est en <b>http</b>, bloqué sur cette page sécurisée (https). Ouvrez le lecteur à son adresse en http (bouton ci-dessous) : la chaîne y passe ; il faudra y redéverrouiller « Mon abonnement ».'
     : mixed
     ? 'Ce flux est en <b>http</b>, bloqué sur une page sécurisée (https), et sa version https ne s\'ouvre pas dans ce navigateur (serveur qui refuse les navigateurs, ou pas de https). Sur iPhone et Mac, Safari passe souvent là où Chrome, Edge ou Firefox échouent.'
     : 'Le flux ne répond pas au navigateur : serveur hors ligne, accès refusé aux navigateurs (CORS) ou format non pris en charge.';
@@ -3081,8 +3087,11 @@ function fail(c) {
   const log = (S.tries || []).map(x => ({ native: 'appareil', hls: 'hls.js', mpegts: 'mpegts.js' }[x.eng] || x.eng) + ' · ' + x.u + ' → ' + x.why);
   failMsg([why.replace(/<[^>]+>/g, ''), ...log, navigator.userAgent.replace(/^Mozilla\/5\.0 /, '').slice(0, 140)].join('\n'),
     (!refused && mixed && APPLE_WEBKIT && !/[#&]fromhttps=1/.test(location.hash) ? `<button class="btn primary" onclick="openHttpVersion()">Ouvrir la version iPhone</button>` : '') +
+    // navigateur d'ordinateur (pas l'appli) : adresse du lecteur en http, sur laquelle Chrome, Edge ou Firefox ne forcent pas le https
+    (!refused && mixed && !APPLE_WEBKIT && !window.desktop ? `<a class="btn primary" href="http://tv.lecteur.franceinfoplanning.com:8080/">Ouvrir le lecteur en http</a>` : '') +
     `<button class="btn${mixed && APPLE_WEBKIT ? '' : ' primary'}" onclick="openVlc(S.current)">Ouvrir dans VLC</button>`,
-    refused ? 'Serveur IPTV qui refuse la connexion (VPN actif ?). Pour garder le VPN, mettez dans ses exceptions : <b id="vpnHosts">' + hosts.map(esc).join(', ') + '</b>, puis reconnectez-le.' : '');
+    refused ? 'Serveur IPTV qui refuse la connexion (VPN actif ?). Pour garder le VPN, mettez dans ses exceptions : <b id="vpnHosts">' + hosts.map(esc).join(', ') + '</b>, puis reconnectez-le.'
+      : mixed && !APPLE_WEBKIT && !window.desktop ? 'Chaîne en http, bloquée sur cette page en https : ouvrez le lecteur à son adresse en http (bouton ci-dessous), puis redéverrouillez « Mon abonnement ».' : '');
   // appli : comme nslookup, le vrai serveur derrière chaque alias et ses adresses (les exceptions du VPN suivent mal les alias)
   if (refused && window.desktop && window.desktop.remux && hosts.length) Promise.all(hosts.map(h => fetch(window.desktop.remux + '/dns?h=' + encodeURIComponent(h)).then(r => r.json()).catch(() => null))).then(L => {
     const all = [...new Set(L.filter(Boolean).flatMap(x => [x.host, ...(x.alias || []), ...(x.ips || [])]).filter(Boolean))];
@@ -6972,6 +6981,7 @@ function ptab(k) {
   if (typeof prwSettings === 'function') prwSettings();
   if (typeof renderVpnBox === 'function') renderVpnBox();
   const vh = $('#appVerH'); if (vh) vh.hidden = $('#appVer').hidden;
+  if (typeof rgBox === 'function') rgBox();
   // Paramètres ouverts : recherche d'une mise à jour de l'appli (au plus une fois par minute ; rien si une est en cours ou prête)
   if (window.desktop && window.desktop.checkUpdate && window.desktop.updState && Date.now() - (ptab.upd || 0) > 60e3) {
     let st = null; try { st = window.desktop.updState(); } catch (e) {}
@@ -7213,6 +7223,32 @@ async function subHostApply(quiet) {
   const text = await fetchPlaylist(url);
   await savePlaylist(Object.assign({}, p, { url, text }));
   if (!quiet) toast('« Mon abonnement » passe sur le nouveau serveur');
+}
+/* Oublier cet appareil : tout ce que l'appli a gardé dans ce navigateur (abonnement déchiffré, listes, réglages, historique)
+   est effacé ; deux clics (pas de fenêtre de confirmation dans l'appli) */
+$('#forgetBtn').onclick = async () => {
+  const b = $('#forgetBtn');
+  if (!b.dataset.sure) { b.dataset.sure = '1'; b.textContent = 'Confirmer l\'effacement'; b.classList.add('primary'); setTimeout(() => { delete b.dataset.sure; b.textContent = 'Oublier'; b.classList.remove('primary'); }, 5000); return; }
+  b.disabled = true; b.textContent = 'Effacement…';
+  try { Object.keys(localStorage).filter(k => /^iptv\./.test(k)).forEach(k => localStorage.removeItem(k)); } catch (e) {}
+  try { sessionStorage.clear(); } catch (e) {}
+  try { if (DB.db) DB.db.close(); } catch (e) {}
+  await new Promise(r => { try { const q = indexedDB.deleteDatabase('iptv'); q.onsuccess = q.onerror = q.onblocked = () => r(); } catch (e) { r(); } });
+  try { if (window.caches) for (const k of await caches.keys()) await caches.delete(k); } catch (e) {}
+  location.reload();
+};
+/* Ma médiathèque (appli avec torrents) : à l'ouverture de Paramètres › Appareils, rangement lancé tout seul (il l'est aussi
+   au lancement, toutes les 10 min et à la fin de chaque téléchargement) et compte rendu affiché, torrent par torrent */
+function rgBox() {
+  const box = $('#rgBox'), h = $('#rgH'); if (!box) return;
+  const on = typeof torOk === 'function' && torOk(); box.hidden = h.hidden = !on; if (!on) return;
+  if (!$('#plModal').classList.contains('open') || !document.querySelector('[data-ptabc="appareils"].on') || Date.now() - (rgBox.at || 0) < 30000) return;
+  rgBox.at = Date.now();
+  box.innerHTML = srow('Rangement automatique', 'Films et séries terminés dans qBittorrent (catégories films / series) rangés par Radarr / Sonarr dans Ma médiathèque', '<span class="hint">en cours…</span>');
+  fetch(window.desktop.remux + '/torrent/ranger').then(r => r.json()).catch(e => ({ error: e.message })).then(j => {
+    const l = j.error ? ['Impossible : ' + j.error] : (j.r || []).length ? j.r : ['Aucun torrent en catégorie films ou series dans qBittorrent.'];
+    box.innerHTML = srow('Rangement automatique', 'Films et séries terminés dans qBittorrent (catégories films / series) rangés par Radarr / Sonarr dans Ma médiathèque', '') + '<div class="hint" style="padding:0 0 12px;line-height:1.6">' + l.map(x => '· ' + esc(x)).join('<br>') + '</div>';
+  });
 }
 $('#subHostBtn').onclick = async () => {
   const b = $('#subHostBtn'), v = $('#subHost').value.trim(); if (!v) return;

@@ -226,6 +226,16 @@ module.exports = function startRemux(ffmpeg, findVlc) {
           const alias = []; let name = h0;
           for (let k = 0; k < 5; k++) { const c = await dns.resolveCname(name).catch(() => null); if (!c || !c[0]) break; alias.push(c[0]); name = c[0]; }
           let ips = await dns.resolve4(name).catch(() => []);
+          // secours (Windows, VPN) : nslookup, comme à la main ; « Nom / Name » = vrai serveur, puis ses adresses
+          if (!alias.length && process.platform === 'win32') {
+            const out = await new Promise(r => require('child_process').execFile('nslookup', [h0], { windowsHide: true, timeout: 6000 }, (e, so) => r(String(so || ''))));
+            const ans = out.split(/\r?\n/), i = ans.findIndex(l => /^\s*(Nom|Name)\s*:/i.test(l));
+            if (i >= 0) {
+              const real = ans[i].split(':').slice(1).join(':').trim().toLowerCase();
+              if (real && real !== h0) { alias.push(real); name = real; }
+              for (let k = i + 1; k < ans.length && !/^\s*(Aliases|Alias)\s*:/i.test(ans[k]); k++) (ans[k].match(/\b\d{1,3}(\.\d{1,3}){3}\b/g) || []).forEach(x => { if (!ips.includes(x)) ips.push(x); });
+            }
+          }
           if (!ips.length) ips = (await dns.lookup(name, { all: true, family: 4 }).catch(() => [])).map(x => x.address);   // secours : résolveur de Windows
           res.end(JSON.stringify({ host: h0, alias, ips }));
         })().catch(e => res.end(JSON.stringify({ error: e.message })));
