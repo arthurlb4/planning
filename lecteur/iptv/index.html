@@ -1260,7 +1260,7 @@ function usePlaylist(id) {
   S.group = 'home';
   $('#plName').textContent = p.name + ' · ' + S.channels.length.toLocaleString('fr-FR') + ' chaînes';
   renderGroups(); applyFilter(true); renderPlaylists();
-  clearTimeout(replayLoad.t); RP.ids = null; replayLoad.t = setTimeout(() => replayLoad().catch(() => {}), 20000);
+  clearTimeout(replayLoad.t); RP.ids = null; replayLoad.t = setTimeout(() => replayLoad().catch(() => {}), 1500);   // gardé du jour : bouton Début tout de suite
   setHomeView(S.group === 'home' && !S.current);
   const lastUrl = LS.get('last.' + p.id);
   if (typeof renderFreeLists === 'function') renderFreeLists();
@@ -3568,7 +3568,9 @@ function rpTime(t) {
 }
 function replayUrl(c, start, end) {
   const m = /^(https?:\/\/[^/]+)\/live\/([^/]+)\/([^/]+)\/(\d+)/.exec(c.url || ''); if (!m) return '';
-  const st = Math.floor(start / 60000) * 60000, dur = Math.max(1, Math.ceil((end - st) / 60000) + 1);
+  // durée : jamais au-delà de ce qui est déjà enregistré (émission en cours : le serveur refuse, ou s'arrête aussitôt)
+  const st = Math.floor(start / 60000) * 60000, rec = Math.floor((Date.now() - st) / 60000) - 2;
+  const dur = Math.max(1, Math.min(Math.ceil((end - st) / 60000) + 1, rec));
   return `${m[1]}/timeshift/${m[2]}/${m[3]}/${dur}/${rpTime(st)}/${m[4]}.ts`;
 }
 // programme passé (ou en cours, depuis son début) lu comme un film ; « Retour au direct » ramène sur la chaîne
@@ -6092,7 +6094,7 @@ function mpvBack() {
   const c = S.current;
   if (c && S.mpvSt.pos > 30) { LS.set(posK(c.url), Math.floor(S.mpvSt.pos)); try { histTrack(c); } catch (e) {} }
   window.desktop.mpv.stop(); S.engine = ''; document.body.classList.remove('mpv');
-  if (c && c.replayOf) { play(c.replayOf); return; }    // replay fini ou quitté : retour au direct de la chaîne
+  if (c && c.replayOf) { if (!(S.mpvSt.pos > 10)) toast('Replay refusé par le serveur pour ce passage : retour au direct'); play(c.replayOf); return; }    // replay fini ou quitté : retour au direct de la chaîne
   if (V.back) $('#vodBack').click(); else { stopAll(); setHomeView(true, true, 'vod'); }
 }
 async function playRemux(c, t) {
