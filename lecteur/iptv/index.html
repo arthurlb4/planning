@@ -7521,7 +7521,11 @@ async function fetchText(url) {
   // Toujours un essai direct : bloqué tout de suite dans un navigateur si l'adresse est en http, mais permis dans l'appli Windows
   // (réponse gardée pour le message d'erreur : c'est celle qui compte avec un VPN)
   let pc = '';
-  try { const res = await fetch(url, { cache: 'no-store' }); if (res.ok) return await res.text(); pc = 'Depuis ce PC : le serveur répond ' + res.status; }
+  try { const res = await fetch(url, { cache: 'no-store' });
+    if (res.ok) { const t = await res.text();
+      // page web à la place de la réponse du serveur (liste, compte) : page d'avertissement d'une box qui bloque le serveur → le relais
+      if (!/^\s*<(!doctype|html)/i.test(t)) return t; pc = 'Depuis ce PC : serveur bloqué par la box (page d\'avertissement reçue)'; }
+    else pc = 'Depuis ce PC : le serveur répond ' + res.status; }
   catch (e) { if (window.desktop) pc = 'Depuis ce PC : serveur injoignable'; }
   let res;
   try { res = await fetch(RELAY + encodeURIComponent(url0), { cache: 'no-store' }); }
