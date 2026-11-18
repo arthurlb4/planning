@@ -1629,6 +1629,8 @@ function renderHome() {
 // Pages (accueil, agenda) ; mini = la chaîne en cours continue dans un coin
 function setHomeView(on, mini, page) {
   if (!on || page === 'vod') document.body.classList.remove('tvswitch');
+  { const B = document.body.classList, was = B.contains('homeview') ? (B.contains('vod') ? 'vod' : B.contains('agenda') ? 'agenda' : 'home') : '', now = on ? (page || 'home') : '';
+    if (now && now !== was && !B.contains('tvswitch')) S.arrive = Date.now(); }   // arrivée sur une page : rangées en cascade
   if (typeof hovClose === 'function') hovClose(true);
   if (on) S.lastPage = page || '';                        // page à retrouver avec Échap depuis le lecteur
   document.body.classList.toggle('homeview', !!on);
@@ -1670,8 +1672,8 @@ window.appClosing = () => {
       if (r.dataset.rv) return; r.dataset.rv = 1;
       // déjà sous les yeux au moment de l'affichage : animé aussi (l'ensemble de la page arrive en cascade)
       r.querySelectorAll('.poster,.tvc,.chr').forEach((p, i) => { if (i < 14) p.style.setProperty('--d', (i * 0.035).toFixed(3) + 's'); });
-      // déjà à l'écran à l'affichage : pas de glissement (le fondu de la page ou de l'onglet suffit)
-      if (r.getBoundingClientRect().top < innerHeight) return;
+      // déjà à l'écran : en cascade seulement à l'arrivée sur la page (pas en changeant d'onglet, ni pendant une recherche)
+      if (r.getBoundingClientRect().top < innerHeight && !(S.arrive && Date.now() - S.arrive < 3000)) return;
       r.classList.add('rv0'); io.observe(r);
     });
   };
