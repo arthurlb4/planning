@@ -204,10 +204,9 @@ public class Mpv
         if (!f.Video.Visible) f.Video.Visible = true;
     }
 
-    // fenêtre de mpv dans le cadre : remise à la taille du cadre tout de suite (sinon bande noire après un changement de taille)
-    // fenêtre de mpv au format exact de la vidéo, centrée dans le cadre (bandes noires autour) : même pendant un
+    // cadre intérieur (où vit mpv) au format exact de la vidéo, centré dans le cadre (noir autour) : même pendant un
     // redimensionnement, où Windows étire un instant la dernière image, l'image garde ses proportions
-    double aspect; int childW, childH;
+    double aspect;
     public double Aspect => aspect;
     public void FitChild()
     {
@@ -217,7 +216,6 @@ public class Mpv
         {
             if ((double)W / H > aspect) { w = (int)Math.Round(H * aspect); x = (W - w) / 2; } else { h = (int)Math.Round(W / aspect); y = (H - h) / 2; }
         }
-        childW = w; childH = h;
         var ib = new Rectangle(x, y, Math.Max(1, w), Math.Max(1, h));
         if (f.Video.Inner.Bounds != ib) f.Video.Inner.Bounds = ib;
         // fenêtre de mpv mise tout de suite à la taille du cadre intérieur (mpv le fait aussi, un peu plus tard)
