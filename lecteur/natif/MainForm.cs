@@ -306,7 +306,10 @@ public class MainForm : Form
     {
         base.OnResize(e);
         // vidéo agrandie tout de suite dans la même proportion que la fenêtre (la page donne ensuite la zone exacte)
-        if (Video.Visible && !(mpv?.Holding ?? false) && lastClient.Width > 0 && lastClient.Height > 0 && ClientSize.Width > 0 && ClientSize != lastClient)
+        // plein écran : la vidéo occupe toujours toute la fenêtre, à chaque étape du changement de taille (sinon elle restait
+        // décalée, à la place qu'elle avait à côté de la liste, le temps que la page se remette en page)
+        if (Video.Visible && mpv != null && mpv.Full) { var fb = new Rectangle(Point.Empty, ClientSize); if (Video.Bounds != fb) { Video.Bounds = fb; mpv.FitChild(); } }
+        else if (Video.Visible && !(mpv?.Holding ?? false) && lastClient.Width > 0 && lastClient.Height > 0 && ClientSize.Width > 0 && ClientSize != lastClient)
         {
             double kx = (double)ClientSize.Width / lastClient.Width, ky = (double)ClientSize.Height / lastClient.Height; var v = Video.Bounds;
             Video.Bounds = new Rectangle((int)(v.X * kx), (int)(v.Y * ky), (int)Math.Ceiling(v.Width * kx), (int)Math.Ceiling(v.Height * ky));
