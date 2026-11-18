@@ -507,7 +507,7 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 .ep .d{color:var(--text3);font-size:12px}
 #vodModal .sheet{max-width:760px}
 #matchBtn{display:none}
-body.vodplay #guideBtn{display:none}
+body.vodplay:not(.rplay) #guideBtn{display:none}
 body.hasmatch #matchBtn{display:inline-flex;color:var(--blue)}
 #nowScore{display:none;margin-left:6px;font-weight:500;color:var(--text)}
 body.hasmatch #nowScore{display:inline}
@@ -665,7 +665,7 @@ body.solo #side .sdh{background:transparent}
 .sbrow .searchbar{margin:0;flex:1;min-width:0}
 #sidesBtn{flex:none;height:38px;width:30px;border-radius:10px}
 #sidesBtn svg{transition:transform .3s ease}
-body.vodplay #sidesBtn{display:none}
+body.vodplay:not(.rplay) #sidesBtn{display:none}
 /* Mini lecteur : la lecture continue dans un coin pendant qu'on parcourt l'accueil */
 #miniBar{display:none}
 /* Mini lecteur automatique : dès qu'on quitte le lecteur (accueil, agenda, films) pendant une lecture, l'image continue en bas
@@ -720,7 +720,7 @@ body.mini #vodBack,body.solo #vodBack{display:none!important}
 @container (max-width:860px){#vbVol,#vbar .vsep,#statsBtn{display:none}}
 @container (max-width:720px){#vbBack,#vbFwd,#nowFav,#vbWin,#matchBtn{display:none}}
 @container (max-width:560px){#guideBtn,#vbDur,#vbSrc{display:none}}
-body:not(.hasmatch) #vbar #matchBtn,body.vodplay #vbar #guideBtn{display:none}
+body:not(.hasmatch) #vbar #matchBtn,body.vodplay:not(.rplay) #vbar #guideBtn{display:none}
 body.hasmatch #vbar #matchBtn svg{stroke:var(--blue)}
 body.vtools #prevBtn,body.vtools #nextBtn,body.vtools #soloBtn,body.vtools #soloExit{display:none!important}
 
@@ -818,8 +818,8 @@ body.live #vbar .tm{display:none}
 @media (max-width:760px){#vbVol{display:none}}
 body.playing #screen.idle,body.playing #screen.idle video{cursor:none}
 /* Film ou série en lecture : l'image sur toute la largeur (pas de liste des chaînes) */
-body.vodplay:not(.homeview) main{--colL:0px}
-body.vodplay:not(.homeview) #channels{display:none}
+body.vodplay:not(.homeview):not(.rplay) main{--colL:0px}
+body.vodplay:not(.homeview):not(.rplay) #channels{display:none}
 #trackMenu{position:absolute;right:12px;bottom:56px;z-index:7;min-width:240px;max-width:calc(100% - 24px);max-height:calc(100% - 80px);overflow:auto;background:rgba(22,22,21,.96);border:.5px solid var(--border);border-radius:14px;padding:8px;box-shadow:0 10px 30px rgba(0,0,0,.5)}
 #trackMenu[hidden]{display:none}
 body:not(.hasep) #vbar .vep{display:none}
@@ -3231,11 +3231,11 @@ async function play(c, alts) {
   { const ae = document.activeElement; if (ae && ae !== document.body && !ae.matches('input,textarea')) ae.blur(); }   // clavier pour le lecteur (F, espace, flèches)
   if (typeof NXT !== 'undefined') { nextEpHalt(); const nb = $('#nextBox'); if (nb) nb.remove(); }
   stopEngines(); S.engine = ''; showNow(c); S.found = null; S.conv = false;
-  if (SIDE.mode === 'guide' && !$('#side').hidden) { if (c.vod) toggleSide(false); else renderGuideSide(true); }   // programme : suit la chaîne
+  if (SIDE.mode === 'guide' && !$('#side').hidden) { if (c.vod && !c.replayOf) toggleSide(false); else renderGuideSide(true); }   // programme : suit la chaîne
   normSetup(); normReset(c);
   if (S.extFor !== c.url) { S.extCues = null; S.extOfs = 0; S.extFor = c.url; clearCues(subT('f')); subT('f').mode = 'disabled'; subT('r').mode = 'disabled'; }
   document.body.classList.add('playing');
-  document.body.classList.toggle('vodplay', !!c.vod);
+  document.body.classList.toggle('vodplay', !!c.vod); document.body.classList.toggle('rplay', !!c.replayOf);   // replay : Programme de la chaîne gardé
   document.body.classList.toggle('live', !c.vod);
   S.sel = S.view.indexOf(c); renderRows(true); scrollToSel();
   if (!c.vod && typeof vpnNote === 'function') vpnNote(c.url);       // serveur de la chaîne : pour les exceptions du VPN
@@ -3603,11 +3603,11 @@ async function pastEpg(c) {
 // programme en cours mis en avant et amené en vue
 $('#guideBtn').onclick = () => { if (!$('#side').hidden && SIDE.mode === 'guide') toggleSide(false); else toggleSide(true, 'guide'); };
 async function renderGuideSide(scroll) {
-  const c = S.current, box = $('#guide'); if (!c || c.vod || SIDE.mode !== 'guide' || $('#side').hidden) return;
+  const c0 = S.current, c = c0 && (c0.replayOf || c0), box = $('#guide'); if (!c || c.vod || SIDE.mode !== 'guide' || $('#side').hidden) return;
   $('#matchTitle').textContent = 'Programme · ' + niceName(c);
   if (scroll) box.innerHTML = '<div class="spin" style="margin:30px auto"></div>';
   const ad = archDays(c), [list, past] = await Promise.all([getEpg(c, 40), pastEpg(c).catch(() => [])]);
-  if (S.current !== c || SIDE.mode !== 'guide') return;
+  if (S.current !== c0 || SIDE.mode !== 'guide') return;
   const now = Date.now(); let day = '', h = '';
   const all = past.concat((list || []).filter(p => !past.length || p.start >= past[past.length - 1].end - 60e3)); SIDE.rp = all;
   if (ad) h += `<p class="hint" style="margin:0 0 6px">Replay : les ${ad} derniers jours, touchez un programme passé pour le revoir.</p>`;
