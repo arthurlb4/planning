@@ -567,7 +567,11 @@ body.homeview #channels,body.homeview #player{display:none}
 .tvc .bar{position:absolute;left:0;right:0;bottom:0;height:4px;background:rgba(255,255,255,.18)}.tvc .bar i{display:block;height:100%;background:#e5322d}
 .tvc .tvn{display:block;max-width:100%;min-width:0;font-size:14px;font-weight:500;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tvc .tvs{display:block;max-width:100%;min-width:0;font-size:12px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.hsec h2.hbl{margin:26px 2px 12px;line-height:0}.hsec h2 .tbl{height:28px;width:auto;max-width:180px;object-fit:contain;object-position:left center;display:inline-block;vertical-align:middle}
+/* tuile de marque en tête de rangée TV : cercle fin, sans fond, logo au centre, à la hauteur des images */
+.tvrow.hbt{margin-top:26px}
+.tbt{flex:none;width:150px;height:153px;display:flex;align-items:center;justify-content:center}
+.tbt span{width:128px;height:128px;border-radius:50%;border:1px solid var(--border);display:flex;align-items:center;justify-content:center}
+.tbt img{max-width:62%;max-height:38%;object-fit:contain;filter:drop-shadow(0 2px 6px rgba(0,0,0,.45))}.tbt b{font-size:15px;font-weight:600;color:var(--text);text-align:center;padding:0 10px}
 .hsec h2 small{text-transform:none;letter-spacing:0;font-size:12px;color:var(--text3);margin-left:6px}
 .hsec h2,#agenda h2{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--text3);margin:22px 2px 12px;font-weight:500}
 .brands{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;align-items:start}
@@ -778,8 +782,8 @@ body.tvswitch #home,body.tvswitch #agenda{animation:none!important}.tvtabs .chip
 /* rangées : glissent en place à leur arrivée à l'écran, leurs vignettes l'une après l'autre */
 .rv0{opacity:0;transform:translateY(16px)}
 .rv1{opacity:1;transform:none;transition:opacity .45s var(--ease),transform .5s var(--ease)}
-.rv0 .poster,.rv0 .tvc,.rv0 .chr{opacity:0;transform:translateY(10px) scale(.98)}
-.rv1 .poster,.rv1 .tvc,.rv1 .chr{opacity:1;transform:none;transition:opacity .4s var(--ease) var(--d,0s),transform .45s var(--ease) var(--d,0s),width .3s var(--ease)}
+.rv0 .poster,.rv0 .tvc,.rv0 .chr,.rv0 .tbt{opacity:0;transform:translateY(10px) scale(.98)}
+.rv1 .poster,.rv1 .tvc,.rv1 .chr,.rv1 .tbt{opacity:1;transform:none;transition:opacity .4s var(--ease) var(--d,0s),transform .45s var(--ease) var(--d,0s),width .3s var(--ease)}
 /* images : fondu quand elles arrivent (affiches, vignettes, logos) */
 .fi{opacity:0}.fi.ld{opacity:1;transition:opacity .45s ease}
 /* boutons : s'enfoncent légèrement au clic */
@@ -1585,9 +1589,10 @@ function tvCard(f, i, j, p, opt) {
 }
 function tvRow(title, cards, sub, min) {
   if (cards.length < (min || 2)) return '';
-  // titre de la rangée : logo de la marque quand on l'a (texte si le logo ne charge pas)
-  const bl = brandLogo(title), tt = bl ? `<img class="tbl" src="${esc(bl)}" alt="${esc(title)}" title="${esc(title)}" referrerpolicy="no-referrer" onerror="this.replaceWith(document.createTextNode(this.alt))">` : esc(title);
-  return `<div class="hsec tvrow"><h2${bl ? ' class="hbl"' : ''}>${tt}${sub ? ` <small>${esc(sub)}</small>` : ''}</h2><div class="vwrap"><button class="varr l" data-arr="-1" aria-label="Précédents"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><div class="vscroll">${cards.join('')}</div><button class="varr r" data-arr="1" aria-label="Suivants"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button></div></div>`;
+  // marque connue : tuile ronde avec son logo en tête de rangée, à la place du titre (nom écrit si le logo ne charge pas)
+  const bl = brandLogo(title);
+  const tile = bl ? `<div class="tbt" title="${esc(title)}"><span><img src="${esc(bl)}" alt="${esc(title)}" referrerpolicy="no-referrer" onerror="this.replaceWith(Object.assign(document.createElement('b'),{textContent:this.alt}))"></span></div>` : '';
+  return `<div class="hsec tvrow${bl ? ' hbt' : ''}">${bl ? '' : `<h2>${esc(title)}${sub ? ` <small>${esc(sub)}</small>` : ''}</h2>`}<div class="vwrap"><button class="varr l" data-arr="-1" aria-label="Précédents"><svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button><div class="vscroll">${tile}${cards.join('')}</div><button class="varr r" data-arr="1" aria-label="Suivants"><svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg></button></div></div>`;
 }
 /* Accueil TV : une rangée par bouquet (Canal+, beIN Sports…), comme Films & séries ; vignette = programme en cours
    (image du guide XML TV Fr, sinon logo de la chaîne). Chaînes seules d'une même section regroupées dans une rangée. */
@@ -1720,7 +1725,7 @@ window.appClosing = () => {
     root.querySelectorAll(ROWS).forEach(r => {
       if (r.dataset.rv) return; r.dataset.rv = 1;
       // déjà sous les yeux au moment de l'affichage : animé aussi (l'ensemble de la page arrive en cascade)
-      r.querySelectorAll('.poster,.tvc,.chr').forEach((p, i) => { if (i < 14) p.style.setProperty('--d', (i * 0.035).toFixed(3) + 's'); });
+      r.querySelectorAll('.poster,.tvc,.chr,.tbt').forEach((p, i) => { if (i < 14) p.style.setProperty('--d', (i * 0.035).toFixed(3) + 's'); });
       // déjà à l'écran : en cascade seulement à l'arrivée sur la page ou sur un onglet de Films & séries (pas pendant une recherche)
       // rangées plus bas : pas d'animation au défilement (fatigant), elles sont simplement là
       const vis = r.getBoundingClientRect().top < innerHeight;
