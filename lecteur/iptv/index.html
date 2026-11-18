@@ -3553,7 +3553,13 @@ async function replayLoad(force) {
   if (S.current && !S.current.vod) { vbarUpdate(); renderGuideSide(false); }
   return RP;
 }
-function archDays(c) { return (RP.ids && c && !c.vod && RP.ids.get(streamId(c) || '')) || 0; }
+/* la qualité lue (souvent la 4K) n'a pas toujours le replay : on prend alors une autre qualité de la même chaîne qui l'a */
+function archCh(c) {
+  if (!RP.ids || !c || c.vod) return null;
+  if (RP.ids.get(streamId(c) || '')) return c;
+  return (typeof variantsOf === 'function' ? variantsOf(c) : []).find(x => RP.ids.get(streamId(x) || '')) || null;
+}
+function archDays(c) { const a = archCh(c); return (a && RP.ids.get(streamId(a) || '')) || 0; }
 // heure à l'heure du serveur : « AAAA-MM-JJ:HH-MM »
 function rpTime(t) {
   let o; try { o = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: RP.tz || undefined, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(t)).map(p => [p.type, p.value])); }
@@ -3567,13 +3573,13 @@ function replayUrl(c, start, end) {
 }
 // programme passé (ou en cours, depuis son début) lu comme un film ; « Retour au direct » ramène sur la chaîne
 function playReplay(c, p) {
-  const url = replayUrl(c, p.start, Math.min(p.end, Date.now() + 6 * 3600e3)); if (!url) { toast('Replay impossible pour cette chaîne'); return; }
+  const url = replayUrl(archCh(c) || c, p.start, Math.min(p.end, Date.now() + 6 * 3600e3)); if (!url) { toast('Replay impossible pour cette chaîne'); return; }
   play({ name: niceName(c) + ' · ' + p.title, url, group: 'Replay · ' + new Date(p.start).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) + ' ' + hm(p.start), logo: c.logo, n: 0, chno: '', vod: true, key: '', replayOf: c, rp: p });
 }
 // programmes passés de la chaîne (serveur : tout ce qu'il garde, sinon le guide XML TV Fr)
 async function pastEpg(c) {
   // sans replay : les 24 dernières heures du guide (pour voir ce qui est passé), sans lecture possible
-  const days = archDays(c), since = Date.now() - (days || 1) * 864e5, now = Date.now(), x = epgCtx(), id = streamId(c);
+  const days = archDays(c), since = Date.now() - (days || 1) * 864e5, now = Date.now(), x = epgCtx(), id = streamId(archCh(c) || c);
   let l = [];
   if (days && x && id) try {
     const j = JSON.parse(await fetchText(x.base + '/player_api.php?username=' + encodeURIComponent(x.user) + '&password=' + encodeURIComponent(x.pass) + '&action=get_simple_data_table&stream_id=' + id));
@@ -7829,6 +7835,7 @@ async function replayCheck() {
     const l = JSON.parse(await fetchText(api + '&action=get_live_streams')); if (!Array.isArray(l)) throw new Error('réponse illisible');
     const a = l.filter(s => String(s.tv_archive) === '1'), days = Math.max(0, ...a.map(s => +s.tv_archive_duration || 0));
     S.replay = new Map(a.map(s => [String(s.stream_id), +s.tv_archive_duration || 0]));
+    RP.ids = new Map(a.map(s => [String(s.stream_id), +s.tv_archive_duration || 1])); if (S.pl) DB.cachePut({ id: 'replay1:' + S.pl.id, at: Date.now(), data: { ids: [...RP.ids], tz: RP.tz } });   // replay utilisable tout de suite
     // ce qui compte : les chaînes de l'accueil TV (repérées par leur numéro dans l'adresse …/live/…/123.ts)
     const idOf = c => (/\/(\d+)(\.\w+)?$/.exec(c.url || '') || [])[1], home = [];
     homeIndex().forEach(f => f.subs.forEach(x => { const d = x.list.map(c => S.replay.get(idOf(c))).find(v => v != null); if (d != null) home.push(x.label + ' (' + d + ' j)'); }));
