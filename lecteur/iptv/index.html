@@ -213,6 +213,8 @@ body.playing #screen.idle.ldg #vbar{opacity:1;pointer-events:auto}
 .spin{width:34px;height:34px;border-radius:50%;border:3px solid rgba(255,255,255,.15);border-top-color:var(--blue);animation:sp .8s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
 #now{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bg0);border-top:.5px solid var(--border)}
+/* appli native : un peu d'air sous la barre du bas (fenêtre agrandie : elle touchait la barre des tâches) ; rien en plein écran */
+html.natifapp #now{padding-bottom:22px}html.natifapp body.solo #now{padding-bottom:10px}
 #nowSub:empty{display:none}
 #now .meta .nm{font-size:16px;font-weight:500;display:flex;align-items:center;gap:8px;min-width:0}
 #nowName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -5927,7 +5929,9 @@ function mpvRect() {
   const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height };
 }
 let mpvRT = 0;
-function mpvSync() { if (S.engine !== 'mpv' || !window.desktop.mpv) { natHole(null); return; } cancelAnimationFrame(mpvRT); mpvRT = requestAnimationFrame(() => { const r = mpvRect(); natHole(r); window.desktop.mpv.rect(r); }); }
+// une seule mise à jour par image : une demande déjà prévue n'est plus annulée (les demandes répétées à chaque image pendant
+// un changement de mise en page l'annulaient sans cesse : la vidéo restait à son ancienne place près d'une seconde)
+function mpvSync() { if (S.engine !== 'mpv' || !window.desktop.mpv) { natHole(null); return; } if (mpvRT) return; mpvRT = requestAnimationFrame(() => { mpvRT = 0; const r = mpvRect(); natHole(r); window.desktop.mpv.rect(r); }); }
 // animations (mini-lecteur, panneaux) : la vidéo suit la zone du lecteur à chaque image pendant 600 ms après un changement
 function mpvFollow() { if (!NAT || S.engine !== 'mpv') return; const t0 = performance.now(); const f = () => { mpvSync(); if (performance.now() - t0 < 600) requestAnimationFrame(f); }; requestAnimationFrame(f); }
 if (window.desktop && window.desktop.mpv) {
