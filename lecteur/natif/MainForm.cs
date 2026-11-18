@@ -70,6 +70,14 @@ public class MainForm : Form
                 m.Result = IntPtr.Zero; return;
             case WM_NCHITTEST:
                 m.Result = (IntPtr)HitTest(m.LParam); return;
+            case 0x0214 when RatioLock && (mpv?.Aspect ?? 0) > 0 && !full:   // WM_SIZING : proportions de la vidéo gardées
+            {
+                double a = mpv!.Aspect; var r = System.Runtime.InteropServices.Marshal.PtrToStructure<RECT>(m.LParam); int edge = m.WParam.ToInt32();
+                int w = r.Right - r.Left, h = r.Bottom - r.Top;
+                if (edge == 3 || edge == 6) { int nw = (int)Math.Round(h * a); r.Right = r.Left + nw; }      // haut / bas : la largeur suit
+                else { int nh = (int)Math.Round(w / a); if (edge == 3 || edge == 4 || edge == 5) r.Top = r.Bottom - nh; else r.Bottom = r.Top + nh; }
+                System.Runtime.InteropServices.Marshal.StructureToPtr(r, m.LParam, false); m.Result = (IntPtr)1; return;
+            }
             // redimensionnement à la souris : pendant le geste, la vidéo suit seulement le calcul fait ici (les positions de la
             // page, en retard d'une image ou deux, la faisaient sauter) ; à la fin, la page reprend la main
             case 0x0231: Sizing = true; break;
@@ -206,7 +214,9 @@ public class MainForm : Form
                 if (a == "min") WindowState = FormWindowState.Minimized;
                 else if (a == "max") WindowState = WindowState == FormWindowState.Maximized ? FormWindowState.Normal : FormWindowState.Maximized;
                 else if (a == "close") Close();
-                else if (a == "hold") mpv?.Hold(250);   // la page change de mise en page (plein écran) : la coque garde la vidéo en place
+                else if (a == "hold") mpv?.Hold(250);
+                else if (a == "ratio1") { RatioLock = true; FitRatio(); }   // pleine fenêtre : fenêtre aux proportions de la vidéo
+                else if (a == "ratio0") RatioLock = false;   // la page change de mise en page (plein écran) : la coque garde la vidéo en place
                 break;
             case "mpvPlay":
                 var id = (int)m["id"]!; var o = m["o"]!.AsObject();
@@ -323,6 +333,15 @@ public class MainForm : Form
     }
 
     Size lastClient, moveSize;
+    /* Pleine fenêtre (lecteur seul dans la fenêtre) : la fenêtre garde les proportions de la vidéo, à l'ouverture et quand on
+       tire un bord (plus de bandes noires) */
+    public bool RatioLock;
+    public void FitRatio()
+    {
+        if (IsDisposed) return; if (InvokeRequired) { BeginInvoke(FitRatio); return; }
+        double a = mpv?.Aspect ?? 0; if (!RatioLock || a <= 0 || full || WindowState != FormWindowState.Normal) return;
+        int h = (int)Math.Round(Width / a); if (Math.Abs(h - Height) > 1) Height = Math.Max(MinimumSize.Height, h);
+    }
     public bool Sizing;
     protected override void OnResize(EventArgs e)
     {

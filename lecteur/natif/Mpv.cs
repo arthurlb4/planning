@@ -109,7 +109,7 @@ public class Mpv
                 JsonObject m; try { m = JsonNode.Parse(line) as JsonObject; } catch { continue; }
                 if (m == null || (string)m["event"] != "property-change") continue;
                 string n = (string)m["name"]; var d = m["data"]?.DeepClone();
-                if (n == "video-params/aspect") { double a = 0; try { a = (double?)d ?? 0; } catch { } if (a > 0.2 && a < 5) { aspect = a; f.BeginInvoke(FitChild); } continue; }
+                if (n == "video-params/aspect") { double a = 0; try { a = (double?)d ?? 0; } catch { } if (a > 0.2 && a < 5) { aspect = a; f.BeginInvoke(FitChild); f.FitRatio(); } continue; }
                 if (n == "track-list")
                 {
                     var tr = new JsonArray();
@@ -197,6 +197,7 @@ public class Mpv
     // fenêtre de mpv au format exact de la vidéo, centrée dans le cadre (bandes noires autour) : même pendant un
     // redimensionnement, où Windows étire un instant la dernière image, l'image garde ses proportions
     double aspect; int childW, childH;
+    public double Aspect => aspect;
     public void FitChild()
     {
         if (f.IsDisposed) return;
