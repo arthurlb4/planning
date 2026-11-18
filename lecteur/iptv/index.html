@@ -27,6 +27,7 @@ html:has(body.nat){color-scheme:light}body.nat{color-scheme:dark}   /* sinon le 
 body.nat::before{content:'';position:fixed;inset:0;background:var(--bg);clip-path:var(--hole);z-index:-1;pointer-events:none}
 body.nat #player{background:transparent}body.nat #screen{background:#000}body.nat.natready #screen{background:rgba(0,0,0,.01)}
 /* zone noire tant que mpv n'affiche pas sa première image (pas d'animation d'ouverture de sa fenêtre), puis la vidéo d'un coup */
+body.nat{transition:opacity .22s ease-out}body.nat.veil{opacity:0;transition:none}
 body.nat.natmove #screen{background:#000!important}   /* fenêtre déplacée ou redimensionnée : noir le temps que la vidéo se recale */body.nat video{visibility:hidden}
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font);font-size:15px}
 body{display:flex;flex-direction:column;height:100dvh;overflow:hidden;-webkit-tap-highlight-color:transparent}
@@ -1717,8 +1718,9 @@ window.appClosing = () => {
       // déjà sous les yeux au moment de l'affichage : animé aussi (l'ensemble de la page arrive en cascade)
       r.querySelectorAll('.poster,.tvc,.chr').forEach((p, i) => { if (i < 14) p.style.setProperty('--d', (i * 0.035).toFixed(3) + 's'); });
       // déjà à l'écran : en cascade seulement à l'arrivée sur la page ou sur un onglet de Films & séries (pas pendant une recherche)
+      // rangées plus bas : pas d'animation au défilement (fatigant), elles sont simplement là
       const vis = r.getBoundingClientRect().top < innerHeight;
-      if (vis && !(S.arrive && Date.now() - S.arrive < 15000)) return;   // (préparation de la page parfois longue : sources en ligne)
+      if (!vis || !(S.arrive && Date.now() - S.arrive < 15000)) return;   // (préparation de la page parfois longue : sources en ligne)
       if (vis && r.querySelector('.poster,.tvc')) S.arrUsed = true;   // cascade d'arrivée jouée : une seule fois
       r.classList.add('rv0'); io.observe(r);
     });
@@ -6139,6 +6141,7 @@ if (window.desktop && window.desktop.mpv) {
     Object.assign(S.mpvSt, st);
     const c = S.current; if (!c) return;
     if (st.back) { mpvBack(); return; }
+    if (st.reveal) { clearTimeout(natVeil.t); document.body.classList.remove('veil'); return; }
     if (st.moving != null) { if (st.moving) natMove(); else { clearTimeout(natMove.t); requestAnimationFrame(() => document.body.classList.remove('natmove')); } return; }
     if (st.paused === true) { clearTimeout(idleT); idleSet(false); } else if (st.paused === false) wake();
     if (!c.vod && st.buf === true && S.mpvSt.pos > 0) liveStall(c);   // chaîne : tampon vide en cours de lecture
@@ -7320,8 +7323,15 @@ let soloT;
 // Plein écran (F) ; pleine fenêtre (W) : l'image occupe toute la fenêtre de l'appli ou du navigateur, sans passer en plein écran
 // lecteur intégré : zone du lecteur au noir pendant un changement de mise en page (dessiné par la page, donc dans la même
 // image que sa nouvelle mise en page) ; l'appli la rend une fois la vidéo replacée ({ moving: false }), sinon au bout d'1,5 s
+// appli native : la page se rend invisible pendant un changement de mise en page (plein écran, pleine fenêtre) et revient en
+// fondu quand l'appli la réaffiche ({ reveal }), au plus tard après 0,7 s
+function natVeil() {
+  if (!NAT || S.engine !== 'mpv' || !(window.desktop && window.desktop.natif)) return;
+  document.body.classList.add('veil'); clearTimeout(natVeil.t); natVeil.t = setTimeout(() => document.body.classList.remove('veil'), 700);
+}
 function natMove() {
   if (!NAT || S.engine !== 'mpv') return;
+  natVeil();
   mpvFollow(); setTimeout(mpvFollow, 300);           // (plus de noir : la coque place elle-même la vidéo pendant ces changements)           // position du lecteur renvoyée à chaque image pendant la nouvelle mise en page
 }
 function setSolo(on, win) {

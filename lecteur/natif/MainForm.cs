@@ -329,7 +329,7 @@ public class MainForm : Form
     public bool Veiled; bool veilBig; Rectangle preVeil; long veilAt, sizeAt; System.Windows.Forms.Timer veilT;
     void Veil(bool big)
     {
-        if (comp == null || target == null || mpv == null || !Video.Visible) return;
+        if (comp == null || target == null || mpv == null || !Video.Visible) { Reveal(); return; }
         veilAt = Environment.TickCount64; veilBig = big;
         if (!Veiled) { preVeil = Video.Bounds; Veiled = true; try { target.SetRoot(null!); dcomp.Commit(); } catch { } }
         if (big) { var fb = new Rectangle(Point.Empty, ClientSize); if (Video.Bounds != fb) { Video.Bounds = fb; mpv.FitChild(); } }
@@ -351,8 +351,10 @@ public class MainForm : Form
         // la vidéo va d'abord à sa place (position déjà donnée par la page à sa nouvelle taille), la page revient par-dessus
         // une image plus tard : on ne voit jamais la vidéo à une taille intermédiaire
         mpv?.Release();
-        var t = new System.Windows.Forms.Timer { Interval = 10 }; t.Tick += (s, e) => { t.Stop(); t.Dispose(); try { target.SetRoot(root); dcomp.Commit(); } catch { } }; t.Start();
+        var t = new System.Windows.Forms.Timer { Interval = 10 }; t.Tick += (s, e) => { t.Stop(); t.Dispose(); try { target.SetRoot(root); dcomp.Commit(); } catch { } Reveal(); }; t.Start();
     }
+    // la page, rendue invisible par elle-même pendant le changement, revient en fondu
+    void Reveal() => Post(new JsonObject { ["t"] = "mpv", ["st"] = new JsonObject { ["reveal"] = true } });
     void SetFull(bool on)
     {
         if (on == full) return; full = on;
