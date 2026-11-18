@@ -46,7 +46,8 @@ public class Mpv
         {
             // tampon plus confortable : 4 s avant de démarrer, et à chaque creux mpv attend 4 s de réserve avant de repartir
             args.Add("--cache=yes"); args.Add("--demuxer-readahead-secs=30");
-            args.Add("--cache-pause-initial=yes"); args.Add("--cache-pause-wait=4");
+            double wait = Math.Clamp((double?)o["wait"] ?? 4, 2, 30);   // réserve choisie par la page (plus grande pour une chaîne qui coupe)
+            args.Add("--cache-pause-initial=yes"); args.Add("--cache-pause-wait=" + wait.ToString(System.Globalization.CultureInfo.InvariantCulture));
             // retour en arrière dans le direct : 4 Go gardés derrière la lecture, sur le disque (fichier temporaire effacé à la
             // fermeture) plutôt qu'en mémoire, et recherche permise dans ce qui est gardé
             var cdir = Path.Combine(Path.GetTempPath(), "lecteur-mpv-cache"); try { Directory.CreateDirectory(cdir); } catch { }

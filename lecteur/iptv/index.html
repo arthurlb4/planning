@@ -5912,7 +5912,7 @@ async function playMpv(c, t) {
   const pos = c.vod ? LS.get(posK(c.url), 0) : 0, start = pos > 60 ? pos : 0;
   document.body.classList.toggle('mpvlive', !c.vod); S.mpvLive = c.vod ? null : { c, t0: 0 };
   setStatus('load');
-  const r = await M.play({ url: c.url, title: c.vod ? c.name : niceName(c), live: !c.vod, iptv: !c.vod || !!c.replayOf, start, vol: video.muted ? 0 : video.volume, alang: LS.get('pref.audio', 'fr'), slang: LS.get('pref.sub', 'off'), rect: mpvRect(), under: NAT, subArgs: NAT ? mpvSubArgs() : [] }).catch(e => ({ error: e.message }));
+  const r = await M.play({ wait: c.vod ? 4 : liveWait(c), url: c.url, title: c.vod ? c.name : niceName(c), live: !c.vod, iptv: !c.vod || !!c.replayOf, start, vol: video.muted ? 0 : video.volume, alang: LS.get('pref.audio', 'fr'), slang: LS.get('pref.sub', 'off'), rect: mpvRect(), under: NAT, subArgs: NAT ? mpvSubArgs() : [] }).catch(e => ({ error: e.message }));
   if (t !== token) return;
   if (!r || r.error) { document.body.classList.remove('mpv', 'nat'); S.engine = ''; S.noMpv = c.url; toast('Lecteur intégré indisponible (' + ((r && r.error) || '?') + ') : ancien lecteur'); return play(c); }
   if (c.vod) setStatus(null); if (start > 60) toast('Reprise à ' + fmtDur(start));
@@ -5946,6 +5946,7 @@ if (window.desktop && window.desktop.mpv) {
     if (st.back) { mpvBack(); return; }
     if (st.moving != null) { if (st.moving) natMove(); else { clearTimeout(natMove.t); requestAnimationFrame(() => document.body.classList.remove('natmove')); } return; }
     if (st.paused === true) { clearTimeout(idleT); idleSet(false); } else if (st.paused === false) wake();
+    if (!c.vod && st.buf === true && S.mpvSt.pos > 0) liveStall(c);   // chaîne : tampon vide en cours de lecture
     if (NAT && st.pos > 0 && !document.body.classList.contains('natready')) setTimeout(() => { if (S.engine === 'mpv') document.body.classList.add('natready'); }, 250);
     if (!c.vod && st.pos > 0 && $('#status .ldt')) setStatus(null);   // chaîne : première image
     // informations du panneau ⓘ seulement : rien à redessiner
@@ -5961,6 +5962,27 @@ if (window.desktop && window.desktop.mpv) {
     }
   });
 }
+/* Réserve du direct, par chaîne : 4 s au départ ; chaque coupure (tampon vide) la fait monter (8, 15, 25 s), retenue pour
+   la prochaine fois ; une heure de lecture sans coupure la fait redescendre d'un cran. Appliquée tout de suite à mpv. */
+const LIVE_WAITS = [4, 8, 15, 25];
+const liveKey = c => 'w:' + (chInfo(c).canon || niceName(c));
+function liveWait(c) { const o = LS.get('dev.livewait', {}) || {}, e = o[liveKey(c)]; if (!e) return 4;
+  if (Date.now() - (e.at || 0) > 7 * 864e5) return LIVE_WAITS[Math.max(0, e.l - 1)];   // une semaine sans coupure : un cran de moins
+  return LIVE_WAITS[e.l] || 4; }
+function liveStall(c, hard) {
+  const L = S.liveStall || (S.liveStall = {}); if (L.c !== c) { L.c = c; L.at = 0; }
+  if (Date.now() - L.at < 20000) return; L.at = Date.now();          // une coupure comptée une fois
+  const o = LS.get('dev.livewait', {}) || {}, k = liveKey(c), e = o[k] || { l: 0 };
+  const l = Math.min(LIVE_WAITS.length - 1, (e.l || 0) + 1); o[k] = { l, at: Date.now() }; LS.set('dev.livewait', o);
+  if (S.engine === 'mpv' && !hard) mpvC(['set_property', 'cache-pause-wait', LIVE_WAITS[l]]);
+  if (l > (e.l || 0)) toast('Coupure : réserve portée à ' + LIVE_WAITS[l] + ' s pour cette chaîne');
+}
+// une heure sans coupure sur la même chaîne : un cran de moins pour la prochaine fois
+setInterval(() => { const c = S.current; if (!c || c.vod || S.engine !== 'mpv' || !(S.mpvSt.pos > 0)) return;
+  const L = S.liveStall || {}; if (L.c === c && Date.now() - L.at < 3600e3) return;
+  if (!S.liveOk || S.liveOk.c !== c) { S.liveOk = { c, t: Date.now() }; return; }
+  if (Date.now() - S.liveOk.t < 3600e3) return; S.liveOk.t = Date.now();
+  const o = LS.get('dev.livewait', {}) || {}, k = liveKey(c), e = o[k]; if (e && e.l > 0) { e.l--; e.at = Date.now(); LS.set('dev.livewait', o); } }, 60000);
 /* Chaîne lue par mpv qui reste figée (tampon vide ou image arrêtée) plus de 12 s alors qu'elle n'est pas en pause :
    relancée (même chaîne, puis ses autres qualités) */
 setInterval(() => {
@@ -5968,7 +5990,7 @@ setInterval(() => {
   if (!c || c.vod || S.engine !== 'mpv' || !(M.pos > 0) || M.paused) { S.mpvStall = null; return; }
   const st = S.mpvStall;
   if (!st || st.c !== c || Math.abs((M.pos || 0) - st.pos) > 0.5) { S.mpvStall = { c, pos: M.pos || 0, t: Date.now() }; return; }
-  if (Date.now() - st.t > 12000) { S.mpvStall = null; toast('Flux figé : reconnexion…'); play(c, S.alts); }
+  if (Date.now() - st.t > 12000) { S.mpvStall = null; liveStall(c, true); toast('Flux figé : reconnexion…'); play(c, S.alts); }
 }, 2000);
 // retour (Échap, fin, fermeture) : position retenue, puis la fiche ou la page d'où le film a été lancé
 function mpvBack() {
