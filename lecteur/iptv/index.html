@@ -3545,7 +3545,19 @@ async function replayLoad(force) {
   const ck = 'replay1:' + S.pl.id, c = !force && await DB.cacheGet(ck).catch(() => null);
   if (c && c.data && Date.now() - c.at < 24 * 3600e3) { RP.ids = new Map(c.data.ids); RP.tz = c.data.tz || ''; return RP; }
   const api = x.base + '/player_api.php?username=' + encodeURIComponent(x.user) + '&password=' + encodeURIComponent(x.pass);
-  const info = JSON.parse(await fetchText(api)), l = JSON.parse(await fetchText(api + '&action=get_live_streams'));
+  // seulement les catégories des chaînes de l'accueil TV et des favoris (quelques-unes, rapide) au lieu des ~50 000 chaînes
+  const info = JSON.parse(await fetchText(api));
+  const groups = new Set(); homeIndex().forEach(f => f.subs.forEach(x => x.list.forEach(ch => groups.add(ch.group))));
+  S.channels.forEach(ch => { if (S.fav && S.fav.has(ch.url)) groups.add(ch.group); });
+  let l = null;
+  try {
+    const cats = JSON.parse(await fetchText(api + '&action=get_live_categories')), ids = (Array.isArray(cats) ? cats : []).filter(k => groups.has(k.category_name)).map(k => k.category_id);
+    if (ids.length && ids.length <= 60) {
+      l = [];
+      for (let i = 0; i < ids.length; i += 4) (await Promise.all(ids.slice(i, i + 4).map(id => fetchText(api + '&action=get_live_streams&category_id=' + encodeURIComponent(id)).then(t => JSON.parse(t)).catch(() => [])))).forEach(a => { if (Array.isArray(a)) l.push(...a); });
+    }
+  } catch (e) { l = null; }
+  if (!l || !l.length) l = JSON.parse(await fetchText(api + '&action=get_live_streams'));   // secours : toute la liste
   if (!Array.isArray(l)) throw new Error('réponse illisible');
   const ids = l.filter(s => String(s.tv_archive) === '1').map(s => [String(s.stream_id), +s.tv_archive_duration || 1]);
   RP.ids = new Map(ids); RP.tz = (info && info.server_info && info.server_info.timezone) || '';
