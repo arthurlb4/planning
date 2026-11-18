@@ -5625,7 +5625,7 @@ if (window.desktop && window.desktop.mpv) {
     if (!c.vod && st.pos > 0 && $('#status .ldt')) setStatus(null);   // chaîne : première image
     // informations du panneau ⓘ seulement : rien à redessiner
     if (Object.keys(st).every(k => MPV_INFO.has(k))) return;
-    if (NAT) { if (st.tracks) renderTrackMenu(); vodTick(); if (!st.tracks && !st.chapters) vbarUpdate(); }
+    if (NAT) { if (st.tracks) { mpvSubFull(); renderTrackMenu(); } vodTick(); if (!st.tracks && !st.chapters) vbarUpdate(); }
     if (st.eof || st.exit) {
       if (S.mpvSt.pos > 30) { LS.set(posK(c.url), st.eof ? 0 : Math.floor(S.mpvSt.pos)); try { histTrack(c, !!st.eof); } catch (e) {} }
       if (st.eof && c.next && c.it) { nextEpGo(); return; }                        // épisode suivant
@@ -5671,7 +5671,7 @@ async function playRemux(c, t) {
   const pick = au.find(x => lang2(x.lang) === pa) || au.find(x => x.def) || au[0];
   R.a = pick ? pick.i : 0;
   const ps = LS.get('pref.sub', 'off'), sb = info.subs || [];
-  const sp = ps === 'off' ? sb.find(x => x.forced && lang2(x.lang) === lang2(au[R.a] && au[R.a].lang)) : sb.find(x => lang2(x.lang) === ps && !x.forced) || sb.find(x => lang2(x.lang) === ps);
+  const sp = ps === 'off' ? sb.find(x => x.forced && lang2(x.lang) === lang2(au[R.a] && au[R.a].lang)) : sb.find(x => lang2(x.lang) === ps && !isForced(x)) || sb.find(x => lang2(x.lang) === ps);
   R.s = sp ? sp.i : -1;
   const pos = LS.get(posK(c.url), 0), dur = info.duration || 0;
   remuxStart(pos > 60 && (!dur || pos < dur - Math.min(120, dur * 0.1)) ? pos : 0, t);
@@ -5701,7 +5701,7 @@ function remuxDurFix(R, c, t) {
       if (j && (j.subs || []).length && !(R.info.subs || []).length) {
         R.info.subs = j.subs; subTry = 0; if (!(R.info.audio || []).length && j.audio) R.info.audio = j.audio;
         const ps = LS.get('pref.sub', 'off'), au = R.info.audio[R.a] || {};
-        const sp = ps === 'off' ? j.subs.find(x => x.forced && lang2(x.lang) === lang2(au.lang)) : j.subs.find(x => lang2(x.lang) === ps && !x.forced) || j.subs.find(x => lang2(x.lang) === ps);
+        const sp = ps === 'off' ? j.subs.find(x => x.forced && lang2(x.lang) === lang2(au.lang)) : j.subs.find(x => lang2(x.lang) === ps && !isForced(x)) || j.subs.find(x => lang2(x.lang) === ps);
         if (sp && R.s < 0) { toast('Sous-titres trouvés dans le fichier'); setSub('r' + sp.i); } else renderTrackMenu();
       }
     }
@@ -5940,7 +5940,28 @@ function setAudio(i, remember) {
   if (remember) LS.set('pref.audio', lang2(t.lang) || t.name || '');
   renderTrackMenu();
 }
+/* Sous-titres choisis par mpv au départ : une piste « forcés » (seulement les passages en langue étrangère) est souvent
+   marquée par défaut ; on prend la piste complète de la même langue (hors sourds et malentendants si possible), une fois par film */
+const isForced = t => t.forced || /forc|foreign|étranger/i.test(t.title || '');
+function mpvSubFull() {
+  const c = S.current, T = S.mpvSt.tracks || []; if (!c || S._subFull === c || !T.length) return;
+  S._subFull = c;
+  const ps = LS.get('pref.sub', 'off'), sel = T.find(x => x.type === 'sub' && x.sel); if (ps === 'off' || (sel && !isForced(sel))) return;
+  const l = T.filter(x => x.type === 'sub' && !isForced(x) && lang2(x.lang) === (sel ? lang2(sel.lang) || ps : ps));
+  const full = l.find(x => !/sdh|malentend|cc\b|hi\b/i.test(x.title || '')) || l[0];
+  if (full) mpvC(['set_property', 'sid', full.id]);
+}
+// mpv : sous-titres d'un fichier ou d'OpenSubtitles donnés à mpv (en mémoire, au format .srt), affichés par lui
+const srtTime = t => { t = Math.max(0, t); const ms = Math.round(t * 1000), p = (n, l) => String(n).padStart(l, '0'); return p(Math.floor(ms / 3600e3), 2) + ':' + p(Math.floor(ms / 60e3) % 60, 2) + ':' + p(Math.floor(ms / 1e3) % 60, 2) + ',' + p(ms % 1000, 3); };
+function mpvSubExt() {
+  const l = S.extCues || []; if (!l.length) return;
+  const srt = l.map((q, k) => (k + 1) + '\n' + srtTime(q.start) + ' --> ' + srtTime(q.end) + '\n' + String(q.text).replace(/\r/g, '') + '\n').join('\n');
+  mpvC(['sub-add', 'memory://' + srt, 'select', S.extName || 'Sous-titres ajoutés', 'fr']);
+  mpvC(['set_property', 'sub-delay', S.extOfs || 0]);
+  setTimeout(renderTrackMenu, 400);
+}
 function setSub(i, remember) {
+  if (mpvOn() && i === 'f') { mpvSubExt(); return; }
   if (mpvOn() && i !== 'f') {
     const id = typeof i === 'string' && i[0] === 'm' ? +i.slice(1) : -1, t = (S.mpvSt.tracks || []).find(x => x.type === 'sub' && x.id === id);
     mpvC(['set_property', 'sid', id >= 0 ? id : 'no']);
@@ -6007,7 +6028,7 @@ $('#trackMenu').addEventListener('click', e => {
   if (e.target.closest('[data-ost]')) { $('#trackMenu').hidden = true; ostFind(); return; }
   const ao = e.target.closest('[data-adofs]'); if (ao) { audioShift(+ao.dataset.adofs); return; }
   const so = e.target.closest('[data-subofs]');
-  if (so) { S.extOfs = Math.round(((S.extOfs || 0) + +so.dataset.subofs) * 10) / 10; loadFileCues(); renderTrackMenu(); return; }
+  if (so) { S.extOfs = Math.round(((S.extOfs || 0) + +so.dataset.subofs) * 10) / 10; if (mpvOn()) mpvC(['set_property', 'sub-delay', S.extOfs]); else loadFileCues(); renderTrackMenu(); return; }
   const a = e.target.closest('[data-aud]'), t = e.target.closest('[data-sub]');
   if (a) setAudio(+a.dataset.aud, true); else if (t) { const v = t.dataset.sub; setSub(isNaN(+v) ? v : +v, v !== 'f'); }
 });
