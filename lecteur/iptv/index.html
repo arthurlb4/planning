@@ -52,6 +52,7 @@ body.frameless header{-webkit-app-region:drag;user-select:none}
 body.frameless header button,body.frameless header input,body.frameless header a{-webkit-app-region:no-drag}
 .wbtns{display:none;align-self:stretch;margin:calc(-1 * max(10px,env(safe-area-inset-top))) -16px -10px auto;-webkit-app-region:no-drag}
 body.frameless .wbtns{display:flex;position:relative;z-index:200}
+html.natifapp .wbtns{margin:-20px -26px -14px auto}
 /* au-dessus des fenêtres de réglages (fond sombre plein écran) : fermer / réduire restent toujours accessibles */
 .wbtns button{width:46px;border:0;background:none;color:var(--text2);display:flex;align-items:center;justify-content:center;cursor:default;transition:background .12s,color .12s}
 .wbtns button:hover{background:rgba(255,255,255,.08);color:var(--text)}
@@ -708,6 +709,11 @@ body.mini #vodBack,body.solo #vodBack{display:none!important}
 #vbar .vt svg{fill:none;width:20px;height:20px;stroke-width:1.8}
 #vbar .vt.star.on svg{fill:var(--gold);stroke:var(--gold)}
 #vbar .vsep{width:1px;height:18px;background:rgba(255,255,255,.22);margin:0 4px;flex:none}
+/* lecteur étroit (panneaux ouverts, petite fenêtre) : les boutons les moins utiles se cachent au lieu de déborder sur le panneau */
+#screen{container-type:inline-size}#vbar{overflow:hidden}#vbar>*{flex-shrink:0}#vbRange{flex-shrink:1}
+@container (max-width:860px){#vbVol,#vbar .vsep,#statsBtn{display:none}}
+@container (max-width:720px){#vbBack,#vbFwd,#nowFav,#vbWin,#matchBtn{display:none}}
+@container (max-width:560px){#guideBtn,#vbDur,#vbSrc{display:none}}
 body:not(.hasmatch) #vbar #matchBtn,body.vodplay #vbar #guideBtn{display:none}
 body.hasmatch #vbar #matchBtn svg{stroke:var(--blue)}
 body.vtools #prevBtn,body.vtools #nextBtn,body.vtools #soloBtn,body.vtools #soloExit{display:none!important}
@@ -3475,13 +3481,14 @@ function playReplay(c, p) {
 }
 // programmes passés de la chaîne (serveur : tout ce qu'il garde, sinon le guide XML TV Fr)
 async function pastEpg(c) {
-  const days = archDays(c), since = Date.now() - days * 864e5, now = Date.now(), x = epgCtx(), id = streamId(c);
+  // sans replay : les 24 dernières heures du guide (pour voir ce qui est passé), sans lecture possible
+  const days = archDays(c), since = Date.now() - (days || 1) * 864e5, now = Date.now(), x = epgCtx(), id = streamId(c);
   let l = [];
-  if (x && id) try {
+  if (days && x && id) try {
     const j = JSON.parse(await fetchText(x.base + '/player_api.php?username=' + encodeURIComponent(x.user) + '&password=' + encodeURIComponent(x.pass) + '&action=get_simple_data_table&stream_id=' + id));
     l = (j.epg_listings || []).map(e => ({ title: b64txt(e.title).trim(), desc: b64txt(e.description).trim(), start: +e.start_timestamp * 1000, end: +e.stop_timestamp * 1000 })).filter(p => p.title && p.end <= now && p.start >= since);
   } catch (e) {}
-  if (!l.length) { const G = GUIDE.data, gid = G && guideId(c, G); if (gid) l = G.ch[gid].filter(p => p[1] * 1000 <= now && p[0] * 1000 >= since).map(p => ({ title: p[2], desc: [p[3], p[4]].filter(Boolean).join(' — '), start: p[0] * 1000, end: p[1] * 1000 })); }
+  if (!l.length) { const G = await loadGuide().catch(() => null), gid = G && guideId(c, G); if (gid) l = G.ch[gid].filter(p => p[1] * 1000 <= now && p[0] * 1000 >= since).map(p => ({ title: p[2], desc: [p[3], p[4]].filter(Boolean).join(' — '), start: p[0] * 1000, end: p[1] * 1000 })); }
   return l.sort((a, b) => a.start - b.start);
 }
 // Programme de la chaîne dans le panneau de droite (comme les stats de match) : suit la chaîne en cours, regroupé par jour,
@@ -3491,7 +3498,7 @@ async function renderGuideSide(scroll) {
   const c = S.current, box = $('#guide'); if (!c || c.vod || SIDE.mode !== 'guide' || $('#side').hidden) return;
   $('#matchTitle').textContent = 'Programme · ' + niceName(c);
   if (scroll) box.innerHTML = '<div class="spin" style="margin:30px auto"></div>';
-  const ad = archDays(c), [list, past] = await Promise.all([getEpg(c, 40), ad ? pastEpg(c) : []]);
+  const ad = archDays(c), [list, past] = await Promise.all([getEpg(c, 40), pastEpg(c).catch(() => [])]);
   if (S.current !== c || SIDE.mode !== 'guide') return;
   const now = Date.now(); let day = '', h = '';
   const all = past.concat((list || []).filter(p => !past.length || p.start >= past[past.length - 1].end - 60e3)); SIDE.rp = all;
@@ -5928,6 +5935,15 @@ if (window.desktop && window.desktop.mpv) {
     }
   });
 }
+/* Chaîne lue par mpv qui reste figée (tampon vide ou image arrêtée) plus de 12 s alors qu'elle n'est pas en pause :
+   relancée (même chaîne, puis ses autres qualités) */
+setInterval(() => {
+  const c = S.current, M = S.mpvSt;
+  if (!c || c.vod || S.engine !== 'mpv' || !(M.pos > 0) || M.paused) { S.mpvStall = null; return; }
+  const st = S.mpvStall;
+  if (!st || st.c !== c || Math.abs((M.pos || 0) - st.pos) > 0.5) { S.mpvStall = { c, pos: M.pos || 0, t: Date.now() }; return; }
+  if (Date.now() - st.t > 12000) { S.mpvStall = null; toast('Flux figé : reconnexion…'); play(c, S.alts); }
+}, 2000);
 // retour (Échap, fin, fermeture) : position retenue, puis la fiche ou la page d'où le film a été lancé
 function mpvBack() {
   const c = S.current;
@@ -7161,7 +7177,7 @@ $('#copyLink').onclick = async () => {
   catch (e) { $('#linkField').select(); document.execCommand('copy'); toast('Lien copié'); }
 };
 
-/* Clavier : ↑/↓ chaînes, Entrée lire, / chercher, F plein écran, chiffres = numéro de chaîne */
+/* Clavier : ↑/↓ volume pendant une lecture (sinon chaînes), Entrée lire, / chercher, F plein écran, chiffres = numéro de chaîne */
 let digits = '', dT;
 document.addEventListener('keydown', e => {
   if (e.target.matches('input,textarea') || document.querySelector('.modal.open')) {
@@ -7176,7 +7192,11 @@ document.addEventListener('keydown', e => {
     else setHomeView(true, true, S.lastPage || '');
     return;
   }
-  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); moveSel(e.key === 'ArrowDown' ? 1 : -1); }
+  // ↑/↓ : volume pendant une lecture (lecteur à l'écran), sinon chaîne précédente / suivante dans la liste
+  if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && S.current && document.body.classList.contains('playing') && !document.body.classList.contains('homeview')) {
+    e.preventDefault(); const r = $('#vbVol'), v = Math.round(Math.max(0, Math.min(1, (video.muted ? 0 : video.volume) + (e.key === 'ArrowUp' ? 0.05 : -0.05))) * 100) / 100;
+    r.value = v; r.dispatchEvent(new Event('input')); toast('Volume ' + Math.round(v * 100) + ' %'); wake(); }
+  else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); moveSel(e.key === 'ArrowDown' ? 1 : -1); }
   else if (e.key === 'Enter' && S.sel >= 0 && !e.target.closest('button,a,select,[data-play],[data-v],[data-ev]')) { e.preventDefault(); play(S.view[S.sel]); }
   else if (e.key === 'PageDown' || e.key === 'PageUp') { e.preventDefault(); step(e.key === 'PageDown' ? 1 : -1); }
   else if (e.key === '/') { e.preventDefault(); $('#search').focus(); }

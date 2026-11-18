@@ -118,6 +118,8 @@ public class MainForm : Form
     protected override async void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);
+        // Windows 11 : coins arrondis et liseré fin autour de la fenêtre (Windows les retire de lui-même quand elle est agrandie)
+        try { int round = 2; DwmSetWindowAttribute(Handle, 33, ref round, 4); int col = 0x003A3A38; DwmSetWindowAttribute(Handle, 34, ref col, 4); } catch { }
         try { await Init(); }
         catch (Exception ex) { MessageBox.Show(this, "Démarrage impossible : " + ex.Message, "Lecteur IPTV", MessageBoxButtons.OK, MessageBoxIcon.Error); }
     }
@@ -319,6 +321,9 @@ public class MainForm : Form
         mpv?.Place();
     }
     protected override void OnMove(EventArgs e) { base.OnMove(e); try { comp?.NotifyParentWindowPositionChanged(); } catch { } }
+    [System.Runtime.InteropServices.DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr h, int attr, ref int v, int size);
+    // clavier rendu à la page (la fenêtre vidéo de mpv le prend en s'ouvrant : F, espace, flèches ne marchaient qu'après un clic)
+    public void FocusPage() { if (IsDisposed) return; if (InvokeRequired) { BeginInvoke(FocusPage); return; } try { if (ContainsFocus || Form.ActiveForm == this) { Focus(); comp?.MoveFocus(CoreWebView2MoveFocusReason.Programmatic); } } catch { } }
     protected override void OnActivated(EventArgs e) { base.OnActivated(e); try { comp?.MoveFocus(CoreWebView2MoveFocusReason.Programmatic); } catch { } }
     /* Fermeture en deux temps : la page enregistre d'abord ce qui est en cours (position du film, Reprendre), puis le
        navigateur intégré est fermé proprement et on attend qu'il ait écrit ses données sur le disque ; sinon les

@@ -38,11 +38,15 @@ public class Mpv
         if ((bool?)o["iptv"] == true || (bool?)o["live"] == true)
         {
             args.Add("--user-agent=LecteurIPTV/" + Application.ProductVersion.Split('+')[0] + " (Windows)");
-            args.Add("--stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=5");
+            // direct : reconnexion aussi quand le serveur ferme le flux ou renvoie une erreur ; replay : sans (fin réelle)
+            args.Add("--stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,reconnect_delay_max=10" + ((bool?)o["live"] == true ? ",reconnect_at_eof=1,reconnect_on_http_error=5xx" : ""));
+            args.Add("--network-timeout=15");
         }
         if ((bool?)o["live"] == true)
         {
-            args.Add("--cache=yes"); args.Add("--demuxer-readahead-secs=8");
+            // tampon plus confortable : 4 s avant de démarrer, et à chaque creux mpv attend 4 s de réserve avant de repartir
+            args.Add("--cache=yes"); args.Add("--demuxer-readahead-secs=30");
+            args.Add("--cache-pause-initial=yes"); args.Add("--cache-pause-wait=4");
             // retour en arrière dans le direct : 4 Go gardés derrière la lecture, sur le disque (fichier temporaire effacé à la
             // fermeture) plutôt qu'en mémoire, et recherche permise dans ce qui est gardé
             var cdir = Path.Combine(Path.GetTempPath(), "lecteur-mpv-cache"); try { Directory.CreateDirectory(cdir); } catch { }
@@ -64,6 +68,7 @@ public class Mpv
         if (proc != p) return new JsonObject { ["error"] = "remplacé" };
         if (pipe == null) { Stop(); return new JsonObject { ["error"] = "mpv ne répond pas" }; }
         wr = new StreamWriter(pipe, new UTF8Encoding(false)) { AutoFlush = true, NewLine = "\n" };
+        _ = Task.Run(async () => { foreach (var ms in new[] { 150, 600, 1500 }) { await Task.Delay(ms); f.FocusPage(); } });
         string[] props = { "time-pos", "duration", "pause", "eof-reached", "aid", "sid", "track-list", "chapter-list", "volume", "mute", "demuxer-cache-time", "video-params/aspect", "paused-for-cache",
             // panneau ⓘ de la page (image et son)
             "width", "height", "video-codec", "audio-codec-name", "audio-params/channel-count", "container-fps", "video-bitrate", "hwdec-current", "video-params/gamma" };
