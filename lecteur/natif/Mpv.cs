@@ -208,10 +208,8 @@ public class Mpv
         }
         // pendant qu'on tire un bord : l'image garde sa taille (seulement recentrée), sinon Windows étire la dernière image
         // à chaque mouvement et les proportions changent ; remise à la bonne taille au lâcher
-        // pleine fenêtre (fenêtre aux proportions de la vidéo) : l'image suit la fenêtre, sans déformation possible ;
-        // sinon, pendant qu'on tire un bord : l'image garde sa taille (recentrée), remise à la bonne taille au lâcher
-        if (f.Sizing && childW > 0 && !f.RatioLock) { w = childW; h = childH; x = (W - w) / 2; y = (H - h) / 2; }
-        else { childW = w; childH = h; }
+        // pendant qu'on tire un bord, l'image suit la fenêtre, toujours au format exact de la vidéo (pas de déformation)
+        childW = w; childH = h;
         Natif.EnumChildWindows(ph, (c, l) => { if (Natif.GetParent(c) == ph) Natif.SetWindowPos(c, IntPtr.Zero, x, y, w, h, 0x0014); return true; }, IntPtr.Zero);
     }
 
