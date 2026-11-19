@@ -1087,7 +1087,7 @@ h1,h2,h3,h4,h5,h6,b,strong,th,summary{font-weight:500}
     <section class="ptab" data-ptabc="lecture">
     <h2 class="ptt">Lecture</h2>
     <h3>Chaînes</h3>
-    <div class="dl"><span><b>Tester les chaînes de l'accueil</b><small>Chaque version de chaque chaîne est lue une dizaine de secondes sans le son, pour mesurer sa vraie qualité ; les meilleures passent ensuite en premier. Les versions déjà vérifiées il y a moins de 7 jours sont passées.</small></span><button class="btn primary" onclick="qtHome()">Tester</button></div>
+    <div class="dl"><span><b>Tester les chaînes de l'accueil</b><small>Chaque version de chaque chaîne est lue quelques secondes sans le son, pour mesurer sa vraie qualité ; les meilleures passent ensuite en premier. Les versions déjà vérifiées il y a moins de 7 jours sont passées.</small></span><button class="btn primary" onclick="qtHome()">Tester</button></div>
     <div id="normBox"></div>
     <h3>Films et séries</h3>
     <div id="langBox" class="dlbox"></div>
@@ -3078,7 +3078,7 @@ function variantsOf(c) {
   return l.sort((a, b) => chScore(b) - chScore(a) || chInfo(a).hevc - chInfo(b).hevc || a.n - b.n);
 }
 const qLabel = c => { const k = chInfo(c); return QLBL[k.q] + (k.hevc ? ' HEVC' : ''); };
-/* Test des qualités : chaque version lue sans le son une dizaine de secondes (une seule lecture à la fois, comme le veut
+/* Test des qualités : chaque version lue sans le son quelques secondes (une seule lecture à la fois, comme le veut
    l'abonnement), mesurée, puis retour à la meilleure. Pour une chaîne, ou pour toutes les chaînes de l'accueil. */
 const QT = { on: false, stop: false, ko: null };
 function qtBox(txt, n, total) {
@@ -3091,7 +3091,7 @@ async function qtOne(c) {
   QT.ko = null; c._mq = 0;
   play(c, []); video.muted = true;
   const t0 = Date.now();
-  while (Date.now() - t0 < 16000) {                    // attente du démarrage
+  while (Date.now() - t0 < 10000) {                    // attente du démarrage (10 s : au-delà, la version est trop lente de toute façon)
     await new Promise(r => setTimeout(r, 400));
     if (QT.stop || QT.ko === c) break;
     if (S.current === c && S.engine && !video.paused && video.videoHeight) break;
@@ -3103,14 +3103,14 @@ async function qtOne(c) {
     S.channels.forEach(x => { if (x.url === c.url) x._ci = null; }); return;
   }
   const o = vrOf(c.url); if (o.ko) { delete o.ko; VRES.set(c.url, o); }
-  for (let i = 0; i < 18 && !QT.stop; i++) await new Promise(r => setTimeout(r, 500));   // mesures (résolution, images/s, son)
+  for (let i = 0; i < 8 && !QT.stop; i++) await new Promise(r => setTimeout(r, 500));   // mesures (résolution, images/s, son) : 4 s suffisent
 }
 async function qtRun(list, label, back) {
   if (QT.on || !list.length) return;
   QT.on = true; QT.stop = false;
   const wasMuted = video.muted;
   try {
-    for (let i = 0; i < list.length && !QT.stop; i++) { qtBox((label(list[i]) || list[i].name) + ' · ' + (i + 1) + ' / ' + list.length + ' · environ ' + Math.ceil((list.length - i) * 11 / 60) + ' min', i, list.length); await qtOne(list[i]); }
+    for (let i = 0; i < list.length && !QT.stop; i++) { qtBox((label(list[i]) || list[i].name) + ' · ' + (i + 1) + ' / ' + list.length + ' · environ ' + Math.ceil((list.length - i) * 6 / 60) + ' min', i, list.length); await qtOne(list[i]); }
   } finally {
     QT.on = false; video.muted = wasMuted; const b = $('#qtBox'); if (b) b.remove();
     S.home = null; S._varCh = null; S.channels.forEach(x => { x._ci = null; });
@@ -3132,7 +3132,7 @@ function qtHome() {
   const fresh = c => { const m = vrOf(c.url); return (m.h || m.ko) && (!m.t || Date.now() - m.t < 7 * 864e5) && !(m.ko && !m.h && Date.now() - m.ko > 864e5); };
   let list = all.filter(c => !fresh(c));
   if (!list.length) {
-    if (!confirm('Toutes les versions des chaînes de l\'accueil ont été vérifiées il y a moins de 7 jours. Tout retester quand même (environ ' + Math.ceil(all.length * 11 / 60) + ' min) ?')) return;
+    if (!confirm('Toutes les versions des chaînes de l\'accueil ont été vérifiées il y a moins de 7 jours. Tout retester quand même (environ ' + Math.ceil(all.length * 6 / 60) + ' min) ?')) return;
     list = all;
   }
   closeModals();
@@ -3166,7 +3166,7 @@ $('#qualBtn').onclick = e => {
   const v = variantsOf(c);
   if (!m.hidden || v.length < 2) { m.hidden = true; return; }
   m.innerHTML = v.map((x, i) => `<button data-qv="${i}"><span class="ck">${x === c ? '✓' : ''}</span><span class="q">${esc(qLabel(x))}</span><span class="r"><b>${esc(x.group || 'Sans catégorie')}</b> · ${esc(qNote(x))}<br>${esc(x.name)}</span></button>`).join('');
-  m.innerHTML += `<button data-qtest><span class="ck">⟳</span><span class="q" style="min-width:0">Tester les ${v.length} versions</span><span class="r">≈ ${v.length * 11} s, sans le son, puis la meilleure</span></button>`;
+  m.innerHTML += `<button data-qtest><span class="ck">⟳</span><span class="q" style="min-width:0">Tester les ${v.length} versions</span><span class="r">≈ ${v.length * 6} s, sans le son, puis la meilleure</span></button>`;
   m._v = v; m.hidden = false;
   }
   const r = $('#qualBtn').getBoundingClientRect(), w = m.offsetWidth, h = m.offsetHeight;
@@ -3293,7 +3293,8 @@ async function play(c, alts) {
   // appli native sans mpv pour les films : lecteur de la page, le serveur local convertit à la volée ce qu'il ne lit pas
   if (c.vod && NAT && window.desktop.remux && LS.get('pref.mpvvod', true) === false) return playRemux(c, t);
   // appli native : chaînes en direct aussi par mpv (tous formats, son Dolby sans conversion) ; lecteur de la page en secours
-  if (!c.vod && NAT && window.desktop.mpv && !noMpvNow(c) && LS.get('pref.mpvlive', true) !== false) return playMpv(c, t);
+  // (test des qualités : lecteur de la page, seul à donner la résolution et les images/s mesurées, et à signaler un échec)
+  if (!c.vod && NAT && window.desktop.mpv && !QT.on && !noMpvNow(c) && LS.get('pref.mpvlive', true) !== false) return playMpv(c, t);
   // Appli Windows : film MKV (ou autre format que Chromium ne lit pas) converti à la volée par ffmpeg
   if (c.vod && window.desktop && window.desktop.remux && /\.(mkv|avi|wmv|flv|mov|m2ts|vob|divx|xvid)$/i.test(c.url.split('?')[0])) return playRemux(c, t);
   // Appli Windows : chaîne dont le son (Dolby) n'est pas lu par Chromium, repérée avant → son converti tout de suite
