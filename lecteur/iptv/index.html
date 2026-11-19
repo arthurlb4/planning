@@ -3289,11 +3289,11 @@ async function play(c, alts) {
 
 
   // Appli Windows avec mpv : films, épisodes et torrents lus par mpv (tout format, sans conversion) ; ancien lecteur en secours
-  if (c.vod && window.desktop && window.desktop.mpv && (NAT ? LS.get('pref.mpvvod', true) !== false : LS.get('pref.mpvwin', false) === true) && S.noMpv !== c.url) return playMpv(c, t);
+  if (c.vod && window.desktop && window.desktop.mpv && (NAT ? LS.get('pref.mpvvod', true) !== false : LS.get('pref.mpvwin', false) === true) && !noMpvNow(c)) return playMpv(c, t);
   // appli native sans mpv pour les films : lecteur de la page, le serveur local convertit à la volée ce qu'il ne lit pas
   if (c.vod && NAT && window.desktop.remux && LS.get('pref.mpvvod', true) === false) return playRemux(c, t);
   // appli native : chaînes en direct aussi par mpv (tous formats, son Dolby sans conversion) ; lecteur de la page en secours
-  if (!c.vod && NAT && window.desktop.mpv && S.noMpv !== c.url && LS.get('pref.mpvlive', true) !== false) return playMpv(c, t);
+  if (!c.vod && NAT && window.desktop.mpv && !noMpvNow(c) && LS.get('pref.mpvlive', true) !== false) return playMpv(c, t);
   // Appli Windows : film MKV (ou autre format que Chromium ne lit pas) converti à la volée par ffmpeg
   if (c.vod && window.desktop && window.desktop.remux && /\.(mkv|avi|wmv|flv|mov|m2ts|vob|divx|xvid)$/i.test(c.url.split('?')[0])) return playRemux(c, t);
   // Appli Windows : chaîne dont le son (Dolby) n'est pas lu par Chromium, repérée avant → son converti tout de suite
@@ -3829,7 +3829,7 @@ function refreshStats() {
     ${row('Images perdues', lost)}
     ${row('Tampon', buf > 0 ? buf.toFixed(1) + ' s' : '')}
     ${row('Volume', video.muted ? 'coupé (muet)' : Math.round(video.volume * 100) + ' %' + (S.engine === 'native' && video.audioTracks ? ' · ' + video.audioTracks.length + ' piste(s) audio' : ''))}
-    ${row('Lecteur', { hls: 'hls.js', mpegts: 'mpegts.js', native: 'lecteur du navigateur', remux: 'ffmpeg (conversion' + (S.remux && S.remux.enc ? ' image et son' : ' du son') + ')' }[S.engine] || '')}
+    ${row('Lecteur', (S.noMpv === (S.current && S.current.url) && NAT ? 'mpv a échoué, relais : ' : '') + ({ hls: 'hls.js', mpegts: 'mpegts.js', native: 'lecteur du navigateur', remux: 'ffmpeg (conversion' + (S.remux && S.remux.enc ? ' image et son' : ' du son') + ')' }[S.engine] || ''))}
     ${S.engine === 'remux' && S.remux.info ? row('Source', esc([S.remux.info.vcodec, S.remux.info.vprofile].filter(Boolean).join(' ') + ' · ' + ((S.remux.info.audio || [])[S.remux.a] || {}).codec)) : ''}
     ${row('Format', S.playUrl ? (kindOf(S.playUrl) === 'hls' ? 'HLS (.m3u8)' : kindOf(S.playUrl) === 'ts' ? 'MPEG-TS' : 'fichier') + (/^https:/.test(S.playUrl) ? ' · https' : ' · http') : '')}
   </table>${chronoHtml(row)}${torStatsHtml(row)}`;
@@ -6120,6 +6120,9 @@ function mpvSubArgs() {
   a.push(...([['--sub-border-size=0', '--sub-shadow-offset=0'], ['--sub-border-size=0', '--sub-shadow-offset=2'], ['--sub-border-size=2', '--sub-shadow-offset=0'], ['--sub-border-size=4', '--sub-shadow-offset=1']][p.edge] || []));
   return a;
 }
+// mpv a échoué sur cette chaîne : lecteur de la page pour le relais immédiat, mais mpv réessayé à la prochaine lecture
+// passé 1 min (avant : la chaîne restait sur le lecteur de la page, qui coupe plus, jusqu'à la fermeture de l'appli)
+const noMpvNow = c => S.noMpv === c.url && Date.now() - (S.noMpvAt || 0) < 60e3;
 async function playMpv(c, t) {
   const M = window.desktop.mpv;
   stopEngines(); S.engine = 'mpv'; S.mpvSt = {}; S.playUrl = c.url; document.body.classList.add('mpv'); document.body.classList.remove('natready');
@@ -6129,11 +6132,11 @@ async function playMpv(c, t) {
   await dnsCheck(c.url); if (t !== token) return;
   const r = await M.play({ wait: c.vod ? 4 : liveWait(c), url: pxUrl(c.url), title: c.vod ? c.name : niceName(c), live: !c.vod, iptv: !c.vod || !!c.replayOf, start, vol: video.muted ? 0 : video.volume, alang: LS.get('pref.audio', 'fr'), slang: LS.get('pref.sub', 'off'), rect: mpvRect(), under: NAT, subArgs: NAT ? mpvSubArgs() : [] }).catch(e => ({ error: e.message }));
   if (t !== token) return;
-  if (!r || r.error) { document.body.classList.remove('mpv', 'nat'); S.engine = ''; S.noMpv = c.url; toast('Lecteur intégré indisponible (' + ((r && r.error) || '?') + ') : ancien lecteur'); return play(c); }
+  if (!r || r.error) { document.body.classList.remove('mpv', 'nat'); S.engine = ''; S.noMpv = c.url; S.noMpvAt = Date.now(); toast('Lecteur intégré indisponible (' + ((r && r.error) || '?') + ') : ancien lecteur'); return play(c); }
   if (c.vod) setStatus(null); if (start > 0 && c.replayOf && start === rpOfs(c.replayOf)) toast('Début du programme (pub sautée : ' + fmtDur(start) + ')'); else if (start > 60) toast('Reprise à ' + fmtDur(start));
   mpvSync(); if (NAT) vbarUpdate();
   // chaîne : attente affichée jusqu'à la première image ; rien au bout de 15 s → lecteur de la page (et ses autres qualités)
-  if (!c.vod) setTimeout(() => { if (t !== token || S.current !== c || S.engine !== 'mpv' || S.mpvSt.pos > 0) return; S.noMpv = c.url; window.desktop.mpv.stop(); document.body.classList.remove('mpv', 'mpvlive'); S.engine = ''; play(c, S.alts); }, 15000);
+  if (!c.vod) setTimeout(() => { if (t !== token || S.current !== c || S.engine !== 'mpv' || S.mpvSt.pos > 0) return; S.noMpv = c.url; S.noMpvAt = Date.now(); window.desktop.mpv.stop(); document.body.classList.remove('mpv', 'mpvlive'); S.engine = ''; play(c, S.alts); }, 15000);
 }
 // zone du lecteur, ou masquée si une page, une fiche, un menu ou les Paramètres sont devant
 function mpvRect() {
@@ -6175,7 +6178,7 @@ if (window.desktop && window.desktop.mpv) {
       if (st.eof && c.next && c.it) { nextEpGo(); return; }                        // épisode suivant
       if (!c.vod && st.eof) { toast('Flux coupé : reconnexion…'); play(c, S.alts); return; }   // chaîne : on la relance
       // chaîne : mpv fermé de lui-même (flux refusé, option inconnue…) → lecteur de la page, jamais la page Films & séries
-      if (!c.vod && st.exit) { S.noMpv = c.url; S.engine = ''; document.body.classList.remove('mpv', 'mpvlive'); play(c, S.alts); return; }
+      if (!c.vod && st.exit) { S.noMpv = c.url; S.noMpvAt = Date.now(); S.engine = ''; document.body.classList.remove('mpv', 'mpvlive'); play(c, S.alts); return; }
       if (st.eof || st.exit) mpvBack();
     }
   });
