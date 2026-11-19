@@ -484,7 +484,9 @@ public class MainForm : Form
         try
         {
             var b = full ? normalBounds : WindowState == FormWindowState.Normal ? Bounds : RestoreBounds;
-            File.WriteAllText(StateFile, new JsonObject { ["x"] = b.X, ["y"] = b.Y, ["w"] = b.Width, ["h"] = b.Height, ["max"] = WindowState == FormWindowState.Maximized }.ToJsonString());
+            // fermée en plein écran : l'état d'avant le plein écran (agrandie ou non) est celui gardé pour la prochaine ouverture
+            bool max = full ? fullPrev == FormWindowState.Maximized : WindowState == FormWindowState.Maximized;
+            File.WriteAllText(StateFile, new JsonObject { ["x"] = b.X, ["y"] = b.Y, ["w"] = b.Width, ["h"] = b.Height, ["max"] = max }.ToJsonString());
         }
         catch { }
     }
