@@ -6135,8 +6135,10 @@ async function playMpv(c, t) {
   if (!r || r.error) { document.body.classList.remove('mpv', 'nat'); S.engine = ''; S.noMpv = c.url; S.noMpvAt = Date.now(); toast('Lecteur intégré indisponible (' + ((r && r.error) || '?') + ') : ancien lecteur'); return play(c); }
   if (c.vod) setStatus(null); if (start > 0 && c.replayOf && start === rpOfs(c.replayOf)) toast('Début du programme (pub sautée : ' + fmtDur(start) + ')'); else if (start > 60) toast('Reprise à ' + fmtDur(start));
   mpvSync(); if (NAT) vbarUpdate();
-  // chaîne : attente affichée jusqu'à la première image ; rien au bout de 15 s → lecteur de la page (et ses autres qualités)
-  if (!c.vod) setTimeout(() => { if (t !== token || S.current !== c || S.engine !== 'mpv' || S.mpvSt.pos > 0) return; S.noMpv = c.url; S.noMpvAt = Date.now(); window.desktop.mpv.stop(); document.body.classList.remove('mpv', 'mpvlive'); S.engine = ''; play(c, S.alts); }, 15000);
+  /* chaîne : attente affichée jusqu'à la première image ; rien au bout de 15 s APRÈS la réserve demandée à mpv → lecteur de la
+     page (et ses autres qualités). Avant : 15 s en tout, alors qu'une chaîne qui coupe souvent fait attendre mpv jusqu'à 25 s
+     de réserve avant la première image — mpv était jugé en échec alors qu'il remplissait sa réserve */
+  if (!c.vod) setTimeout(() => { if (t !== token || S.current !== c || S.engine !== 'mpv' || S.mpvSt.pos > 0) return; S.noMpv = c.url; S.noMpvAt = Date.now(); window.desktop.mpv.stop(); document.body.classList.remove('mpv', 'mpvlive'); S.engine = ''; play(c, S.alts); }, (liveWait(c) + 15) * 1000);
 }
 // zone du lecteur, ou masquée si une page, une fiche, un menu ou les Paramètres sont devant
 function mpvRect() {
