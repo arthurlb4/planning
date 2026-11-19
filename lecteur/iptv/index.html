@@ -648,7 +648,7 @@ body.homeview #channels,body.homeview #player{display:none}
 .ev.past{opacity:.45}
 .bar{height:3px;border-radius:2px;background:rgba(255,255,255,.12);margin-top:4px;overflow:hidden}
 .bar i{display:block;height:100%;background:var(--blue)}
-#nowEpg{font-size:12px;color:var(--text2);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#nowEpg{font-size:12px;color:var(--text2);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-height:1.35em}
 #nowEpg b{color:var(--text);font-weight:500}
 /* Infos de qualité (codec, résolution, images/s…) par-dessus l'image */
 /* Qualité de l'image et du son : bulle sur l'image (sous le titre en plein écran) */
@@ -3618,8 +3618,12 @@ function fillTileEpg() {
   }));
 }
 async function nowEpg(c) {
-  const el = $('#nowEpg'); el.textContent = '';
-  const list = await getEpg(c, 2); if (S.current !== c || !list || !list.length) return;
+  // ligne gardée telle quelle pendant la mise à jour (avant : vidée puis réécrite, la bande du bas rapetissait un instant et la
+  // vidéo avec sa barre « baissait et remontait » — toutes les minutes et à chaque changement de chaîne) ; vidée seulement
+  // si la chaîne a changé
+  const el = $('#nowEpg'); if (el.dataset.c !== c.url) { el.dataset.c = c.url; el.innerHTML = '&nbsp;'; }
+  const list = await getEpg(c, 2); if (S.current !== c) return;
+  if (!list || !list.length) { el.innerHTML = '&nbsp;'; return; }
   el.innerHTML = `<b>${esc(list[0].title)}</b> · ${hm(list[0].start)}–${hm(list[0].end)}<span id="nowScore"></span>${list[1] ? ' · ensuite ' + esc(list[1].title) + ' (' + hm(list[1].start) + ')' : ''}`;
   findMatch(c);
 }
