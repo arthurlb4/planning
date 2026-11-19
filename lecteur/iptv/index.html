@@ -1057,6 +1057,7 @@ h1,h2,h3,h4,h5,h6,b,strong,th,summary{font-weight:500}
       <div class="sc"><button class="btn" id="replayBtn">Vérifier</button></div></div>
     <div id="diagBox" class="srow" style="display:none"><div class="st"><b>Diagnostic du serveur</b><small id="diagRes">Box qui bloque le serveur ? Adresse donnée par la box et par un DNS chiffré, puis un essai direct et un essai par le relais de l'appli.</small></div>
       <div class="sc"><button class="btn" id="diagBtn">Tester</button></div></div>
+    <div id="incBox"></div>
     <h3>Mes listes</h3>
     <div id="plList"></div>
     <details class="padd" id="addBox"><summary>＋ Ajouter une liste</summary>
@@ -3498,13 +3499,44 @@ function fail(c) {
 }
 // « Lecture impossible » seul, avec Réessayer et un bouton qui copie le code d'erreur complet
 function failMsg(txt, extra, note) {
-  S.errText = txt;
+  S.errText = txt; incident(S.current, 'échec : ' + String(txt).split('\n')[0].slice(0, 120));
   setStatus('msg', '<b style="color:var(--text)">Lecture impossible</b>' + (note ? '<div class="hint" id="failNote" style="margin-top:8px;max-width:520px;line-height:1.5">' + note + '</div>' : ''),
     '<button class="btn" onclick="play(S.current)">Réessayer</button><button class="btn" onclick="copyErr()">Copier le code d\'erreur</button>' + (extra || ''));
 }
 function copyErr() {
   const txt = S.errText || '';
   (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => toast('Code d\'erreur copié'), () => { prompt('Copiez ce texte :', txt); });
+}
+/* ---------- Journal des pannes (Paramètres › Lecture) : chaque incident de lecture noté (heure, chaîne, version, lecteur,
+   ce qui s'est passé), 300 derniers gardés sur l'appareil ; bouton « Copier » pour le diagnostic */
+function incident(c, why, eng) {
+  try {
+    const l = LS.get('dev.incidents', []) || [], k = c ? chInfo(c) : null;
+    l.push({ t: Date.now(), ch: c ? (c.vod ? c.name : niceName(c)) : '', v: c && !c.vod ? [k.hm ? k.hm + 'p' : QLBL[k.q] || '', c.group || ''].filter(Boolean).join(' · ') : '', e: eng || S.engine || '', w: why });
+    LS.set('dev.incidents', l.slice(-300));
+  } catch (e) {}
+}
+const incTxt = x => new Date(x.t).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' · ' + [x.ch, x.v, x.e].filter(Boolean).join(' · ') + ' → ' + x.w;
+// bilan des coupures : par version de chaîne, coupures par heure regardée (mesures gardées avec les autres, VRES)
+function cutTable() {
+  const by = new Map(); (S.channels || []).forEach(c => { if (!c.vod && !by.has(c.url)) by.set(c.url, c); });
+  return [...VRES.entries()].map(([url, m]) => ({ c: by.get(url), st: (m && m.st) || 0, pt: (m && m.pt) || 0 }))
+    .filter(x => x.c && x.pt >= 300).map(x => Object.assign(x, { r: x.st / (x.pt / 3600) })).sort((a, b) => b.r - a.r).slice(0, 15);
+}
+function incBox() {
+  const box = $('#incBox'); if (!box) return;
+  const l = (LS.get('dev.incidents', []) || []).slice(-40).reverse(), T = cutTable();
+  box.innerHTML = srow('Journal des pannes', l.length ? l.length + ' derniers incidents (coupures, relances de mpv, échecs…), du plus récent au plus ancien' : 'Aucun incident noté pour l\'instant',
+      '<button class="btn" id="incCopy">Copier</button><button class="btn" id="incClr">Effacer</button>')
+    + (l.length ? '<div class="hint" style="max-height:220px;overflow:auto;font-size:12px;line-height:1.55;margin:4px 0 14px;user-select:text">' + l.map(x => esc(incTxt(x))).join('<br>') + '</div>' : '')
+    + srow('Chaînes qui coupent le plus', T.length ? 'Par version, coupures par heure regardée (depuis une semaine environ ; au moins 5 min regardées)' : 'Pas encore assez de temps regardé pour un bilan', '')
+    + (T.length ? '<div class="hint" style="font-size:12px;line-height:1.6;margin:4px 0 6px">' + T.map(x => '<b style="color:var(--text)">' + esc(niceName(x.c)) + '</b> · ' + esc(qLabel(x.c)) + ' · ' + esc(x.c.group || '') + ' — ' + (Math.round(x.r * 10) / 10) + ' coupure' + (x.r >= 2 ? 's' : '') + ' / h (' + Math.round(x.st) + ' en ' + Math.round(x.pt / 60) + ' min)').join('<br>') + '</div>' : '');
+  $('#incCopy').onclick = () => {
+    const all = (LS.get('dev.incidents', []) || []).map(incTxt).join('\n'), tb = cutTable().map(x => niceName(x.c) + ' · ' + qLabel(x.c) + ' · ' + (x.c.group || '') + ' — ' + (Math.round(x.r * 10) / 10) + ' / h (' + Math.round(x.st) + ' en ' + Math.round(x.pt / 60) + ' min)').join('\n');
+    const txt = 'JOURNAL\n' + (all || '(vide)') + '\n\nCOUPURES PAR VERSION\n' + (tb || '(pas assez de données)') + '\n\n' + navigator.userAgent.replace(/^Mozilla\/5\.0 /, '').slice(0, 140) + (window.desktop && window.desktop.version ? ' · appli ' + window.desktop.version : '');
+    (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => toast('Journal copié : collez-le dans la conversation'), () => prompt('Copiez ce texte :', txt));
+  };
+  $('#incClr').onclick = () => { LS.set('dev.incidents', []); incBox(); };
 }
 /* ---------- EPG (guide des programmes) : celui du serveur Xtream de la liste, chaîne par chaîne (léger) ---------- */
 const EPG = new Map();                                   // stream_id -> { at, list }
@@ -4989,7 +5021,8 @@ async function renderVod() {
     // Titres (tolérant aux fautes de frappe), puis via TMDB : acteurs, titres originaux ou étrangers, genres
     const w = q.split(/\s+/).filter(Boolean), exact = all.filter(i => w.every(x => norm(i.name).includes(x)));
     const res = exact.concat(all.filter(i => !exact.includes(i) && fuzzyHit(i.name, w))).slice(0, 120);
-    const X = V.x = searchExtras(V.q, ['ch', 'ev']);
+    // (plus de chaînes ni de matchs ici : la recherche de Films & séries ne montre que des films et des séries)
+    const X = V.x = { ch: [], ev: [], vod: [] };
     const PL = platOf(q); if (PL) h += await platRows(PL, all);
     if (!document.body.classList.contains('vod') || norm(V.q).trim() !== q) return;
     if (X.ch.length || X.ev.length) h += `<div class="vxs">${extrasHtml(X)}</div>`;
@@ -6121,6 +6154,14 @@ function mpvSubArgs() {
   a.push(...([['--sub-border-size=0', '--sub-shadow-offset=0'], ['--sub-border-size=0', '--sub-shadow-offset=2'], ['--sub-border-size=2', '--sub-shadow-offset=0'], ['--sub-border-size=4', '--sub-shadow-offset=1']][p.edge] || []));
   return a;
 }
+/* chaîne : mpv en échec (rien au bout du délai, ou arrêté) → mpv relancé sur la même chaîne, 2 fois au plus en 3 min ; le
+   lecteur de la page ne prend le relais qu'ensuite */
+function mpvFail(c, why) {
+  const R = S.mpvRetry && S.mpvRetry.url === c.url && Date.now() - S.mpvRetry.at < 180e3 ? S.mpvRetry : { url: c.url, n: 0 };
+  R.at = Date.now(); S.mpvRetry = R; S.engine = ''; document.body.classList.remove('mpv', 'mpvlive');
+  if (R.n++ < 2) { incident(c, why + ' → mpv relancé (' + R.n + '/2)', 'mpv'); toast('mpv relancé…'); play(c, S.alts); return; }
+  incident(c, why + ' → relais : lecteur de la page', 'mpv'); S.noMpv = c.url; S.noMpvAt = Date.now(); play(c, S.alts);
+}
 // mpv a échoué sur cette chaîne : lecteur de la page pour le relais immédiat, mais mpv réessayé à la prochaine lecture
 // passé 1 min (avant : la chaîne restait sur le lecteur de la page, qui coupe plus, jusqu'à la fermeture de l'appli)
 const noMpvNow = c => S.noMpv === c.url && Date.now() - (S.noMpvAt || 0) < 60e3;
@@ -6133,13 +6174,13 @@ async function playMpv(c, t) {
   await dnsCheck(c.url); if (t !== token) return;
   const r = await M.play({ wait: c.vod ? 4 : liveWait(c), url: pxUrl(c.url), title: c.vod ? c.name : niceName(c), live: !c.vod, iptv: !c.vod || !!c.replayOf, start, vol: video.muted ? 0 : video.volume, alang: LS.get('pref.audio', 'fr'), slang: LS.get('pref.sub', 'off'), rect: mpvRect(), under: NAT, subArgs: NAT ? mpvSubArgs() : [] }).catch(e => ({ error: e.message }));
   if (t !== token) return;
-  if (!r || r.error) { document.body.classList.remove('mpv', 'nat'); S.engine = ''; S.noMpv = c.url; S.noMpvAt = Date.now(); toast('Lecteur intégré indisponible (' + ((r && r.error) || '?') + ') : ancien lecteur'); return play(c); }
+  if (!r || r.error) { incident(c, 'mpv ne démarre pas : ' + ((r && r.error) || '?') + ' → lecteur de la page', 'mpv'); document.body.classList.remove('mpv', 'nat'); S.engine = ''; S.noMpv = c.url; S.noMpvAt = Date.now(); toast('Lecteur intégré indisponible (' + ((r && r.error) || '?') + ') : ancien lecteur'); return play(c); }
   if (c.vod) setStatus(null); if (start > 0 && c.replayOf && start === rpOfs(c.replayOf)) toast('Début du programme (pub sautée : ' + fmtDur(start) + ')'); else if (start > 60) toast('Reprise à ' + fmtDur(start));
   mpvSync(); if (NAT) vbarUpdate();
   /* chaîne : attente affichée jusqu'à la première image ; rien au bout de 15 s APRÈS la réserve demandée à mpv → lecteur de la
      page (et ses autres qualités). Avant : 15 s en tout, alors qu'une chaîne qui coupe souvent fait attendre mpv jusqu'à 25 s
      de réserve avant la première image — mpv était jugé en échec alors qu'il remplissait sa réserve */
-  if (!c.vod) setTimeout(() => { if (t !== token || S.current !== c || S.engine !== 'mpv' || S.mpvSt.pos > 0) return; S.noMpv = c.url; S.noMpvAt = Date.now(); window.desktop.mpv.stop(); document.body.classList.remove('mpv', 'mpvlive'); S.engine = ''; play(c, S.alts); }, (liveWait(c) + 15) * 1000);
+  if (!c.vod) setTimeout(() => { if (t !== token || S.current !== c || S.engine !== 'mpv' || S.mpvSt.pos > 0) return; window.desktop.mpv.stop(); mpvFail(c, 'aucune image au bout de ' + (liveWait(c) + 15) + ' s'); }, (liveWait(c) + 15) * 1000);
 }
 // zone du lecteur, ou masquée si une page, une fiche, un menu ou les Paramètres sont devant
 function mpvRect() {
@@ -6184,14 +6225,14 @@ if (window.desktop && window.desktop.mpv) {
       const dur = +S.mpvSt.dur || 0, pos = +S.mpvSt.pos || 0;
       if (c.vod && pos > 0 && dur > 300 && pos < dur - 120) {
         S.vodCut = S.vodCut && S.vodCut.url === c.url ? S.vodCut : { url: c.url, n: 0 };
-        if (S.vodCut.n++ < 3) { LS.set(posK(c.url), Math.floor(pos)); toast('Coupure : reprise à ' + fmtDur(pos) + '…'); setTimeout(() => { if (S.current === c) play(c); }, 1500); return; }
+        if (S.vodCut.n++ < 3) { incident(c, 'coupure à ' + fmtDur(pos) + ' sur ' + fmtDur(dur) + ' → reprise (' + S.vodCut.n + '/3)', 'mpv'); LS.set(posK(c.url), Math.floor(pos)); toast('Coupure : reprise à ' + fmtDur(pos) + '…'); setTimeout(() => { if (S.current === c) play(c); }, 1500); return; }
       }
       if (st.eof && c.next && c.it) { nextEpGo(); return; }                        // épisode suivant
-      if (!c.vod && st.eof) { toast('Flux coupé : reconnexion…'); play(c, S.alts); return; }   // chaîne : on la relance
+      if (!c.vod && st.eof) { incident(c, 'flux terminé par le serveur → reconnexion', 'mpv'); toast('Flux coupé : reconnexion…'); play(c, S.alts); return; }   // chaîne : on la relance
       // chaîne : mpv fermé de lui-même (flux refusé, option inconnue…) → lecteur de la page, jamais la page Films & séries
-      if (!c.vod && st.exit) { S.noMpv = c.url; S.noMpvAt = Date.now(); S.engine = ''; document.body.classList.remove('mpv', 'mpvlive'); play(c, S.alts); return; }
+      if (!c.vod && st.exit) { mpvFail(c, 'mpv s\'est arrêté' + (S.mpvSt.pos > 0 ? ' en pleine lecture' : ' avant la première image')); return; }
       // film qui ne démarre pas du tout avec mpv : lecteur de la page en relais (plutôt que retour à la fiche sans rien)
-      if (c.vod && st.exit && !(S.mpvSt.pos > 0)) { S.noMpv = c.url; S.noMpvAt = Date.now(); S.engine = ''; document.body.classList.remove('mpv'); toast('mpv n\'a pas pu ouvrir ce fichier : lecteur de la page'); play(c); return; }
+      if (c.vod && st.exit && !(S.mpvSt.pos > 0)) { incident(c, 'mpv n\'ouvre pas ce fichier → lecteur de la page', 'mpv'); S.noMpv = c.url; S.noMpvAt = Date.now(); S.engine = ''; document.body.classList.remove('mpv'); toast('mpv n\'a pas pu ouvrir ce fichier : lecteur de la page'); play(c); return; }
       if (st.eof || st.exit) mpvBack();
     }
   });
@@ -6206,6 +6247,8 @@ function liveWait(c) { const o = LS.get('dev.livewait', {}) || {}, e = o[liveKey
 function liveStall(c, hard) {
   const L = S.liveStall || (S.liveStall = {}); if (L.c !== c) { L.c = c; L.at = 0; }
   if (Date.now() - L.at < 20000) return; L.at = Date.now();          // une coupure comptée une fois
+  incident(c, hard ? 'image figée 12 s → reconnexion' : 'coupure (réserve vide)');
+  if (S.engine === 'mpv') cutNote(c, 1);                             // bilan des coupures par version (mpv aussi)
   const o = LS.get('dev.livewait', {}) || {}, k = liveKey(c), e = o[k] || { l: 0 };
   const l = Math.min(LIVE_WAITS.length - 1, (e.l || 0) + 1); o[k] = { l, at: Date.now() }; LS.set('dev.livewait', o);
   if (S.engine === 'mpv' && !hard) mpvC(['set_property', 'cache-pause-wait', LIVE_WAITS[l]]);
@@ -7016,7 +7059,7 @@ $('#vodSide').addEventListener('click', e => {
 const CUT = { okAt: 0, seekAt: 0, wait: 0, cuts: [], acc: {}, last: 0, tried: new Set(), triedKey: '' };
 video.addEventListener('playing', () => {
   if (!CUT.okAt) CUT.okAt = Date.now();
-  if (CUT.wait) { const d = Date.now() - CUT.wait; CUT.wait = 0; if (d > 1500) cutNote(S.current, 1); }
+  if (CUT.wait) { const d = Date.now() - CUT.wait; CUT.wait = 0; if (d > 1500) { cutNote(S.current, 1); incident(S.current, 'coupure de ' + (Math.round(d / 100) / 10) + ' s'); } }
 });
 video.addEventListener('seeking', () => { CUT.seekAt = Date.now(); });
 video.addEventListener('waiting', () => {
@@ -7049,6 +7092,8 @@ setInterval(() => {
   const stuck = CUT.wait && Date.now() - CUT.wait > 10000, often = CUT.cuts.filter(t => Date.now() - t < 120000).length >= 4;
   if (stuck || often) cutSwitch(c, stuck);
 }, 1000);
+// mpv : temps regardé compté par version (bilan des coupures), comme pour le lecteur de la page
+setInterval(() => { const c = S.current; if (c && !c.vod && S.engine === 'mpv' && S.mpvSt && S.mpvSt.pos > 0 && !S.mpvSt.paused && !S.mpvSt.buf && document.body.classList.contains('playing')) cutNote(c, 0, 1); }, 1000);
 function cutSwitch(c, stuck) {
   const key = chInfo(c).canon + '|' + (chInfo(c).fr ? 'fr' : '');
   if (CUT.triedKey !== key) { CUT.triedKey = key; CUT.tried = new Set(); }
@@ -7056,6 +7101,7 @@ function cutSwitch(c, stuck) {
   if (stuck) cutNote(c, 1);
   const next = variantsOf(c).find(x => x !== c && !CUT.tried.has(x.url) && !chInfo(x).ko);
   CUT.cuts = []; CUT.wait = 0;
+  incident(c, (stuck ? 'bloquée plus de 10 s' : '4 coupures en 2 min') + (next ? ' → autre version : ' + qLabel(next) + ' · ' + (next.group || '') : ' → aucune autre version'));
   if (!next) { if (stuck) toast('La chaîne coupe, aucune autre version disponible'); CUT.okAt = Date.now(); return; }
   CUT.okAt = 0;
   toast('Coupure : passage en ' + qLabel(next) + (next.group ? ' (' + next.group + ')' : ''));
@@ -7571,6 +7617,7 @@ function copyNames() {
 }
 function renderPlaylists() {
   $('#builtinBox').style.display = S.playlists.some(p => p.id === 'builtin') ? 'none' : '';
+  try { incBox(); } catch (e) {}
   { const rb = $('#replayBox'); if (rb) rb.style.display = epgCtx() ? '' : 'none'; const db = $('#diagBox'); if (db) db.style.display = epgCtx() && window.desktop && window.desktop.remux ? '' : 'none'; } { const bp = S.playlists.find(p => p.id === 'builtin'), sb = $('#subHostBox'); if (sb) { sb.style.display = bp ? '' : 'none'; const i = $('#subHost'); if (bp && i && document.activeElement !== i) { try { const u = new URL(bp.url); i.value = u.host; } catch (e) {} } } }
   if (window.renderSync) renderSync();
   const own = S.playlists.filter(p => !p.extra);       // les listes gratuites sont gérées dans « Chaînes gratuites »
