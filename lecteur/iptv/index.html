@@ -6176,11 +6176,21 @@ if (window.desktop && window.desktop.mpv) {
     if (Object.keys(st).every(k => MPV_INFO.has(k))) return;
     if (NAT) { if (st.tracks) { mpvSubFull(); renderTrackMenu(); } vodTick(); if (!st.tracks && !st.chapters) vbarUpdate(); }
     if (st.eof || st.exit) {
-      if (S.mpvSt.pos > 30) { LS.set(posK(c.url), st.eof ? 0 : Math.floor(S.mpvSt.pos)); try { histTrack(c, !!st.eof); } catch (e) {} }
+      const realEnd = !!st.eof && !(c.vod && +S.mpvSt.dur > 300 && +S.mpvSt.pos < +S.mpvSt.dur - 120);
+      if (S.mpvSt.pos > 30) { LS.set(posK(c.url), realEnd ? 0 : Math.floor(S.mpvSt.pos)); try { histTrack(c, realEnd); } catch (e) {} }
+      /* film / épisode coupé avant la fin (serveur qui ferme la connexion, réseau) : reprise toute seule à l'endroit atteint,
+         3 fois au plus d'affilée ; avant, retour à la fiche (et coupure vue comme la fin : film marqué vu) */
+      const dur = +S.mpvSt.dur || 0, pos = +S.mpvSt.pos || 0;
+      if (c.vod && pos > 0 && dur > 300 && pos < dur - 120) {
+        S.vodCut = S.vodCut && S.vodCut.url === c.url ? S.vodCut : { url: c.url, n: 0 };
+        if (S.vodCut.n++ < 3) { LS.set(posK(c.url), Math.floor(pos)); toast('Coupure : reprise à ' + fmtDur(pos) + '…'); setTimeout(() => { if (S.current === c) play(c); }, 1500); return; }
+      }
       if (st.eof && c.next && c.it) { nextEpGo(); return; }                        // épisode suivant
       if (!c.vod && st.eof) { toast('Flux coupé : reconnexion…'); play(c, S.alts); return; }   // chaîne : on la relance
       // chaîne : mpv fermé de lui-même (flux refusé, option inconnue…) → lecteur de la page, jamais la page Films & séries
       if (!c.vod && st.exit) { S.noMpv = c.url; S.noMpvAt = Date.now(); S.engine = ''; document.body.classList.remove('mpv', 'mpvlive'); play(c, S.alts); return; }
+      // film qui ne démarre pas du tout avec mpv : lecteur de la page en relais (plutôt que retour à la fiche sans rien)
+      if (c.vod && st.exit && !(S.mpvSt.pos > 0)) { S.noMpv = c.url; S.noMpvAt = Date.now(); S.engine = ''; document.body.classList.remove('mpv'); toast('mpv n\'a pas pu ouvrir ce fichier : lecteur de la page'); play(c); return; }
       if (st.eof || st.exit) mpvBack();
     }
   });
