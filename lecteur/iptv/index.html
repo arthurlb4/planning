@@ -188,6 +188,7 @@ body.homelist #homeList{display:block}
 /* logos et affiches : pas de glisser-déposer de l'image (fantôme de l'image et de son adresse) */
 img{-webkit-user-drag:none;user-drag:none}
 video{width:100%;height:100%;object-fit:contain;background:#000;outline:none}
+body.homeview.mini video{object-fit:cover}   /* mini lecteur : image recadrée pour remplir le cadre (comme avec mpv) */
 #vfreeze{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;pointer-events:none}
 #status{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px;pointer-events:none;color:var(--text2);line-height:1.45}
 #status.hide{display:none}
@@ -3355,9 +3356,12 @@ async function play(c, alts) {
         await loadLib('hls'); if (t !== token || done) return;
         if (!window.Hls || !Hls.isSupported()) return ko('hls.js non pris en charge ici');
         let recovered = false;
-        hls = new Hls({ enableWorker: true, backBufferLength: 90, manifestLoadingMaxRetry: 1,   // 90 s gardées : retour en arrière possible en direct
+        /* retour en arrière en direct : 10 min gardées sur ordinateur (90 s sur mobile, mémoire limitée) ; réserve avant le direct
+           plus grande pour une chaîne qui coupe souvent (même apprentissage que pour mpv : 4, 8, 15 puis 25 s) */
+        const lw = c.vod ? 4 : liveWait(c), mob = /iPhone|iPad|Android/i.test(navigator.userAgent);
+        hls = new Hls({ enableWorker: true, backBufferLength: c.vod || mob ? 90 : 600, manifestLoadingMaxRetry: 1,
           // réserve plus grande et plus de patience : moins de saccades quand le serveur envoie juste ce qu'il faut
-          maxBufferLength: 45, maxMaxBufferLength: 120, liveSyncDurationCount: 4, liveMaxLatencyDurationCount: 14, maxBufferHole: 1,
+          maxBufferLength: 45, maxMaxBufferLength: 120, liveSyncDurationCount: 3 + Math.round(lw / 4), liveMaxLatencyDurationCount: 14 + Math.round(lw / 4), maxBufferHole: 1,
           fragLoadingMaxRetry: 6, fragLoadingRetryDelay: 800, levelLoadingMaxRetry: 4 });
         hls.on(Hls.Events.ERROR, (ev, d) => {
           if (!d.fatal) return;
@@ -3442,6 +3446,15 @@ function streamVariants(url) {
 
 function fail(c) {
   if (QT.on) { QT.ko = c; return; }                   // test des qualités : échec noté, pas de message ni de version de secours
+  /* film ou épisode coupé en cours de lecture (lecteur de la page) : reprise toute seule là où il en était, 3 fois au plus
+     d'affilée (comme avec mpv) ; seulement s'il a bien joué pendant cette lecture */
+  if (c.vod && S.vodOk === c.url) {
+    const pos = LS.get(posK(c.url), 0), dur = isFinite(video.duration) ? video.duration : 0;
+    if (pos > 60 && (!dur || dur - pos > 120)) {
+      S.vodCut = S.vodCut && S.vodCut.url === c.url ? S.vodCut : { url: c.url, n: 0 };
+      if (S.vodCut.n++ < 3) { incident(c, 'coupure à ' + fmtDur(pos) + ' → reprise (' + S.vodCut.n + '/3)'); toast('Coupure : reprise à ' + fmtDur(pos) + '…'); S.vodOk = ''; setTimeout(() => { if (S.current === c) play(c); }, 1500); return; }
+    }
+  }
   if (S.alts && S.alts.length) {
     const n = S.alts[0]; toast('Ne passe pas : essai en ' + (QLBL[chInfo(n).q] || 'autre qualité'));
     S.retry = true; return play(n, S.alts.slice(1));
@@ -6646,7 +6659,7 @@ function vodResume() {
   const go = () => { if (pos > 60 && (!video.duration || pos < video.duration - Math.min(120, video.duration * 0.1))) { video.currentTime = pos; toast('Reprise à ' + fmtDur(pos)); } };
   video.readyState >= 1 ? go() : video.addEventListener('loadedmetadata', go, { once: true });
 }
-setInterval(() => { const c = S.current; if (c && c.vod && (S.engine === 'mpv' ? !S.mpvSt.paused : !video.paused) && curPos() > 30) { LS.set(posK(c.url), Math.floor(curPos())); histTrack(c); } }, 5000);
+setInterval(() => { const c = S.current; if (c && c.vod && (S.engine === 'mpv' ? !S.mpvSt.paused : !video.paused) && curPos() > 30) { S.vodOk = c.url; LS.set(posK(c.url), Math.floor(curPos())); histTrack(c); } }, 5000);
 
 /* ---------- Pistes audio et sous-titres : choix dans un menu, langue préférée retenue (français et sans sous-titres au départ) ---------- */
 const LANGS = { fr: 'Français', fra: 'Français', fre: 'Français', en: 'Anglais', eng: 'Anglais', de: 'Allemand', deu: 'Allemand', ger: 'Allemand', es: 'Espagnol', spa: 'Espagnol',
@@ -7111,7 +7124,7 @@ $('#vodSide').addEventListener('click', e => {
 const CUT = { okAt: 0, seekAt: 0, wait: 0, cuts: [], acc: {}, last: 0, tried: new Set(), triedKey: '' };
 video.addEventListener('playing', () => {
   if (!CUT.okAt) CUT.okAt = Date.now();
-  if (CUT.wait) { const d = Date.now() - CUT.wait; CUT.wait = 0; if (d > 1500) { cutNote(S.current, 1); incident(S.current, 'coupure de ' + (Math.round(d / 100) / 10) + ' s'); } }
+  if (CUT.wait) { const d = Date.now() - CUT.wait; CUT.wait = 0; if (d > 1500 && S.current && !S.current.vod) { cutNote(S.current, 1); liveStall(S.current); } }   // réserve apprise aussi avec le lecteur de la page
 });
 video.addEventListener('seeking', () => { CUT.seekAt = Date.now(); });
 video.addEventListener('waiting', () => {
