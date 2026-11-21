@@ -7653,7 +7653,9 @@ function copyNames() {
   (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => toast('Exemples copiés : collez-les dans la conversation'), () => prompt('Copiez ce texte :', txt));
 }
 function renderPlaylists() {
-  $('#builtinBox').style.display = S.playlists.some(p => p.id === 'builtin') ? 'none' : '';
+  // « Mon abonnement » absent, ou déverrouillé avec l'ancienne adresse : cadre du mot de passe affiché (nouvelle liste)
+  { const bp = S.playlists.find(p => p.id === 'builtin'), old = bp && (bp.bv || 1) !== BUILTIN_V; $('#builtinBox').style.display = bp && !old ? 'none' : '';
+    if (old && !renderPlaylists.told) { renderPlaylists.told = 1; setTimeout(() => toastLong('« Mon abonnement » a changé : entrez votre mot de passe dans Paramètres › Listes pour passer sur le nouveau'), 3000); } }
   try { incBox(); } catch (e) {}
   { const rb = $('#replayBox'); if (rb) rb.style.display = epgCtx() ? '' : 'none'; const db = $('#diagBox'); if (db) db.style.display = epgCtx() && window.desktop && window.desktop.remux ? '' : 'none'; } { const bp = S.playlists.find(p => p.id === 'builtin'), sb = $('#subHostBox'); if (sb) { sb.style.display = bp ? '' : 'none'; const i = $('#subHost'); if (bp && i && document.activeElement !== i) { try { const u = new URL(bp.url); i.value = u.host; } catch (e) {} } } }
   if (window.renderSync) renderSync();
@@ -7976,8 +7978,10 @@ $('#demoBtn').onclick = async e => {
 };
 /* Liste intégrée : lien de l'abonnement chiffré (AES-256-GCM, clé tirée du mot de passe par PBKDF2). Le mot de passe n'est
    écrit nulle part dans le code : demandé une fois par appareil, puis la liste reste enregistrée sur l'appareil. */
-const BUILTIN = { salt: 'ICM8NZYZdHDn21X1oKdVVQ==', iv: 'NYYZVYKCFXsb31rz',
-  data: '4jCbRo8czPnqsiSETCELl8Z6lQczQlySU0guZsyY0VVaJBoufNKqGmQnMwyWehL0WQYZYHIrMigw08JzXK0ROSmZrLUeGcxpDHlunsCIWWoNLTRgYk665MCi47WY5n44WfqhgGNCWZeLN4jR' };
+// v2 (nouvel abonnement) : les appareils qui ont gardé l'ancienne liste déverrouillée sont invités à la redéverrouiller
+const BUILTIN_V = 2;
+const BUILTIN = { salt: 'IGvbtikZzjhdfN9hRkgYxw==', iv: '+cXnYOfsZiwfVdST',
+  data: 'QFy6s9i99fVUW9sFwD0A0yuQr8Ux3Cm7yHyFaDiazBldIyEGvRU3q3i1SnZtccQfNnKDn9Fw1l8+oQ7Z4x+TpFpfBONpPbzXfs2OQcg5vYlP2b5TJchPN6JIMDBNxh296tlKWpi4ZTXJyr0IMoAP0t3Ffno=' };
 const b64d = s => Uint8Array.from(atob(s), ch => ch.charCodeAt(0));
 /* Nouvelle adresse pour « Mon abonnement », chiffrée sur cet appareil avec le même mot de passe (vérifié sur l'adresse
    actuelle : les clés intégrées TMDB, BetaSeries… restent valables). Le texte chiffré est copié, à coller dans la
@@ -8134,7 +8138,8 @@ async function useBuiltinTmdb(pass) {
 /* Serveur de « Mon abonnement » remplacé (le fournisseur en donne un nouveau) : seul le serveur (et son port) de l'adresse
    déchiffrée change, identifiants intacts ; réglage pref.subhost, synchronisé (pas un secret) */
 function subHost(url) {
-  const h = String(LS.get('pref.subhost', '') || '').trim(); if (!h) return url;
+  // serveur de remplacement choisi pour l'abonnement d'alors : sans effet sur le nouvel abonnement (BUILTIN_V)
+  const h = String(LS.get('pref.subhost', '') || '').trim(); if (!h || (LS.get('pref.subhostv', 1) || 1) !== BUILTIN_V) return url;
   try { const u = new URL(url), n = new URL(/^https?:\/\//i.test(h) ? h : 'http://' + h); u.protocol = n.protocol; u.hostname = n.hostname; u.port = n.port; return u.toString(); } catch (e) { return url; }   // port tapé, sinon celui par défaut
 }
 /* Replay du fournisseur (Xtream) : chaînes dont le serveur garde les programmes passés (tv_archive), et sur combien de jours */
@@ -8215,7 +8220,7 @@ $('#subHostBtn').onclick = async () => {
   const b = $('#subHostBtn'), v = $('#subHost').value.trim(); if (!v) return;
   let host; try { host = new URL(/^https?:\/\//i.test(v) ? v : 'http://' + v); } catch (e) { return toastLong('Serveur illisible : mettez par exemple nouveau-serveur.com:8080'); }
   const old = LS.get('pref.subhost', '');
-  LS.set('pref.subhost', host.protocol + '//' + host.host);
+  LS.set('pref.subhost', host.protocol + '//' + host.host); LS.set('pref.subhostv', BUILTIN_V);
   b.disabled = true; b.textContent = 'Chargement…';
   try { await subHostApply(); }
   catch (e) { LS.set('pref.subhost', old); toastLong('Nouveau serveur injoignable : ' + e.message); }
@@ -8235,7 +8240,7 @@ $('#bBtn').onclick = async () => {
     b.textContent = 'Chargement de la liste…';
     const text = await fetchPlaylist(url);
     stopAll();
-    await savePlaylist({ id: 'builtin', name: 'Mon abonnement', url, text, added: 0 });
+    await savePlaylist({ id: 'builtin', name: 'Mon abonnement', url, text, added: 0, bv: BUILTIN_V });
     if (!LS.get('pref.ost', '')) useBuiltinOst(pass).catch(() => {});
   if (!LS.get('pref.bs', '')) useBuiltinBs(pass).catch(() => {});
   if (!LS.get('pref.trakt', '')) useBuiltinTrakt(pass).catch(() => {});        // BetaSeries aussi        // sous-titres OpenSubtitles activés du même coup
