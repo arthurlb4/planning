@@ -314,6 +314,9 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 .padd>summary{cursor:pointer;font-weight:500;font-size:14px}
 .padd[open]>summary{margin-bottom:12px}
 .ptab>h3:first-child{margin-top:4px}
+.addm{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 12px}.addm .chip{height:32px;font-size:13px}
+.addp{display:flex;flex-direction:column;gap:8px;margin-top:4px}.addp[hidden]{display:none}.addp .hint{margin:0}.addp .field{margin:0}.addp .btn{align-self:flex-start}.addp .row{display:flex;gap:8px;flex-wrap:wrap}
+#subCard{margin-top:12px}
 .xtbox{margin:0 0 10px;padding:10px 12px;border-radius:12px;background:var(--bg);border:.5px solid var(--border)}
 .xtbox summary{cursor:pointer;font-size:13px;color:var(--text2)}
 .xtbox[open] summary{margin-bottom:10px}
@@ -1068,23 +1071,29 @@ h1,h2,h3,h4,h5,h6,b,strong,th,summary{font-weight:500}
     <h3>Autres listes</h3>
     <div id="plList"></div>
     <details class="padd" id="addBox"><summary>＋ Ajouter une liste</summary>
-    <input class="field" id="addName" placeholder="Nom (facultatif)">
-    <details class="xtbox" id="xtBox"><summary>Avec l'adresse du serveur, l'identifiant et le mot de passe (Xtream Codes)</summary>
+    <!-- au choix : Xtream (serveur + identifiants), lien M3U, fichier M3U, contenu du fichier collé -->
+    <div class="addm" role="tablist"><button class="chip on" data-addm="xt">Xtream</button><button class="chip" data-addm="url">Lien M3U</button><button class="chip" data-addm="file">Fichier M3U</button><button class="chip" data-addm="text">Contenu M3U</button></div>
+    <input class="field" id="addName" placeholder="Nom de la liste (facultatif)">
+    <div class="addp" data-addp="xt">
+      <p class="hint">Les trois informations données par votre fournisseur (codes Xtream). Chaînes, films, séries, replay et guide.</p>
       <input class="field" id="xtUrl" type="url" placeholder="Adresse du serveur (http://exemple.com:8080)" autocomplete="off" spellcheck="false">
       <div class="row" style="gap:8px"><input class="field" id="xtUser" placeholder="Identifiant" autocomplete="off" autocapitalize="off" spellcheck="false" style="flex:1;min-width:0"><input class="field" id="xtPass" type="password" placeholder="Mot de passe" autocomplete="off" autocapitalize="off" spellcheck="false" style="flex:1;min-width:0"></div>
       <button class="btn primary" id="xtBtn">Se connecter</button>
-    </details>
-    <input class="field" id="addUrl" type="url" placeholder="Adresse de la liste (http…/playlist.m3u)" autocomplete="off" spellcheck="false">
-    <div class="row">
-      <button class="btn primary" id="addUrlBtn">Charger l'adresse</button>
-      <label class="btn"><input type="file" id="addFile" accept=".m3u,.m3u8,audio/x-mpegurl,application/x-mpegurl,application/vnd.apple.mpegurl,text/plain" hidden>Importer un fichier…</label>
-      <button class="btn" id="pasteBtn">Coller la liste</button>
     </div>
-    <details style="margin-top:12px">
-      <summary class="hint" style="cursor:pointer">Ou coller le contenu du fichier</summary>
-      <textarea class="field" id="addText" placeholder="#EXTM3U&#10;#EXTINF:-1 tvg-logo=&quot;…&quot; group-title=&quot;Infos&quot;,Ma chaîne&#10;http://…/stream.m3u8" style="margin-top:8px"></textarea>
-      <button class="btn" id="addTextBtn">Ajouter le texte</button>
-    </details>
+    <div class="addp" data-addp="url" hidden>
+      <p class="hint">Adresse complète de la liste (…/get.php?username=…&amp;password=… ou …/playlist.m3u). Rechargeable plus tard depuis l'adresse.</p>
+      <input class="field" id="addUrl" type="url" placeholder="http://…/playlist.m3u" autocomplete="off" spellcheck="false">
+      <button class="btn primary" id="addUrlBtn">Charger la liste</button>
+    </div>
+    <div class="addp" data-addp="file" hidden>
+      <p class="hint">Un fichier .m3u ou .m3u8 enregistré sur cet appareil.</p>
+      <label class="btn primary"><input type="file" id="addFile" accept=".m3u,.m3u8,audio/x-mpegurl,application/x-mpegurl,application/vnd.apple.mpegurl,text/plain" hidden>Choisir un fichier…</label>
+    </div>
+    <div class="addp" data-addp="text" hidden>
+      <p class="hint">Le contenu du fichier, qui commence par #EXTM3U : collez-le ci-dessous, ou d'un coup depuis le presse-papiers.</p>
+      <textarea class="field" id="addText" placeholder="#EXTM3U&#10;#EXTINF:-1 tvg-logo=&quot;…&quot; group-title=&quot;Infos&quot;,Ma chaîne&#10;http://…/stream.m3u8"></textarea>
+      <div class="row"><button class="btn primary" id="addTextBtn">Ajouter le texte</button><button class="btn" id="pasteBtn">Coller depuis le presse-papiers</button></div>
+    </div>
     <div class="err" id="addErr"></div>
     </details>
     <h3>Chaînes gratuites</h3>
@@ -7969,6 +7978,10 @@ $('#xtBtn').onclick = async () => {
   catch (e) { $('#addErr').textContent = e.message; }
   b.disabled = false; b.textContent = 'Se connecter';
 };
+// Ajouter une liste : un mode à la fois (Xtream, lien, fichier, contenu), dernier choix retenu
+function addMode(k) { document.querySelectorAll('[data-addm]').forEach(b => b.classList.toggle('on', b.dataset.addm === k)); document.querySelectorAll('[data-addp]').forEach(p => { p.hidden = p.dataset.addp !== k; }); LS.set('dev.addm', k); $('#addErr').textContent = ''; }
+document.querySelectorAll('[data-addm]').forEach(b => b.onclick = () => addMode(b.dataset.addm));
+addMode(LS.get('dev.addm', 'xt') || 'xt');
 $('#addFile').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
   await addPlaylist(await f.text(), '', $('#addName').value.trim() || f.name.replace(/\.m3u8?$/i, ''));
