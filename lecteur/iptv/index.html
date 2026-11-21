@@ -91,6 +91,10 @@ body.homeview.drawer #channels{display:flex!important;position:fixed;top:0;botto
 .dlbox{display:flex;flex-direction:column;gap:8px;margin-bottom:6px}
 .substprev{display:flex;align-items:flex-end;justify-content:center;height:120px;padding:14px;border-radius:14px;background:linear-gradient(135deg,#3a4a5c,#6b5a48 60%,#2c3a2e);text-align:center;line-height:1.3}
 .substprev span{padding:2px 8px;border-radius:4px;-webkit-box-decoration-break:clone;box-decoration-break:clone}
+.subc{display:flex;align-items:center;gap:14px;padding:16px;border-radius:16px;background:linear-gradient(135deg,rgba(98,170,220,.12),var(--bg) 60%);border:.5px solid rgba(98,170,220,.45);margin-bottom:8px}
+.subc .st{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}.subc .st b{font-size:16px}.subc small{color:var(--text3);font-size:13px;line-height:1.45}.subc small b{font-size:inherit;color:var(--text);font-weight:600}
+.subc .ok{color:#30d158}.subc .ko{color:#ff6961}.subc .sc{display:flex;gap:6px;flex:none}
+#plModal #subTools{gap:8px;margin-bottom:6px}
 .srow{display:flex;align-items:center;gap:14px;padding:13px 14px;border-radius:14px;background:var(--bg);border:.5px solid var(--border)}
 .srow .st{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
 .srow .st b{font-size:14px;font-weight:500}.srow .st small{font-size:12.5px;color:var(--text3);line-height:1.45}
@@ -1044,19 +1048,24 @@ h1,h2,h3,h4,h5,h6,b,strong,th,summary{font-weight:500}
     <div class="pcont">
     <section class="ptab" data-ptabc="listes">
     <h2 class="ptt">Listes</h2>
+    <h3>Mon abonnement</h3>
+    <div id="subCard"></div>
     <div id="builtinBox" style="display:none;margin-bottom:14px;padding:14px;border-radius:14px;background:var(--bg);border:.5px solid var(--blue)">
       <div class="hint" style="margin-bottom:10px"><b style="color:var(--text)">Mon abonnement</b> · liste intégrée à l'appli, chiffrée. Entrez son mot de passe : une seule fois sur cet appareil.</div>
       <div class="row"><input class="field" id="bPass" placeholder="Mot de passe" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" style="flex:1;min-width:0;margin:0"><button class="btn primary" id="bBtn">Déverrouiller</button></div>
       <div class="err" id="bErr"></div>
     </div>
+    <div class="dlbox" id="subTools">
     <div id="subHostBox" class="srow" style="display:none"><div class="st"><b>Serveur de « Mon abonnement »</b><small>Nouveau serveur donné par votre fournisseur : seul le serveur change, vos identifiants restent chiffrés. Réglage partagé entre vos appareils.</small></div>
       <div class="sc" style="display:flex;gap:8px;flex-wrap:wrap"><input class="field" id="subHost" placeholder="nouveau-serveur.com:8080 (avec le port s'il y en a un)" autocomplete="off" spellcheck="false" style="width:220px;margin:0"><button class="btn" id="subHostBtn">Changer</button></div></div>
     <div id="replayBox" class="srow" style="display:none"><div class="st"><b>Replay</b><small id="replayRes">Le serveur garde-t-il les programmes passés (retour au début, replay) ? Une seule question au serveur.</small></div>
       <div class="sc"><button class="btn" id="replayBtn">Vérifier</button></div></div>
     <div id="diagBox" class="srow" style="display:none"><div class="st"><b>Diagnostic du serveur</b><small id="diagRes">Box qui bloque le serveur ? Adresse donnée par la box et par un DNS chiffré, puis un essai direct et un essai par le relais de l'appli.</small></div>
       <div class="sc"><button class="btn" id="diagBtn">Tester</button></div></div>
-    <div id="incBox"></div>
-    <h3>Mes listes</h3>
+    <div id="subNewBox" class="srow" style="display:none"><div class="st"><b>Changer l'adresse de « Mon abonnement »</b><small>Nouvel abonnement ou nouveaux identifiants : la nouvelle adresse est chiffrée sur cet appareil avec votre mot de passe, puis copiée, à coller dans la conversation pour l'intégrer à l'appli (ni l'adresse ni le mot de passe ne sortent en clair)</small></div>
+      <div class="sc"><button class="btn" onclick="builtinNew()">Changer…</button></div></div>
+    </div>
+    <h3>Autres listes</h3>
     <div id="plList"></div>
     <details class="padd" id="addBox"><summary>＋ Ajouter une liste</summary>
     <input class="field" id="addName" placeholder="Nom (facultatif)">
@@ -1121,10 +1130,11 @@ h1,h2,h3,h4,h5,h6,b,strong,th,summary{font-weight:500}
     <h2 class="ptt">Aide</h2>
     <h3>VPN</h3>
     <div id="vpnBox" class="dlbox"></div>
+    <h3>Journal des pannes</h3>
+    <div id="incBox"></div>
     <h3>Diagnostic et réglages avancés</h3>
     <div class="dlbox">
     <div class="dl"><span><b>Exemples de noms pour diagnostic</b><small>Copie des noms de chaînes et de films de la liste en cours (sans adresse ni identifiants), à coller dans la conversation pour régler la reconnaissance des chaînes et des titres</small></span><button class="btn" onclick="copyNames()">Copier</button></div>
-    <div class="dl"><span><b>Changer l'adresse de « Mon abonnement »</b><small>Nouvelle adresse de liste chiffrée sur cet appareil avec votre mot de passe, puis copiée, à coller dans la conversation pour l'intégrer à l'appli</small></span><button class="btn" onclick="builtinNew()">Changer…</button></div>
     </div>
     </section>
     </div>
@@ -7652,6 +7662,35 @@ function copyNames() {
   const txt = ['CHAÎNES (' + S.channels.length + ')', ...ch, '', 'CATÉGORIES FILMS/SÉRIES', ...cats, '', 'FILMS ET SÉRIES (nom brut → nom affiché)', ...films].join('\n');
   (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => toast('Exemples copiés : collez-les dans la conversation'), () => prompt('Copiez ce texte :', txt));
 }
+/* « Mon abonnement » en tête de la page Listes : serveur, nombre de chaînes, état du compte chez le fournisseur (actif,
+   date de fin, connexions en cours / permises : demandé au serveur, gardé 10 min) ; boutons utiliser, recharger, exporter */
+function subCard() {
+  const box = $('#subCard'); if (!box) return;
+  const bp = S.playlists.find(p => p.id === 'builtin'), nb = $('#subNewBox'); if (nb) nb.style.display = bp ? '' : 'none';
+  if (!bp) { box.innerHTML = ''; return; }
+  let host = ''; try { host = new URL(subHost(bp.url)).host; } catch (e) {}
+  const on = S.pl && S.pl.id === bp.id, A = S.subAcc && S.subAcc.url === bp.url ? S.subAcc : null;
+  const acc = !A ? 'Compte : vérification…' : A.err ? 'Compte : ' + esc(A.err) : A.txt;
+  box.innerHTML = `<div class="subc"><div class="st"><b>${esc(bp.name || 'Mon abonnement')}${on ? ' <small class="ok">· en cours</small>' : ''}</b>
+    <small>Serveur : <b>${esc(host || '?')}</b></small>
+    <small>${(bp.count || 0).toLocaleString('fr-FR')} chaînes · mise à jour le ${new Date(bp.updated || bp.added || Date.now()).toLocaleDateString('fr-FR')}</small>
+    <small id="subAcc">${acc}</small></div>
+    <div class="sc">${on ? '' : `<button class="btn primary" data-use="${bp.id}">Utiliser</button>`}<button class="btn icon" data-refresh="${bp.id}" title="Recharger la liste"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg></button><button class="btn icon" data-export="${bp.id}" title="Exporter la liste (fichier .m3u)"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg></button></div></div>`;
+  if ((!A || Date.now() - A.at > 10 * 60e3) && !subCard.busy) {
+    const x = xtreamParts(subHost(bp.url)); if (!x) { S.subAcc = { url: bp.url, at: Date.now(), txt: 'Compte : pas d\'informations (liste sans identifiants Xtream)' }; return subCard(); }
+    subCard.busy = 1;
+    fetchText(x.base + '/player_api.php?username=' + encodeURIComponent(x.user) + '&password=' + encodeURIComponent(x.pass)).then(t => {
+      const u = (JSON.parse(t) || {}).user_info || {}; if (!u.status && u.auth == null) throw new Error('réponse illisible');
+      const st = String(u.status || '').toLowerCase(), act = st === 'active', exp = +u.exp_date ? new Date(+u.exp_date * 1000) : null;
+      const left = exp ? Math.ceil((exp - Date.now()) / 864e5) : null;
+      const txt = `Compte : <b class="${act ? 'ok' : 'ko'}">${act ? 'actif' : esc(u.status || 'inactif')}</b>${String(u.is_trial) === '1' ? ' (essai)' : ''}`
+        + (exp ? ` · jusqu'au <b>${exp.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</b>${left != null && left <= 30 ? ` <span class="${left <= 7 ? 'ko' : ''}">(${left > 0 ? 'dans ' + left + ' j' : 'expiré'})</span>` : ''}` : ' · sans date de fin')
+        + (u.max_connections ? ` · connexions : <b>${+u.active_cons || 0} / ${u.max_connections}</b> en cours` : '');
+      S.subAcc = { url: bp.url, at: Date.now(), txt };
+    }).catch(e => { S.subAcc = { url: bp.url, at: Date.now(), err: 'pas de réponse du serveur (' + (e.message || e) + ')' }; })
+      .finally(() => { subCard.busy = 0; if ($('#plModal').classList.contains('open')) subCard(); });
+  }
+}
 function renderPlaylists() {
   // « Mon abonnement » absent, ou déverrouillé avec l'ancienne adresse : cadre du mot de passe affiché (nouvelle liste)
   { const bp = S.playlists.find(p => p.id === 'builtin'), old = bp && (bp.bv || 1) !== BUILTIN_V; $('#builtinBox').style.display = bp && !old ? 'none' : '';
@@ -7659,7 +7698,8 @@ function renderPlaylists() {
   try { incBox(); } catch (e) {}
   { const rb = $('#replayBox'); if (rb) rb.style.display = epgCtx() ? '' : 'none'; const db = $('#diagBox'); if (db) db.style.display = epgCtx() && window.desktop && window.desktop.remux ? '' : 'none'; } { const bp = S.playlists.find(p => p.id === 'builtin'), sb = $('#subHostBox'); if (sb) { sb.style.display = bp ? '' : 'none'; const i = $('#subHost'); if (bp && i && document.activeElement !== i) { try { const u = new URL(bp.url); i.value = u.host; } catch (e) {} } } }
   if (window.renderSync) renderSync();
-  const own = S.playlists.filter(p => !p.extra);       // les listes gratuites sont gérées dans « Chaînes gratuites »
+  subCard();
+  const own = S.playlists.filter(p => !p.extra && p.id !== 'builtin');   // gratuites : « Chaînes gratuites » ; « Mon abonnement » : en tête
   $('#plList').innerHTML = own.length ? own.map(p => `
     <div class="pl${S.pl && S.pl.id === p.id ? ' on' : ''}">
       <div class="meta" data-use="${p.id}"><div class="nm">${esc(p.name)}</div>
@@ -7667,9 +7707,10 @@ function renderPlaylists() {
       <button class="btn icon" data-export="${p.id}" title="Exporter la liste (fichier .m3u, à importer sur un autre appareil)"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg></button>
       ${p.url ? `<button class="btn icon" data-refresh="${p.id}" title="Recharger depuis l'adresse"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg></button>` : ''}
       <button class="btn icon danger" data-del="${p.id}" title="Supprimer"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>
-    </div>`).join('') : '<p class="hint">Aucune liste enregistrée.</p>';
+    </div>`).join('') : '<p class="hint">Aucune autre liste.</p>';
 }
-$('#plList').addEventListener('click', async e => {
+$('#plModal').addEventListener('click', async e => {
+  if (!e.target.closest('#plList, #subCard')) return;
   const ex = e.target.closest('[data-export]');
   if (ex) { const pl = S.playlists.find(x => x.id === ex.dataset.export); if (pl) exportList(pl); return; }
   const u = e.target.closest('[data-use]'), d = e.target.closest('[data-del]'), r = e.target.closest('[data-refresh]');
@@ -7869,6 +7910,8 @@ function ptab(k) {
   { const sec = document.querySelector(`[data-ptabc="${k}"]`); if (sec && sec.animate && ptab.last !== k && !matchMedia('(prefers-reduced-motion: reduce)').matches) sec.animate([{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'none' }], { duration: 220, easing: 'cubic-bezier(.2,.8,.2,1)' }); ptab.last = k; }
   const ab = $('#addBox'); if (ab && !S.playlists.some(p => !p.extra)) ab.open = true;
   if (typeof renderFreeLists === 'function') renderFreeLists();
+  if (k === 'aide') try { incBox(); } catch (e) {}
+  if (k === 'listes') try { subCard(); } catch (e) {}
   if (typeof renderLangBox === 'function') renderLangBox();
   if (typeof renderSubStyle === 'function') renderSubStyle();
   if (typeof renderSrcBox === 'function') renderSrcBox();
