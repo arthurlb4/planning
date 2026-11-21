@@ -7983,9 +7983,12 @@ const b64d = s => Uint8Array.from(atob(s), ch => ch.charCodeAt(0));
    actuelle : les clés intégrées TMDB, BetaSeries… restent valables). Le texte chiffré est copié, à coller dans la
    conversation pour être intégré à l'appli : ni l'adresse ni le mot de passe ne sortent en clair. */
 async function builtinNew() {
-  const url = (await askText('Nouvelle adresse de « Mon abonnement » (liste M3U)', { placeholder: 'http://…/get.php?username=…&password=…' }) || '').trim();
+  // tolérant : espaces et retours à la ligne retirés (copie depuis un e-mail), http:// ajouté s'il manque
+  let url = (await askText('Nouvelle adresse de « Mon abonnement » (liste M3U)', { placeholder: 'http://…/get.php?username=…&password=…' }) || '').replace(/\s+/g, '');
   if (!url) return;
-  if (!/^https?:\/\/\S+$/i.test(url)) return toast('Adresse de liste attendue (http://…)');
+  if (!/^https?:\/\//i.test(url)) url = 'http://' + url;
+  if (!/^https?:\/\/[^/?#]+\.[^/?#]+/i.test(url)) return toastLong('Adresse de liste attendue : http://serveur:port/get.php?username=…&password=…');
+  if (!/[?&]username=[^&]+/i.test(url) || !/[?&]password=[^&]+/i.test(url)) return toastLong('Il manque l\'identifiant ou le mot de passe dans l\'adresse (…get.php?username=…&password=…)');
   const pass = ((await askText('Mot de passe de « Mon abonnement » (le même qu\'aujourd\'hui)', { password: true })) || '').trim().toLowerCase();
   if (!pass) return;
   if (!(window.crypto && crypto.subtle)) return toast('Chiffrement indisponible ici : utilisez l\'appli Windows');
