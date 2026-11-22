@@ -52,6 +52,8 @@ static class Updater
             string txt;
             using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20))) txt = (await http.GetStringAsync(BASE + "natif-version.txt", cts.Token)).Trim();
             if (!Version.TryParse(txt, out var v) || v <= Current) { Clean(); Set(new() { ["state"] = "latest" }); return; }
+            // version portable : rien n'est installé, la nouvelle version est seulement annoncée (zip à télécharger)
+            if (Program.Portable) { Set(new() { ["state"] = "portable", ["version"] = Short(txt) }); return; }
             var dir = Path.Combine(Path.GetTempPath(), "LecteurIPTVNatif-maj"); Directory.CreateDirectory(dir);
             foreach (var old in Directory.GetFiles(dir)) try { File.Delete(old); } catch { }
             var file = Path.Combine(dir, "Lecteur-IPTV-Natif-" + txt + ".exe"); var part = file + ".part";

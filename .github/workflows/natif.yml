@@ -75,6 +75,16 @@ jobs:
           iscc lecteur/natif/installer.iss
           Get-ChildItem build/*.exe
 
+      # version portable : le dossier de l'appli dans un .zip, avec portable.txt (réglages gardés dans « donnees » à côté)
+      - name: Version portable
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "build/portable/Lecteur IPTV" | Out-Null
+          Copy-Item -Recurse -Force build/app/* "build/portable/Lecteur IPTV/"
+          Set-Content -Encoding utf8 "build/portable/Lecteur IPTV/portable.txt" "Version portable : vos reglages, listes et historique sont dans le dossier « donnees ». Pour une nouvelle version, remplacez tout sauf ce dossier."
+          7z a build/Lecteur-IPTV-Portable.zip "./build/portable/Lecteur IPTV" | Out-Null
+          Get-Item build/Lecteur-IPTV-Portable.zip
+
       - name: Mettre en téléchargement
         shell: bash
         env:
@@ -82,6 +92,7 @@ jobs:
         run: |
           gh release view iptv-natif >/dev/null 2>&1 || gh release create iptv-natif --prerelease --title "Lecteur IPTV pour Windows (natif, essai)" --notes "Version native en essai : la page de l'appli et la vidéo (mpv) dans la même fenêtre. Télécharger Lecteur-IPTV-Natif-Installation.exe ci-dessous et l'ouvrir."
           gh release upload iptv-natif build/Lecteur-IPTV-Natif-Installation.exe --clobber
+          gh release upload iptv-natif build/Lecteur-IPTV-Portable.zip --clobber
           # installateur propre à cette version, pour la mise à jour automatique (jamais remplacé pendant un téléchargement) ;
           # seuls les deux derniers sont gardés
           v="$NATIF_VER"

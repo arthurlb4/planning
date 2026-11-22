@@ -17,7 +17,7 @@
     else if (m.t === 'upd') { upd = m.st || upd; L.upd.forEach(f => { try { f(upd); } catch (er) {} }); }
   });
   window.desktop = {
-    remux: cfg.remux, version: cfg.version, natif: true, native: !!cfg.mpv,
+    remux: cfg.remux, version: cfg.version, natif: true, native: !!cfg.mpv, portable: !!cfg.portable,
     updState: () => upd, onUpdate: f => L.upd.push(f), checkUpdate: how => send('upd', { auto: how === 'auto' }),
     openVlc: (url, name) => call('vlc', { url, name }),
     ytLogin: () => send('yt'), onYtLogin: f => L.yt.push(f),

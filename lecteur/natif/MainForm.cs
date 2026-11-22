@@ -44,7 +44,7 @@ public class MainForm : Form
     static readonly Regex OWN = new(@"^https?://(www\.)?franceinfoplanning\.com/|^https://cdn\.jsdelivr\.net/|^https://planning-gcal\.|^https://([a-z0-9-]+\.)*(youtube(-nocookie)?\.com|ytimg\.com|googlevideo\.com|google\.com|gstatic\.com)/", RegexOptions.IgnoreCase);
     static readonly Regex IPTV = new(@"/(get|player_api|xmltv|panel_api)\.php|/(live|movie|series|timeshift)/|\.m3u8?(\?|$)|\.ts(\?|$)", RegexOptions.IgnoreCase);
     static readonly string UA = "LecteurIPTV/" + Application.ProductVersion.Split('+')[0] + " (Windows)";
-    static readonly string DataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LecteurIPTVNatif");
+    static readonly string DataDir = Program.Portable ? Path.Combine(AppContext.BaseDirectory, "donnees") : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "LecteurIPTVNatif");
 
     IDCompositionDevice dcomp; IDCompositionTarget target; IDCompositionVisual root;
     CoreWebView2CompositionController comp; CoreWebView2 web;
@@ -154,7 +154,7 @@ public class MainForm : Form
 
     async Task Init()
     {
-        Storage.MigrateFromElectron(Path.Combine(DataDir, "WebView2"));
+        if (!Program.Portable) Storage.MigrateFromElectron(Path.Combine(DataDir, "WebView2"));
         backend = new Backend();
         var portTask = backend.StartAsync();
 
@@ -183,7 +183,7 @@ public class MainForm : Form
         try { int port = await portTask; if (port > 0) remux = "http://127.0.0.1:" + port; } catch { }
         string shim;
         using (var st = typeof(MainForm).Assembly.GetManifestResourceStream("shim.js")!) using (var rd = new StreamReader(st)) shim = rd.ReadToEnd();
-        var cfg = new JsonObject { ["remux"] = remux, ["version"] = "natif " + string.Join(".", Application.ProductVersion.Split('+')[0].Split('.').Take(3)), ["mpv"] = mpv.Available, ["upd"] = Updater.State.DeepClone() };
+        var cfg = new JsonObject { ["remux"] = remux, ["version"] = "natif " + string.Join(".", Application.ProductVersion.Split('+')[0].Split('.').Take(3)), ["mpv"] = mpv.Available, ["portable"] = Program.Portable, ["upd"] = Updater.State.DeepClone() };
         await web.AddScriptToExecuteOnDocumentCreatedAsync(shim.Replace("__CFG__", cfg.ToJsonString()));
 
         web.WebMessageReceived += (s, a) => { try { OnMessage(a.TryGetWebMessageAsString()); } catch { } };
