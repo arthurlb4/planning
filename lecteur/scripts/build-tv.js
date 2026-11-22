@@ -40,7 +40,8 @@ function convertCss(css) {
 html = html.replace(/<style>([\s\S]*?)<\/style>/, (_, css) => `<style>${convertCss(css)}\n${TV_CSS()}</style>`);
 
 /* ---------- JavaScript : conversion pour Chromium 76 ---------- */
-html = html.replace(/<script>([\s\S]*?)<\/script>(\s*<\/body>)/, (_, js, tail) => {
+// dernier bloc <script> de la page (le script principal) ; les petits blocs placés avant (garde-fou du démarrage) restent tels quels
+html = html.replace(/<script>((?:(?!<script>)[\s\S])*?)<\/script>(\s*<\/body>)/, (_, js, tail) => {
   const main = esbuild.transformSync(js, { target: TARGET, loader: 'js', charset: 'utf8' }).code;
   const tv = esbuild.transformSync(TV_JS(), { target: TARGET, loader: 'js', charset: 'utf8' }).code;
   return `<script>${main}</script>\n<script>${tv}</script>${tail}`;
