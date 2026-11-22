@@ -235,7 +235,8 @@ html.natifapp #now{padding-bottom:16px}html.natifapp body.solo #now{padding-bott
 #qualMenu button{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:8px 10px;border-radius:9px;color:var(--text);font-size:14px}
 #qualMenu button:hover{background:var(--bg3)}
 #qualMenu .ck{width:14px;color:var(--blue);font-weight:600}
-#qualMenu .q{font-weight:600;min-width:44px}#qualMenu button.hs{opacity:.55}#qualMenu .hst{display:inline-block;margin-left:6px;padding:1px 5px;border-radius:5px;background:#d9453b;color:#fff;font-size:10px;font-style:normal;font-weight:700;letter-spacing:.04em;vertical-align:1px}   /* version qui ne marchait pas au dernier test */
+#qualMenu .q{font-weight:600;min-width:44px}#qualMenu .qbest{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:5px;background:var(--blue);color:#0b1620;font-size:10px;font-style:normal;font-weight:700;vertical-align:1px}#qualMenu .qlk{font-style:normal;margin-left:5px;font-size:11px}
+#qualMenu .qfav{order:9;flex:none;width:28px;height:28px;margin-left:auto;border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--text3)}#qualMenu .qfav:hover{background:var(--bg4);color:var(--text)}#qualMenu .qfav svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linejoin:round}#qualMenu .qfav.on{color:var(--gold)}#qualMenu .qfav.on svg{fill:currentColor}#qualMenu button.hs{opacity:.55}#qualMenu .hst{display:inline-block;margin-left:6px;padding:1px 5px;border-radius:5px;background:#d9453b;color:#fff;font-size:10px;font-style:normal;font-weight:700;letter-spacing:.04em;vertical-align:1px}   /* version qui ne marchait pas au dernier test */
 #qualMenu .r{color:var(--text3);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px;line-height:1.35}
 #qualMenu .r b{color:var(--text2);font-weight:500}
 #now .tools{display:flex;gap:6px;flex:none}
@@ -1470,7 +1471,15 @@ const cutPen = k => { const r = cutRate(k); return r > 3 ? Math.min(150, (r - 3)
 const EVENT_RE = /\b(events?|evenements?|événements?|evenementiel|ppv|special|exclusif|uhd event)\b/i;
 const qAvoid = () => LS.get('dev.qavoid', {}) || {};
 const evPen = c => (EVENT_RE.test(c.name || '') ? 300 : 0) + (qAvoid()[c.url] ? 400 : 0);
-const chScore = c => { const k = chInfo(c); return (k.ko ? -1000 : 0) - evPen(c) - cutPen(k) + k.q * 100 + (k.fps >= 48 ? 20 : 0) + (k.ach >= 6 ? 10 : 0) + (/ec-3|ac-3|eac3|ac3/i.test(k.acod) ? 2 : 0); };
+const chScoreBase = c => { const k = chInfo(c); return (k.ko ? -1000 : 0) - evPen(c) - cutPen(k) + k.q * 100 + (k.fps >= 48 ? 20 : 0) + (k.ach >= 6 ? 10 : 0) + (/ec-3|ac-3|eac3|ac3/i.test(k.acod) ? 2 : 0); };
+/* Versions d'une chaîne choisies par vous (synchronisées) : verrouillée (l'appli n'en change jamais d'elle-même), favorite
+   (toujours essayée en premier), et préférée apprise (la dernière qui a tenu 20 min sans couper : un peu avantagée) */
+const vkey = c => { const k = chInfo(c); return k.canon ? (k.fr ? 'fr:' : 'xx:') + k.canon : ''; };
+let VP = null;
+function vprefs() { if (!VP || Date.now() - VP.at > 5000) VP = { at: Date.now(), fav: LS.get('pref.vfav', {}) || {}, lock: LS.get('pref.vlock', {}) || {}, good: LS.get('pref.vgood', {}) || {} }; return VP; }
+function vpSet(kind, key, url) { if (!key) return; const o = Object.assign({}, vprefs()[kind]); if (url) o[key] = url; else delete o[key]; LS.set('pref.v' + kind, o); VP = null; S.home = null; S._varCh = null; }
+const vLock = c => { const key = c && !c.vod ? vkey(c) : ''; return key ? vprefs().lock[key] || '' : ''; };
+const chScore = c => { const P = vprefs(), key = vkey(c); return chScoreBase(c) + (key && P.lock[key] === c.url ? 1e5 : 0) + (key && P.fav[key] === c.url ? 5e4 : 0) + (key && P.good[key] === c.url ? 150 : 0); };
 function vresNote(c, h, x) {
   if (!c || c.vod || !(h >= 200)) return;
   const old = vrOf(c.url), nw = Object.assign({}, old, { h: Math.max(old.h || 0, h) }, x || {});
@@ -3201,7 +3210,9 @@ $('#qualBtn').onclick = e => {
   } else {
   const v = variantsOf(c);
   if (!m.hidden || v.length < 2) { m.hidden = true; return; }
-  m.innerHTML = v.map((x, i) => `<button data-qv="${i}"${chInfo(x).ko ? ' class="hs"' : ''}><span class="ck">${x === c ? '✓' : ''}</span><span class="q">${esc(qLabel(x))}${chInfo(x).ko ? '<i class="hst">HS</i>' : ''}</span><span class="r"><b>${esc(x.group || 'Sans catégorie')}</b> · ${esc(qNote(x))}<br>${esc(x.name)}</span></button>`).join('');
+  const P = vprefs(), vk = vkey(c), best = v.slice().sort((a, b) => chScoreBase(b) - chScoreBase(a))[0], lk = P.lock[vk] || '';
+  m.innerHTML = v.map((x, i) => `<button data-qv="${i}"${chInfo(x).ko ? ' class="hs"' : ''}><span class="ck">${x === c ? '✓' : ''}</span><span class="q">${esc(qLabel(x))}${chInfo(x).ko ? '<i class="hst">HS</i>' : ''}${x === best ? '<i class="qbest" title="La meilleure version d\'après les mesures de l\'appli">Meilleure</i>' : ''}${lk === x.url ? '<i class="qlk" title="Verrouillée : l\'appli n\'en change pas d\'elle-même">🔒</i>' : ''}</span><span class="qfav${P.fav[vk] === x.url ? ' on' : ''}" data-qfav="${i}" role="button" title="${P.fav[vk] === x.url ? 'Retirer des favoris' : 'Version favorite : toujours essayée en premier'}"><svg viewBox="0 0 24 24"><path d="M12 3l2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z"/></svg></span><span class="r"><b>${esc(x.group || 'Sans catégorie')}</b> · ${esc(qNote(x))}<br>${esc(x.name)}</span></button>`).join('');
+  m.innerHTML += `<button data-qlock><span class="ck">${lk ? '🔓' : '🔒'}</span><span class="q" style="min-width:0">${lk ? 'Déverrouiller' : 'Rester sur cette version'}</span><span class="r">${lk ? 'l\'appli pourra de nouveau changer de version d\'elle-même' : 'plus de changement automatique de version pour cette chaîne'}</span></button>`;
   m.innerHTML += `<button data-qtest><span class="ck">⟳</span><span class="q" style="min-width:0">Tester les ${v.length} versions</span><span class="r">≈ ${v.length * 6} s, sans le son, puis la meilleure</span></button>`;
   m._v = v; m.hidden = false;
   }
@@ -3220,6 +3231,9 @@ $('#qualMenu').addEventListener('click', e => {
     return;
   }
   if (e.target.closest('[data-qtest]')) { qtChannel(); return; }
+  const qf = e.target.closest('[data-qfav]');
+  if (qf) { e.stopPropagation(); const m = $('#qualMenu'), x = m._v[+qf.dataset.qfav], k = vkey(x), on = vprefs().fav[k] === x.url; vpSet('fav', k, on ? '' : x.url); toast(on ? 'Plus de version favorite pour cette chaîne' : 'Version favorite : ' + qLabel(x) + (x.group ? ' (' + x.group + ')' : '')); m.hidden = true; $('#qualBtn').click(); return; }
+  if (e.target.closest('[data-qlock]')) { const c = S.current, k = vkey(c), on = !!vLock(c); vpSet('lock', k, on ? '' : c.url); toast(on ? 'Chaîne déverrouillée : l\'appli peut de nouveau changer de version' : 'Verrouillée sur ' + qLabel(c) + ' : l\'appli n\'en changera pas d\'elle-même'); $('#qualMenu').hidden = true; return; }
   const b = e.target.closest('[data-qv]'), m = $('#qualMenu'); if (!b) return;
   const v = m._v, x = v[+b.dataset.qv]; m.hidden = true;
   // qualité plus basse choisie à la main : la version quittée (souvent une 4K d'événements) passe après pour cette chaîne
@@ -3476,7 +3490,7 @@ function fail(c) {
       if (S.vodCut.n++ < 3) { incident(c, 'coupure à ' + fmtDur(pos) + ' → reprise (' + S.vodCut.n + '/3)'); toast('Coupure : reprise à ' + fmtDur(pos) + '…'); S.vodOk = ''; setTimeout(() => { if (S.current === c) play(c); }, 1500); return; }
     }
   }
-  if (S.alts && S.alts.length) {
+  if (S.alts && S.alts.length && !vLock(c)) {                       // chaîne verrouillée : pas d'autre version
     const n = S.alts[0]; toast('Ne passe pas : essai en ' + (QLBL[chInfo(n).q] || 'autre qualité'));
     S.retry = true; return play(n, S.alts.slice(1));
   }
@@ -6293,11 +6307,11 @@ function mpvFail(c, why) {
   S.engine = ''; document.body.classList.remove('mpv', 'mpvlive');
   let C = S.mpvChain; if (!C || Date.now() - C.at > 300e3 || !C.urls.has(c.url)) C = S.mpvChain = { first: c, all: [c].concat(S.alts || []), urls: new Set([c.url]), retried: false };
   C.at = Date.now();
-  const nx = (S.alts || []).find(x => !C.urls.has(x.url));
+  const nx = vLock(c) ? null : (S.alts || []).find(x => !C.urls.has(x.url));   // verrouillée : on reste sur cette version
   if (nx) { C.urls.add(nx.url); incident(c, why + ' → autre version : ' + qLabel(nx) + (nx.group ? ' · ' + nx.group : ''), 'mpv'); toast('Ne passe pas : essai en ' + qLabel(nx) + (nx.group ? ' (' + nx.group + ')' : '')); return play(nx, (S.alts || []).filter(x => x !== nx)); }
   if (!C.retried) { C.retried = true; incident(c, why + ' → mpv relancé sur la version de départ', 'mpv'); toast('mpv relancé…'); return play(C.first, []); }
   incident(c, why + ' → relais : lecteur de la page', 'mpv'); S.mpvChain = null; S.noMpvAll = Date.now() + 60e3;
-  play(C.first, C.all.filter(x => x !== C.first));
+  play(C.first, vLock(c) ? [] : C.all.filter(x => x !== C.first));
 }
 // mpv a échoué sur cette chaîne : lecteur de la page pour le relais immédiat, mais mpv réessayé à la prochaine lecture
 // passé 1 min (avant : la chaîne restait sur le lecteur de la page, qui coupe plus, jusqu'à la fermeture de l'appli)
@@ -6390,7 +6404,9 @@ function liveStall(c, hard) {
   const L = S.liveStall || (S.liveStall = {}); if (L.c !== c) { L.c = c; L.at = 0; }
   if (Date.now() - L.at < 20000) return; L.at = Date.now();          // une coupure comptée une fois
   incident(c, hard ? 'image figée 12 s → reconnexion' : 'coupure (réserve vide)');
-  if (S.engine === 'mpv') cutNote(c, 1);                             // bilan des coupures par version (mpv aussi)
+  if (S.vw && S.vw.url === c.url) S.vw.cuts++;
+  if (S.engine === 'mpv') { cutNote(c, 1);   // bilan des coupures par version (mpv aussi)
+    if (!hard && CUT.cuts.filter(t => Date.now() - t < 120000).length >= 4) setTimeout(() => { if (S.current === c && S.engine === 'mpv') cutSwitch(c, false); }, 0); }
   const o = LS.get('dev.livewait', {}) || {}, k = liveKey(c), e = o[k] || { l: 0 };
   const l = Math.min(LIVE_WAITS.length - 1, (e.l || 0) + 1); o[k] = { l, at: Date.now() }; LS.set('dev.livewait', o);
   if (S.engine === 'mpv' && !hard) mpvC(['set_property', 'cache-pause-wait', LIVE_WAITS[l]]);
@@ -6409,7 +6425,8 @@ setInterval(() => {
   if (!c || c.vod || S.engine !== 'mpv' || !(M.pos > 0) || M.paused) { S.mpvStall = null; return; }
   const st = S.mpvStall;
   if (!st || st.c !== c || Math.abs((M.pos || 0) - st.pos) > 0.5) { S.mpvStall = { c, pos: M.pos || 0, t: Date.now() }; return; }
-  if (Date.now() - st.t > 12000) { S.mpvStall = null; liveStall(c, true); toast('Flux figé : reconnexion…'); play(c, S.alts); }
+  // image figée 12 s : autre version de la chaîne (comme le lecteur de la page), ou reconnexion si aucune / verrouillée
+  if (Date.now() - st.t > 12000) { S.mpvStall = null; liveStall(c, true); cutSwitch(c, true); }
 }, 2000);
 // retour (Échap, fin, fermeture) : position retenue, puis la fiche ou la page d'où le film a été lancé
 function mpvBack() {
@@ -7251,7 +7268,16 @@ setInterval(() => {
 }, 1000);
 // mpv : temps regardé compté par version (bilan des coupures), comme pour le lecteur de la page
 setInterval(() => { const c = S.current; if (c && !c.vod && S.engine === 'mpv' && S.mpvSt && S.mpvSt.pos > 0 && !S.mpvSt.paused && !S.mpvSt.buf && document.body.classList.contains('playing')) cutNote(c, 0, 1); }, 1000);
+/* version préférée apprise : 20 min regardées d'affilée avec au plus une coupure → retenue pour cette chaîne (un peu avantagée
+   dans le classement, après la favorite et la verrouillée) */
+setInterval(() => {
+  const c = S.current; if (!c || c.vod || c.replayOf || !document.body.classList.contains('playing')) return;
+  if (!(S.engine === 'mpv' ? S.mpvSt.pos > 0 && !S.mpvSt.paused : !video.paused)) return;
+  if (!S.vw || S.vw.url !== c.url) S.vw = { url: c.url, min: 0, cuts: 0 };
+  if (++S.vw.min === 20 && S.vw.cuts <= 1 && variantsOf(c).length > 1) { const k = vkey(c); if (k && vprefs().good[k] !== c.url) { vpSet('good', k, c.url); incident(c, '20 min sans coupure → version préférée pour cette chaîne'); } }
+}, 60000);
 function cutSwitch(c, stuck) {
+  if (vLock(c)) { CUT.cuts = []; CUT.wait = 0; incident(c, (stuck ? 'bloquée' : '4 coupures en 2 min') + ' → chaîne verrouillée : on reste sur cette version'); if (stuck) { toast('Flux bloqué : reconnexion (chaîne verrouillée)'); play(c, []); } CUT.okAt = Date.now(); return; }
   const key = chInfo(c).canon + '|' + (chInfo(c).fr ? 'fr' : '');
   if (CUT.triedKey !== key) { CUT.triedKey = key; CUT.tried = new Set(); }
   CUT.tried.add(c.url);
@@ -7259,7 +7285,7 @@ function cutSwitch(c, stuck) {
   const next = variantsOf(c).find(x => x !== c && !CUT.tried.has(x.url) && !chInfo(x).ko);
   CUT.cuts = []; CUT.wait = 0;
   incident(c, (stuck ? 'bloquée plus de 10 s' : '4 coupures en 2 min') + (next ? ' → autre version : ' + qLabel(next) + ' · ' + (next.group || '') : ' → aucune autre version'));
-  if (!next) { if (stuck) toast('La chaîne coupe, aucune autre version disponible'); CUT.okAt = Date.now(); return; }
+  if (!next) { if (stuck) { toast('Flux bloqué, aucune autre version : reconnexion…'); play(c, []); } CUT.okAt = Date.now(); return; }
   CUT.okAt = 0;
   toast('Coupure : passage en ' + qLabel(next) + (next.group ? ' (' + next.group + ')' : ''));
   play(next, variantsOf(next).filter(x => x !== next && !CUT.tried.has(x.url)));
