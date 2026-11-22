@@ -8186,7 +8186,7 @@ const softDec = (() => {
     for (let o = 0, n = 2; o < C.length; o += 16, n++) { J[12] = n >>> 24; J[13] = n >>> 16; J[14] = n >>> 8; J[15] = n; const ks = enc(w, J); for (let j = 0; j < 16 && o + j < C.length; j++) out[o + j] = C[o + j] ^ ks[j]; }
     return new TextDecoder().decode(out);
   };
-  softDecF.enc = softEnc;
+  softDecF.enc = softEnc; softDecF.pbkdf2 = pbkdf2;
   return softDecF;
 })();
 async function decEnc(E, pass) {
@@ -8317,6 +8317,7 @@ $('#bBtn').onclick = async () => {
     if (!LS.get('pref.ost', '')) useBuiltinOst(pass).catch(() => {});
   if (!LS.get('pref.bs', '')) useBuiltinBs(pass).catch(() => {});
   if (!LS.get('pref.trakt', '')) useBuiltinTrakt(pass).catch(() => {});        // BetaSeries aussi        // sous-titres OpenSubtitles activés du même coup
+    syncAuto(pass);                                     // synchro : appareils reliés par le même mot de passe
     $('#bPass').value = ''; closeModals(); toast('Liste déverrouillée');
     S.group = 'home'; renderGroups(); applyFilter(true); setHomeView(true);
   } catch (e) { err.textContent = e.message; }
@@ -8534,6 +8535,31 @@ async function syncNow() {
   } catch (e) { SY.err = 'Serveur de synchro injoignable'; }
   SY.busy = false; renderSync();
 }
+/* Code de synchro tiré du mot de passe de « Mon abonnement » (même mot de passe sur chaque appareil → même code) : tous les
+   appareils déverrouillés se relient tout seuls, sans code à recopier. Calcul lent exprès (PBKDF2), sel propre à la synchro :
+   le code ne permet pas de retrouver le mot de passe, et rien ne quitte l'appareil en clair. */
+async function syncCodeFrom(pass) {
+  const salt = new TextEncoder().encode('iptv-sync-v1'), it = 200000;
+  let b;
+  if (window.crypto && crypto.subtle) {
+    const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveBits']);
+    b = new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations: it, hash: 'SHA-256' }, base, 256));
+  } else { await new Promise(r => setTimeout(r, 30)); b = softDec.pbkdf2(pass, salt, it); }
+  const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  return [...b.slice(0, 16)].map(x => A[x % A.length]).join('').replace(/(.{4})(?=.)/g, '$1-');
+}
+// au déverrouillage de « Mon abonnement » : appareil relié au code commun (données de l'ancien code envoyées d'abord, puis
+// tout ce qui est sur l'appareil part sous le nouveau code : rien n'est perdu, la fusion se fait élément par élément)
+async function syncAuto(pass) {
+  try {
+    const code = await syncCodeFrom(pass), cur = LS.get('sync.code');
+    if (cur === code) { LS.set('dev.syncauto', 1); return; }
+    if (cur) { SY.busy = false; await syncNow().catch(() => {}); }
+    LS.set('sync.code', code); LS.set('dev.syncauto', 1);
+    const now = Date.now(), st = stamps(); Object.keys(localItems()).forEach(k => { st[k] = Math.max(st[k] || 0, 1) === 1 ? now : st[k]; }); localStorage.setItem('iptv.sync.stamps', JSON.stringify(st));
+    SY.err = ''; renderSync(); SY.busy = false; syncNow();
+  } catch (e) {}
+}
 function newSyncCode() {
   const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', r = crypto.getRandomValues(new Uint8Array(16));
   return [...r].map(b => A[b % A.length]).join('').replace(/(.{4})(?=.)/g, '$1-');
@@ -8594,7 +8620,7 @@ function renderSync() {
       `<div class="row" style="gap:8px;margin-top:8px"><input class="field" id="syncIn" placeholder="J'ai déjà un code : XXXX-XXXX-XXXX-XXXX" autocomplete="off" autocapitalize="characters" spellcheck="false" style="flex:1;min-width:0;margin:0"><button class="btn" id="syncJoin">Relier</button></div>${SY.err ? '<p class="err" style="margin:6px 0 0">' + esc(SY.err) + '</p>' : ''}`);
   } else {
     const st = SY.busy ? 'Synchronisation…' : SY.err ? esc(SY.err) : SY.at ? 'Dernière synchro : ' + new Date(SY.at).toLocaleString('fr-FR', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' }) : 'Pas encore synchronisé';
-    box.innerHTML = srow('Synchronisation · <span style="font-family:ui-monospace,Menlo,monospace;letter-spacing:.04em">' + esc(code) + '</span>', sstate(!SY.err, 'Reliée') + ' · ' + st + '<br>Entrez ce code sur vos autres appareils (Paramètres › Appareils › Synchronisation). Gardez-le pour vous : il donne accès à vos listes.',
+    box.innerHTML = srow('Synchronisation · <span style="font-family:ui-monospace,Menlo,monospace;letter-spacing:.04em">' + esc(code) + '</span>', sstate(!SY.err, 'Reliée') + (LS.get('dev.syncauto', 0) ? ' par « Mon abonnement » (tous les appareils déverrouillés avec le même mot de passe)' : '') + ' · ' + st + '<br>Entrez ce code sur vos autres appareils (Paramètres › Appareils › Synchronisation). Gardez-le pour vous : il donne accès à vos listes.',
       '<button class="btn" id="syncGo">Synchroniser</button><button class="btn danger" id="syncOff">Délier</button>');
   }
 }
@@ -8607,7 +8633,7 @@ $('#syncBox').addEventListener('click', async e => {
     LS.set('sync.code', v.replace(/(.{4})(?=.)/g, '$1-')); SY.err = ''; renderSync(); syncNow();
   }
   else if (id === 'syncGo') syncNow();
-  else if (id === 'syncOff') { if (confirm('Délier cet appareil ? Ses données restent ici, elles ne se partagent plus.')) { localStorage.removeItem('iptv.sync.code'); renderSync(); } }
+  else if (id === 'syncOff') { if (confirm('Délier cet appareil ? Ses données restent ici, elles ne se partagent plus.')) { localStorage.removeItem('iptv.sync.code'); LS.set('dev.syncauto', 0); renderSync(); } }
 });
 // À la création d'un code : tout ce qui est déjà sur cet appareil part sur le serveur
 function setAllStamps() { const now = Date.now(), st = stamps(); Object.keys(localItems()).forEach(k => { if (!st[k]) st[k] = now; }); localStorage.setItem('iptv.sync.stamps', JSON.stringify(st)); }
