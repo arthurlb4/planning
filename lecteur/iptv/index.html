@@ -6532,6 +6532,15 @@ function remuxStart(ss, t, exact) {
     failRemux(S.current, video.error ? 'erreur ' + video.error.code + (video.error.message ? ' · ' + video.error.message : '') : 'rien reçu en 30 s');
   };
   attempt = { ok, ko };
+  /* image HEVC envoyée telle quelle : certains PC n'ont pas le décodeur HEVC de Windows, le son joue mais l'image reste noire
+     (sans erreur). Contrôlée 5 s après le départ : aucune image décodée → image convertie par le serveur local */
+  if (hevc === '1' && !R.enc) setTimeout(() => {
+    if (t !== token || S.engine !== 'remux' || R.enc || video.paused || !(video.currentTime > 1)) return;
+    const q = video.getVideoPlaybackQuality ? video.getVideoPlaybackQuality() : null;
+    if (video.videoWidth && !(q && q.totalVideoFrames === 0)) return;
+    R.enc = true; toast('Image convertie (format HEVC non lu par ce PC)'); incident(S.current, 'HEVC sans image (lecteur de la page) → image convertie', 'remux');
+    remuxStart(Math.floor(curPos()), t, { seek: Math.floor(curPos()) });
+  }, 5000);
   video.src = R.base + '/remux?url=' + encodeURIComponent(R.url) + '&ss=' + R.seek + '&a=' + R.a + '&hevc=' + hevc + (R.enc ? '&v=enc' : '') + (R.via ? '&via=vlc&al=' + encodeURIComponent((R.info.audio[R.a] || {}).lang || '') : '') + (R.s >= 0 ? '&s=' + R.s + '&sid=' + R.sid + '&kf=' + R.ss : '') + (R.ad ? '&ad=' + R.ad : '');
   loadFileCues();
   const p = video.play(); if (p && p.catch) p.catch(() => {});
