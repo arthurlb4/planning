@@ -3481,7 +3481,7 @@ function fail(c) {
     S.retry = true; return play(n, S.alts.slice(1));
   }
   if (c.vod && /\.mkv$/i.test(c.url) && !window.PREFER_NATIVE) {
-    S.errText = 'MKV · ' + (S.tries || []).map(x => x.eng + ' · ' + x.u + ' → ' + x.why).join(' | ') + ' · ' + navigator.userAgent.slice(0, 120);
+    S.errText = noCreds('MKV · ' + (S.tries || []).map(x => x.eng + ' · ' + x.u + ' → ' + x.why).join(' | ') + ' · ' + navigator.userAgent.slice(0, 120));
     const app = !!window.desktop;
     return setStatus('msg', '<b style="color:var(--text)">Ce film MKV ne se lit pas ' + (app ? 'ici' : 'dans le navigateur') + '</b><br><span class="hint">'
       + (app ? 'Le module de conversion de l\'appli n\'a pas démarré.' : 'Son Dolby ou format que le navigateur ne sait pas lire, et le serveur ne propose pas de version convertie. L\'appli Windows le lit (conversion intégrée), la télé Samsung et VLC aussi.') + '</span>',
@@ -3545,8 +3545,14 @@ function fail(c) {
   });
 }
 // « Lecture impossible » seul, avec Réessayer et un bouton qui copie le code d'erreur complet
+// identifiants de l'abonnement retirés des messages d'erreur (ils sont dans les adresses des flux : …/movie/IDENT/MDP/…)
+function noCreds(t) {
+  t = String(t || ''); const x = typeof epgCtx === 'function' ? epgCtx() : null; if (!x) return t;
+  for (const v of [x.user, x.pass, encodeURIComponent(x.user), encodeURIComponent(x.pass)]) if (v && v.length >= 3) t = t.split(v).join('•••');
+  return t;
+}
 function failMsg(txt, extra, note) {
-  S.errText = txt; incident(S.current, 'échec : ' + String(txt).split('\n')[0].slice(0, 120));
+  txt = noCreds(txt); S.errText = txt; incident(S.current, 'échec : ' + String(txt).split('\n')[0].slice(0, 120));
   setStatus('msg', '<b style="color:var(--text)">Lecture impossible</b>' + (note ? '<div class="hint" id="failNote" style="margin-top:8px;max-width:520px;line-height:1.5">' + note + '</div>' : ''),
     '<button class="btn" onclick="play(S.current)">Réessayer</button><button class="btn" onclick="copyErr()">Copier le code d\'erreur</button>' + (extra || ''));
 }
@@ -5429,7 +5435,16 @@ function vodTab(t) {
 $('#vodInner').addEventListener('pointerdown', e => { if (e.button || e.pointerType === 'touch') return; const t = e.target.closest('.vtop [data-tab]'); if (t) vodTab(t); });
 $('#vodBtn').onclick = () => { document.body.classList.remove('drawer'); setSolo(false); setHomeView(true, true, 'vod'); };
 const fmtDur = s => { s = +s || 0; if (!s) return ''; const h = Math.floor(s / 3600), m = Math.round(s % 3600 / 60); return h ? `${h} h ${String(m).padStart(2, '0')}` : `${m} min`; };
-function vodUrl(kind, id, ext) { const x = epgCtx(); return `${x.base}/${kind}/${encodeURIComponent(x.user)}/${encodeURIComponent(x.pass)}/${id}.${ext || 'mp4'}`; }
+/* serveur des flux : certains fournisseurs donnent la liste par un serveur et diffusent par un autre (les chaînes de la liste
+   l'indiquent). Films et séries demandés au même serveur que les chaînes : l'adresse de la liste répondait « 405 » */
+function streamBase(x) {
+  if (S._sbFor === S.channels && S._sb) return S._sb;
+  const key = '/' + encodeURIComponent(x.user) + '/' + encodeURIComponent(x.pass) + '/', key2 = '/' + x.user + '/' + x.pass + '/';
+  const c = (S.channels || []).find(c => !c.vod && c.url && (c.url.includes(key) || c.url.includes(key2)));
+  let b = x.base; try { if (c) b = new URL(c.url).origin; } catch (e) {}
+  S._sbFor = S.channels; S._sb = b; return b;
+}
+function vodUrl(kind, id, ext) { const x = epgCtx(); return `${streamBase(x)}/${kind}/${encodeURIComponent(x.user)}/${encodeURIComponent(x.pass)}/${id}.${ext || 'mp4'}`; }
 /* Bande-annonce (comme Netflix) : retrouvée sur TMDB (identifiant du titre ou titre + année), lancée sans le son en haut de la
    fiche. Film étranger : en VOSTFR si possible (bande-annonce française marquée VOST, sinon la VO avec les sous-titres
    français de YouTube quand la vidéo en a), en VF sinon. Nécessite la clé TMDB (Films & séries › Popularité réelle). */
@@ -6364,9 +6379,13 @@ function mpvBack() {
   if (V.back) $('#vodBack').click(); else { stopAll(); setHomeView(true, true, 'vod'); }
 }
 async function playRemux(c, t) {
-  const base = window.desktop.remux, R = S.remux = { base, url: c.url, ss: 0, a: 0, enc: false, info: null, ad: +LS.get(adKey(c), 0) || 0 };
+  // serveur bloqué par la box (DNS) : ffmpeg et VLC passent par le relais de l'appli, comme les chaînes et mpv (avant : adresse
+  // directe, la box répondait à la place du serveur, d'où des « 405 » incompréhensibles)
+  await dnsCheck(c.url).catch(() => false); if (t !== token) return;
+  const src = pxUrl(c.url);
+  const base = window.desktop.remux, R = S.remux = { base, url: src, ss: 0, a: 0, enc: false, info: null, ad: +LS.get(adKey(c), 0) || 0 };
   let info = null, local = '';
-  try { info = await (await fetch(base + '/probe?url=' + encodeURIComponent(c.url))).json(); } catch (e) { local = e && e.message || String(e); }
+  try { info = await (await fetch(base + '/probe?url=' + encodeURIComponent(src))).json(); } catch (e) { local = e && e.message || String(e); }
   if (t !== token) return;
   const ver = 'appli ' + (window.desktop.version || '1.3 ou moins');
   if (!info) return failRemux(c, 'le module de conversion de l\'appli est injoignable (' + local + ' · ' + ver + ')');
@@ -6378,7 +6397,7 @@ async function playRemux(c, t) {
     if (t !== token) return;
     if (!v || !v.ok) return failRemux(c, (info.err ? 'réponse de ffmpeg : ' + info.err : 'ffmpeg n\'a rien reçu du serveur en 25 s') + (v ? ' · VLC n\'est pas installé sur ce PC (videolan.org) : il prend le relais quand le serveur refuse ffmpeg' : '') + ' · ' + ver);
     setStatus('load');
-    const vi = await fetch(base + '/probe?via=vlc&url=' + encodeURIComponent(c.url)).then(r => r.json()).catch(() => null);
+    const vi = await fetch(base + '/probe?via=vlc&url=' + encodeURIComponent(src)).then(r => r.json()).catch(() => null);
     if (t !== token) return;
     if (!vi || !vi.ok) return failRemux(c, 'réponse de ffmpeg : ' + (info.err || '?') + ' · VLC non plus n\'arrive pas à lire le film' + (vi && vi.err && vi.err !== 'VLC n\'a rien pu lire' ? ' (' + vi.err + ')' : '') + ' · ' + ver);
     info = R.info = vi; R.via = true;
@@ -6484,7 +6503,7 @@ function remuxStart(ss, t, exact) {
 function failRemux(c, why) {
   unfreeze();
   S.tries.push({ eng: 'ffmpeg', u: 'conversion', why });
-  failMsg('Conversion du film (ffmpeg) : ' + why, '<button class="btn primary" onclick="openVlc(S.current)">Ouvrir dans VLC</button>');
+  failMsg('Conversion du film (ffmpeg) : ' + noCreds(why), '<button class="btn primary" onclick="openVlc(S.current)">Ouvrir dans VLC</button>');
 }
 // Barre de lecture : film converti (position = départ + temps lu), direct (fenêtre gardée par le lecteur), fichier (durée)
 function liveWin() {
