@@ -953,6 +953,27 @@ h1,h2,h3,h4,h5,h6,b,strong,th,summary{font-weight:500}
 <div id="qualMenu" hidden></div>
 <!-- Écran de chargement : masque la mise en place de la page (liste, accueil, guide) ; retiré en fondu une fois prête -->
 <div id="splash"><svg viewBox="0 0 512 512" aria-hidden="true"><path d="M96 92 Q256 86 416 92 C460 95 486 121 489 165 Q494 256 489 347 C486 391 460 417 416 420 Q256 426 96 420 C52 417 26 391 23 347 Q18 256 23 165 C26 121 52 95 96 92 Z" fill="#f2f2f2"/><path d="M222 200 L222 312 L318 256 Z" fill="#232325" stroke="#232325" stroke-width="22" stroke-linejoin="round"/></svg></div>
+<script>
+/* Garde-fou du démarrage (script à part : marche même si le script principal ne se charge pas ou s'arrête sur une erreur) :
+   erreurs notées ; logo encore là au bout de 12 s → message avec l'erreur, boutons Recharger et Copier */
+(function () {
+  var errs = [];
+  window.addEventListener('error', function (e) { errs.push((e.message || 'erreur') + (e.filename ? ' (' + String(e.filename).split('/').pop() + ':' + e.lineno + ')' : '')); });
+  window.addEventListener('unhandledrejection', function (e) { var r = e.reason; errs.push('promesse : ' + (r && r.message || r)); });
+  setTimeout(function () {
+    var s = document.getElementById('splash'); if (!s || s.classList.contains('out')) return;
+    var txt = (errs.length ? errs.slice(0, 5).join(' · ') : 'aucune erreur signalée (page incomplète ou bloquée par le réseau ?)') + ' · ' + navigator.userAgent.replace(/^Mozilla\/5\.0 /, '').slice(0, 140);
+    var d = document.createElement('div');
+    d.style.cssText = 'position:absolute;left:16px;right:16px;bottom:40px;text-align:center;color:#d8d6d2;font:14px -apple-system,Segoe UI,sans-serif;line-height:1.5';
+    d.innerHTML = '<b style="color:#fff">Le démarrage est bloqué</b><br><span style="color:#a9a7a1;font-size:12px;word-break:break-word"></span><br><button style="margin:12px 6px 0;padding:8px 14px;border-radius:999px;border:0;background:#2c2b29;color:#fff;font-size:14px">Recharger</button><button style="margin:12px 6px 0;padding:8px 14px;border-radius:999px;border:0;background:#62aadc;color:#000;font-size:14px">Copier le détail</button>';
+    d.querySelector('span').textContent = txt;
+    var bt = d.querySelectorAll('button');
+    bt[0].onclick = function () { location.reload(); };
+    bt[1].onclick = function () { try { navigator.clipboard.writeText(txt).then(function () { bt[1].textContent = 'Copié'; }, function () { prompt('Copiez ce texte :', txt); }); } catch (x) { prompt('Copiez ce texte :', txt); } };
+    s.appendChild(d);
+  }, 12000);
+})();
+</script>
 <header>
   <button class="btn icon" id="groupsBtn" title="Chaînes" aria-label="Chaînes"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></button>
   <div id="plName"></div>
