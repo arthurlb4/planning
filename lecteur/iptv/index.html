@@ -3692,7 +3692,7 @@ async function replayLoad(force) {
   const x = epgCtx(); if (!x || !S.pl) { RP.ids = new Map(); return RP; }
   /* gardé par serveur (pas par liste), 30 jours : utilisé tout de suite au lancement ; plus vieux d'un jour → vérifié à
      nouveau en coulisse (le bouton Début est déjà là pendant ce temps) */
-  const ck = 'replay2:' + x.base, c = !force && await DB.cacheGet(ck).catch(() => null);
+  const ck = 'replay3:' + x.base + '|' + x.user, c = !force && await DB.cacheGet(ck).catch(() => null);
   if (c && c.data && Date.now() - c.at < 30 * 864e5) {
     RP.ids = new Map(c.data.ids); RP.tz = c.data.tz || '';
     if (Date.now() - c.at > 864e5 && !replayLoad.bg) { replayLoad.bg = 1; setTimeout(() => replayLoad(true).catch(() => {}).finally(() => { replayLoad.bg = 0; }), 30000); }
@@ -4227,12 +4227,15 @@ function itemForeign(name) {
 }
 // Catalogue chargé catégorie par catégorie (seulement les françaises) : un catalogue entier peut peser des dizaines de Mo,
 // trop pour le relais et pour la télé. Gardé 12 h sur l'appareil.
+const vodCk = () => { const x = epgCtx(); return x ? srvKey() + '|' + x.user : ''; };
 async function loadVod(force) {
-  if (!force && V.data && V.data.pl === S.pl) return V.data;
+  if (!force && V.data && V.data.pl === S.pl && V.data.ck === vodCk()) return V.data;
   if (V.loading) return V.loading;
   V.loading = (async () => {
-    const cacheId = 'vod6:' + listKey(S.pl);                // version des filtres : un changement recharge le catalogue
-    if (!force) { const c = await DB.cacheGet(cacheId); if (c && Date.now() - c.at < 12 * 3600e3 && c.data && c.data.items) { c.data.pl = S.pl; return (V.data = c.data); } }
+    // gardé par liste ET par serveur + identifiant : « Mon abonnement » qui change de fournisseur ne reprend pas l'ancien catalogue
+    // (numéros de films d'un autre serveur : refusés, erreur 405)
+    const xc = epgCtx(), cacheId = 'vod7:' + listKey(S.pl) + (xc ? '|' + srvKey() + '|' + xc.user : '');   // version des filtres : un changement recharge le catalogue
+    if (!force) { const c = await DB.cacheGet(cacheId); if (c && Date.now() - c.at < 12 * 3600e3 && c.data && c.data.items) { c.data.pl = S.pl; c.data.ck = vodCk(); return (V.data = c.data); } }
     const progress = t => { const el = document.getElementById('vodProg'); if (el) el.textContent = t; };
     let firstErr = '';
     const get = q => xget(q).catch(e => { firstErr = firstErr || e.message || String(e); return null; });
@@ -4293,7 +4296,7 @@ async function loadVod(force) {
     if (!ok) throw new Error('le serveur refuse les listes de films' + (firstErr ? ' (' + firstErr + ')' : ''));
     Object.values(cats).forEach(c => { c.service = (SERVICES.find(([, re]) => re.test(c.raw)) || [])[0] || ''; });
     items.forEach(it => { it.services = [...new Set(it.cats.map(c => cats[c].service).concat(titleTags(it.raw)).filter(Boolean))]; });
-    const data = { pl: S.pl, cats, items, excluded };
+    const data = { pl: S.pl, ck: vodCk(), cats, items, excluded };
     DB.cachePut({ id: cacheId, at: Date.now(), data: { cats, items, excluded } });
     return (V.data = data);
   })();
@@ -8277,7 +8280,7 @@ async function replayCheck() {
     const l = JSON.parse(await fetchText(api + '&action=get_live_streams')); if (!Array.isArray(l)) throw new Error('réponse illisible');
     const a = l.filter(s => String(s.tv_archive) === '1'), days = Math.max(0, ...a.map(s => +s.tv_archive_duration || 0));
     S.replay = new Map(a.map(s => [String(s.stream_id), +s.tv_archive_duration || 0]));
-    RP.ids = new Map(a.map(s => [String(s.stream_id), +s.tv_archive_duration || 1])); { const x2 = epgCtx(); if (x2) DB.cachePut({ id: 'replay2:' + x2.base, at: Date.now(), data: { ids: [...RP.ids], tz: RP.tz } }); }   // replay utilisable tout de suite
+    RP.ids = new Map(a.map(s => [String(s.stream_id), +s.tv_archive_duration || 1])); { const x2 = epgCtx(); if (x2) DB.cachePut({ id: 'replay3:' + x2.base + '|' + x2.user, at: Date.now(), data: { ids: [...RP.ids], tz: RP.tz } }); }   // replay utilisable tout de suite
     // ce qui compte : les chaînes de l'accueil TV (repérées par leur numéro dans l'adresse …/live/…/123.ts)
     const idOf = c => (/\/(\d+)(\.\w+)?$/.exec(c.url || '') || [])[1], home = [];
     homeIndex().forEach(f => f.subs.forEach(x => { const d = x.list.map(c => S.replay.get(idOf(c))).find(v => v != null); if (d != null) home.push(x.label + ' (' + d + ' j)'); }));
