@@ -6288,7 +6288,7 @@ async function playMpv(c, t) {
   const r = await M.play({ wait: c.vod ? 4 : liveWait(c), url: pxUrl(c.url), title: c.vod ? c.name : niceName(c), live: !c.vod, iptv: !c.vod || !!c.replayOf || /\/(movie|series)\//.test(c.url), start, vol: video.muted ? 0 : video.volume, alang: LS.get('pref.audio', 'fr'), slang: LS.get('pref.sub', 'off'), rect: mpvRect(), under: NAT, subArgs: NAT ? mpvSubArgs() : [] }).catch(e => ({ error: e.message }));
   if (t !== token) return;
   if (!r || r.error) { incident(c, 'mpv ne démarre pas : ' + ((r && r.error) || '?') + ' → lecteur de la page', 'mpv'); document.body.classList.remove('mpv', 'nat'); S.engine = ''; S.noMpv = c.url; S.noMpvAt = Date.now(); toast('Lecteur intégré indisponible (' + ((r && r.error) || '?') + ') : ancien lecteur'); return play(c); }
-  if (LS.get('dev.nohw', false)) mpvC(['set_property', 'hwdec', 'no']);   // réglage de l'appareil : décodage par le processeur
+  if (hwMode() !== 'auto-safe') mpvC(['set_property', 'hwdec', hwMode()]);   // réglage de l'appareil : mode copie ou processeur
   if (c.vod) setStatus(null); if (start > 0 && c.replayOf && start === rpOfs(c.replayOf)) toast('Début du programme (pub sautée : ' + fmtDur(start) + ')'); else if (start > 60) toast('Reprise à ' + fmtDur(start));
   mpvSync(); if (NAT) vbarUpdate();
   /* chaîne : attente affichée jusqu'à la première image ; rien au bout de 15 s APRÈS la réserve demandée à mpv → lecteur de la
@@ -6694,6 +6694,8 @@ $('#vbLive').onclick = () => { if (S.current && S.current.replayOf) { play(S.cur
 const mpvOn = () => S.engine === 'mpv' && NAT;
 const MPV_INFO = new Set(['w', 'h', 'vcodec', 'acodec', 'ach', 'fps', 'vbr', 'hwdec', 'gamma']);
 const mpvC = a => window.desktop.mpv.cmd(a);
+// décodage de l'image (mpv) choisi sur cet appareil : carte graphique (défaut), carte graphique en mode copie, processeur
+function hwMode() { const m = LS.get('dev.hwmode', ''); return ['auto-safe', 'auto-copy-safe', 'no'].includes(m) ? m : LS.get('dev.nohw', false) ? 'no' : 'auto-safe'; }   // (fonction : utilisable dès le démarrage)
 function mpvVol() { if (mpvOn()) { mpvC(['set_property', 'volume', Math.round((video.muted ? 0 : video.volume) * 100)]); } }
 $('#vbPlay').onclick = () => { if (mpvOn()) { mpvC(['cycle', 'pause']); return; } video.paused ? video.play() : video.pause(); vbarUpdate(); };
 $('#vbMute').onclick = () => { if (video.muted || !video.volume) { video.muted = false; if (!video.volume) video.volume = 0.5; } else video.muted = true; mpvVol(); vbarUpdate(); };
@@ -8637,11 +8639,12 @@ function renderNormBox() {
   const torSw = window.desktop && window.desktop.remux ? srow('Torrents sur cet appareil', 'À couper sur une appli installée ailleurs que chez vous : plus aucune recherche dans les indexeurs, lecture ni téléchargement de torrent ici', swi('id="torChk"', LS.get('dev.tor', true) !== false)) : '';
   const mpvLive = NAT ? srow('Chaînes lues par mpv', 'Tous les formats et le son Dolby sans conversion ; le lecteur de la page prend le relais si une chaîne ne passe pas', swi('id="mpvLiveChk"', LS.get('pref.mpvlive', true) !== false)) : '';
   const no4k = window.desktop ? srow('Films en 4K sur ce PC', 'Coupé : la version HD est lue par défaut quand le film existe en plusieurs qualités (PC trop juste pour la 4K : image qui fige pendant que le son continue). Réglage propre à cet appareil', swi('id="no4kChk"', !LS.get('dev.no4k', false))) : '';
-  const hwd = NAT ? srow('Décodage de l\'image par la carte graphique', 'Coupé : image décodée par le processeur. À couper si l\'image se fige pendant que le son continue (pilote graphique qui décroche, souvent sur le HEVC / HDR). Réglage propre à cet appareil, appliqué tout de suite', swi('id="hwdChk"', !LS.get('dev.nohw', false))) : '';
+  const hm = hwMode(), hwd = NAT ? srow('Décodage de l\'image', 'Si l\'image se fige pendant que le son continue (pilote graphique qui décroche, souvent sur le HEVC / HDR) : essayez « carte graphique, mode copie », puis « processeur » (plus de chaleur et de bruit). Propre à cet appareil, appliqué tout de suite',
+    `<select class="field" id="hwdSel" style="width:auto;margin:0">${[['auto-safe', 'Carte graphique'], ['auto-copy-safe', 'Carte graphique, mode copie'], ['no', 'Processeur']].map(([v, l]) => `<option value="${v}"${v === hm ? ' selected' : ''}>${l}</option>`).join('')}</select>`) : '';
   const mpvVod = NAT ? srow('Films et séries lus par mpv', 'Tous les formats et le son Dolby sans conversion. Coupé : lecteur de la page (fenêtre redimensionnée sans décalage), le serveur local convertit ce qu\'il ne lit pas', swi('id="mpvVodChk"', LS.get('pref.mpvvod', true) !== false)) : '';
   b.innerHTML = window.desktop ? '<div class="dlbox" style="margin-top:8px">' + torSw + mpvLive + mpvVod + hwd + no4k + src + nat + mp + srow('Volume égalisé entre les chaînes', 'Chaînes trop fortes ou trop faibles ramenées au même niveau', swi('id="normChk"', normWanted())) + '</div>' : '';
   const mc = $('#mpvChk'); if (mc) mc.onchange = e => LS.set('pref.mpvwin', e.target.checked);
-  const hw = $('#hwdChk'); if (hw) hw.onchange = e => { LS.set('dev.nohw', !e.target.checked); if (S.engine === 'mpv') mpvC(['set_property', 'hwdec', e.target.checked ? 'auto-safe' : 'no']); toast(e.target.checked ? 'Image décodée par la carte graphique' : 'Image décodée par le processeur'); };
+  const hw = $('#hwdSel'); if (hw) hw.onchange = e => { LS.set('dev.hwmode', e.target.value); LS.set('dev.nohw', false); if (S.engine === 'mpv') mpvC(['set_property', 'hwdec', e.target.value]); toast('Décodage : ' + e.target.selectedOptions[0].textContent.toLowerCase()); };
   const n4 = $('#no4kChk'); if (n4) n4.onchange = e => { LS.set('dev.no4k', !e.target.checked); toast(e.target.checked ? 'Films en 4K lus quand ils existent' : 'Films : version HD par défaut sur ce PC'); };
   const mv = $('#mpvVodChk'); if (mv) mv.onchange = e => { LS.set('pref.mpvvod', e.target.checked); toast(e.target.checked ? 'Films et séries lus par mpv' : 'Films et séries lus par le lecteur de la page (conversion par le serveur local)'); };
   const ml = $('#mpvLiveChk'); if (ml) ml.onchange = e => { LS.set('pref.mpvlive', e.target.checked); toast(e.target.checked ? 'Chaînes lues par mpv' : 'Chaînes lues par le lecteur de la page'); };
