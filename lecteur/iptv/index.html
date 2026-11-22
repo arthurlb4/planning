@@ -6286,17 +6286,22 @@ function mpvSubArgs() {
   a.push(...([['--sub-border-size=0', '--sub-shadow-offset=0'], ['--sub-border-size=0', '--sub-shadow-offset=2'], ['--sub-border-size=2', '--sub-shadow-offset=0'], ['--sub-border-size=4', '--sub-shadow-offset=1']][p.edge] || []));
   return a;
 }
-/* chaîne : mpv en échec (rien au bout du délai, ou arrêté) → mpv relancé sur la même chaîne, 2 fois au plus en 3 min ; le
-   lecteur de la page ne prend le relais qu'ensuite */
+/* chaîne : mpv en échec (rien au bout du délai, ou arrêté). Une version qui ne répond pas est le plus souvent en panne chez
+   le fournisseur : mpv essaie d'abord les AUTRES versions de la chaîne (de la meilleure à la moins bonne), puis retente une fois
+   celle de départ (raté passager), et seulement ensuite le lecteur de la page prend le relais, sur toutes les versions */
 function mpvFail(c, why) {
-  const R = S.mpvRetry && S.mpvRetry.url === c.url && Date.now() - S.mpvRetry.at < 180e3 ? S.mpvRetry : { url: c.url, n: 0 };
-  R.at = Date.now(); S.mpvRetry = R; S.engine = ''; document.body.classList.remove('mpv', 'mpvlive');
-  if (R.n++ < 2) { incident(c, why + ' → mpv relancé (' + R.n + '/2)', 'mpv'); toast('mpv relancé…'); play(c, S.alts); return; }
-  incident(c, why + ' → relais : lecteur de la page', 'mpv'); S.noMpv = c.url; S.noMpvAt = Date.now(); play(c, S.alts);
+  S.engine = ''; document.body.classList.remove('mpv', 'mpvlive');
+  let C = S.mpvChain; if (!C || Date.now() - C.at > 300e3 || !C.urls.has(c.url)) C = S.mpvChain = { first: c, all: [c].concat(S.alts || []), urls: new Set([c.url]), retried: false };
+  C.at = Date.now();
+  const nx = (S.alts || []).find(x => !C.urls.has(x.url));
+  if (nx) { C.urls.add(nx.url); incident(c, why + ' → autre version : ' + qLabel(nx) + (nx.group ? ' · ' + nx.group : ''), 'mpv'); toast('Ne passe pas : essai en ' + qLabel(nx) + (nx.group ? ' (' + nx.group + ')' : '')); return play(nx, (S.alts || []).filter(x => x !== nx)); }
+  if (!C.retried) { C.retried = true; incident(c, why + ' → mpv relancé sur la version de départ', 'mpv'); toast('mpv relancé…'); return play(C.first, []); }
+  incident(c, why + ' → relais : lecteur de la page', 'mpv'); S.mpvChain = null; S.noMpvAll = Date.now() + 60e3;
+  play(C.first, C.all.filter(x => x !== C.first));
 }
 // mpv a échoué sur cette chaîne : lecteur de la page pour le relais immédiat, mais mpv réessayé à la prochaine lecture
 // passé 1 min (avant : la chaîne restait sur le lecteur de la page, qui coupe plus, jusqu'à la fermeture de l'appli)
-const noMpvNow = c => S.noMpv === c.url && Date.now() - (S.noMpvAt || 0) < 60e3;
+const noMpvNow = c => (!c.vod && Date.now() < (S.noMpvAll || 0)) || (S.noMpv === c.url && Date.now() - (S.noMpvAt || 0) < 60e3);
 async function playMpv(c, t) {
   const M = window.desktop.mpv;
   stopEngines(); S.engine = 'mpv'; S.mpvSt = {}; S.playUrl = c.url; document.body.classList.add('mpv'); document.body.classList.remove('natready');
