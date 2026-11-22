@@ -3170,6 +3170,39 @@ function qtChannel() {
   qtRun(v, x => qLabel(x) + ' · ' + (x.group || ''), () => { const best = variantsOf(c)[0]; if (best) play(best, variantsOf(c).slice(1)); });
 }
 // Accueil : les chaînes qui ont plusieurs versions (celles pas encore vérifiées d'abord)
+/* Test des qualités automatique (appli Windows) : quand rien n'est en lecture, les versions des chaînes de l'accueil jamais
+   mesurées (ou depuis plus de 7 jours) sont examinées en coulisse par le serveur local (ffmpeg lit l'en-tête du flux quelques
+   secondes : définition, son), sans image ni son, une toutes les 20 s, 40 par heure et 200 par jour au plus. Arrêt net dès
+   qu'une lecture commence (une seule connexion à la fois chez le fournisseur) ; « déjà utilisé ailleurs » (458) : pause 30 min */
+const AQ = { busy: false, pauseUntil: 0, hour: [], last: '', act: Date.now() };
+['pointermove', 'pointerdown', 'keydown', 'wheel'].forEach(ev => addEventListener(ev, () => { AQ.act = Date.now(); }, { passive: true, capture: true }));
+async function autoQual() {
+  if (AQ.busy || !window.desktop || !window.desktop.remux || QT.on || Date.now() < AQ.pauseUntil || !S.pl) return;
+  // et personne devant l'appli depuis 3 min (ou appli réduite) : jamais au moment où vous allez lancer une chaîne
+  const idle = () => !S.current && !QT.on && !document.body.classList.contains('playing') && (document.hidden || Date.now() - AQ.act > 180e3);
+  if (!idle()) return;
+  const day = new Date().toDateString(), D = LS.get('dev.aqday', {}); if (D.d !== day) { D.d = day; D.n = 0; }
+  AQ.hour = AQ.hour.filter(t => Date.now() - t < 3600e3); if (AQ.hour.length >= 40 || D.n >= 200) return;
+  const fresh = c => { const m = vrOf(c.url); return (m.h || m.ko) && (!m.t || Date.now() - m.t < 7 * 864e5) && !(m.ko && !m.h && Date.now() - m.ko > 864e5); };
+  const all = []; try { homeIndex().forEach(f => f.subs.forEach(x => { if (x.list.length > 1) x.list.forEach(c => all.push(c)); })); } catch (e) { return; }
+  const c = all.find(x => !fresh(x) && x.url !== AQ.last); if (!c) return;
+  AQ.busy = true; AQ.last = c.url;
+  try {
+    await dnsCheck(c.url).catch(() => false);
+    if (!idle()) return;
+    const ctl = new AbortController(); const watch = setInterval(() => { if (!idle()) ctl.abort(); }, 500);
+    let j = null; try { j = await fetch(window.desktop.remux + '/probe?url=' + encodeURIComponent(pxUrl(c.url)), { signal: ctl.signal }).then(r => r.json()); } catch (e) {} finally { clearInterval(watch); }
+    if (!j || !idle()) return;                          // lecture lancée entre-temps : rien de noté
+    AQ.hour.push(Date.now()); D.n++; LS.set('dev.aqday', D);
+    if (j.ok && j.vh) {
+      const ch = (j.audio || []).map(a => /7\.1/.test(a.ch) ? 8 : /5\.1/.test(a.ch) ? 6 : /stereo/.test(a.ch) ? 2 : 1).reduce((a, b) => Math.max(a, b), 0);
+      const o = vrOf(c.url); if (o.ko) { delete o.ko; VRES.set(c.url, o); }
+      vresNote(c, j.vh, { c: ch, a: ((j.audio || [])[0] || {}).codec || '', t: Date.now() });
+    } else if (/\b(458|406|429)\b/.test(j.err || '')) AQ.pauseUntil = Date.now() + 30 * 60e3;   // abonnement occupé ailleurs : on laisse tranquille
+    else { const o = vrOf(c.url); VRES.set(c.url, Object.assign({}, o, { ko: Date.now(), t: Date.now() })); try { localStorage.setItem('iptv.dev.vres', JSON.stringify(Object.fromEntries(VRES))); } catch (e) {} S.channels.forEach(x => { if (x.url === c.url) x._ci = null; }); S.home = null; S._varCh = null; }
+  } finally { AQ.busy = false; }
+}
+setInterval(() => autoQual().catch(() => { AQ.busy = false; }), 20000);
 function qtHome() {
   const all = []; homeIndex().forEach(f => f.subs.forEach(x => { if (x.list.length > 1) x.list.forEach(c => all.push(c)); }));
   if (!all.length) { toast('Aucune chaîne de l\'accueil n\'a plusieurs versions'); return; }
