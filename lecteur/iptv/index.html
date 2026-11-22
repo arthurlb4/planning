@@ -4207,10 +4207,29 @@ const hideSd = () => LS.get('pref.hidesd', true) !== false;
 const qualVisible = it => !hideSd() || it.kind !== 'movie' || vodVars(it).some(x => vodVq(x) >= 2.5);
 // Versions d'un film, de la plus légère à la plus lourde ; celle choisie (retenue par film, sinon la meilleure)
 const vodVars = it => (it.vars && it.vars.length ? it.vars : [{ id: it.id, ext: it.ext, q: 0, cat: '' }]).slice().sort((a, b) => vodVq(a) - vodVq(b));
+/* Films HDR (réglage de l'appareil, dev.hdr) : 'full' tel quel ; 'light' conversion allégée ; 'avoid' version sans HDR quand
+   le film en a une (sinon conversion allégée). Versions HDR repérées par leur nom/catégorie, ou apprises quand mpv voit du HDR */
+const hdrMode = () => { const m = LS.get('dev.hdr', 'full'); return ['full', 'light', 'avoid'].includes(m) ? m : 'full'; };
+const HDR_RE = /\bhdr|dolby\s*vision|\bdv\b|\bhdr10/i;
+const isHdrVar = x => !!(x && (x.hdr || HDR_RE.test(x.cat || '') || (bySrv('vod.hdrv')[srvKey()] || {})[x.id]));
+function hdrSeen(c) {
+  const m = /\/movie\/[^/]+\/[^/]+\/(\d+)\./.exec(c.url || ''); if (m) { const all = bySrv('vod.hdrv'), k = srvKey(), o = all[k] || (all[k] = {}); if (!o[m[1]]) { o[m[1]] = 1; LS.set('vod.hdrv', all); } }
+  const mode = hdrMode(); if (mode === 'full' || S.hdrDone === c.url) return; S.hdrDone = c.url;
+  // version sans HDR du même film, pas choisie à la main : on y passe, au même endroit
+  if (mode === 'avoid' && c.it && c.it.kind === 'movie' && !LS.get('vver.' + c.it.id, null)) {
+    const alt = vodVars(c.it).filter(x => !isHdrVar(x) && !c.url.includes('/' + x.id + '.')).pop();
+    if (alt) { const url = vodUrl('movie', alt.id, alt.ext), pos = curPos(); if (pos > 10) LS.set(posK(url), Math.floor(pos)); toast('Film en HDR, trop lourd pour ce PC : version sans HDR'); incident(c, 'HDR → version sans HDR (' + vodLbl(alt) + ')', 'mpv'); play(Object.assign({}, c, { url })); return; }
+  }
+  // conversion allégée : couleurs ramenées sans calcul image par image (cartes graphiques intégrées)
+  for (const [k, v] of [['tone-mapping', 'clip'], ['gamut-mapping-mode', 'clip'], ['hdr-compute-peak', 'no'], ['deband', 'no'], ['interpolation', 'no']]) mpvC(['set_property', k, v]);
+  toast('Film en HDR : conversion allégée pour ce PC');
+}
 // version lue par défaut : la meilleure ; sur un appareil réglé « sans 4K » (PC trop juste : image qui fige), la meilleure sous la 4K
 function vodPick(it) { const v = vodVars(it), want = LS.get('vver.' + it.id, null), hit = v.find(x => x.id === want); if (hit) return hit;
-  if (LS.get('dev.no4k', false)) { const s = v.filter(x => vodVq(x) < 4); if (s.length) return s[s.length - 1]; }
-  return v[v.length - 1]; }
+  let l = v;
+  if (hdrMode() === 'avoid') { const s = l.filter(x => !isHdrVar(x)); if (s.length) l = s; }
+  if (LS.get('dev.no4k', false)) { const s = l.filter(x => vodVq(x) < 4); if (s.length) l = s; }
+  return l[l.length - 1]; }
 // Version originale disponible : titre ou catégorie marqués MULTI, VOSTFR, VO…
 const VO_RE = /(^|[^a-z])(multi|vostfr|vost|vosta|vo|subfrench|dual|vf\s*\+\s*vo)([^a-z]|$)/i;
 // Film ou série étranger proposé seulement en français : langue d'origine connue (TMDB) autre que le français, sans version MULTI / VOSTFR
@@ -6331,6 +6350,7 @@ if (window.desktop && window.desktop.mpv) {
     if (!c.vod && st.buf === true && S.mpvSt.pos > 0) liveStall(c);   // chaîne : tampon vide en cours de lecture
     if (NAT && st.pos > 0 && !document.body.classList.contains('natready')) setTimeout(() => { if (S.engine === 'mpv') document.body.classList.add('natready'); }, 250);
     if (!c.vod && st.pos > 0 && $('#status .ldt')) setStatus(null);   // chaîne : première image
+    if (st.gamma && /pq|hlg/i.test(st.gamma)) hdrSeen(c);
     // informations du panneau ⓘ seulement : rien à redessiner
     if (Object.keys(st).every(k => MPV_INFO.has(k))) return;
     if (NAT) { if (st.tracks) { mpvSubFull(); renderTrackMenu(); } vodTick(); if (!st.tracks && !st.chapters) vbarUpdate(); }
@@ -8641,13 +8661,16 @@ function renderNormBox() {
   // torrents permis sur cet appareil (coupé : ni recherche, ni lecture, ni téléchargement, module torrent jamais démarré)
   const torSw = window.desktop && window.desktop.remux ? srow('Torrents sur cet appareil', 'À couper sur une appli installée ailleurs que chez vous : plus aucune recherche dans les indexeurs, lecture ni téléchargement de torrent ici', swi('id="torChk"', LS.get('dev.tor', true) !== false)) : '';
   const mpvLive = NAT ? srow('Chaînes lues par mpv', 'Tous les formats et le son Dolby sans conversion ; le lecteur de la page prend le relais si une chaîne ne passe pas', swi('id="mpvLiveChk"', LS.get('pref.mpvlive', true) !== false)) : '';
+  const hdrS = NAT ? srow('Films en HDR', 'Couleurs étendues : lourd pour les petits PC (image qui fige ou saccade, son qui continue). « Version sans HDR » prend l\'autre version du film quand il y en a une, sinon allège la conversion. Propre à cet appareil',
+    `<select class="field" id="hdrSel" style="width:auto;margin:0">${[['full', 'Tels quels'], ['light', 'Conversion allégée'], ['avoid', 'Version sans HDR']].map(([v, l]) => `<option value="${v}"${v === hdrMode() ? ' selected' : ''}>${l}</option>`).join('')}</select>`) : '';
   const no4k = window.desktop ? srow('Films en 4K sur ce PC', 'Coupé : la version HD est lue par défaut quand le film existe en plusieurs qualités (PC trop juste pour la 4K : image qui fige pendant que le son continue). Réglage propre à cet appareil', swi('id="no4kChk"', !LS.get('dev.no4k', false))) : '';
   const hm = hwMode(), hwd = NAT ? srow('Décodage de l\'image', 'Si l\'image se fige pendant que le son continue (pilote graphique qui décroche, souvent sur le HEVC / HDR) : essayez « carte graphique, mode copie », puis « processeur » (plus de chaleur et de bruit). Propre à cet appareil, appliqué tout de suite',
     `<select class="field" id="hwdSel" style="width:auto;margin:0">${[['auto-safe', 'Carte graphique'], ['auto-copy-safe', 'Carte graphique, mode copie'], ['no', 'Processeur']].map(([v, l]) => `<option value="${v}"${v === hm ? ' selected' : ''}>${l}</option>`).join('')}</select>`) : '';
   const mpvVod = NAT ? srow('Films et séries lus par mpv', 'Tous les formats et le son Dolby sans conversion. Coupé : lecteur de la page (fenêtre redimensionnée sans décalage), le serveur local convertit ce qu\'il ne lit pas', swi('id="mpvVodChk"', LS.get('pref.mpvvod', true) !== false)) : '';
-  b.innerHTML = window.desktop ? '<div class="dlbox" style="margin-top:8px">' + torSw + mpvLive + mpvVod + hwd + no4k + src + nat + mp + srow('Volume égalisé entre les chaînes', 'Chaînes trop fortes ou trop faibles ramenées au même niveau', swi('id="normChk"', normWanted())) + '</div>' : '';
+  b.innerHTML = window.desktop ? '<div class="dlbox" style="margin-top:8px">' + torSw + mpvLive + mpvVod + hwd + hdrS + no4k + src + nat + mp + srow('Volume égalisé entre les chaînes', 'Chaînes trop fortes ou trop faibles ramenées au même niveau', swi('id="normChk"', normWanted())) + '</div>' : '';
   const mc = $('#mpvChk'); if (mc) mc.onchange = e => LS.set('pref.mpvwin', e.target.checked);
   const hw = $('#hwdSel'); if (hw) hw.onchange = e => { LS.set('dev.hwmode', e.target.value); LS.set('dev.nohw', false); if (S.engine === 'mpv') mpvC(['set_property', 'hwdec', e.target.value]); toast('Décodage : ' + e.target.selectedOptions[0].textContent.toLowerCase()); };
+  const hs = $('#hdrSel'); if (hs) hs.onchange = e => { LS.set('dev.hdr', e.target.value); S.hdrDone = ''; toast('Films en HDR : ' + e.target.selectedOptions[0].textContent.toLowerCase()); };
   const n4 = $('#no4kChk'); if (n4) n4.onchange = e => { LS.set('dev.no4k', !e.target.checked); toast(e.target.checked ? 'Films en 4K lus quand ils existent' : 'Films : version HD par défaut sur ce PC'); };
   const mv = $('#mpvVodChk'); if (mv) mv.onchange = e => { LS.set('pref.mpvvod', e.target.checked); toast(e.target.checked ? 'Films et séries lus par mpv' : 'Films et séries lus par le lecteur de la page (conversion par le serveur local)'); };
   const ml = $('#mpvLiveChk'); if (ml) ml.onchange = e => { LS.set('pref.mpvlive', e.target.checked); toast(e.target.checked ? 'Chaînes lues par mpv' : 'Chaînes lues par le lecteur de la page'); };
