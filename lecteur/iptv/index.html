@@ -8024,8 +8024,8 @@ $('#xtBtn').onclick = async () => {
   b.disabled = false; b.textContent = 'Se connecter';
 };
 // Ajouter une liste : un mode à la fois (Xtream, lien, fichier, contenu), dernier choix retenu
-function addMode(k) { document.querySelectorAll('[data-addm]').forEach(b => b.classList.toggle('on', b.dataset.addm === k)); document.querySelectorAll('[data-addp]').forEach(p => { p.hidden = p.dataset.addp !== k; }); LS.set('dev.addm', k); $('#addErr').textContent = ''; }
-document.querySelectorAll('[data-addm]').forEach(b => b.onclick = () => addMode(b.dataset.addm));
+function addMode(k, save) { document.querySelectorAll('[data-addm]').forEach(b => b.classList.toggle('on', b.dataset.addm === k)); document.querySelectorAll('[data-addp]').forEach(p => { p.hidden = p.dataset.addp !== k; }); if (save) LS.set('dev.addm', k); $('#addErr').textContent = ''; }
+document.querySelectorAll('[data-addm]').forEach(b => b.onclick = () => addMode(b.dataset.addm, true));   // (au démarrage : lu seulement, rien d'écrit)
 addMode(LS.get('dev.addm', 'xt') || 'xt');
 $('#addFile').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
@@ -8360,6 +8360,7 @@ const SYNC_URL = 'https://planning-gcal.arthur-lebreton94.workers.dev/iptv/sync'
 const SYNC_RE = /^(fav\.|recent\.|pos\.|pref\.|ag\.|season\.|vod\.)/;
 const listKey = p => p.id === 'builtin' ? 'builtin' : (p.url || p.id);
 const SY = { busy: false, timer: 0, at: LS.get('sync.at', 0), err: '' };
+syncTouch.ready = true;
 function stamps() { return LS.get('sync.stamps', {}); }
 function setStamp(k, t) { const st = stamps(); st[k] = t; try { localStorage.setItem('iptv.sync.stamps', JSON.stringify(st)); } catch (e) {} }
 // clé locale → clé partagée (les favoris et récentes sont rangés par liste, repérée par son adresse, pas par son numéro local)
@@ -8375,6 +8376,7 @@ function toLocal(sk) {
 }
 function syncTouch(k) {
   if (!LS.get('sync.code') || /^sync\./.test(k)) return;
+  if (!syncTouch.ready) return;           // écriture faite avant que la synchro soit prête (démarrage) : ignorée, sans erreur
   if (!SYNC_RE.test(k) && !/^list@/.test(k)) return;
   const sk = /^list@/.test(k) ? k : toShared(k); if (!sk) return;
   setStamp(sk, Date.now());
