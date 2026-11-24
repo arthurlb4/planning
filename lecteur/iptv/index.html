@@ -3523,6 +3523,8 @@ function fail(c) {
       if (S.vodCut.n++ < 3) { incident(c, 'coupure à ' + fmtDur(pos) + ' → reprise (' + S.vodCut.n + '/3)'); toast('Coupure : reprise à ' + fmtDur(pos) + '…'); S.vodOk = ''; setTimeout(() => { if (S.current === c) play(c); }, 1500); return; }
     }
   }
+  if ((S.tries || []).some(x => /EXTM3U|manifestParsingError/i.test(x.why || '')) && !S.retry2 && boxForce(c.url, 'réponse illisible (page de la box ?)')) { S.retry2 = true; return play(c, S.alts); }
+  S.retry2 = false;
   if (S.alts && S.alts.length && !vLock(c)) {                       // chaîne verrouillée : pas d'autre version
     const n = S.alts[0]; toast('Ne passe pas : essai en ' + (QLBL[chInfo(n).q] || 'autre qualité'));
     S.retry = true; return play(n, S.alts.slice(1));
@@ -6336,8 +6338,10 @@ function mpvSubArgs() {
 /* chaîne : mpv en échec (rien au bout du délai, ou arrêté). Une version qui ne répond pas est le plus souvent en panne chez
    le fournisseur : mpv essaie d'abord les AUTRES versions de la chaîne (de la meilleure à la moins bonne), puis retente une fois
    celle de départ (raté passager), et seulement ensuite le lecteur de la page prend le relais, sur toutes les versions */
-function mpvFail(c, why) {
+async function mpvFail(c, why) {
   S.engine = ''; document.body.classList.remove('mpv', 'mpvlive');
+  // serveur qui répond par une page de la box : relais de l'appli, même version, avant d'essayer les autres
+  { const t0 = token; if (await boxPage(c.url) && boxForce(c.url, why)) { if (t0 === token) play(c, S.alts); return; } if (t0 !== token) return; }
   let C = S.mpvChain; if (!C || Date.now() - C.at > 300e3 || !C.urls.has(c.url)) C = S.mpvChain = { first: c, all: [c].concat(S.alts || []), urls: new Set([c.url]), retried: false };
   C.at = Date.now();
   const nx = vLock(c) ? null : (S.alts || []).find(x => !C.urls.has(x.url));   // verrouillée : on reste sur cette version
@@ -7935,12 +7939,28 @@ function pxUrl(url) {
   const x = new URL(url), e = DNSB.m[x.hostname]; if (!e || !e.b) return url;
   return window.desktop.remux + '/px/' + x.protocol.replace(':', '') + '/' + x.host + x.pathname + x.search;
 }
+/* Réponse de la box à la place du serveur (page d'avertissement : HTML, ou « 200 » sans liste) alors que la vérification du DNS
+   n'a rien vu (box qui bloque autrement) : serveur marqué bloqué, tout passe par le relais de l'appli (6 h, ou jusqu'au
+   prochain changement de VPN) */
+function boxForce(url, why) {
+  let h = ''; try { h = new URL(url).hostname; } catch (e) { return false; }
+  if (!window.desktop || !window.desktop.remux || !h || (DNSB.m[h] && DNSB.m[h].b)) return false;
+  DNSB.m[h] = { b: true, at: Date.now(), forced: true }; LS.set('dev.dnsblock', DNSB.m);
+  incident(S.current, why + ' → serveur bloqué par la box : passage par le relais de l\'appli');
+  toast('Serveur bloqué par la box : passage par le relais de l\'appli'); return true;
+}
+// premiers octets de l'adresse : page HTML (box) au lieu d'un flux ?
+async function boxPage(url) {
+  try { const r = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(6000) }); const rd = r.body.getReader(), x = await rd.read(); rd.cancel().catch(() => {});
+    return /^\s*<(!doctype|html|head|body)/i.test(new TextDecoder().decode(x.value || new Uint8Array())); } catch (e) { return false; }
+}
 function dnsCheck(url) {
   if (!window.desktop || !window.desktop.remux) return Promise.resolve(false);
   let h = ''; try { h = new URL(url).hostname; } catch (e) { return Promise.resolve(false); }
   if (!h || /^(127\.|localhost)/.test(h)) return Promise.resolve(false);
   // 10 min seulement : le VPN allumé ou coupé change tout (avec le VPN, la box n'est plus en jeu et le relais peut gêner)
   const e = DNSB.m[h]; if (e && Date.now() - e.at < 10 * 60e3) return Promise.resolve(!!e.b);
+  if (e && e.forced && Date.now() - e.at < 6 * 3600e3) return Promise.resolve(true);   // blocage vu à la réponse (page de la box) : gardé 6 h
   if (DNSB.p[h]) return DNSB.p[h];
   return DNSB.p[h] = fetch(window.desktop.remux + '/dnsblock?h=' + encodeURIComponent(h), { signal: AbortSignal.timeout(8000) }).then(r => r.json()).then(j => {
     if (j && j.blocked != null) { DNSB.m[h] = { b: !!j.blocked, at: Date.now() }; LS.set('dev.dnsblock', DNSB.m); if (j.blocked) toast('Serveur bloqué par la box : passage par un DNS chiffré'); }
