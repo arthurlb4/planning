@@ -303,7 +303,7 @@ public class MainForm : Form
         foreach (var d in new[] { Environment.GetEnvironmentVariable("ProgramFiles"), Environment.GetEnvironmentVariable("ProgramFiles(x86)"), Environment.GetEnvironmentVariable("ProgramW6432") })
         {
             if (string.IsNullOrEmpty(d)) continue; var f = Path.Combine(d, "VideoLAN", "VLC", "vlc.exe");
-            if (File.Exists(f)) { try { var psi = new ProcessStartInfo(f) { UseShellExecute = false }; psi.ArgumentList.Add(url); psi.ArgumentList.Add(":meta-title=" + (name ?? "")); Process.Start(psi); return true; } catch { return false; } }
+            if (File.Exists(f)) { try { var psi = new ProcessStartInfo(f) { UseShellExecute = false }; psi.ArgumentList.Add("--http-reconnect"); psi.ArgumentList.Add(url); psi.ArgumentList.Add(":meta-title=" + (name ?? "")); psi.ArgumentList.Add(":network-caching=10000"); Process.Start(psi); return true; } catch { return false; } }
         }
         return false;
     }
