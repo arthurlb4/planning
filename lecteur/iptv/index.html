@@ -411,7 +411,7 @@ body.homeview:not(.agenda):not(.vod) #home,body.homeview.agenda #agenda,body.hom
 .pmenu .pi{display:flex;align-items:center;gap:10px;width:100%;min-width:0;padding:10px 12px;border-radius:10px;color:var(--text);text-align:left;font-size:14px}
 .pmenu .pi:hover:not(:disabled){background:var(--bg3)}.pmenu .pi:disabled{opacity:.55;cursor:default}
 .pmenu .pi b{flex:1;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pmenu .pi small{color:var(--text3);font-size:12px;white-space:nowrap}
-.pmenu .q{flex:none;font-size:11px;font-weight:600;padding:2px 7px;border-radius:6px;background:var(--bg4);color:var(--text2)}.pmenu .q.k4{background:#b8860b;color:#fff}
+.pmenu .q{flex:none;font-size:11px;font-weight:600;padding:2px 7px;border-radius:6px;background:var(--bg4);color:var(--text2)}.pmenu .q.k4{background:#b8860b;color:#fff}.q.hdr{flex:none;font-size:11px;font-weight:700;padding:2px 7px;border-radius:6px;background:linear-gradient(90deg,#7b5cff,#ff5ca8);color:#fff;margin-left:4px}#vodHdr:empty{display:none}#vodHdr{display:flex;align-items:center;gap:6px;color:var(--text3)}
 .pmenu .pirow{display:flex;align-items:center;gap:2px}
 .pmenu .pi.pdl{padding:4px 12px 10px 12px;margin-top:-4px;font-size:13px;color:var(--text2);gap:8px}.pmenu .pi.pdl b{font-weight:500}
 .pmenu svg{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
@@ -2700,6 +2700,25 @@ const TQ = { '4K': '4K', '1080p': 'FHD', '720p': 'HD', 'SD': 'SD' };
 const torQ = x => TQ[(x._t || torTags(x.title)).q] || '';
 const torSd = x => { const n = x.seeders || 0; return n + ' source' + (n > 1 ? 's' : ''); };
 const qTag = q => q ? `<span class="q${q === '4K' ? ' k4' : ''}">${q}</span>` : '';
+const hdrTag = x => isHdrVar(x) ? '<span class="q hdr" title="Film en HDR : lourd pour les petits PC">HDR</span>' : '';
+/* HDR connu avant la lecture : nom ou catégorie du fournisseur, déjà vu en lecture, ou (appli Windows) en-tête du fichier lu en
+   coulisse à l'ouverture de la fiche (ffmpeg, quelques secondes ; pas pendant une lecture) ; résultat gardé (1 HDR, 0 non) */
+async function hdrProbe(it) {
+  if (!window.desktop || !window.desktop.remux || !it || it.kind !== 'movie' || it.tor) return;
+  const all = bySrv('vod.hdrv'), k = srvKey(), o = all[k] || (all[k] = {});
+  for (const x of vodVars(it).slice().reverse().slice(0, 3)) {
+    if (x.id in o || HDR_RE.test(x.cat || '')) continue;
+    if (document.body.classList.contains('playing') || !V.open || V.open.it !== it) return;
+    const url = vodUrl('movie', x.id, x.ext); await dnsCheck(url).catch(() => false);
+    const j = await fetch(window.desktop.remux + '/probe?url=' + encodeURIComponent(pxUrl(url))).then(r => r.json()).catch(() => null);
+    if (!j || !j.ok || j.hdr == null) return;            // appli trop ancienne (pas d'information HDR) ou serveur muet
+    const a2 = bySrv('vod.hdrv'), o2 = a2[k] || (a2[k] = {}); o2[x.id] = j.hdr ? 1 : 0; LS.set('vod.hdrv', a2);
+    if (j.vh >= 200) vodResSet(x.id, j.vh);
+    if (V.open && V.open.it === it && $('#vodHdr')) $('#vodHdr').innerHTML = hdrLine(it);
+  }
+}
+const hdrLine = it => { const vs = vodVars(it); if (!vs.some(isHdrVar)) return ''; const sd = vs.filter(x => !isHdrVar(x));
+  return '<span class="q hdr">HDR</span> ' + (sd.length ? 'existe aussi sans HDR (' + sd.map(vodLbl).join(', ') + ')' : 'seulement en HDR'); };
 const PM = { el: null, sub: false };
 function pmClose() { if (PM.el) PM.el.remove(); PM.el = null; PM.sub = false; }
 function pmHtml() {
@@ -2709,7 +2728,7 @@ function pmHtml() {
   if (PM.sub) {
     let h = '<button class="pi back" data-pmback>‹ Retour</button>';
     const others = it.tor ? [] : vs.slice().reverse().filter(x => x !== pick);
-    if (others.length) h += '<h5>IPTV</h5>' + others.map(x => `<button class="pi" data-pmi="iptv:${x.id}"><b>${esc(String(x.cat || 'Abonnement').replace(/[ᴬ-ᵡ⁰-⁹ᴴᴰᴿᴮʸᵁᴵᴼᴾ]+/g, '').trim().slice(0, 28) || 'Abonnement')}</b>${qTag(vodLbl(x))}</button>`).join('');
+    if (others.length) h += '<h5>IPTV</h5>' + others.map(x => `<button class="pi" data-pmi="iptv:${x.id}"><b>${esc(String(x.cat || 'Abonnement').replace(/[ᴬ-ᵡ⁰-⁹ᴴᴰᴿᴮʸᵁᴵᴼᴾ]+/g, '').trim().slice(0, 28) || 'Abonnement')}</b>${qTag(vodLbl(x))}${hdrTag(x)}</button>`).join('');
     const tor = tl.filter(x => x !== bx);
     if (tor.length) h += '<h5>Torrent</h5>' + tor.map(x => `<span class="pirow"><button class="pi" data-pmi="tor:${tl.indexOf(x)}"><b>${esc(torMo(x.size))}</b><small>${torSd(x)}</small>${qTag(torQ(x))}</button><button class="pq" data-pmq="${tl.indexOf(x)}" title="Télécharger dans Ma médiathèque (qBittorrent)"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></button></span>`).join('');
     if (!others.length && !tor.length) h += '<p class="hint" style="margin:6px 12px">Pas d\'autre version.</p>';
@@ -2717,7 +2736,7 @@ function pmHtml() {
   }
   const tr = torOn ? torLast(it) : null, tp = tr ? LS.get(posK(torLastUrl(tr)), 0) : 0;
   let h = tr ? `<button class="pi" data-pmi="tlast"><b>Reprendre le torrent</b><small>${tp > 60 ? 'à ' + fmtDur(tp) + ' · ' : ''}${esc(torMo(tr.size))}</small>${qTag(tr.q)}</button>` : '';
-  h += it.tor ? '' : `<button class="pi" data-pmi="iptv:${pick.id}"><b>IPTV</b>${pos > 60 ? `<small>reprise à ${fmtDur(pos)}</small>` : ''}${qTag(vodLbl(pick))}</button>`;
+  h += it.tor ? '' : `<button class="pi" data-pmi="iptv:${pick.id}"><b>IPTV</b>${pos > 60 ? `<small>reprise à ${fmtDur(pos)}</small>` : ''}${qTag(vodLbl(pick))}${hdrTag(pick)}</button>`;
   if (torOn) h += VT.state === 'loading' && VT.it === it ? '<button class="pi" data-pmi="tbest"><b>Torrent</b><small>meilleure version · recherche…</small></button>'
     : bx ? `<button class="pi" data-pmi="tor:${tl.indexOf(bx)}"><b>Torrent</b><small>${esc(torMo(bx.size))} · ${torSd(bx)}</small>${qTag(torQ(bx))}</button><button class="pi pdl" data-pmq="${tl.indexOf(bx)}"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><b>Télécharger dans Ma médiathèque</b></button>`
     : '<button class="pi" disabled><b>Torrent</b><small>aucune version</small></button>';
@@ -3238,7 +3257,7 @@ $('#qualBtn').onclick = e => {
   if (fc) {                                             // film : choix de la version, reprise au même endroit
     const fv = vodVars(c.it).slice().reverse();
     if (!m.hidden || fv.length < 2) { m.hidden = true; return; }
-    m.innerHTML = fv.map((x, i) => `<button data-fv="${i}"><span class="ck">${x === fc ? '✓' : ''}</span><span class="q">${vodLbl(x)}</span><span class="r"><b>${esc(x.cat || '')}</b></span></button>`).join('');
+    m.innerHTML = fv.map((x, i) => `<button data-fv="${i}"><span class="ck">${x === fc ? '✓' : ''}</span><span class="q">${vodLbl(x)}${isHdrVar(x) ? ' · HDR' : ''}</span><span class="r"><b>${esc(x.cat || '')}</b></span></button>`).join('');
     m._fv = fv; m.hidden = false;
   } else {
   const v = variantsOf(c);
@@ -6012,7 +6031,7 @@ async function openVod(it) {
   const meta = [it.year || (info.releasedate || info.releaseDate || '').slice(0, 4), info.genre || it.genre, fmtDur(info.duration_secs) || info.duration, it.services.join(', ')].filter(Boolean).join(' · ');
   const mine = inMyList(it), hist = histOf(it);
   let h = `<div class="vd"><div>${cover ? `<img class="cv" src="${esc(cover)}" alt="" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'">` : '<div class="cv"></div>'}</div><div>
-    <h3>${esc(it.name)}</h3><div class="mt" id="vodMeta">${esc(meta)}</div>
+    <h3>${esc(it.name)}</h3><div class="mt" id="vodMeta">${esc(meta)}</div>${it.kind === 'movie' ? `<div class="mt" id="vodHdr">${hdrLine(it)}</div>` : ''}
     <div class="plot">${esc(info.plot || info.description || it.plot || '')}</div>
     <div id="vodCrew">${info.director ? `<div class="cr">Réalisation : ${esc(info.director)}</div>` : ''}${info.cast || info.actors ? `<div class="cr">Avec : ${esc(info.cast || info.actors)}</div>` : ''}</div>`;
   const listBtn = '';
@@ -6047,6 +6066,7 @@ async function openVod(it) {
   V.open = { it, eps, cover, flat };
   ficheLook(it);
   setTimeout(epImgCheck, 0);
+  if (it.kind === 'movie') setTimeout(() => hdrProbe(it).catch(() => {}), 800);
   vodEnrich(it);
   vodTorLoad(it).catch(() => {});
   movDli();
