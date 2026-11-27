@@ -183,6 +183,16 @@ function mockApi(route) {
         out.push(!!o && o.vac === b.dataset.exv && o.hsM === 'hor' && h0 === 'duree' && !document.querySelector('#modal-root .overlay')); delete S.overrides[k]; render(); return out; });
       ok('Page du jour : échange par défaut, grille, Congé · Absence ; valider sans rien changer n’enregistre rien', r[0] === 'echange' && r[1] && r[2] && r[3] && r[4], JSON.stringify(r));
       ok('Page du jour : autre vacation, heures sup en durée par défaut, « hors horaires » enregistré', r[5], JSON.stringify(r)); }
+    // Motif « Horaires modifiés » : le toggle du même nom s'active, avec les horaires de la vacation choisie
+    { const r = await p.evaluate(() => { const k = [...document.querySelectorAll('#cal .dci[data-key]')].map(e => e.dataset.key).find(k => k > dk(NOW) && !(S.overrides || {})[k] && !(S.conges || {})[k] && getVac(new Date(k + 'T12:00:00')).vac && getVac(new Date(k + 'T12:00:00')).vac !== 'RH');
+        openDay(k); const a = document.getElementById('cv-exhr').checked; _cvSetMotif('autre'); const r = [a, document.getElementById('cv-exhr').checked, !!document.getElementById('cv-exd').value, /Horaires modifiés/.test(document.getElementById('cv-exg').textContent)]; closeModal(); return r; });
+      ok('Motif Horaires modifiés : active le toggle « Horaires modifiés »', !r[0] && r[1] && r[2] && r[3], JSON.stringify(r)); }
+    // Jour de mixte : rien de pré-choisi, « Autres » (toutes les équipes) fermé, comme pour une vacation classique
+    { const r = await p.evaluate(() => { const p0 = S.profile.pool, l0 = S.profile.line; let out = null; S.profile.pool = 'cadre';
+        for (let L = 1; L <= 6 && !out; L++) { S.profile.line = L; for (let i = 0; i < 60 && !out; i++) { const d = new Date(NOW); d.setDate(d.getDate() + i); const c = getCycleVac(d).cycleVac, V = getVAC(d)[c]; if (V && V.mixte && !(S.overrides || {})[dk(d)]) out = dk(d); } }
+        if (!out) { S.profile.pool = p0; S.profile.line = l0; return null; }
+        openDay(out); const o = document.getElementById('cv-exo'), r = [window._cvW.exVac, !!o && o.style.display === 'none']; closeModal(); S.profile.pool = p0; S.profile.line = l0; render(); return r; });
+      ok('Jour de mixte : rien de pré-choisi, autres équipes repliées', r && r[0] == null && r[1], JSON.stringify(r)); }
     // fiche du jour, Modifier
     const day = await p.evaluate(() => { const k = dk(NOW); pendingKey = k; openDay(k); return !!document.querySelector('#modal-root .dbox'); });
     ok('Fiche du jour', day);

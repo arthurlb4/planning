@@ -5948,8 +5948,10 @@ function _cvSyncF(){var W=window._cvW;if(!W||!pendingKey||!document.getElementBy
   var sel=document.getElementById('custom-prime');if(sel&&V&&sel.value!=='autre'&&!_cvPrimeLock(window._cvMotif)){var pr=V.primes||{};if(window._cvMotif==='autre'||window._cvMotif==='detache')sel.value=pr.antenne?'antenne':pr.reel?'reel':pr.coord?'coord':'';}
   _cvCalc();}
 // Même jour, motif autre que l'échange, vacation de la grille aux horaires prévus : enregistrée telle quelle (sinon : vacation perso aux horaires saisis)
-function _cvSaveGrid(){var W=window._cvW||{},key=pendingKey,m=window._cvMotif||'autre';if(W.when==='other'||m==='echange'||!W.exVac||W.exHr)return false;
+function _cvSaveGrid(){var W=window._cvW||{},key=pendingKey,m=window._cvMotif||'autre';if(W.when==='other'||m==='echange'||!W.exVac)return false;
   var d=new Date(key+'T12:00:00'),VAC=getVAC(d),V=VAC[W.exVac],cyc=getCycleVac(d).cycleVac;if(!V)return false;
+  // horaires modifiés ouverts mais laissés à ceux de la vacation choisie : la vacation telle quelle
+  if(W.exHr){var T=W.exT||{},t=parseHM(V.fin)-parseHM(V.deb);if(t<0)t+=1440;var q=t-(V.dur||0),pz=q>=60?'60':q>=45?'45':'0';if(T.deb!==V.deb||T.fin!==V.fin||String(T.pause||'0')!==pz)return false;}
   var sel=document.getElementById('custom-prime'),pr=V.primes||{},pv=pr.antenne?'antenne':pr.reel?'reel':pr.coord?'coord':'';
   if((m==='autre'||m==='detache')&&sel&&sel.value!==pv)return false; // prime changée : vacation perso
   var amt=parseFloat(String((document.getElementById('cv-autre-amt')||{}).value||'').replace(/\s/g,'').replace(',','.'));
@@ -6151,6 +6153,8 @@ function _cvRevert(){var k=pendingKey;if(!k||!(S.overrides||{})[k])return;pushUn
   delete S.overrides[k];if(S.dayPrimes)delete S.dayPrimes[k];removeHistoryForKey(k);saveState();render();gcalTrigger();openCustomVacModal();}
 // Motif : formateur ouvre directement la prime de formateur
 function _cvSetMotif(k){var prev=window._cvMotif;window._cvMotif=k;setTimeout(_cvCalc,0);
+  // motif « Horaires modifiés » : les horaires à saisir s'ouvrent
+  if(k==='autre'&&prev!=='autre'){var hr=document.getElementById('cv-exhr');if(hr&&!hr.checked){hr.checked=true;_cvExHr(true);}}
   _cvHsHint();var _ms=document.getElementById('cv-motif-sel');if(_ms&&_ms.value!==k)_ms.value=k;
   var h=document.getElementById('cv-motif-hint');if(h){h.textContent=(window._cvHints||{})[k]||'';h.style.display=k==='autre'||k==='detache'?'none':'';}
   var am=document.getElementById('cv-autre-amt');if(am)am.placeholder=k==='formateur'?'formateur €':'0,00 €';
@@ -6180,7 +6184,7 @@ function _cvSaveExtras(){
 }
 function confirmCustomVac(){
   // même jour, échange sur la vacation prévue, sans rien d'autre : pas un échange (jour remis tel que prévu, rendu et note gardés)
-  var _W0=window._cvW||{};if(pendingKey&&_W0.when!=='other'&&window._cvMotif==='echange'&&!_W0.exHr&&_W0.exVac&&_W0.exVac===getCycleVac(new Date(pendingKey+'T12:00:00')).cycleVac){
+  var _W0=window._cvW||{};if(pendingKey&&_W0.when!=='other'&&window._cvMotif==='echange'&&!_W0.exHr&&(!_W0.exVac||_W0.exVac===getCycleVac(new Date(pendingKey+'T12:00:00')).cycleVac)){
     var _k=pendingKey,_o=(S.overrides||{})[_k];_cvSaveExtras();if(_o&&!(_o.echange&&_o.pair&&_o.pair!==_k)){pushUndo('Vacation remise');delete S.overrides[_k];removeHistoryForKey(_k);}
     saveState();render();gcalTrigger();popCell(_k);closeModal();return;}
   if(pendingKey&&((window._cvW&&window._cvW.when==='other')||window._cvMotif==='echange')){_cvSaveMove();return;}

@@ -2666,7 +2666,8 @@ function _cvWInit(key){var o=(S.overrides||{})[key]||{},d=new Date(key+'T12:00:0
     return{when:'other',role:o.ecSelf?'take':'give',other:o.pair,wOff:Math.round((pm-mon)/(7*864e5)),exVac:o.motif?null:_exBaseOf(o.ecSelf?o:((S.overrides||{})[o.pair]||{})),exHsM:_ovHsM(o.ecSelf?o:((S.overrides||{})[o.pair]||{})),exT:_exTOf(o.ecSelf?o:((S.overrides||{})[o.pair]||{}))};}
   // même jour : vacation faite pré-choisie (celle en place, sinon la prévue) ; vacation perso aux horaires saisis → « Horaires différents »
   var cv=o.vac&&!o.echange?(S.customVacs||{})[o.vac]:null,perso=!!(cv&&cv.hidden),T=o.echange?_exTOf(o):perso?_exTOf({exBase:1,vac:o.vac}):null;
-  var xv=o.echange?_exBaseOf(o):o.vac?(perso?(c&&c!=='RH'?c:null):o.vac):(c&&c!=='RH'?c:null);
+  var VC=c&&c!=='RH'?getVAC(d)[c]:null,cc=VC&&!VC.mixte?c:null; // mixte prévue : rien de pré-choisi, la vacation faite se choisit
+  var xv=o.echange?_exBaseOf(o):o.vac?(perso?cc:o.vac):cc;
   return{when:'day',role:c&&c!=='RH'?'give':'take',other:null,wOff:0,exVac:xv,exHsM:o.vac?_ovHsM(o):null,exHr:!!T,exT:T};}
 // Échange aux horaires différents : la vacation de base est gardée (exBase), les horaires faits sont une vacation perso
 function _exBaseOf(o){return o&&(o.exBase||o.vac)||null;}
@@ -2701,7 +2702,7 @@ function _cvExGrid(fk){var W=window._cvW||{},d=new Date(fk+'T12:00:00'),VAC=getV
     +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">'+typ.map(bt).join('')
     +(oth?'<button type="button" class="mb vt" style="background:var(--bg0);color:var(--text2);font-weight:700" onclick="var o=document.getElementById(\'cv-exo\');o.style.display=o.style.display?\'\':\'none\'">Autres</button>':'')+'</div>'
     +(oth?'<div id="cv-exo"'+(open?'':' style="display:none"')+'>'+oth+'</div>':'')
-    +'<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin:10px 2px 0"><span style="font-size:13px">Horaires différents</span>'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin:10px 2px 0"><span style="font-size:13px">Horaires modifiés</span>'
     +'<label class="tgl"><input type="checkbox" id="cv-exhr"'+(W.exHr?' checked':'')+' onchange="_cvExHr(this.checked)"><span class="tgl-s"></span></label></div>'
     +'<div id="cv-exhr-f" class="mr2" style="grid-template-columns:1fr 1fr 1fr;margin:8px 0 0'+(W.exHr?'':';display:none')+'">'
     +[['cv-exd','Début',_cvTOpts()],['cv-exf','Fin',_cvTOpts()],['cv-exp','Pause','<option value="0">Sans</option><option value="45">45 min</option><option value="60">1h00</option>']].map(function(a){return '<div><label>'+a[1]+'</label><select id="'+a[0]+'" onchange="_cvExTRead()" style="width:100%;padding:10px 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:15px;background:var(--bg2);color:var(--text);font-family:var(--font);-webkit-appearance:none">'+a[2]+'</select></div>';}).join('')+'</div>'
