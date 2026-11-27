@@ -3040,9 +3040,6 @@ function rhCompareShow(rh,silent){
     return '<button class="tg-mo'+(ym===selM?' on':'')+(!L.length&&!D?' z':'')+'" onclick="_tgPick('+ym+')"><small>'+MCs[ym%12]+'</small><b style="color:'+c+'">'+v+'</b></button>';};
   const frise=months.length>1?'<div class="tg-mos">'+months.map(chip).join('')+'</div>':'';
   const restNote=bad(restH)?'<div class="tg-note"><i class="ti ti-info-circle"></i><div>Expiration : '+(restH>0?'l’app':'le tableau')+' perd '+fmtMin(Math.abs(restH))+' de plus, du fait des écarts ci-dessus. '+_rhIgnLink('rest',restH)+'</div></div>':'';
-  // heures sup expliquées par la méthode : une ligne en tête pour changer de méthode d'un geste
-  const hsNote=hsExpl&&selM==null?'<div class="tg-note tg-hs"><i class="ti ti-arrows-exchange"></i><div><b>Le tableau compte les heures sup en méthode '+hsAltL+'.</b> L’app est en méthode '+(hsM==='duree'?'durée':'horaires')+'.'
-    +'<button class="tg-b" onclick="hsModeSet(\''+hsAltM+'\');rhOpenFrom(window._rvFrom||\'recap\')">Passer en méthode '+hsAltL+'</button></div></div>':'';
   const cA0=R.consA+R.adjr,mA0=R.matA+R.xadj,rp=v=>bad(v)?'dont '+fmtMin(Math.abs(v))+' repris':'';
   const t3=(l,t,a,c,note)=>'<tr'+(c?' class="'+c+'"':'')+'><td>'+l+'</td><td>'+(t?fmtMin(t):'—')+'</td><td>'+(a?fmtMin(a):'—')+'</td>'+(bad(t-a)?'<td class="'+(a-t>0?'rc-pos':'rc-neg')+'">'+fmtE(a-t)+(note?'<br><small style="color:var(--text3);font-weight:400">'+note+'</small>':'')+'</td>':'<td><span class="rc-ok">✓</span></td>')+'</tr>';
   const consTbl='<div style="font-size:11px;color:var(--text3);margin:2px 0 4px">Rendus déduits depuis le départ</div><table class="rc-t"><tr><th></th><th>Tableau</th><th>App</th><th>Écart</th></tr>'+t3('Sur les heures',R.consT,cA0,'',rp(R.adjr))+(R.hasMat?t3('Sur le matelas',R.matT,mA0,'',rp(R.xadj)):'')+t3('Total',R.consT+R.matT,cA0+mA0,'rc-tot',rp(R.adjr+R.xadj))+'</table>';
@@ -3071,7 +3068,7 @@ function rhCompareShow(rh,silent){
     +frise
     +'<div class="tg-pills"><button class="adj-pill" onclick="_rhView()"><i class="ti ti-table"></i>Voir le tableau</button><button class="adj-pill" onclick="rhCompareOpen()"><i class="ti ti-file-import"></i>Importer</button></div>'
     +'<div class="tg-nums-t" onclick="this.nextElementSibling.classList.toggle(\'on\');this.querySelector(\'.rv-ch\').classList.toggle(\'r\')">Les chiffres <i class="ti ti-chevron-down rv-ch"></i></div><div class="tg-nums">'+nums+'</div></div>'
-    +hsNote+list
+    +list
     +(selM==null?restNote:'')
     +(selM==null&&neu.length?fold('Sans effet',neu.length+'',neu.map(row).join(''),false):'')
     +(selM==null&&done.length?fold('Réglés',done.length+'',done.map(row).join('')+(done.length>1?'<button class="rv-b2" onclick="rhRevertAll()">Tout annuler</button>':'')):'')
@@ -5994,9 +5991,6 @@ async function _cvSaveMove(){var W=window._cvW||{when:'day'},key=pendingKey,m=wi
   logH(ex?'Échange: '+fmtDate(oD)+' <-> '+fmtDate(fD)+' ('+vLbl(V,VF)+')':fmtDate(oD)+' -> '+fmtDate(fD)+' ('+ML[m]+')',ex?'#c88048':'#62aadc',fKey);
   saveState();render();gcalTrigger();popCell(fKey);closeModal();_ruleToast([oKey,fKey]);}
 // Heures sup d'une vacation changée : méthode « durée » (par défaut) ou « horaires » (comme les vacations mixtes)
-function hsModeSet(m,el){if(_hsMode()===m)return;pushUndo(m==='horaires'?'Heures sup : méthode horaires':'Heures sup : méthode durée');if(!S.profile)S.profile={};if(m==='horaires')S.profile.hsMode='horaires';else delete S.profile.hsMode;
-  saveState();render();if(el)[].forEach.call(el.parentNode.children,function(b){b.classList.toggle('on',b===el);});try{_segSync();}catch(e){}
-  _infoToast(m==='horaires'?'✓ Heures sup : ce qui sort des horaires prévus':'✓ Heures sup : la plus longue des deux vacations');}
 // Option « Heures valables un an » : chaque mois de rendus expire à la fin du 12e mois (plus de menu de report)
 function exp12Set(on){pushUndo(on?'Heures valables un an':'Expiration par reports');if(!S.profile)S.profile={};if(on)S.profile.exp12=true;else delete S.profile.exp12;saveState();render();_infoToast(on?'✓ Heures valables un an':'Expiration à 3 mois, avec reports');}
 // Échange : la page Modifier, sur « un autre jour » et le motif Échange
