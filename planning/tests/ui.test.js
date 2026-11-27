@@ -191,7 +191,7 @@ function mockApi(route) {
     { const r = await p.evaluate(() => { const k = [...document.querySelectorAll('#cal .dci[data-key]')].map(e => e.dataset.key).find(k => k > dk(NOW) && !(S.overrides || {})[k] && !(S.conges || {})[k] && getVac(new Date(k + 'T12:00:00')).vac && getVac(new Date(k + 'T12:00:00')).vac !== 'RH');
         openDay(k); const v = id => getComputedStyle(document.getElementById(id)).display !== 'none', out = [];
         ['forme', 'syndic', 'echange'].forEach(m => { _cvSetMotif(m); out.push([v('cv-tiles'), v('cv-fields'), v('cv-hsw')].join()); });
-        out.push(/Échanger toute la semaine/.test(document.getElementById('cv-more-b').parentNode.textContent)); closeModal(); return out; });
+        out.push(/Échanger la semaine/.test(document.getElementById('cv-more-b').parentNode.textContent)); closeModal(); return out; });
       ok('Formation : nom et horaires sans tuiles ; délégation : sans heures sup ; semaine à côté de + Rendu', r[0] === 'false,true,true' && r[1] === 'false,true,false' && r[2] === 'true,false,true' && r[3] === true, JSON.stringify(r)); }
     // Note du jour : visible dans la page du jour
     { const r = await p.evaluate(() => { const k = [...document.querySelectorAll('#cal .dci[data-key]')].map(e => e.dataset.key).find(k => k > dk(NOW) && !(S.conges || {})[k] && getVac(new Date(k + 'T12:00:00')).vac && getVac(new Date(k + 'T12:00:00')).vac !== 'RH');
