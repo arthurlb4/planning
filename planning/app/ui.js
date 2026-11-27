@@ -5926,6 +5926,8 @@ function _cvDraftSave(){var g=function(id){var e=document.getElementById(id);ret
 // Redessine la page (même position, sans animation) en gardant la saisie
 function _cvRerender(){_cvDraftSave();window._cvRe=1;var sh=document.querySelector('#modal-root .sheet'),st=sh?sh.scrollTop:0;openCustomVacModal();
   var s2=document.querySelector('#modal-root .sheet'),o2=document.querySelector('#modal-root .overlay');if(o2)o2.style.animation='none';if(s2){s2.style.animation='none';s2.scrollTop=st;}}
+// « Un autre jour » : la frise des jours s'ouvre ; coupé, retour au jour même
+function _cvAutreJour(on){var W=window._cvW;if(!W)return;_haptic();W.ad=on;if(!on){W.when='day';W.other=null;W.wOff=0;W.exVac=_cvWInit(pendingKey).exVac;}_cvRerender();}
 function _cvSetWhen(w){var W=window._cvW;if(!W||W.when===w)return;_haptic();W.when=w;_exState.mode=w==='week'?'week':'day';_cvRerender();}
 function _cvSetRole(r){var W=window._cvW;if(!W||W.role===r)return;W.role=r;_cvRerender();}
 function _cvWeek(n){var W=window._cvW;_haptic();W.wOff=(W.wOff||0)+n;_cvRerender();
@@ -5954,8 +5956,8 @@ function _cvSaveGrid(){var W=window._cvW||{},key=pendingKey,m=window._cvMotif||'
   _cvSaveExtras();if(!S.dayPrimes)S.dayPrimes={};
   if(amt>0&&(m==='formateur'||(sel&&sel.value==='autre')))S.dayPrimes[key]={lbl:m==='formateur'?'Prime formateur':'Prime',amt:Math.round(amt*100)/100};else if(m==='formateur')delete S.dayPrimes[key];
   var o=(S.overrides||{})[key];
-  if(W.exVac===cyc&&m==='autre'&&!W.exHs){if(o){pushUndo('Vacation remise');delete S.overrides[key];removeHistoryForKey(key);}}
-  else{pushUndo('Vacation modifiée');if(!S.overrides)S.overrides={};S.overrides[key]={vac:W.exVac,fromSV:!cyc||cyc==='RH',echange:false,hs:!!W.exHs,formation:m==='forme',motif:m};
+  if(W.exVac===cyc&&m==='autre'&&_cvHsM()!=='hor'){if(o){pushUndo('Vacation remise');delete S.overrides[key];removeHistoryForKey(key);}}
+  else{pushUndo('Vacation modifiée');if(!S.overrides)S.overrides={};S.overrides[key]={vac:W.exVac,fromSV:!cyc||cyc==='RH',echange:false,hs:_cvHsM()==='hor',hsM:_cvHsM(),formation:m==='forme',motif:m};
     var ML={autre:'',forme:' (formation suivie)',formateur:' (formateur)',detache:' (détachement)',syndic:' (détachement syndical)'};logH(fmtDate(d)+' -> '+vLbl(W.exVac,VAC)+(ML[m]||''),'#62aadc',key);}
   saveState();render();gcalTrigger();popCell(key);closeModal();_ruleToast([key]);return true;}
 
@@ -5982,7 +5984,7 @@ async function _cvSaveMove(){var W=window._cvW||{when:'day'},key=pendingKey,m=wi
     if(!(T.deb===bv.deb&&T.fin===bv.fin&&ed===bv.dur)){exB=W.exVac;nv={deb:T.deb,fin:T.fin,dur:ed,panier:epn,hidden:true,label:vLbl(W.exVac,VF),primes:Object.assign({},bv.primes||{})};}}
   var V=W.exVac;if(nv){V='_p_'+nv.label+'_'+Date.now();if(!S.customVacs)S.customVacs={};S.customVacs[V]=nv;}
   if(oKey!==fKey){if(S.conges&&S.conges[fKey])delete S.conges[fKey];S.overrides[oKey]={vac:oCyc,fromSV:false,echange:true,ecSelf:false,hs:false,pair:fKey};if(!ex)S.overrides[oKey].motif=m;}
-  S.overrides[fKey]={vac:V,fromSV:!fCyc||fCyc==='RH',echange:true,ecSelf:true,hs:!!W.exHs,pair:oKey};if(exB)S.overrides[fKey].exBase=exB;if(!ex){S.overrides[fKey].motif=m;S.overrides[fKey].formation=m==='forme';}
+  S.overrides[fKey]={vac:V,fromSV:!fCyc||fCyc==='RH',echange:true,ecSelf:true,hs:_cvHsM()==='hor',hsM:_cvHsM(),pair:oKey};if(exB)S.overrides[fKey].exBase=exB;if(!ex){S.overrides[fKey].motif=m;S.overrides[fKey].formation=m==='forme';}
   if(!S.dayPrimes)S.dayPrimes={};if(amt>0)S.dayPrimes[fKey]={lbl:m==='formateur'?'Prime formateur':'Prime',amt:Math.round(amt*100)/100};else if(!ex)delete S.dayPrimes[fKey];
   _cvSaveExtras();
   var ML={autre:'horaires',forme:'formation',formateur:'formateur',detache:'détachement',syndic:'détachement syndical'};
@@ -6050,7 +6052,7 @@ function openCustomVacModal(){
     +(key&&window._cvDay&&window._cvDay.k===key?window._cvDay.head:'<div class="st" style="margin-bottom:2px">'+(key?'Modifier':'Ajouter')+'</div>'
     +(key?'<div style="font-size:11px;color:var(--text3);margin-bottom:12px">'+fmtDate(date)+'</div>':''))
     +(key&&(S.overrides||{})[key]&&(S.overrides||{})[key].echange?_exCurHtml(key):'')
-    +(key?_cvWhenHtml(key,W)+opts:'')
+    +(key?opts+_cvWhenHtml(key,W):'')
     // Quoi : horaires (ou vacation de l'échange) ; jour déjà modifié (hors échange) : retour à la vacation prévue au cycle
     +(key?'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div class="cv-sec">Vacation</div>'
       +(ov.vac&&!ov.echange?'<button type="button" class="adj-pill" style="width:auto;padding:0 12px;height:26px;font-size:13px;margin-bottom:6px" onclick="_cvRevert()">Revenir à l’original</button>':'')+'</div>':'')
@@ -6125,8 +6127,8 @@ function _cvCalc(){var el=document.getElementById('cv-calc'),R=window._cvCalcRef
     :(function(){var x=t-R.dur,dm=parseHM(R.deb||''),fm=parseHM(R.fin||'');
       // méthode « horaires » : seulement ce qui sort des horaires prévus (comme une mixte), d'après début et fin saisis
       // échange sans « demande de la direction » : les heures prévues comptent
-      if(window._cvMotif==='echange'&&!(window._cvW||{}).exHs)return '<b style="color:var(--text2)">'+fmtMin(t)+'</b> faites · '+R.n+' prévue '+fmtMin(R.dur)+' → '+fmtMin(R.dur)+' comptées';
-      if((window._cvW||{}).exHs&&R.deb&&R.fin&&!isNaN(dm)&&!isNaN(fm)){var f2=fm<=dm?fm+1440:fm,b2=b<=a?b+1440:b;x=Math.max(0,dm-a)+Math.max(0,b2-f2);
+      if(_cvHsM()==='none')return '<b style="color:var(--text2)">'+fmtMin(t)+'</b> faites · '+R.n+' prévue '+fmtMin(R.dur)+' → '+fmtMin(R.dur)+' comptées';
+      if(_cvHsM()==='hor'&&R.deb&&R.fin&&!isNaN(dm)&&!isNaN(fm)){var f2=fm<=dm?fm+1440:fm,b2=b<=a?b+1440:b;x=Math.max(0,dm-a)+Math.max(0,b2-f2);
         return '<b style="color:var(--text2)">'+fmtMin(t)+'</b> faites · '+R.n+' prévue '+R.deb+'–'+R.fin+(x>0?' → <b style="color:var(--blue)">+'+fmtMin(x)+' en heures sup</b> <span style="color:var(--text3)">(hors horaires prévus)</span>':' → '+fmtMin(R.dur)+' comptées');}
       return '<b style="color:var(--text2)">'+fmtMin(t)+'</b> faites · '+R.n+' prévue '+fmtMin(R.dur)+(x>0?' → <b style="color:var(--blue)">+'+fmtMin(x)+' en heures sup</b>':x<0?' → '+fmtMin(R.dur)+' comptées':'');})();
   // Ce que le jour rapporte en plus : nuit (formation suivie → la plus grande des deux), matin, panier, majoration du jour
@@ -6178,7 +6180,7 @@ function _cvSaveExtras(){
 }
 function confirmCustomVac(){
   // même jour, échange sur la vacation prévue, sans rien d'autre : pas un échange (jour remis tel que prévu, rendu et note gardés)
-  var _W0=window._cvW||{};if(pendingKey&&_W0.when!=='other'&&window._cvMotif==='echange'&&!_W0.exHr&&!_W0.exHs&&_W0.exVac&&_W0.exVac===getCycleVac(new Date(pendingKey+'T12:00:00')).cycleVac){
+  var _W0=window._cvW||{};if(pendingKey&&_W0.when!=='other'&&window._cvMotif==='echange'&&!_W0.exHr&&_W0.exVac&&_W0.exVac===getCycleVac(new Date(pendingKey+'T12:00:00')).cycleVac){
     var _k=pendingKey,_o=(S.overrides||{})[_k];_cvSaveExtras();if(_o&&!(_o.echange&&_o.pair&&_o.pair!==_k)){pushUndo('Vacation remise');delete S.overrides[_k];removeHistoryForKey(_k);}
     saveState();render();gcalTrigger();popCell(_k);closeModal();return;}
   if(pendingKey&&((window._cvW&&window._cvW.when==='other')||window._cvMotif==='echange')){_cvSaveMove();return;}
@@ -6186,7 +6188,7 @@ function confirmCustomVac(){
   var val=function(id){var e=document.getElementById(id);return e?String(e.value).trim():'';};
   var name=val('custom-name'),debStr=val('custom-deb'),finStr=val('custom-fin'),pauseMin=parseInt(val('custom-pause'))||0,prime=val('custom-prime');
   var I=window._cvInit||{},key=pendingKey;
-  var hs=!!(key&&(window._cvW||{}).exHs); // heures sup : coupé → durée ; « demande de la direction » → ce qui sort des horaires prévus
+  var hsM=key?_cvHsM():'duree',hs=hsM==='hor'; // heures sup : coupé → durée ; « demande de la direction » → ce qui sort des horaires prévus
   var motif=document.getElementById('cv-motif')?(window._cvMotif||'autre'):'autre',formation=motif==='forme';
   var vacEmpty=!debStr||!finStr;
   var autreAmt=prime==='autre'?parseFloat(val('cv-autre-amt').replace(/\s/g,'').replace(',','.')):NaN;
@@ -6221,13 +6223,13 @@ function confirmCustomVac(){
       pushUndo('Vacation modifiée');
       var date=new Date(key+'T12:00:00'),cv=getCycleVac(date).cycleVac;
       if(!S.overrides)S.overrides={};
-      S.overrides[key]={vac:vacKey,fromSV:!cv||cv==='RH',echange:false,hs:hs,formation:formation,motif:motif};
+      S.overrides[key]={vac:vacKey,fromSV:!cv||cv==='RH',echange:false,hs:hs,hsM:hsM,formation:formation,motif:motif};
       logH(fmtDate(date)+' -> '+name+(motif==='forme'?' (formation suivie)':motif==='formateur'?' (formateur)':motif==='detache'?' (détachement)':motif==='syndic'?' (détachement syndical)':''),'#62aadc',key);
     }
   } else if(key&&I.had){
     // Vacation inchangée : seules les options changent (jour déjà modifié)
     var o=(S.overrides||{})[key];
-    if(o&&(!!o.formation!==formation||(o.motif||'autre')!==motif||!!o.hs!==hs)){pushUndo('Option modifiée');o.formation=formation;o.motif=motif;o.hs=hs;}
+    if(o&&(!!o.formation!==formation||(o.motif||'autre')!==motif||_ovHsM(o)!==hsM)){pushUndo('Option modifiée');o.formation=formation;o.motif=motif;o.hs=hs;o.hsM=hsM;}
   }
   saveState();render();gcalTrigger();
   if(key){popCell(key);closeModal();_ruleToast([key]);}else closeModal();

@@ -176,13 +176,13 @@ function mockApi(route) {
 
     // Page du jour unifiée : fiche en tête, motif (échange par défaut), vacation faite dans la grille, toggle heures sup, Congé · Rendu · Absence
     { const r = await p.evaluate(() => { const k = [...document.querySelectorAll('#cal .dci[data-key]')].map(e => e.dataset.key).find(k => k > dk(NOW) && !(S.overrides || {})[k] && !(S.conges || {})[k] && getVac(new Date(k + 'T12:00:00')).vac && getVac(new Date(k + 'T12:00:00')).vac !== 'RH');
-        openDay(k); const m = document.getElementById('modal-root'), out = [window._cvMotif, !!m.querySelector('.dbox'), !!m.querySelector('#cv-exg [data-exv]'), /Congé/.test(m.textContent) && /Absence/.test(m.textContent) && !/Échanger toute/.test('') ];
+        openDay(k); const m = document.getElementById('modal-root'), out = [window._cvMotif, !!m.querySelector('.dbox'), !!m.querySelector('#cv-exg [data-exv]'), /Congé/.test(m.textContent) && /Absence/.test(m.textContent) && !m.querySelector('.cv-days') && _cvHsM() === 'none'];
         confirmCustomVac(); out.push(!(S.overrides || {})[k]); // rien changé : rien enregistré
         openDay(k); _cvSetMotif('autre'); const b = [...document.querySelectorAll('#cv-exg [data-exv]')].find(x => x.dataset.exv !== window._cvW.exVac); _cvPickExVac(b);
-        const t = document.getElementById('cv-exhs'); t.checked = true; t.dispatchEvent(new Event('change')); confirmCustomVac(); const o = (S.overrides || {})[k];
-        out.push(!!o && o.vac === b.dataset.exv && o.hs === true && !document.querySelector('#modal-root .overlay')); delete S.overrides[k]; render(); return out; });
+        const h0 = _cvHsM(); _cvSetHsM('hor'); confirmCustomVac(); const o = (S.overrides || {})[k];
+        out.push(!!o && o.vac === b.dataset.exv && o.hsM === 'hor' && h0 === 'duree' && !document.querySelector('#modal-root .overlay')); delete S.overrides[k]; render(); return out; });
       ok('Page du jour : échange par défaut, grille, Congé · Absence ; valider sans rien changer n’enregistre rien', r[0] === 'echange' && r[1] && r[2] && r[3] && r[4], JSON.stringify(r));
-      ok('Page du jour : autre vacation + heures sup demandées par la direction enregistrées', r[5], JSON.stringify(r)); }
+      ok('Page du jour : autre vacation, heures sup en durée par défaut, « hors horaires » enregistré', r[5], JSON.stringify(r)); }
     // fiche du jour, Modifier
     const day = await p.evaluate(() => { const k = dk(NOW); pendingKey = k; openDay(k); return !!document.querySelector('#modal-root .dbox'); });
     ok('Fiche du jour', day);
