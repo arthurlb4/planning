@@ -1290,6 +1290,10 @@ function _payPageHtml(ym){
     // Écarts ignorés en partie : combien et leur montant, sur une ligne à part
     // Montant des écarts ignorés dans la colonne bulletin (ligne à part si d'autres écarts restent)
     +(nI&&!ig&&!/écarts ignorés/.test(msg)?'<div class="pp-r" style="color:var(--text3)"><span class="pp-l">'+nI+' écart'+(nI>1?'s':'')+' ignoré'+(nI>1?'s':'')+'</span><span class="pp-n">'+_iT.replace(/\s*€/,'')+'</span><b></b></div>':'')
+    // Ce que les lignes n'expliquent pas : visible ici aussi (pas seulement dans « Ignorer… »), avec où chercher
+    +(function(){var R=c.status==='ecart'&&!ig&&c.items.filter(function(i){return i.id==='reste'&&!i.ign;})[0];if(!R)return '';
+      return '<div class="pp-r" style="color:var(--amber)"><span class="pp-l">Sans ligne correspondante</span><span class="pp-n">'+(R.d>0?'+':'−')+fmtEuro(Math.abs(R.d)).replace(/\s*€/,'')+'</span><b></b></div>'
+        +'<div style="font-size:11px;color:var(--text3);line-height:1.4;margin:-2px 0 4px">Écart du total brut qu’aucune ligne n’explique : une ligne du bulletin que l’app ne reconnaît pas, ou un montant mal lu. À comparer avec votre bulletin.</div>';})()
     // Écart sur fériés, dimanches, RH ou HS dû au réglage de l'app → Vérification (le mail au gestionnaire est dans Suivi)
     if(c.status==='ecart'&&!ig){var _D=null;try{_D=_bulPayDiffs();}catch(e){}
       var _lk='color:var(--blue);cursor:pointer;margin-left:auto;padding-left:8px;white-space:nowrap',_W=ym-1;
