@@ -2702,7 +2702,8 @@ function _cvExGrid(fk){var W=window._cvW||{},d=new Date(fk+'T12:00:00'),VAC=getV
   // « Autres » : celles du jour hors grille, rangées par catégorie (comme la fiche du jour) ; ouvert si la vacation choisie en fait partie
   if(dv.sched){window._autreVacsForDay=dv.acc;window._cycleVacsShown=dv.sched;}
   var oth=_autreVacHtml(fk,1),open=!!(W.exVac&&typ.indexOf(W.exVac)<0);
-  return '<div style="font-size:11px;color:var(--text2);margin:2px 0 6px">Vacation faite le '+_cvSd(fk)+'</div>'
+  // tuiles (vacation faite, horaires modifiés) : masquées pour formation, formateur, détachement, délégation (nom et horaires à saisir)
+  return '<div id="cv-tiles"><div style="font-size:11px;color:var(--text2);margin:2px 0 6px">Vacation faite le '+_cvSd(fk)+'</div>'
     +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">'+typ.map(bt).join('')
     +(oth?'<button type="button" class="mb vt" style="background:var(--bg0);color:var(--text2);font-weight:700" onclick="var o=document.getElementById(\'cv-exo\');o.style.display=o.style.display?\'\':\'none\'">Autres</button>':'')+'</div>'
     +(oth?'<div id="cv-exo"'+(open?'':' style="display:none"')+'>'+oth+'</div>':'')
@@ -2710,10 +2711,15 @@ function _cvExGrid(fk){var W=window._cvW||{},d=new Date(fk+'T12:00:00'),VAC=getV
     +'<label class="tgl"><input type="checkbox" id="cv-exhr"'+(W.exHr?' checked':'')+' onchange="_cvExHr(this.checked)"><span class="tgl-s"></span></label></div>'
     +'<div id="cv-exhr-f" class="mr2" style="grid-template-columns:1fr 1fr 1fr;margin:8px 0 0'+(W.exHr?'':';display:none')+'">'
     +[['cv-exd','Début',_cvTOpts()],['cv-exf','Fin',_cvTOpts()],['cv-exp','Pause','<option value="0">Sans</option><option value="45">45 min</option><option value="60">1h00</option>']].map(function(a){return '<div><label>'+a[1]+'</label><select id="'+a[0]+'" onchange="_cvExTRead()" style="width:100%;padding:10px 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:15px;background:var(--bg2);color:var(--text);font-family:var(--font);-webkit-appearance:none">'+a[2]+'</select></div>';}).join('')+'</div>'
-    +'<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin:12px 2px 0"><span style="font-size:13px">Heures sup</span>'
+    +'</div><div id="cv-hsw"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin:12px 2px 0"><span style="font-size:13px">Heures sup</span>'
     +'<div class="cv-seg" id="cv-hsm" style="width:230px;flex:none">'+[['none','Collègue'],['duree','Durée'],['hor','Hors bornes']].map(function(x){return '<button type="button" data-m="'+x[0]+'" class="'+(_cvHsM()===x[0]?'on':'')+'" onclick="_cvSetHsM(\''+x[0]+'\')">'+x[1]+'</button>';}).join('')+'</div></div>'
-    +'<div class="cv-hint" id="cv-exhint" style="margin:8px 2px 4px">'+_cvHsTxt()+'</div>'
-    +'<button type="button" class="adj-pill" style="width:auto;padding:0 14px;height:30px;font-size:13px;margin:8px 0 2px" onclick="_cvSetWhen(\'week\')">Échanger toute la semaine…</button>';}
+    +'<div class="cv-hint" id="cv-exhint" style="margin:8px 2px 4px">'+_cvHsTxt()+'</div></div>'
+    +'<div class="cv-hint" id="cv-detn" style="margin:10px 2px 4px;display:none">Ni heures sup ni rendus : la vacation prévue compte.</div>';}
+// Motif avec nom et horaires à saisir (formation, formateur, détachement, délégation) : pas de tuiles ; détachement : pas d'heures sup
+function _cvNamed(k){return k==='forme'||k==='formateur'||k==='detache'||k==='syndic';}
+function _cvMotifView(){var k=window._cvMotif,nm=_cvNamed(k),sh=function(id,on){var e=document.getElementById(id);if(e)e.style.display=on?'':'none';};
+  if(!document.getElementById('cv-exg'))return;var f=document.getElementById('cv-fields'),h=document.getElementById('cv-hsw'),dn=document.getElementById('cv-detn');if(f&&h&&f.nextElementSibling!==h)f.after(h,dn); // heures sup sous le nom et les horaires
+  sh('cv-tiles',!nm);sh('cv-fields',nm);sh('cv-hsw',!_isDet(k));sh('cv-detn',_isDet(k));}
 // Ce que décide le toggle « Heures sup · demande de la direction » : coupé, la durée (échange : les heures prévues) ; activé, les horaires
 // Heures sup du jour, trois choix : collègue (les heures prévues comptent), durée (ce qui dépasse la durée prévue),
 // hors bornes (ce qui sort des horaires prévus). Sans choix fait : hors bornes si la vacation prévue est une mixte, durée sinon.

@@ -187,6 +187,12 @@ function mockApi(route) {
     { const r = await p.evaluate(() => { const k = [...document.querySelectorAll('#cal .dci[data-key]')].map(e => e.dataset.key).find(k => k > dk(NOW) && !(S.overrides || {})[k] && !(S.conges || {})[k] && getVac(new Date(k + 'T12:00:00')).vac && getVac(new Date(k + 'T12:00:00')).vac !== 'RH');
         openDay(k); const a = document.getElementById('cv-exhr').checked; _cvSetMotif('autre'); const r = [a, document.getElementById('cv-exhr').checked, !!document.getElementById('cv-exd').value, /Horaires modifiés/.test(document.getElementById('cv-exg').textContent)]; closeModal(); return r; });
       ok('Motif Horaires modifiés : active le toggle « Horaires modifiés »', !r[0] && r[1] && r[2] && r[3], JSON.stringify(r)); }
+    // Formation, formateur, détachement, délégation : plus de tuiles, nom et horaires à saisir ; détachement : pas d'heures sup
+    { const r = await p.evaluate(() => { const k = [...document.querySelectorAll('#cal .dci[data-key]')].map(e => e.dataset.key).find(k => k > dk(NOW) && !(S.overrides || {})[k] && !(S.conges || {})[k] && getVac(new Date(k + 'T12:00:00')).vac && getVac(new Date(k + 'T12:00:00')).vac !== 'RH');
+        openDay(k); const v = id => getComputedStyle(document.getElementById(id)).display !== 'none', out = [];
+        ['forme', 'syndic', 'echange'].forEach(m => { _cvSetMotif(m); out.push([v('cv-tiles'), v('cv-fields'), v('cv-hsw')].join()); });
+        out.push(/Échanger toute la semaine/.test(document.getElementById('cv-more-b').parentNode.textContent)); closeModal(); return out; });
+      ok('Formation : nom et horaires sans tuiles ; délégation : sans heures sup ; semaine à côté de + Rendu', r[0] === 'false,true,true' && r[1] === 'false,true,false' && r[2] === 'true,false,true' && r[3] === true, JSON.stringify(r)); }
     // Jour de mixte : rien de pré-choisi, « Autres » (toutes les équipes) fermé, comme pour une vacation classique
     { const r = await p.evaluate(() => { const p0 = S.profile.pool, l0 = S.profile.line; let out = null; S.profile.pool = 'cadre';
         for (let L = 1; L <= 6 && !out; L++) { S.profile.line = L; for (let i = 0; i < 60 && !out; i++) { const d = new Date(NOW); d.setDate(d.getDate() + i); const c = getCycleVac(d).cycleVac, V = getVAC(d)[c]; if (V && V.mixte && !(S.overrides || {})[dk(d)]) out = dk(d); } }
