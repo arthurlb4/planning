@@ -385,7 +385,7 @@ function hsRenduFromSurplus(surplus){
 function _hsMode(){return 'duree';}
 // Heures comptées un jour modifié, selon le choix « Heures sup » du jour : aucune (les heures prévues), durée (la plus grande des
 // deux, ou pour un déplacement ce qui dépasse la vacation du jour cédé), hors horaires (ce qui sort des horaires prévus)
-function _ovWorked(key,ov,vac,cyc,echange,ecSelf,VAC,base,mode){var M=mode==='horaires'?'hor':_ovHsM(ov),V=VAC[vac],C=cyc&&cyc!=='RH'?VAC[cyc]:null,w=C?C.dur||0:0;
+function _ovWorked(key,ov,vac,cyc,echange,ecSelf,VAC,base,mode){var V=VAC[vac],C=cyc&&cyc!=='RH'?VAC[cyc]:null,w=C?C.dur||0:0,M=mode==='horaires'?'hor':!echange&&C&&C.mixte&&!(ov&&ov.hsM)?'hor':_ovHsM(ov);
   if(echange&&(!ecSelf||!vac||vac==='RH'))return w; // jour cédé : les heures prévues
   if(M==='none')return w;
   if(M==='hor'){if(!echange&&!(V&&C&&_toMinApp(C.deb)!==null&&_toMinApp(V.deb)!==null))return Math.max(w,V?V.dur:0);return base+_hsHorMin(key,vac,cyc,VAC,ov);}
@@ -421,8 +421,6 @@ function calcHSWeek(monday,mode){
       if(_ov&&_ov.vac&&!_ov.echange&&_isDet(_ov.motif)){
         // Détachement sur un autre service : compte la vacation prévue au cycle, jamais d'heures sup
         _dayWorked=_dayBase;
-      } else if(_ov&&_ov.vac&&!_ov.echange&&cycleVac&&VAC[cycleVac]&&VAC[cycleVac].mixte){
-        _dayWorked=(VAC[cycleVac].dur||0)+_calcMixteHsMin(cycleVac,_ov.vac,VAC);
       } else if(_ov&&_ov.vac&&!_ov.echange&&cycleVac&&cycleVac!=='RH'&&VAC[cycleVac]){
         // Jour travaillé changé (grille ou « Modifier ») : la plus grande des deux, prévue ou faite ; le surplus part en heures sup
         // (méthode « horaires » : seulement ce qui sort des horaires prévus, comme une vacation mixte)
@@ -1640,8 +1638,7 @@ function _dayHSMin(date){
   }else{
     if(!vac||vac==='RH')return 0;
     if(_ov&&_ov.vac&&!_ov.echange&&_isDet(_ov.motif))return 0;
-    if(_ov&&_ov.vac&&!_ov.echange&&cycleVac&&VAC[cycleVac]&&VAC[cycleVac].mixte)w=(VAC[cycleVac].dur||0)+_calcMixteHsMin(cycleVac,_ov.vac,VAC);
-    else if(_ov&&_ov.vac&&!_ov.echange&&cycleVac&&cycleVac!=='RH'&&VAC[cycleVac])w=_ovWorked(key,_ov,vac,cycleVac,false,true,VAC,_dayBase);
+    if(_ov&&_ov.vac&&!_ov.echange&&cycleVac&&cycleVac!=='RH'&&VAC[cycleVac])w=_ovWorked(key,_ov,vac,cycleVac,false,true,VAC,_dayBase);
     else if(_ov&&_ov.vac&&!_ov.echange&&!_ov.hs)w=(!cycleVac||cycleVac==='RH'||!VAC[cycleVac])?(VAC[vac]?VAC[vac].dur:0):VAC[cycleVac].dur;
     else w=VAC[vac]?VAC[vac].dur:0;
   }
@@ -2709,14 +2706,14 @@ function _cvExGrid(fk){var W=window._cvW||{},d=new Date(fk+'T12:00:00'),VAC=getV
     +'<div id="cv-exhr-f" class="mr2" style="grid-template-columns:1fr 1fr 1fr;margin:8px 0 0'+(W.exHr?'':';display:none')+'">'
     +[['cv-exd','Début',_cvTOpts()],['cv-exf','Fin',_cvTOpts()],['cv-exp','Pause','<option value="0">Sans</option><option value="45">45 min</option><option value="60">1h00</option>']].map(function(a){return '<div><label>'+a[1]+'</label><select id="'+a[0]+'" onchange="_cvExTRead()" style="width:100%;padding:10px 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:15px;background:var(--bg2);color:var(--text);font-family:var(--font);-webkit-appearance:none">'+a[2]+'</select></div>';}).join('')+'</div>'
     +'<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin:12px 2px 0"><span style="font-size:13px">Heures sup</span>'
-    +'<div class="cv-seg" id="cv-hsm" style="width:230px;flex:none">'+[['none','Aucune'],['duree','Durée'],['hor','Hors horaires']].map(function(x){return '<button type="button" data-m="'+x[0]+'" class="'+(_cvHsM()===x[0]?'on':'')+'" onclick="_cvSetHsM(\''+x[0]+'\')">'+x[1]+'</button>';}).join('')+'</div></div>'
+    +'<div class="cv-seg" id="cv-hsm" style="width:230px;flex:none">'+[['none','Collègue'],['duree','Durée'],['hor','Hors bornes']].map(function(x){return '<button type="button" data-m="'+x[0]+'" class="'+(_cvHsM()===x[0]?'on':'')+'" onclick="_cvSetHsM(\''+x[0]+'\')">'+x[1]+'</button>';}).join('')+'</div></div>'
     +'<div class="cv-hint" id="cv-exhint" style="margin:8px 2px 4px">'+_cvHsTxt()+'</div>'
     +'<button type="button" class="adj-pill" style="width:auto;padding:0 14px;height:30px;font-size:13px;margin:8px 0 2px" onclick="_cvSetWhen(\'week\')">Échanger toute la semaine…</button>';}
 // Ce que décide le toggle « Heures sup · demande de la direction » : coupé, la durée (échange : les heures prévues) ; activé, les horaires
-// Heures sup du jour, trois choix : aucune (entre collègues, les heures prévues comptent), durée (ce qui dépasse la durée prévue),
-// hors horaires (ce qui sort des horaires prévus, comme une mixte). Sans choix fait : aucune pour un échange, durée sinon.
-function _cvHsM(){var W=window._cvW||{};return W.exHsM||(window._cvMotif==='echange'?'none':'duree');}
-function _cvHsTxt(){return {none:'Échange entre collègues : les heures prévues comptent, pas d’heures sup.',duree:'Ce qui dépasse la durée prévue part en heures sup.',hor:'Ce qui sort des horaires prévus part en heures sup (demande de la direction).'}[_cvHsM()];}
+// Heures sup du jour, trois choix : collègue (les heures prévues comptent), durée (ce qui dépasse la durée prévue),
+// hors bornes (ce qui sort des horaires prévus). Sans choix fait : hors bornes si la vacation prévue est une mixte, durée sinon.
+function _cvHsM(){var W=window._cvW||{};if(W.exHsM)return W.exHsM;var k=pendingKey;if(!k)return 'duree';var d=new Date(k+'T12:00:00'),c=getCycleVac(d).cycleVac,V=c&&getVAC(d)[c];return V&&V.mixte?'hor':'duree';}
+function _cvHsTxt(){return {none:'Échange entre collègues : les heures prévues comptent, pas d’heures sup.',duree:'Ce qui dépasse la durée prévue part en heures sup.',hor:'Ce qui sort des bornes de la vacation prévue part en heures sup (comme une mixte).'}[_cvHsM()];}
 function _cvHsHint(){var h=document.getElementById('cv-exhint');if(h)h.textContent=_cvHsTxt();[].forEach.call(document.querySelectorAll('#cv-hsm [data-m]'),function(b){b.classList.toggle('on',b.getAttribute('data-m')===_cvHsM());});}
 function _cvSetHsM(m){var W=window._cvW;if(!W)return;_haptic();W.exHsM=m;_cvHsHint();_cvCalc();}
 // Heures sup d'un jour modifié : choix enregistré, sinon d'après l'ancien réglage (« demande de la direction » → hors horaires)

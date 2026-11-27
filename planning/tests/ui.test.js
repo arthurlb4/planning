@@ -176,7 +176,7 @@ function mockApi(route) {
 
     // Page du jour unifiée : fiche en tête, motif (échange par défaut), vacation faite dans la grille, toggle heures sup, Congé · Rendu · Absence
     { const r = await p.evaluate(() => { const k = [...document.querySelectorAll('#cal .dci[data-key]')].map(e => e.dataset.key).find(k => k > dk(NOW) && !(S.overrides || {})[k] && !(S.conges || {})[k] && getVac(new Date(k + 'T12:00:00')).vac && getVac(new Date(k + 'T12:00:00')).vac !== 'RH');
-        openDay(k); const m = document.getElementById('modal-root'), out = [window._cvMotif, !!m.querySelector('.dbox'), !!m.querySelector('#cv-exg [data-exv]'), /Congé/.test(m.textContent) && /Absence/.test(m.textContent) && !m.querySelector('.cv-days') && _cvHsM() === 'none'];
+        openDay(k); const m = document.getElementById('modal-root'), out = [window._cvMotif, !!m.querySelector('.dbox'), !!m.querySelector('#cv-exg [data-exv]'), /Congé/.test(m.textContent) && /Absence/.test(m.textContent) && !m.querySelector('.cv-days') && _cvHsM() === 'duree'];
         confirmCustomVac(); out.push(!(S.overrides || {})[k]); // rien changé : rien enregistré
         openDay(k); _cvSetMotif('autre'); const b = [...document.querySelectorAll('#cv-exg [data-exv]')].find(x => x.dataset.exv !== window._cvW.exVac); _cvPickExVac(b);
         const h0 = _cvHsM(); _cvSetHsM('hor'); confirmCustomVac(); const o = (S.overrides || {})[k];
