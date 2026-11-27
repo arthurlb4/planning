@@ -453,6 +453,7 @@ function render(){
   setTimeout(_syncSideTop,0);
   // Mois/années voisins redessinés à l'avance (données à jour) pour le prochain glissement
   if(window._pgPrebuild){window._pgDropPre();window._pgPrebuild();}
+  if(window._PM)_pmPaint();
 }
 
 function renderMonth(el_heads,el_cal){
@@ -1927,7 +1928,7 @@ function openHdrMenu(){
   requestAnimationFrame(function(){veil.classList.add('on');m.classList.add('on');});}
 document.addEventListener('click',function(e){if(Date.now()-(window._eatClickAt||0)<500){window._eatClickAt=0;e.stopPropagation();e.preventDefault();}},true);
 // Barre d'onglets (téléphone) : l'onglet allumé suit la fenêtre ouverte
-function _tbGo(t){_haptic();
+function _tbGo(t){if(t==='pose'){if(window._PM)_pmEnd();else _pmStart(null);return;}_haptic();
   if(t==='cal'){if(document.querySelector('#modal-root .overlay')){window._modalBack=null;window._tbRoot=null;closeModal();if(document.querySelector('#modal-root .overlay')){document.getElementById('modal-root').innerHTML='';_unlockBodyScroll();}}
     // déjà sur l'accueil : vers aujourd'hui ; déjà sur le mois en cours : actualiser (comme tirer vers le bas)
     else if(!annualOpen&&curM===NOW.getMonth()&&curY===NOW.getFullYear()&&window.scrollY<=0&&window._ptrRefresh)window._ptrRefresh();else goToday();}
@@ -2276,61 +2277,83 @@ function _poseExcHtml(date){var excH='';{var _y=date.getFullYear(),_sel='width:1
       +'<span class="bpseg" id="_exc-r" data-v="work" style="display:flex">'+['work','rend'].map(function(v,i){return '<span style="flex:1;text-align:center"'+(i?'':' class="on"')+' onclick="var g=this.parentNode;g.dataset.v=\''+v+'\';[].forEach.call(g.children,function(c){c.classList.toggle(\'on\',c===this);},this)">'+(v==='work'?'travaillée':'en rendus')+'</span>';}).join('')+'</span></div>';
     window._excYear=_y;}return excH;}
 // Page du jour : Modifier, ou poser des congés, des rendus, une absence sur un mini calendrier
-function _dayTab(t){_haptic();[].forEach.call(document.querySelectorAll('#d-tabs [data-t]'),function(b){b.classList.toggle('on',b.getAttribute('data-t')===t);});
-  var m=document.getElementById('cv-modif'),p=document.getElementById('cv-pose');if(!m||!p)return;m.style.display=t==='mod'?'':'none';p.style.display=t==='mod'?'none':'';
-  if(t==='mod')return;var k=pendingKey,d=new Date(k+'T12:00:00'),sel={},ty=t==='ab'?'absent':(window._PS&&window._PS.type==='rend'?'rend':'cg');if(_psOk(k))sel[k]=ty;
-  window._PS={type:ty,sel:sel,ym:d.getFullYear()*12+d.getMonth()};
-  p.innerHTML=(t==='cr'?'<div class="cv-seg" id="ps-type" style="margin:0 0 12px">'+[['cg','Congé'],['rend','Rendu']].map(function(x){return '<button type="button" data-v="'+x[0]+'"'+(ty===x[0]?' class="on"':'')+' onclick="_psType(\''+x[0]+'\')">'+x[1]+'</button>';}).join('')+'</div>'
-      :'<div class="cv-sec">Motif</div>'+_poseExcHtml(d))
-    +'<div id="ps-cal"></div><div id="ps-sum" style="margin:10px 2px 4px;font-size:13px;color:var(--text2)"></div><div class="cv-hint" style="margin:0 2px 12px">Toucher des jours, ou glisser pour une période ; toucher un jour choisi le retire.</div>'
-    +'<div class="mbtns"><button class="mb" onclick="closeModal()">Annuler</button><button class="mb pri" onclick="_psGo()">Valider</button></div>';
-  if(t==='ab')_excPick();_psDraw();_psTouch();}
-// le type choisi vaut pour les prochains jours touchés, pas pour ceux déjà choisis
-function _psType(v){_haptic();window._PS.type=v;[].forEach.call(document.querySelectorAll('#ps-type [data-v]'),function(b){b.classList.toggle('on',b.getAttribute('data-v')===v);});}
-function _psMonth(n){_haptic();window._PS.ym+=n;_psDraw();}
+function _dayTab(t){if(t==='mod')return;var k=pendingKey;closeModal();_pmStart(k,t==='ab'?'absent':'cg');}
 // jour qu'on peut poser : travaillé, pas déjà en congé, rendu ou absence
 function _psOk(k){var d=new Date(k+'T12:00:00'),g=getVac(d),c=(S.conges||{})[k];return !!(g.vac&&g.vac!=='RH'&&!g.absent&&!c);}
-function _psDraw(){var P=window._PS,el=document.getElementById('ps-cal');if(!P||!el)return;var y=Math.floor(P.ym/12),mo=P.ym%12,first=new Date(y,mo,1,12),off=(first.getDay()+6)%7,n=new Date(y,mo+1,0).getDate();
-  var h='<div class="ps-h"><button type="button" onclick="_psMonth(-1)">‹</button><b>'+MC[mo]+' '+y+'</b><button type="button" onclick="_psMonth(1)">›</button></div><div class="ps-g">'+['L','M','M','J','V','S','D'].map(function(x){return '<span class="ps-w">'+x+'</span>';}).join('');
-  for(var i=0;i<off;i++)h+='<span></span>';
-  for(var dd=1;dd<=n;dd++){var dt=new Date(y,mo,dd,12),k=dk(dt),cg=(S.conges||{})[k];h+='<span class="ps-d'+(_psOk(k)?'':' off')+(cg?' had had-'+(cg==='cg'?'cg':cg==='absent'?'absent':'rend'):'')+'" data-k="'+k+'">'+dd+'</span>';}
-  el.innerHTML=h+'</div>';_psPaint();}
-// sélection redessinée sur place (pendant un glissé, les cases ne doivent pas être remplacées : le doigt les perdrait)
-function _psPaint(){var P=window._PS,S2=P.tmp||P.sel;
-  [].forEach.call(document.querySelectorAll('#ps-cal .ps-d'),function(e){var t=S2[e.getAttribute('data-k')];e.classList.toggle('in',!!t);['cg','rend','absent'].forEach(function(x){e.classList.toggle('ps-'+x,t===x);});});
-  var sm=document.getElementById('ps-sum');if(sm)sm.innerHTML=_psSum(S2)||'<span style="color:var(--text3)">Aucun jour choisi</span>';}
 // Ce que coûte la sélection : congés au décompte réel (semaine complète = 5 j…), rendus en heures, absences en jours
-function _psSum(sel){var K=Object.keys(sel).sort(),cg=K.filter(function(k){return sel[k]==='cg';}),rd=K.filter(function(k){return sel[k]==='rend';}),ab=K.filter(function(k){return sel[k]==='absent';}),out=[];
-  if(cg.length){var ys={};cg.forEach(function(k){ys[k.slice(0,4)]=1;});var b={};Object.keys(ys).forEach(function(y){b[y]=computeCongesRest(+y);});if(!S.conges)S.conges={};cg.forEach(function(k){S.conges[k]='cg';});
-    var n=0;try{Object.keys(ys).forEach(function(y){n+=b[y]-computeCongesRest(+y);});}finally{cg.forEach(function(k){delete S.conges[k];});}
-    out.push('<b style="color:var(--green)">Congés '+n+' j</b>');}
-  if(rd.length)out.push('<b style="color:var(--rend-text)">Rendus '+fmtMin(rd.reduce(function(t,k){return t+getDur(new Date(k+'T12:00:00'));},0))+'</b>');
+function _psSum(sel){var K=Object.keys(sel).sort(),cg=K.filter(function(k){return sel[k]==='cg';}),rd=K.filter(function(k){return sel[k]==='rend';}),ab=K.filter(function(k){return sel[k]==='absent';}),dl=K.filter(function(k){return sel[k]==='del';}),out=[];
+  if(!S.conges)S.conges={};
+  // pose simulée le temps du calcul (décompte réel, soldes au moment des jours posés), puis défaite
+  var keep={};K.forEach(function(k){keep[k]=S.conges[k];});
+  var ys={};cg.forEach(function(k){ys[k.slice(0,4)]=1;});var b={};Object.keys(ys).forEach(function(y){b[y]=computeCongesRest(+y);});
+  var def=rd.length?canPlaceRendu(rd):0;
+  try{cg.forEach(function(k){S.conges[k]='cg';});rd.forEach(function(k){S.conges[k]='rend';});dl.forEach(function(k){delete S.conges[k];});
+    if(cg.length){var n=0,rest=[];Object.keys(ys).forEach(function(y){var a=computeCongesRest(+y);n+=b[y]-a;rest.push(a+' j'+(Object.keys(ys).length>1?' en '+y:''));});
+      out.push('<b style="color:var(--green)">Congés '+n+' j</b> <span style="color:var(--text3)">· reste '+rest.join(', ')+'</span>');}
+    if(rd.length){var last=rd[rd.length-1],dl2=new Date(last+'T12:00:00'),dispo=calcDispoAtDate(dl2);
+      out.push('<b style="color:var(--rend-text)">Rendus '+fmtMin(rd.reduce(function(t,k){return t+getDur(new Date(k+'T12:00:00'));},0))+'</b> <span style="color:'+(def>0?'var(--red)':'var(--text3)')+'">· '+(def>0?'manque '+fmtMin(def):'reste '+fmtMin(Math.max(0,dispo))+' au '+dl2.getDate()+' '+MCs[dl2.getMonth()])+'</span>');}
+  }finally{K.forEach(function(k){if(keep[k]===undefined)delete S.conges[k];else S.conges[k]=keep[k];});}
   if(ab.length)out.push('<b>Absence '+ab.length+' j</b>');
-  return out.join(' · ');}
-// toucher : ajoute ou retire un jour ; glisser : la période suit le doigt, au type choisi
-function _psTouch(){var el=document.getElementById('ps-cal');if(!el)return;var drag=null,lastT=0;
-  var at=function(x,y){var t=document.elementFromPoint(x,y);return t&&t.closest&&t.closest('.ps-d')?t.closest('.ps-d').getAttribute('data-k'):null;};
-  var range=function(a,b){var r=[],x=new Date((a<b?a:b)+'T12:00:00'),e=new Date((a<b?b:a)+'T12:00:00');while(x<=e){var k=dk(x);if(_psOk(k))r.push(k);x.setDate(x.getDate()+1);}return r;};
-  var start=function(k){if(!k)return;drag={a:k,b:k,moved:false};};
-  var move=function(k){var P=window._PS;if(!drag||!k||k===drag.b)return;drag.b=k;drag.moved=true;P.tmp=Object.assign({},P.sel);range(drag.a,k).forEach(function(x){P.tmp[x]=P.type;});_psPaint();};
-  var end=function(){var P=window._PS;if(!drag)return;var D=drag;drag=null;
-    if(D.moved){P.sel=P.tmp||P.sel;}else if(_psOk(D.a)){if(P.sel[D.a]===P.type)delete P.sel[D.a];else P.sel[D.a]=P.type;}
-    P.tmp=null;_haptic();_psPaint();};
-  // le geste reste dans le calendrier (sinon glisser ferait passer la page au jour suivant)
-  el.addEventListener('touchstart',function(e){e.stopPropagation();lastT=Date.now();var t=e.touches[0];start(at(t.clientX,t.clientY));},{passive:true});
-  el.addEventListener('touchmove',function(e){if(!drag)return;e.stopPropagation();var t=e.touches[0];if(e.cancelable)e.preventDefault();move(at(t.clientX,t.clientY));},{passive:false});
-  el.addEventListener('touchend',function(e){e.stopPropagation();lastT=Date.now();end();window._eatClickAt=Date.now();},{passive:true});
-  // souris (PC) ; après un toucher, l'iPhone envoie aussi des événements souris : ignorés
-  el.addEventListener('mousedown',function(e){if(Date.now()-lastT<800)return;start(at(e.clientX,e.clientY));});
-  el.addEventListener('mousemove',function(e){if(Date.now()-lastT<800||!e.buttons)return;move(at(e.clientX,e.clientY));});
-  el.addEventListener('mouseup',function(){if(Date.now()-lastT<800)return;end();});}
-// Valider : chaque type en périodes de jours qui se suivent (jours de repos entre deux compris), posées l'une après l'autre
-async function _psGo(){var P=window._PS,K=Object.keys(P.sel).sort();if(!K.length){closeModal();return;}
+  if(dl.length)out.push('<b style="color:var(--red)">Retirer '+dl.length+' j</b>');
+  return out.join('<br>');}
+// ── Mode pose : congés, rendus, absences sur le grand calendrier ──
+// Toucher des jours (ou glisser pour une période), au type choisi dans la barre du bas ; « Retirer » enlève des jours déjà posés.
+// Entrée : bouton Poser de la barre d'onglets, appui long sur un jour, ou Congé · Rendu / Absence dans la page du jour.
+function _pmStart(k,type,stay){if(document.querySelector('#modal-root .overlay'))closeModal();if(annualOpen&&typeof toggleAnnual==='function')toggleAnnual();
+  var P=window._PM={type:type||(window._PM0||'cg'),sel:{},last:k||null};if(k&&_pmOk(k,P.type))P.sel[k]=P.type;
+  if(k&&!stay){var d=new Date(k+'T12:00:00');if(d.getMonth()!==curM||d.getFullYear()!==curY){curY=d.getFullYear();curM=d.getMonth();render();}}
+  document.body.classList.add('pm-on');_haptic();_pmBar();_pmPaint();}
+function _pmEnd(){window._PM=null;document.body.classList.remove('pm-on');['pm-bar','pm-cap'].forEach(function(id){var e=document.getElementById(id);if(e)e.remove();});_pmPaint(true);}
+// jour sélectionnable : à poser (travaillé, libre) ou, pour Retirer, déjà posé
+function _pmOk(k,t){return t==='del'?!!(S.conges||{})[k]:_psOk(k);}
+function _pmBar(){var P=window._PM;if(!P)return;var b=document.getElementById('pm-bar');if(!b){b=document.createElement('div');b.id='pm-bar';document.body.appendChild(b);}
+  if(!document.getElementById('pm-cap')){var c=document.createElement('div');c.id='pm-cap';c.innerHTML='<span class="pm-dot"></span>Mode pose<button type="button" onclick="_pmEnd()">Quitter</button>';document.body.appendChild(c);}
+  b.innerHTML='<div class="cv-seg" id="pm-type">'+[['cg','Congé'],['rend','Rendu'],['absent','Absence'],['del','Retirer']].map(function(x){return '<button type="button" data-v="'+x[0]+'"'+(P.type===x[0]?' class="on"':'')+' onclick="_pmType(\''+x[0]+'\')">'+x[1]+'</button>';}).join('')+'</div>'
+    +(P.type==='absent'?'<div id="pm-exc" style="margin-top:8px">'+_poseExcHtml(new Date((P.last||dk(NOW))+'T12:00:00'))+'</div>':'')
+    +'<div id="pm-sum"></div>'
+    +'<div class="pm-btns"><button type="button" class="mb" onclick="_pmWeek()">Semaine</button><button type="button" class="mb" onclick="_pmEnd()">Annuler</button><button type="button" class="mb pri" onclick="_pmGo()">Valider</button></div>';
+  if(P.type==='absent')_excPick();_pmSum();}
+// le type choisi vaut pour les prochains jours touchés, pas pour ceux déjà choisis
+function _pmType(v){var P=window._PM;_haptic();var was=P.type;P.type=v;window._PM0=v==='del'?window._PM0:v;if((v==='absent')!==(was==='absent'))_pmBar();else[].forEach.call(document.querySelectorAll('#pm-type [data-v]'),function(b){b.classList.toggle('on',b.getAttribute('data-v')===v);});_pmPaint();}
+function _pmSum(){var P=window._PM,e=document.getElementById('pm-sum');if(!P||!e)return;var t=_psSum(P.tmp||P.sel);e.innerHTML=t||'<span style="color:var(--text3)">Toucher des jours, ou glisser pour une période</span>';}
+// cases du calendrier : marquées selon la sélection (redessinées après chaque rendu du mois)
+function _pmPaint(off){var P=window._PM,S2=P&&(P.tmp||P.sel)||{};[].forEach.call(document.querySelectorAll('#cal .dci[data-key]'),function(e){var t=off?null:S2[e.getAttribute('data-key')];
+  e.classList.toggle('pm-in',!!t);['cg','rend','absent','del'].forEach(function(x){e.classList.toggle('pm-'+x,t===x);});e.classList.toggle('pm-no',!off&&!!P&&!_pmOk(e.getAttribute('data-key'),P.type));});if(!off)_pmSum();}
+// Semaine : tous les jours de la semaine du dernier jour touché, au type choisi
+function _pmWeek(){var P=window._PM;if(!P)return;var k=P.last||dk(NOW),m=getMonday(new Date(k+'T12:00:00'));_haptic();for(var i=0;i<7;i++){var d=new Date(m);d.setDate(m.getDate()+i);var x=dk(d);if(_pmOk(x,P.type))P.sel[x]=P.type;}_pmPaint();}
+// gestes sur le calendrier en mode pose : toucher ajoute ou retire un jour, glisser choisit une période (pas de changement de mois)
+(function(){var drag=null,lastT=0;
+  // le doigt touche la case (.dc) ou son contenu (.dci, qui porte la date)
+  var keyOf=function(t){var c=t&&t.closest&&t.closest('#cal .dci[data-key], #cal .dc');if(!c)return null;if(c.hasAttribute('data-key'))return c.getAttribute('data-key');var i=c.querySelector('.dci[data-key]');return i?i.getAttribute('data-key'):null;};
+  var cellAt=function(x,y){return keyOf(document.elementFromPoint(x,y));};
+  var range=function(a,b,t){var r=[],x=new Date((a<b?a:b)+'T12:00:00'),e=new Date((a<b?b:a)+'T12:00:00');while(x<=e){var k=dk(x);if(_pmOk(k,t))r.push(k);x.setDate(x.getDate()+1);}return r;};
+  var start=function(k){drag={a:k,b:k,moved:false};};
+  var move=function(k){var P=window._PM;if(!drag||!k||k===drag.b)return;drag.b=k;drag.moved=true;P.tmp=Object.assign({},P.sel);range(drag.a,k,P.type).forEach(function(x){P.tmp[x]=P.type;});_pmPaint();};
+  var end=function(){var P=window._PM;if(!drag||!P)return;var D=drag;drag=null;P.last=D.b;
+    if(D.moved)P.sel=P.tmp||P.sel;else if(_pmOk(D.a,P.type)){if(P.sel[D.a]===P.type)delete P.sel[D.a];else P.sel[D.a]=P.type;}
+    P.tmp=null;_haptic();_pmPaint();};
+  var on=function(e){return window._PM&&keyOf(e.target);};
+  // tout toucher, même hors mode pose (appui long qui l'ouvre) : les événements souris simulés qui suivent sont ignorés
+  document.addEventListener('touchstart',function(){lastT=Date.now();},{capture:true,passive:true});document.addEventListener('touchend',function(){lastT=Date.now();},{capture:true,passive:true});
+  document.addEventListener('touchstart',function(e){if(!on(e)||e.touches.length>1)return;e.stopPropagation();lastT=Date.now();var t=e.touches[0];start(cellAt(t.clientX,t.clientY));},{capture:true,passive:true});
+  document.addEventListener('touchmove',function(e){if(!drag||!window._PM)return;e.stopPropagation();if(e.cancelable)e.preventDefault();var t=e.touches[0];move(cellAt(t.clientX,t.clientY));},{capture:true,passive:false});
+  document.addEventListener('touchend',function(e){if(!drag||!window._PM)return;e.stopPropagation();lastT=Date.now();end();window._eatClickAt=Date.now();},{capture:true,passive:true});
+  document.addEventListener('mousedown',function(e){if(!on(e)||Date.now()-lastT<800)return;e.stopPropagation();start(cellAt(e.clientX,e.clientY));},true);
+  document.addEventListener('mousemove',function(e){if(!drag||!window._PM||Date.now()-lastT<800||!e.buttons)return;move(cellAt(e.clientX,e.clientY));},true);
+  document.addEventListener('mouseup',function(e){if(!drag||!window._PM||Date.now()-lastT<800)return;end();},true);
+  // en mode pose, un toucher sur un jour n'ouvre pas sa page
+  document.addEventListener('click',function(e){if(on(e)){e.stopPropagation();e.preventDefault();}},true);})();
+// Valider : jours à retirer, puis chaque type en périodes de jours qui se suivent, posées l'une après l'autre
+async function _pmGo(){var P=window._PM;if(!P)return;var K=Object.keys(P.sel).sort();if(!K.length){_pmEnd();return;}
+  var dl=K.filter(function(k){return P.sel[k]==='del';});
+  if(dl.length){pushUndo('Jours retirés ('+dl.length+')');var _pid=window._aid||'default',_st={};try{_st=JSON.parse(localStorage.getItem('gcal_event_ids_'+_pid)||'{}');}catch(e){}
+    dl.forEach(function(k){var t=(S.conges||{})[k];delete S.conges[k];removeHistoryForKey(k);delete _st[k];if(t==='absent'){var o=(S.overrides||{})[k];if(o&&o.absent)delete S.overrides[k];if(S.excInfo)delete S.excInfo[k];}});
+    try{localStorage.setItem('gcal_event_ids_'+_pid,JSON.stringify(_st));}catch(e){}recalcAllMatelas();saveState();}
   var runs=[];['absent','cg','rend'].forEach(function(t){var ks=K.filter(function(k){return P.sel[k]===t;}),cur=null;
     ks.forEach(function(k){if(cur){var x=new Date(cur.b+'T12:00:00'),ok=true;x.setDate(x.getDate()+1);while(dk(x)<k){if(_psOk(dk(x))){ok=false;break;}x.setDate(x.getDate()+1);}if(ok){cur.b=k;return;}}cur={t:t,a:k,b:k};runs.push(cur);});});
   var u=document.getElementById('pose-until');if(!u){u=document.createElement('input');u.type='hidden';u.id='pose-until';document.body.appendChild(u);}
   window._psBatch=true;try{for(var i=0;i<runs.length;i++){u.value=runs[i].b;await applyPose(runs[i].t,runs[i].a,runs[i].a===runs[i].b);}}finally{window._psBatch=false;u.remove();}
-  closeModal();render();}
+  _pmEnd();render();gcalTrigger();}
 function openPoseModal(type,fromMenu){
   // Ouvert depuis le mini-menu du calendrier : Retour ferme au lieu d'ouvrir la fiche du jour
   const back=fromMenu?'closeModal()':'openDay(\''+(pendingKey||_lpk)+'\')';
@@ -6132,6 +6155,8 @@ function openCustomVacModal(){
     +'</div>'
     +(key?'<div style="display:flex;gap:8px;margin:0 0 10px"><button type="button" class="adj-pill" id="cv-more-b" style="flex:1 1 0;min-width:0;white-space:nowrap;padding:0 10px;height:30px;font-size:13px;'+((x&&x.dur>0)||n?'display:none':'')+'" onclick="this.style.display=\'none\';document.getElementById(\'cv-more\').style.display=\'\'">+ Rendu acquis, note</button>'
       +'<button type="button" class="adj-pill" style="flex:1 1 0;min-width:0;white-space:nowrap;padding:0 10px;height:30px;font-size:13px" onclick="_cvSetWhen(\'week\')">Échanger la semaine…</button></div>'
+      // proposer ce jour à l'équipe (bourse aux échanges) : jour à venir, compte connecté
+      +(key>=dk(NOW)&&window._authToken?'<button type="button" class="adj-pill" style="width:100%;height:30px;font-size:13px;margin:-2px 0 10px" onclick="_swapPostModal(\''+key+'\')"><i class="ti ti-arrows-exchange" style="margin-right:5px;color:var(--amber)"></i>Proposer à l’équipe</button>':'')
       +'<div id="cv-more"'+((x&&x.dur>0)||n?'':' style="display:none"')+'>':'')
     +(key?'<div class="hd-card" style="'+card+'"><div class="btit" style="margin:0 0 8px">Heures de rendu acquises</div>'
       +'<div style="display:flex;gap:8px"><input id="cv-exr-lbl" placeholder="Réunion, formation…" value="'+String((x&&x.label)||'').replace(/"/g,'&quot;')+'" style="flex:1;min-width:0;'+fs+'"><select id="cv-exr-dur" onchange="_cvRmSync()" style="width:96px;'+fs+'">'+dO+'</select><button id="cv-exr-rm" class="cv-rm'+(x&&x.dur>0?' on':'')+'" type="button" aria-label="Retirer les heures acquises" onclick="_cvRmClick(this)"><i class="ti ti-trash"></i></button></div></div>'
@@ -6493,10 +6518,10 @@ function init(){
   window._lpCancel=function(){if(_lpT){clearTimeout(_lpT);_lpT=null;}};
   document.addEventListener('touchstart',function(e){
     _lpFired=false;window._lpCancel();
-    if(e.touches.length>1||annualOpen||document.querySelector('#modal-root .overlay')||document.getElementById('lp-menu'))return;
+    if(e.touches.length>1||annualOpen||window._PM||document.querySelector('#modal-root .overlay')||document.getElementById('lp-menu'))return;
     const c=e.target.closest('#cal .dci[data-key]');if(!c)return;
     _lpX=e.touches[0].clientX;_lpY=e.touches[0].clientY;
-    _lpT=setTimeout(function(){_lpT=null;if(_openDayMenu(c)){_lpFired=true;}},300);
+    _lpT=setTimeout(function(){_lpT=null;if(window._PM)return;_lpFired=true;_pmStart(c.getAttribute('data-key'),null,1);},350); // appui long : mode pose à partir de ce jour
   },{passive:true});
   document.addEventListener('touchmove',function(e){
     if(_lpT&&(Math.abs(e.touches[0].clientX-_lpX)>8||Math.abs(e.touches[0].clientY-_lpY)>8))window._lpCancel();

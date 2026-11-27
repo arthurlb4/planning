@@ -197,15 +197,16 @@ function mockApi(route) {
     { const r = await p.evaluate(() => { const k = [...document.querySelectorAll('#cal .dci[data-key]')].map(e => e.dataset.key).find(k => k > dk(NOW) && !(S.conges || {})[k] && getVac(new Date(k + 'T12:00:00')).vac && getVac(new Date(k + 'T12:00:00')).vac !== 'RH');
         S.notes = S.notes || {}; S.notes[k] = 'Réunion <b>2h</b>'; openDay(k); const t = document.querySelector('#modal-root .dbox .ti-note').nextElementSibling.textContent; _cvSetMotif('forme'); _cvAutreJour(true); const t2 = (document.querySelector('#modal-root .dbox .ti-note') || {}).nextElementSibling; delete S.notes[k]; closeModal(); return [t, t2 && t2.textContent]; });
       ok('Page du jour : la note s’affiche (texte brut), aussi après un redessin', r[0] === 'Réunion <b>2h</b>' && r[1] === r[0], JSON.stringify(r)); }
-    // Page du jour : onglets Modifier · Congé · Rendu · Absence ; pose sur le mini calendrier (période), puis Valider
-    { const r = await p.evaluate(async () => { const k = [...document.querySelectorAll('#cal .dci[data-key]')].map(e => e.dataset.key).find(k => k > dk(NOW) && new Date(k + 'T12:00:00').getDate() <= 20 && !(S.conges || {})[k] && getVac(new Date(k + 'T12:00:00')).vac && getVac(new Date(k + 'T12:00:00')).vac !== 'RH');
-        openDay(k); const tabs = [...document.querySelectorAll('#d-tabs [data-t]')].map(b => b.textContent).join('|'); _dayTab('cr'); const cal = document.querySelectorAll('#ps-cal .ps-d').length, modH = document.getElementById('cv-modif').style.display === 'none';
-        // congé ce jour, puis rendu sur le prochain jour travaillé : le type ne change que les jours suivants
+    // Mode pose sur le grand calendrier : depuis la page du jour (Congé · Rendu), congé puis rendu (le type ne change que les jours suivants), totaux et soldes, Valider ; puis Retirer
+    { const r = await p.evaluate(async () => { const k = [...document.querySelectorAll('#cal .dci[data-key]')].map(e => e.dataset.key).find(k => k > dk(NOW) && _psOk(k));
+        openDay(k); const tabs = [...document.querySelectorAll('#d-tabs [data-t]')].map(b => b.textContent).join('|'); _dayTab('cr');
+        const on = document.body.classList.contains('pm-on') && !!document.getElementById('pm-bar') && !!document.getElementById('pm-cap') && !document.querySelector('#modal-root .overlay');
         const e = new Date(k + 'T12:00:00'); let k2 = null; for (let i = 1; i < 10 && !k2; i++) { e.setDate(e.getDate() + 1); if (_psOk(dk(e))) k2 = dk(e); }
-        _psType('rend'); window._PS.sel[k2] = 'rend'; _psPaint(); const sum = document.getElementById('ps-sum').textContent, types = [window._PS.sel[k], window._PS.sel[k2]].join();
-        await _psGo(); const posed = [S.conges[k], S.conges[k2]]; delete S.conges[k]; delete S.conges[k2]; render();
-        return [tabs, cal > 27, modH, types, /Congés \d+ j/.test(sum) && /Rendus \d+h\d\d/.test(sum), posed[0] === 'cg' && /rend/.test(posed[1] || ''), !document.querySelector('#modal-root .overlay')]; });
-      ok('Page du jour : onglets, mini calendrier, congé et rendu posés ensemble (types gardés, totaux)', r[0] === 'Modifier|Congé · Rendu|Absence' && r[1] && r[2] && r[3] === 'cg,rend' && r[4] && r[5] && r[6], JSON.stringify(r)); }
+        _pmType('rend'); window._PM.sel[k2] = 'rend'; _pmPaint(); const sum = document.getElementById('pm-sum').textContent, types = [window._PM.sel[k], window._PM.sel[k2]].join();
+        await _pmGo(); const posed = [S.conges[k], S.conges[k2]], off = !document.body.classList.contains('pm-on');
+        _pmStart(null); _pmType('del'); window._PM.sel[k] = 'del'; window._PM.sel[k2] = 'del'; await _pmGo(); const gone = !S.conges[k] && !S.conges[k2];
+        render(); return [tabs, on, types, /Congés \d+ j · reste \d+ j/.test(sum) && /Rendus \d+h\d\d · (reste|manque)/.test(sum), posed[0] === 'cg' && /rend/.test(posed[1] || ''), off, gone]; });
+      ok('Mode pose : ouvert depuis la page du jour, congé et rendu posés ensemble (types gardés, totaux et soldes), puis retirés', r[0] === 'Modifier|Congé · Rendu|Absence' && r[1] && r[2] === 'cg,rend' && r[3] && r[4] && r[5] && r[6], JSON.stringify(r)); }
     // Jour de mixte : rien de pré-choisi, « Autres » (toutes les équipes) fermé, comme pour une vacation classique
     { const r = await p.evaluate(() => { const p0 = S.profile.pool, l0 = S.profile.line; let out = null; S.profile.pool = 'cadre';
         for (let L = 1; L <= 6 && !out; L++) { S.profile.line = L; for (let i = 0; i < 60 && !out; i++) { const d = new Date(NOW); d.setDate(d.getDate() + i); const c = getCycleVac(d).cycleVac, V = getVAC(d)[c]; if (V && V.mixte && !(S.overrides || {})[dk(d)]) out = dk(d); } }
