@@ -1672,10 +1672,7 @@ function openDay(key){
   // horaires différents, heures sup, et Congé · Rendu · Absence en bas
   if(!hasCg&&!absent){
     window._cvDay={k:key,head:_dayBox.replace(' onclick="openCustomVacModal()" style="cursor:pointer;',' style="').replace(/<button class="adj-pill"[^>]*onclick="event\.stopPropagation\(\);openCustomVacModal\(\)">Modifier<\/button>/,'')+(key?_ruleHtml(key):'')+_excDayLine(key),act:'',sub:0};
-    window._cvDay.act=vac&&vac!=='RH'?'<div class="mbtns" style="grid-template-columns:repeat(3,1fr);margin:4px 0 12px">'
-      +'<button class="mb grn" onclick="'+(cR<=0?'showBlockAlert(\'Solde insuffisant\',\'Plus de congés disponibles pour '+date.getFullYear()+'.\')':'openPoseModal(\'cg\')')+'"'+(cR<=0?' style="opacity:.5"':'')+'>Congé</button>'
-      +'<button class="mb" style="background:var(--rend-l);color:var(--rend-text);border-color:transparent" onclick="openPoseModal(\'rend\')"'+(totalDispo<dur&&_rendStatus(key)==='rend'?' disabled':'')+'>Rendu</button>'
-      +'<button class="mb" style="background:var(--btn);color:var(--text)" onclick="openPoseModal(\'absent\')">Absence</button></div>':'';
+    window._cvDay.act='';window._cvDay.tabs=vac&&vac!=='RH'?'<div class="cv-seg dtabs" id="d-tabs">'+[['mod','Modifier'],['cr','Congé · Rendu'],['ab','Absence']].map(function(x){return '<button type="button" data-t="'+x[0]+'"'+(x[0]==='mod'?' class="on"':'')+' onclick="_dayTab(\''+x[0]+'\')">'+x[1]+'</button>';}).join('')+'</div>':'';
     openCustomVacModal();
     var _sh=document.querySelector('#modal-root .sheet');if(_sh)_sh.classList.add('daymod');
     if(_note){var _ns=document.querySelector('#modal-root .dbox .ti-note');if(_ns&&_ns.nextElementSibling)_ns.nextElementSibling.textContent=_note;} // texte de la note posé après coup (jamais interprété comme du HTML)
@@ -2265,6 +2262,58 @@ function _dayMenuAct(key,act){
   if(act==='swap'){_swapPostModal(key);return;}
   if(act==='ex')openExchange(key);else openPoseModal(act,1);
 }
+// Motif d'une absence (congé exceptionnel de l'accord, ou sans motif) ; rentrée scolaire = ½ journée…
+function _poseExcHtml(date){var excH='';{var _y=date.getFullYear(),_sel='width:100%;height:42px;box-sizing:border-box;padding:0 10px;border:0.5px solid var(--border);border-radius:var(--r);font-size:15px;background:var(--bg2);color:var(--text)';
+    excH='<select id="_exc-m" onchange="_excPick()" style="'+_sel+';margin-bottom:6px"><option value="">Absence (sans motif)</option>'
+      // « Absence non rémunérée » n'est plus proposée (même traitement que la grève) ; les jours déjà saisis restent lus
+      +Object.keys(EXC_M).filter(function(m){return m!=='nonrem';}).map(function(m){return '<option value="'+m+'">'+EXC_M[m].l+'</option>';}).join('')+'</select>'
+      +'<div id="_exc-i" style="font-size:11px;color:var(--text3);line-height:1.4;min-height:15px;margin-bottom:8px"></div>'
+      +'<div id="_exc-g" style="display:none;margin-bottom:10px"><span class="bpseg" id="_exc-gv" data-v="j" style="display:flex">'+[['h','1 heure'],['dj','½ journée'],['j','journée']].map(function(o){return '<span style="flex:1;text-align:center"'+(o[0]==='j'?' class="on"':'')+' onclick="var g=this.parentNode;g.dataset.v=\''+o[0]+'\';[].forEach.call(g.children,function(c){c.classList.toggle(\'on\',c===this);},this)">'+o[1]+'</span>';}).join('')+'</span>'
+      +'<details style="margin-top:6px;font-size:11px;color:var(--text3);line-height:1.45"><summary style="cursor:pointer;color:var(--blue)">Règles de décompte</summary><div style="margin-top:4px">'+getGreveConf().txt+'</div></details></div>'
+      +'<div id="_exc-o" style="display:none;margin-bottom:10px"><input id="_exc-lbl" maxlength="40" placeholder="Précision (facultatif)" style="'+_sel+';font-size:13px;margin-bottom:8px">'
+      +_excKeepRows(null)+'</div>'
+      +'<div id="_exc-h" style="display:none;margin-bottom:10px"><div style="font-size:11px;color:var(--text3);margin-bottom:5px">L’autre moitié de la vacation</div>'
+      +'<span class="bpseg" id="_exc-r" data-v="work" style="display:flex">'+['work','rend'].map(function(v,i){return '<span style="flex:1;text-align:center"'+(i?'':' class="on"')+' onclick="var g=this.parentNode;g.dataset.v=\''+v+'\';[].forEach.call(g.children,function(c){c.classList.toggle(\'on\',c===this);},this)">'+(v==='work'?'travaillée':'en rendus')+'</span>';}).join('')+'</span></div>';
+    window._excYear=_y;}return excH;}
+// Page du jour : Modifier, ou poser des congés, des rendus, une absence sur un mini calendrier
+function _dayTab(t){_haptic();[].forEach.call(document.querySelectorAll('#d-tabs [data-t]'),function(b){b.classList.toggle('on',b.getAttribute('data-t')===t);});
+  var m=document.getElementById('cv-modif'),p=document.getElementById('cv-pose');if(!m||!p)return;m.style.display=t==='mod'?'':'none';p.style.display=t==='mod'?'none':'';
+  if(t==='mod')return;var k=pendingKey,d=new Date(k+'T12:00:00');
+  window._PS={type:t==='ab'?'absent':(window._PS&&window._PS.type==='rend'?'rend':'cg'),a:k,b:k,ym:d.getFullYear()*12+d.getMonth()};
+  p.innerHTML=(t==='cr'?'<div class="cv-seg" id="ps-type" style="margin:0 0 12px">'+[['cg','Congé'],['rend','Rendu']].map(function(x){return '<button type="button" data-v="'+x[0]+'"'+(window._PS.type===x[0]?' class="on"':'')+' onclick="_psType(\''+x[0]+'\')">'+x[1]+'</button>';}).join('')+'</div>'
+      :'<div class="cv-sec">Motif</div>'+_poseExcHtml(d))
+    +'<div id="ps-cal"></div><div id="ps-sum" class="cv-hint" style="margin:8px 2px 12px"></div>'
+    +'<div class="mbtns"><button class="mb" onclick="closeModal()">Annuler</button><button class="mb pri" onclick="_psGo()">Valider</button></div>';
+  if(t==='ab')_excPick();_psDraw();_psTouch();}
+function _psType(v){_haptic();window._PS.type=v;[].forEach.call(document.querySelectorAll('#ps-type [data-v]'),function(b){b.classList.toggle('on',b.getAttribute('data-v')===v);});_psPaint();}
+function _psMonth(n){_haptic();window._PS.ym+=n;_psDraw();}
+function _psRange(){var P=window._PS;return P.a<=P.b?[P.a,P.b]:[P.b,P.a];}
+function _psDraw(){var P=window._PS,el=document.getElementById('ps-cal');if(!P||!el)return;var y=Math.floor(P.ym/12),mo=P.ym%12,first=new Date(y,mo,1,12),off=(first.getDay()+6)%7,n=new Date(y,mo+1,0).getDate(),R=_psRange();
+  var h='<div class="ps-h"><button type="button" onclick="_psMonth(-1)">‹</button><b>'+MC[mo]+' '+y+'</b><button type="button" onclick="_psMonth(1)">›</button></div><div class="ps-g">'+['L','M','M','J','V','S','D'].map(function(x){return '<span class="ps-w">'+x+'</span>';}).join('');
+  for(var i=0;i<off;i++)h+='<span></span>';
+  for(var dd=1;dd<=n;dd++){var dt=new Date(y,mo,dd,12),k=dk(dt),g=getVac(dt),w=g.vac&&g.vac!=='RH'&&!g.absent,inR=k>=R[0]&&k<=R[1],cg=(S.conges||{})[k];
+    h+='<span class="ps-d'+(w?'':' off')+(cg?' had':'')+'" data-k="'+k+'">'+dd+'</span>';}
+  el.innerHTML=h+'</div>';_psPaint();}
+// sélection redessinée sur place (pendant un glissé, les cases ne doivent pas être remplacées : le doigt les perdrait)
+function _psPaint(){var P=window._PS,R=_psRange();
+  [].forEach.call(document.querySelectorAll('#ps-cal .ps-d'),function(e){var k=e.getAttribute('data-k'),inR=k>=R[0]&&k<=R[1];e.classList.toggle('in',inR);['cg','rend','absent'].forEach(function(t){e.classList.toggle('ps-'+t,inR&&P.type===t);});e.classList.toggle('end',k===R[0]||k===R[1]);});
+  var c=0,x=new Date(R[0]+'T12:00:00'),e=new Date(R[1]+'T12:00:00');while(x<=e){var gv=getVac(x);if(gv.vac&&gv.vac!=='RH'&&!gv.absent)c++;x.setDate(x.getDate()+1);}
+  var f=function(k){return new Date(k+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'});},sm=document.getElementById('ps-sum');
+  if(sm)sm.textContent=(R[0]===R[1]?f(R[0]):'Du '+f(R[0])+' au '+f(R[1]))+' · '+c+' jour'+(c>1?'s':'')+' travaillé'+(c>1?'s':'')+' · toucher un autre jour, ou glisser, pour une période';}
+// toucher : un jour, puis un second pour la période ; glisser : la période suit le doigt
+function _psTouch(){var el=document.getElementById('ps-cal');if(!el)return;var drag=false,moved=false;
+  var at=function(x,y){var t=document.elementFromPoint(x,y);return t&&t.closest&&t.closest('.ps-d')?t.closest('.ps-d').getAttribute('data-k'):null;};
+  var start=function(k){var P=window._PS;if(!k)return;drag=true;moved=false;P._a0=P.a;P._b0=P.b;P.a=P.b=k;_psPaint();};
+  var move=function(k){var P=window._PS;if(!drag||!k||k===P.b)return;moved=true;P.b=k;_psPaint();};
+  var end=function(k){var P=window._PS;if(!drag)return;drag=false;if(!moved&&k&&P._a0===P._b0&&P._a0!==k){P.a=P._a0;P.b=k;}_haptic();_psPaint();};
+  el.addEventListener('touchstart',function(e){e.stopPropagation();var t=e.touches[0];start(at(t.clientX,t.clientY));},{passive:true});
+  el.addEventListener('touchmove',function(e){if(!drag)return;e.stopPropagation();var t=e.touches[0];if(e.cancelable)e.preventDefault();move(at(t.clientX,t.clientY));},{passive:false});
+  // le geste reste dans le calendrier (sinon glisser ferait passer la page au jour suivant)
+  el.addEventListener('touchend',function(e){e.stopPropagation();var t=e.changedTouches[0];end(at(t.clientX,t.clientY));window._eatClickAt=Date.now();},{passive:true});
+  el.addEventListener('mousedown',function(e){start(at(e.clientX,e.clientY));});
+  el.addEventListener('mousemove',function(e){if(e.buttons)move(at(e.clientX,e.clientY));});
+  el.addEventListener('mouseup',function(e){end(at(e.clientX,e.clientY));});}
+function _psGo(){var P=window._PS,R=_psRange(),u=document.getElementById('pose-until');if(!u){u=document.createElement('input');u.type='hidden';u.id='pose-until';document.getElementById('cv-pose').appendChild(u);}u.value=R[1];applyPose(P.type,R[0],R[0]===R[1]);}
 function openPoseModal(type,fromMenu){
   // Ouvert depuis le mini-menu du calendrier : Retour ferme au lieu d'ouvrir la fiche du jour
   const back=fromMenu?'closeModal()':'openDay(\''+(pendingKey||_lpk)+'\')';
@@ -2276,18 +2325,7 @@ function openPoseModal(type,fromMenu){
   const lbl=type==='cg'?'Congé':type==='rend'?'Rendu':'Absence';
   const color=type==='cg'?'var(--green)':type==='rend'?'var(--rend-text)':'var(--text2)';
   // Absence : motif (congé exceptionnel de l'accord, ou sans motif) ; rentrée scolaire = ½ journée, l'autre moitié travaillée ou en rendus
-  var excH='';if(type==='absent'){var _y=date.getFullYear(),_sel='width:100%;height:42px;box-sizing:border-box;padding:0 10px;border:0.5px solid var(--border);border-radius:var(--r);font-size:15px;background:var(--bg2);color:var(--text)';
-    excH='<select id="_exc-m" onchange="_excPick()" style="'+_sel+';margin-bottom:6px"><option value="">Absence (sans motif)</option>'
-      // « Absence non rémunérée » n'est plus proposée (même traitement que la grève) ; les jours déjà saisis restent lus
-      +Object.keys(EXC_M).filter(function(m){return m!=='nonrem';}).map(function(m){return '<option value="'+m+'">'+EXC_M[m].l+'</option>';}).join('')+'</select>'
-      +'<div id="_exc-i" style="font-size:11px;color:var(--text3);line-height:1.4;min-height:15px;margin-bottom:8px"></div>'
-      +'<div id="_exc-g" style="display:none;margin-bottom:10px"><span class="bpseg" id="_exc-gv" data-v="j" style="display:flex">'+[['h','1 heure'],['dj','½ journée'],['j','journée']].map(function(o){return '<span style="flex:1;text-align:center"'+(o[0]==='j'?' class="on"':'')+' onclick="var g=this.parentNode;g.dataset.v=\''+o[0]+'\';[].forEach.call(g.children,function(c){c.classList.toggle(\'on\',c===this);},this)">'+o[1]+'</span>';}).join('')+'</span>'
-      +'<details style="margin-top:6px;font-size:11px;color:var(--text3);line-height:1.45"><summary style="cursor:pointer;color:var(--blue)">Règles de décompte</summary><div style="margin-top:4px">'+getGreveConf().txt+'</div></details></div>'
-      +'<div id="_exc-o" style="display:none;margin-bottom:10px"><input id="_exc-lbl" maxlength="40" placeholder="Précision (facultatif)" style="'+_sel+';font-size:13px;margin-bottom:8px">'
-      +_excKeepRows(null)+'</div>'
-      +'<div id="_exc-h" style="display:none;margin-bottom:10px"><div style="font-size:11px;color:var(--text3);margin-bottom:5px">L’autre moitié de la vacation</div>'
-      +'<span class="bpseg" id="_exc-r" data-v="work" style="display:flex">'+['work','rend'].map(function(v,i){return '<span style="flex:1;text-align:center"'+(i?'':' class="on"')+' onclick="var g=this.parentNode;g.dataset.v=\''+v+'\';[].forEach.call(g.children,function(c){c.classList.toggle(\'on\',c===this);},this)">'+(v==='work'?'travaillée':'en rendus')+'</span>';}).join('')+'</span></div>';
-    window._excYear=_y;}
+  var excH=type==='absent'?_poseExcHtml(date):'';
   const bg=type==='cg'?'var(--green-l)':type==='rend'?'var(--rend-l)':'var(--bg3)';
 
   // Build list of next worked days for "jusqu'au" picker (next 60 days)
@@ -6049,6 +6087,7 @@ function openCustomVacModal(){
     +(key&&window._cvDay&&window._cvDay.k===key?window._cvDay.head:'<div class="st" style="margin-bottom:2px">'+(key?'Modifier':'Ajouter')+'</div>'
     +(key?'<div style="font-size:11px;color:var(--text3);margin-bottom:12px">'+fmtDate(date)+'</div>':''))
     +(key&&(S.overrides||{})[key]&&(S.overrides||{})[key].echange?_exCurHtml(key):'')
+    +(key&&window._cvDay&&window._cvDay.k===key?(window._cvDay.tabs||'')+'<div id="cv-modif">':'')
     +(key?opts+_cvWhenHtml(key,W):'')
     // Quoi : horaires (ou vacation de l'échange) ; jour déjà modifié (hors échange) : retour à la vacation prévue au cycle
     +(key?'<div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div class="cv-sec">Vacation</div>'
@@ -6074,7 +6113,6 @@ function openCustomVacModal(){
     // Ajout d'une vacation perso (sans jour) : seulement le menu des primes
     :'<div class="mrow" style="margin:8px 0 2px"><label>Primes</label><select id="custom-prime" style="width:100%;'+fs+'"><option value="">Aucune</option><option value="antenne">Antenne</option><option value="reel">Réal</option><option value="coord">Coordination</option></select></div></div>')
     +'</div>'
-    +(key&&window._cvDay&&window._cvDay.k===key?window._cvDay.act:'')
     +(key?'<div style="display:flex;gap:8px;margin:0 0 10px"><button type="button" class="adj-pill" id="cv-more-b" style="flex:1 1 0;min-width:0;white-space:nowrap;padding:0 10px;height:30px;font-size:13px;'+((x&&x.dur>0)||n?'display:none':'')+'" onclick="this.style.display=\'none\';document.getElementById(\'cv-more\').style.display=\'\'">+ Rendu acquis, note</button>'
       +'<button type="button" class="adj-pill" style="flex:1 1 0;min-width:0;white-space:nowrap;padding:0 10px;height:30px;font-size:13px" onclick="_cvSetWhen(\'week\')">Échanger la semaine…</button></div>'
       +'<div id="cv-more"'+((x&&x.dur>0)||n?'':' style="display:none"')+'>':'')
@@ -6083,6 +6121,7 @@ function openCustomVacModal(){
       +'<div class="mrow" style="margin-bottom:16px"><label>Note</label><input id="cv-note" maxlength="200" autocomplete="off" placeholder="Facultatif" value="'+_h(String(n).replace(/\s*\n\s*/g,' '))+'" style="width:100%;box-sizing:border-box;'+fs+'"></div>':'')
     +(key?'</div>':'')
     +'<div class="mbtns"><button class="mb" onclick="closeModal()">Annuler</button><button class="mb pri" onclick="confirmCustomVac()">Valider</button></div>'
+    +(key&&window._cvDay&&window._cvDay.k===key?'</div><div id="cv-pose" style="display:none"></div>':'')
     +'</div></div>';
   document.getElementById('custom-name').value=name;
   document.getElementById('custom-deb').value=deb;
