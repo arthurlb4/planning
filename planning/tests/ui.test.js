@@ -200,10 +200,12 @@ function mockApi(route) {
     // Page du jour : onglets Modifier · Congé · Rendu · Absence ; pose sur le mini calendrier (période), puis Valider
     { const r = await p.evaluate(async () => { const k = [...document.querySelectorAll('#cal .dci[data-key]')].map(e => e.dataset.key).find(k => k > dk(NOW) && new Date(k + 'T12:00:00').getDate() <= 20 && !(S.conges || {})[k] && getVac(new Date(k + 'T12:00:00')).vac && getVac(new Date(k + 'T12:00:00')).vac !== 'RH');
         openDay(k); const tabs = [...document.querySelectorAll('#d-tabs [data-t]')].map(b => b.textContent).join('|'); _dayTab('cr'); const cal = document.querySelectorAll('#ps-cal .ps-d').length, modH = document.getElementById('cv-modif').style.display === 'none';
-        _psType('rend'); _psType('cg'); const e = new Date(k + 'T12:00:00'); e.setDate(e.getDate() + 3); window._PS.b = dk(e); _psPaint(); const inN = document.querySelectorAll('#ps-cal .ps-d.in').length;
-        const c0 = JSON.stringify(S.conges || {}); _psGo(); await new Promise(r => setTimeout(r, 300)); const posed = Object.keys(S.conges || {}).filter(x => x >= k && x <= dk(e) && S.conges[x] === 'cg');
-        posed.forEach(x => delete S.conges[x]); render(); return [tabs, cal > 27, modH, inN, posed.length > 0, !document.querySelector('#modal-root .overlay')]; });
-      ok('Page du jour : onglets, mini calendrier, période de congés posée', r[0] === 'Modifier|Congé · Rendu|Absence' && r[1] && r[2] && r[3] === 4 && r[4] && r[5], JSON.stringify(r)); }
+        // congé ce jour, puis rendu sur le prochain jour travaillé : le type ne change que les jours suivants
+        const e = new Date(k + 'T12:00:00'); let k2 = null; for (let i = 1; i < 10 && !k2; i++) { e.setDate(e.getDate() + 1); if (_psOk(dk(e))) k2 = dk(e); }
+        _psType('rend'); window._PS.sel[k2] = 'rend'; _psPaint(); const sum = document.getElementById('ps-sum').textContent, types = [window._PS.sel[k], window._PS.sel[k2]].join();
+        await _psGo(); const posed = [S.conges[k], S.conges[k2]]; delete S.conges[k]; delete S.conges[k2]; render();
+        return [tabs, cal > 27, modH, types, /Congés \d+ j/.test(sum) && /Rendus \d+h\d\d/.test(sum), posed[0] === 'cg' && /rend/.test(posed[1] || ''), !document.querySelector('#modal-root .overlay')]; });
+      ok('Page du jour : onglets, mini calendrier, congé et rendu posés ensemble (types gardés, totaux)', r[0] === 'Modifier|Congé · Rendu|Absence' && r[1] && r[2] && r[3] === 'cg,rend' && r[4] && r[5] && r[6], JSON.stringify(r)); }
     // Jour de mixte : rien de pré-choisi, « Autres » (toutes les équipes) fermé, comme pour une vacation classique
     { const r = await p.evaluate(() => { const p0 = S.profile.pool, l0 = S.profile.line; let out = null; S.profile.pool = 'cadre';
         for (let L = 1; L <= 6 && !out; L++) { S.profile.line = L; for (let i = 0; i < 60 && !out; i++) { const d = new Date(NOW); d.setDate(d.getDate() + i); const c = getCycleVac(d).cycleVac, V = getVAC(d)[c]; if (V && V.mixte && !(S.overrides || {})[dk(d)]) out = dk(d); } }

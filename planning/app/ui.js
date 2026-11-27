@@ -2278,42 +2278,59 @@ function _poseExcHtml(date){var excH='';{var _y=date.getFullYear(),_sel='width:1
 // Page du jour : Modifier, ou poser des congés, des rendus, une absence sur un mini calendrier
 function _dayTab(t){_haptic();[].forEach.call(document.querySelectorAll('#d-tabs [data-t]'),function(b){b.classList.toggle('on',b.getAttribute('data-t')===t);});
   var m=document.getElementById('cv-modif'),p=document.getElementById('cv-pose');if(!m||!p)return;m.style.display=t==='mod'?'':'none';p.style.display=t==='mod'?'none':'';
-  if(t==='mod')return;var k=pendingKey,d=new Date(k+'T12:00:00');
-  window._PS={type:t==='ab'?'absent':(window._PS&&window._PS.type==='rend'?'rend':'cg'),a:k,b:k,ym:d.getFullYear()*12+d.getMonth()};
-  p.innerHTML=(t==='cr'?'<div class="cv-seg" id="ps-type" style="margin:0 0 12px">'+[['cg','Congé'],['rend','Rendu']].map(function(x){return '<button type="button" data-v="'+x[0]+'"'+(window._PS.type===x[0]?' class="on"':'')+' onclick="_psType(\''+x[0]+'\')">'+x[1]+'</button>';}).join('')+'</div>'
+  if(t==='mod')return;var k=pendingKey,d=new Date(k+'T12:00:00'),sel={},ty=t==='ab'?'absent':(window._PS&&window._PS.type==='rend'?'rend':'cg');if(_psOk(k))sel[k]=ty;
+  window._PS={type:ty,sel:sel,ym:d.getFullYear()*12+d.getMonth()};
+  p.innerHTML=(t==='cr'?'<div class="cv-seg" id="ps-type" style="margin:0 0 12px">'+[['cg','Congé'],['rend','Rendu']].map(function(x){return '<button type="button" data-v="'+x[0]+'"'+(ty===x[0]?' class="on"':'')+' onclick="_psType(\''+x[0]+'\')">'+x[1]+'</button>';}).join('')+'</div>'
       :'<div class="cv-sec">Motif</div>'+_poseExcHtml(d))
-    +'<div id="ps-cal"></div><div id="ps-sum" class="cv-hint" style="margin:8px 2px 12px"></div>'
+    +'<div id="ps-cal"></div><div id="ps-sum" style="margin:10px 2px 4px;font-size:13px;color:var(--text2)"></div><div class="cv-hint" style="margin:0 2px 12px">Toucher des jours, ou glisser pour une période ; toucher un jour choisi le retire.</div>'
     +'<div class="mbtns"><button class="mb" onclick="closeModal()">Annuler</button><button class="mb pri" onclick="_psGo()">Valider</button></div>';
   if(t==='ab')_excPick();_psDraw();_psTouch();}
-function _psType(v){_haptic();window._PS.type=v;[].forEach.call(document.querySelectorAll('#ps-type [data-v]'),function(b){b.classList.toggle('on',b.getAttribute('data-v')===v);});_psPaint();}
+// le type choisi vaut pour les prochains jours touchés, pas pour ceux déjà choisis
+function _psType(v){_haptic();window._PS.type=v;[].forEach.call(document.querySelectorAll('#ps-type [data-v]'),function(b){b.classList.toggle('on',b.getAttribute('data-v')===v);});}
 function _psMonth(n){_haptic();window._PS.ym+=n;_psDraw();}
-function _psRange(){var P=window._PS;return P.a<=P.b?[P.a,P.b]:[P.b,P.a];}
-function _psDraw(){var P=window._PS,el=document.getElementById('ps-cal');if(!P||!el)return;var y=Math.floor(P.ym/12),mo=P.ym%12,first=new Date(y,mo,1,12),off=(first.getDay()+6)%7,n=new Date(y,mo+1,0).getDate(),R=_psRange();
+// jour qu'on peut poser : travaillé, pas déjà en congé, rendu ou absence
+function _psOk(k){var d=new Date(k+'T12:00:00'),g=getVac(d),c=(S.conges||{})[k];return !!(g.vac&&g.vac!=='RH'&&!g.absent&&!c);}
+function _psDraw(){var P=window._PS,el=document.getElementById('ps-cal');if(!P||!el)return;var y=Math.floor(P.ym/12),mo=P.ym%12,first=new Date(y,mo,1,12),off=(first.getDay()+6)%7,n=new Date(y,mo+1,0).getDate();
   var h='<div class="ps-h"><button type="button" onclick="_psMonth(-1)">‹</button><b>'+MC[mo]+' '+y+'</b><button type="button" onclick="_psMonth(1)">›</button></div><div class="ps-g">'+['L','M','M','J','V','S','D'].map(function(x){return '<span class="ps-w">'+x+'</span>';}).join('');
   for(var i=0;i<off;i++)h+='<span></span>';
-  for(var dd=1;dd<=n;dd++){var dt=new Date(y,mo,dd,12),k=dk(dt),g=getVac(dt),w=g.vac&&g.vac!=='RH'&&!g.absent,inR=k>=R[0]&&k<=R[1],cg=(S.conges||{})[k];
-    h+='<span class="ps-d'+(w?'':' off')+(cg?' had':'')+'" data-k="'+k+'">'+dd+'</span>';}
+  for(var dd=1;dd<=n;dd++){var dt=new Date(y,mo,dd,12),k=dk(dt),cg=(S.conges||{})[k];h+='<span class="ps-d'+(_psOk(k)?'':' off')+(cg?' had had-'+(cg==='cg'?'cg':cg==='absent'?'absent':'rend'):'')+'" data-k="'+k+'">'+dd+'</span>';}
   el.innerHTML=h+'</div>';_psPaint();}
 // sélection redessinée sur place (pendant un glissé, les cases ne doivent pas être remplacées : le doigt les perdrait)
-function _psPaint(){var P=window._PS,R=_psRange();
-  [].forEach.call(document.querySelectorAll('#ps-cal .ps-d'),function(e){var k=e.getAttribute('data-k'),inR=k>=R[0]&&k<=R[1];e.classList.toggle('in',inR);['cg','rend','absent'].forEach(function(t){e.classList.toggle('ps-'+t,inR&&P.type===t);});e.classList.toggle('end',k===R[0]||k===R[1]);});
-  var c=0,x=new Date(R[0]+'T12:00:00'),e=new Date(R[1]+'T12:00:00');while(x<=e){var gv=getVac(x);if(gv.vac&&gv.vac!=='RH'&&!gv.absent)c++;x.setDate(x.getDate()+1);}
-  var f=function(k){return new Date(k+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'});},sm=document.getElementById('ps-sum');
-  if(sm)sm.textContent=(R[0]===R[1]?f(R[0]):'Du '+f(R[0])+' au '+f(R[1]))+' · '+c+' jour'+(c>1?'s':'')+' travaillé'+(c>1?'s':'')+' · toucher un autre jour, ou glisser, pour une période';}
-// toucher : un jour, puis un second pour la période ; glisser : la période suit le doigt
-function _psTouch(){var el=document.getElementById('ps-cal');if(!el)return;var drag=false,moved=false;
+function _psPaint(){var P=window._PS,S2=P.tmp||P.sel;
+  [].forEach.call(document.querySelectorAll('#ps-cal .ps-d'),function(e){var t=S2[e.getAttribute('data-k')];e.classList.toggle('in',!!t);['cg','rend','absent'].forEach(function(x){e.classList.toggle('ps-'+x,t===x);});});
+  var sm=document.getElementById('ps-sum');if(sm)sm.innerHTML=_psSum(S2)||'<span style="color:var(--text3)">Aucun jour choisi</span>';}
+// Ce que coûte la sélection : congés au décompte réel (semaine complète = 5 j…), rendus en heures, absences en jours
+function _psSum(sel){var K=Object.keys(sel).sort(),cg=K.filter(function(k){return sel[k]==='cg';}),rd=K.filter(function(k){return sel[k]==='rend';}),ab=K.filter(function(k){return sel[k]==='absent';}),out=[];
+  if(cg.length){var ys={};cg.forEach(function(k){ys[k.slice(0,4)]=1;});var b={};Object.keys(ys).forEach(function(y){b[y]=computeCongesRest(+y);});if(!S.conges)S.conges={};cg.forEach(function(k){S.conges[k]='cg';});
+    var n=0;try{Object.keys(ys).forEach(function(y){n+=b[y]-computeCongesRest(+y);});}finally{cg.forEach(function(k){delete S.conges[k];});}
+    out.push('<b style="color:var(--green)">Congés '+n+' j</b>');}
+  if(rd.length)out.push('<b style="color:var(--rend-text)">Rendus '+fmtMin(rd.reduce(function(t,k){return t+getDur(new Date(k+'T12:00:00'));},0))+'</b>');
+  if(ab.length)out.push('<b>Absence '+ab.length+' j</b>');
+  return out.join(' · ');}
+// toucher : ajoute ou retire un jour ; glisser : la période suit le doigt, au type choisi
+function _psTouch(){var el=document.getElementById('ps-cal');if(!el)return;var drag=null,lastT=0;
   var at=function(x,y){var t=document.elementFromPoint(x,y);return t&&t.closest&&t.closest('.ps-d')?t.closest('.ps-d').getAttribute('data-k'):null;};
-  var start=function(k){var P=window._PS;if(!k)return;drag=true;moved=false;P._a0=P.a;P._b0=P.b;P.a=P.b=k;_psPaint();};
-  var move=function(k){var P=window._PS;if(!drag||!k||k===P.b)return;moved=true;P.b=k;_psPaint();};
-  var end=function(k){var P=window._PS;if(!drag)return;drag=false;if(!moved&&k&&P._a0===P._b0&&P._a0!==k){P.a=P._a0;P.b=k;}_haptic();_psPaint();};
-  el.addEventListener('touchstart',function(e){e.stopPropagation();var t=e.touches[0];start(at(t.clientX,t.clientY));},{passive:true});
-  el.addEventListener('touchmove',function(e){if(!drag)return;e.stopPropagation();var t=e.touches[0];if(e.cancelable)e.preventDefault();move(at(t.clientX,t.clientY));},{passive:false});
+  var range=function(a,b){var r=[],x=new Date((a<b?a:b)+'T12:00:00'),e=new Date((a<b?b:a)+'T12:00:00');while(x<=e){var k=dk(x);if(_psOk(k))r.push(k);x.setDate(x.getDate()+1);}return r;};
+  var start=function(k){if(!k)return;drag={a:k,b:k,moved:false};};
+  var move=function(k){var P=window._PS;if(!drag||!k||k===drag.b)return;drag.b=k;drag.moved=true;P.tmp=Object.assign({},P.sel);range(drag.a,k).forEach(function(x){P.tmp[x]=P.type;});_psPaint();};
+  var end=function(){var P=window._PS;if(!drag)return;var D=drag;drag=null;
+    if(D.moved){P.sel=P.tmp||P.sel;}else if(_psOk(D.a)){if(P.sel[D.a]===P.type)delete P.sel[D.a];else P.sel[D.a]=P.type;}
+    P.tmp=null;_haptic();_psPaint();};
   // le geste reste dans le calendrier (sinon glisser ferait passer la page au jour suivant)
-  el.addEventListener('touchend',function(e){e.stopPropagation();var t=e.changedTouches[0];end(at(t.clientX,t.clientY));window._eatClickAt=Date.now();},{passive:true});
-  el.addEventListener('mousedown',function(e){start(at(e.clientX,e.clientY));});
-  el.addEventListener('mousemove',function(e){if(e.buttons)move(at(e.clientX,e.clientY));});
-  el.addEventListener('mouseup',function(e){end(at(e.clientX,e.clientY));});}
-function _psGo(){var P=window._PS,R=_psRange(),u=document.getElementById('pose-until');if(!u){u=document.createElement('input');u.type='hidden';u.id='pose-until';document.getElementById('cv-pose').appendChild(u);}u.value=R[1];applyPose(P.type,R[0],R[0]===R[1]);}
+  el.addEventListener('touchstart',function(e){e.stopPropagation();lastT=Date.now();var t=e.touches[0];start(at(t.clientX,t.clientY));},{passive:true});
+  el.addEventListener('touchmove',function(e){if(!drag)return;e.stopPropagation();var t=e.touches[0];if(e.cancelable)e.preventDefault();move(at(t.clientX,t.clientY));},{passive:false});
+  el.addEventListener('touchend',function(e){e.stopPropagation();lastT=Date.now();end();window._eatClickAt=Date.now();},{passive:true});
+  // souris (PC) ; après un toucher, l'iPhone envoie aussi des événements souris : ignorés
+  el.addEventListener('mousedown',function(e){if(Date.now()-lastT<800)return;start(at(e.clientX,e.clientY));});
+  el.addEventListener('mousemove',function(e){if(Date.now()-lastT<800||!e.buttons)return;move(at(e.clientX,e.clientY));});
+  el.addEventListener('mouseup',function(){if(Date.now()-lastT<800)return;end();});}
+// Valider : chaque type en périodes de jours qui se suivent (jours de repos entre deux compris), posées l'une après l'autre
+async function _psGo(){var P=window._PS,K=Object.keys(P.sel).sort();if(!K.length){closeModal();return;}
+  var runs=[];['absent','cg','rend'].forEach(function(t){var ks=K.filter(function(k){return P.sel[k]===t;}),cur=null;
+    ks.forEach(function(k){if(cur){var x=new Date(cur.b+'T12:00:00'),ok=true;x.setDate(x.getDate()+1);while(dk(x)<k){if(_psOk(dk(x))){ok=false;break;}x.setDate(x.getDate()+1);}if(ok){cur.b=k;return;}}cur={t:t,a:k,b:k};runs.push(cur);});});
+  var u=document.getElementById('pose-until');if(!u){u=document.createElement('input');u.type='hidden';u.id='pose-until';document.body.appendChild(u);}
+  window._psBatch=true;try{for(var i=0;i<runs.length;i++){u.value=runs[i].b;await applyPose(runs[i].t,runs[i].a,runs[i].a===runs[i].b);}}finally{window._psBatch=false;u.remove();}
+  closeModal();render();}
 function openPoseModal(type,fromMenu){
   // Ouvert depuis le mini-menu du calendrier : Retour ferme au lieu d'ouvrir la fiche du jour
   const back=fromMenu?'closeModal()':'openDay(\''+(pendingKey||_lpk)+'\')';
@@ -3138,7 +3155,7 @@ function _applyPoseMatelas(type,startKey,endKey){
   saveState();closeModal();render();gcalTrigger();
 }
 async function applyPose(type,startKey,unique){
-  const endKey=unique?startKey:(document.getElementById('pose-until').value||startKey);
+  const endKey=unique?startKey:((document.getElementById('pose-until')||{}).value||startKey);
   const start=new Date(startKey+'T12:00:00');
   const end=new Date(endKey+'T12:00:00');
 
@@ -3223,7 +3240,7 @@ async function applyPose(type,startKey,unique){
   const color=type==='cg'?'#6a9878':type==='rend'?'#A8BF7A':'#c88048';
   logH(fmtDate(start)+(unique?'':' au '+fmtDate(end))+' -> '+label,color,startKey);
   if(!unique&&S.history[0]&&!_histPeriod(S.history[0]))S.history.shift(); // repos en bout de période : la ligne ne les montre pas
-  saveState();closeModal();render();
+  saveState();if(!window._psBatch)closeModal();render();
   gcalTrigger();
 }
 
