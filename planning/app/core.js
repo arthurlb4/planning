@@ -2713,7 +2713,7 @@ function _cvExGrid(fk){var W=window._cvW||{},d=new Date(fk+'T12:00:00'),VAC=getV
 // Heures sup du jour, trois choix : collègue (les heures prévues comptent), durée (ce qui dépasse la durée prévue),
 // hors bornes (ce qui sort des horaires prévus). Sans choix fait : hors bornes si la vacation prévue est une mixte, durée sinon.
 function _cvHsM(){var W=window._cvW||{};if(W.exHsM)return W.exHsM;var k=pendingKey;if(!k)return 'duree';var d=new Date(k+'T12:00:00'),c=getCycleVac(d).cycleVac,V=c&&getVAC(d)[c];return V&&V.mixte?'hor':'duree';}
-function _cvHsTxt(){return {none:'Échange entre collègues : les heures prévues comptent, pas d’heures sup.',duree:'Ce qui dépasse la durée prévue part en heures sup.',hor:'Ce qui sort des bornes de la vacation prévue part en heures sup (comme une mixte).'}[_cvHsM()];}
+function _cvHsTxt(){return {none:'Les heures prévues comptent, pas d’heures sup.',duree:'Ce qui dépasse la durée prévue part en heures sup.',hor:'Ce qui sort des bornes de la vacation prévue part en heures sup (comme une mixte).'}[_cvHsM()];}
 function _cvHsHint(){var h=document.getElementById('cv-exhint');if(h)h.textContent=_cvHsTxt();[].forEach.call(document.querySelectorAll('#cv-hsm [data-m]'),function(b){b.classList.toggle('on',b.getAttribute('data-m')===_cvHsM());});}
 function _cvSetHsM(m){var W=window._cvW;if(!W)return;_haptic();W.exHsM=m;_cvHsHint();_cvCalc();}
 // Heures sup d'un jour modifié : choix enregistré, sinon d'après l'ancien réglage (« demande de la direction » → hors horaires)
