@@ -1678,6 +1678,7 @@ function openDay(key){
       +'<button class="mb" style="background:var(--btn);color:var(--text)" onclick="openPoseModal(\'absent\')">Absence</button></div>':'';
     openCustomVacModal();
     var _sh=document.querySelector('#modal-root .sheet');if(_sh)_sh.classList.add('daymod');
+    if(_note){var _ns=document.querySelector('#modal-root .dbox .ti-note');if(_ns&&_ns.nextElementSibling)_ns.nextElementSibling.textContent=_note;} // texte de la note posé après coup (jamais interprété comme du HTML)
     _dayNavSetup(key);return;}
   document.getElementById('modal-root').innerHTML=`<div class="overlay" onclick="if(event.target===this)closeModal()"><div class="sheet daymod"><div class="sh"></div>${_dayBox}${key?_ruleHtml(key):''}${vgHtml}<div style="height:16px"></div>${_excDayLine(key)}${ah}<button class="mcancel mclose" onclick="closeModal()">Fermer</button></div></div>`;
   if(_note){var _ns=document.querySelector('#modal-root .ti-note');if(_ns)_ns.nextElementSibling.textContent=_note;}
@@ -5924,7 +5925,7 @@ function _cvExHr(on){var W=window._cvW;W.exHr=on;var f=document.getElementById('
 function _cvDraftSave(){var g=function(id){var e=document.getElementById(id);return e?e.value:null;};
   window._cvDraft={name:g('custom-name'),deb:g('custom-deb'),fin:g('custom-fin'),pause:g('custom-pause'),prime:g('custom-prime'),amt:g('cv-autre-amt'),note:g('cv-note'),xl:g('cv-exr-lbl'),xd:g('cv-exr-dur')};}
 // Redessine la page (même position, sans animation) en gardant la saisie
-function _cvRerender(){_cvDraftSave();window._cvRe=1;var sh=document.querySelector('#modal-root .sheet'),st=sh?sh.scrollTop:0;openCustomVacModal();
+function _cvRerender(){_cvDraftSave();window._cvRe=1;var sh=document.querySelector('#modal-root .sheet'),st=sh?sh.scrollTop:0;openCustomVacModal();var _nt=pendingKey&&(S.notes||{})[pendingKey],_ni=_nt&&document.querySelector('#modal-root .dbox .ti-note');if(_ni&&_ni.nextElementSibling)_ni.nextElementSibling.textContent=_nt;
   var s2=document.querySelector('#modal-root .sheet'),o2=document.querySelector('#modal-root .overlay');if(o2)o2.style.animation='none';if(s2){s2.style.animation='none';s2.scrollTop=st;}}
 // « Un autre jour » : la frise des jours s'ouvre ; coupé, retour au jour même
 function _cvAutreJour(on){var W=window._cvW;if(!W)return;_haptic();W.ad=on;if(!on){W.when='day';W.other=null;W.wOff=0;W.exVac=_cvWInit(pendingKey).exVac;}_cvRerender();}
