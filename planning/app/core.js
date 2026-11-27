@@ -382,7 +382,13 @@ function hsRenduFromSurplus(surplus){
 }
 // Heures sup d'une vacation changée : « duree » (la plus longue des deux, prévue ou faite) ou « horaires »
 // (comme les vacations mixtes : les minutes faites avant le début ou après la fin de la vacation prévue)
-function _hsMode(){return S&&S.profile&&S.profile.hsMode==='horaires'?'horaires':'duree';}
+function _hsMode(){return 'duree';} // méthode par défaut ; « horaires » se choisit jour par jour (Heures sup · demande de la direction)
+// Heures sup « demande de la direction » : le même jour, ce qui sort des horaires prévus (comme une vacation mixte) ;
+// un autre jour travaillé (échange lié à un autre jour, jour de repos) : toute la vacation
+function _hsHorMin(key,vac,cyc,VAC,ov){var v=VAC[vac];if(!v)return 0;if(ov&&ov.pair&&ov.pair!==key)return v.dur||0;
+  var r=cyc&&cyc!=='RH'?VAC[cyc]:null;
+  if(!r||_toMinApp(r.deb)===null||_toMinApp(v.deb)===null)return v.dur||0;
+  var X={};X.__r=r;X.__v=v;return _calcMixteHsMin('__r','__v',X);}
 function calcHSWeek(monday,mode){
   mode=mode||_hsMode();
   const li=lineIdx(monday),VAC=getVAC();
@@ -403,7 +409,8 @@ function calcHSWeek(monday,mode){
       const _ecOv=(S.overrides||{})[key];
       const _hsFlag=_ecOv&&_ecOv.hs;
       if(_hsFlag){
-        if(ecSelf&&vac&&vac!=='RH')_dayWorked=VAC[vac]?VAC[vac].dur:0;
+        // heures sup demandées par la direction : ce qui sort des horaires prévus
+        if(ecSelf&&vac&&vac!=='RH')_dayWorked=_dayBase+_hsHorMin(key,vac,cycleVac,VAC,_ecOv);
       } else {
         if(cycleVac&&cycleVac!=='RH')_dayWorked=VAC[cycleVac]?VAC[cycleVac].dur:0;
         // Déplacement (formation, horaires, formateur) : en plus, ce qui dépasse la vacation du jour cédé part en heures sup
@@ -420,7 +427,7 @@ function calcHSWeek(monday,mode){
       } else if(_ov&&_ov.vac&&!_ov.echange&&cycleVac&&cycleVac!=='RH'&&VAC[cycleVac]){
         // Jour travaillé changé (grille ou « Modifier ») : la plus grande des deux, prévue ou faite ; le surplus part en heures sup
         // (méthode « horaires » : seulement ce qui sort des horaires prévus, comme une vacation mixte)
-        if(mode==='horaires'&&VAC[vac]&&_toMinApp(VAC[cycleVac].deb)!==null&&_toMinApp(VAC[vac].deb)!==null)_dayWorked=(VAC[cycleVac].dur||0)+_calcMixteHsMin(cycleVac,vac,VAC);
+        if((mode==='horaires'||_ov.hs)&&VAC[vac]&&_toMinApp(VAC[cycleVac].deb)!==null&&_toMinApp(VAC[vac].deb)!==null)_dayWorked=(VAC[cycleVac].dur||0)+_calcMixteHsMin(cycleVac,vac,VAC);
         else _dayWorked=Math.max(VAC[cycleVac].dur||0,VAC[vac]?VAC[vac].dur:0);
       } else if(_ov&&_ov.vac&&!_ov.echange&&!_ov.hs){
         _dayWorked=(!cycleVac||cycleVac==='RH'||!VAC[cycleVac])?(VAC[vac]?VAC[vac].dur:0):VAC[cycleVac].dur;
@@ -1631,13 +1638,13 @@ function _dayHSMin(date){
   const _dayBase=gridRow[i]&&gridRow[i]!=='RH'&&gridRow[i]!=='SV'&&VAC[gridRow[i]]?VAC[gridRow[i]].dur:0;
   let w=0;const _ov=(S.overrides||{})[key];
   if(echange){
-    if(_ov&&_ov.hs){if(ecSelf&&vac&&vac!=='RH')w=VAC[vac]?VAC[vac].dur:0;}
+    if(_ov&&_ov.hs){if(ecSelf&&vac&&vac!=='RH')w=_dayBase+_hsHorMin(key,vac,cycleVac,VAC,_ov);}
     else if(cycleVac&&cycleVac!=='RH')w=VAC[cycleVac]?VAC[cycleVac].dur:0;
   }else{
     if(!vac||vac==='RH')return 0;
     if(_ov&&_ov.vac&&!_ov.echange&&_isDet(_ov.motif))return 0;
     if(_ov&&_ov.vac&&!_ov.echange&&cycleVac&&VAC[cycleVac]&&VAC[cycleVac].mixte)w=(VAC[cycleVac].dur||0)+_calcMixteHsMin(cycleVac,_ov.vac,VAC);
-    else if(_ov&&_ov.vac&&!_ov.echange&&cycleVac&&cycleVac!=='RH'&&VAC[cycleVac])w=_hsMode()==='horaires'&&VAC[vac]&&_toMinApp(VAC[cycleVac].deb)!==null&&_toMinApp(VAC[vac].deb)!==null?(VAC[cycleVac].dur||0)+_calcMixteHsMin(cycleVac,vac,VAC):Math.max(VAC[cycleVac].dur||0,VAC[vac]?VAC[vac].dur:0); // méthode choisie (Réglages › Calcul)
+    else if(_ov&&_ov.vac&&!_ov.echange&&cycleVac&&cycleVac!=='RH'&&VAC[cycleVac])w=(_hsMode()==='horaires'||_ov.hs)&&VAC[vac]&&_toMinApp(VAC[cycleVac].deb)!==null&&_toMinApp(VAC[vac].deb)!==null?(VAC[cycleVac].dur||0)+_calcMixteHsMin(cycleVac,vac,VAC):Math.max(VAC[cycleVac].dur||0,VAC[vac]?VAC[vac].dur:0); // méthode choisie (Réglages › Calcul)
     else if(_ov&&_ov.vac&&!_ov.echange&&!_ov.hs)w=(!cycleVac||cycleVac==='RH'||!VAC[cycleVac])?(VAC[vac]?VAC[vac].dur:0):VAC[cycleVac].dur;
     else w=VAC[vac]?VAC[vac].dur:0;
   }
@@ -2663,7 +2670,10 @@ function _cvSd(k){var d=new Date(k+'T12:00:00');return ['dim.','lun.','mar.','me
 function _cvWInit(key){var o=(S.overrides||{})[key]||{},d=new Date(key+'T12:00:00'),c=getCycleVac(d).cycleVac,mon=getMonday(d);
   if(o.echange&&o.pair&&o.pair!==key){var pm=getMonday(new Date(o.pair+'T12:00:00'));
     return{when:'other',role:o.ecSelf?'take':'give',other:o.pair,wOff:Math.round((pm-mon)/(7*864e5)),exVac:o.motif?null:_exBaseOf(o.ecSelf?o:((S.overrides||{})[o.pair]||{})),exHs:!!(o.ecSelf?o.hs:((S.overrides||{})[o.pair]||{}).hs),exT:_exTOf(o.ecSelf?o:((S.overrides||{})[o.pair]||{}))};}
-  return{when:'day',role:c&&c!=='RH'?'give':'take',other:null,wOff:0,exVac:o.echange&&!o.motif?_exBaseOf(o):null,exHs:!!(o.echange&&o.hs),exT:o.echange&&!o.motif?_exTOf(o):null};}
+  // même jour : vacation faite pré-choisie (celle en place, sinon la prévue) ; vacation perso aux horaires saisis → « Horaires différents »
+  var cv=o.vac&&!o.echange?(S.customVacs||{})[o.vac]:null,perso=!!(cv&&cv.hidden),T=o.echange?_exTOf(o):perso?_exTOf({exBase:1,vac:o.vac}):null;
+  var xv=o.echange?_exBaseOf(o):o.vac?(perso?(c&&c!=='RH'?c:null):o.vac):(c&&c!=='RH'?c:null);
+  return{when:'day',role:c&&c!=='RH'?'give':'take',other:null,wOff:0,exVac:xv,exHs:!!o.hs,exHr:!!T,exT:T};}
 // Échange aux horaires différents : la vacation de base est gardée (exBase), les horaires faits sont une vacation perso
 function _exBaseOf(o){return o&&(o.exBase||o.vac)||null;}
 function _exTOf(o){var v=o&&o.exBase&&(S.customVacs||{})[o.vac];if(!v)return null;var t=parseHM(v.fin)-parseHM(v.deb);if(t<0)t+=1440;var pz=t-(v.dur||0);return{deb:v.deb,fin:v.fin,pause:pz>=60?'60':pz>=45?'45':'0'};}
@@ -2698,9 +2708,13 @@ function _cvExGrid(fk){var W=window._cvW||{},d=new Date(fk+'T12:00:00'),VAC=getV
     +'<div id="cv-exhr-f" class="mr2" style="grid-template-columns:1fr 1fr 1fr;margin:8px 0 0'+(W.exHr?'':';display:none')+'">'
     +[['cv-exd','Début',_cvTOpts()],['cv-exf','Fin',_cvTOpts()],['cv-exp','Pause','<option value="0">Sans</option><option value="45">45 min</option><option value="60">1h00</option>']].map(function(a){return '<div><label>'+a[1]+'</label><select id="'+a[0]+'" onchange="_cvExTRead()" style="width:100%;padding:10px 12px;border:0.5px solid var(--border);border-radius:var(--r);font-size:15px;background:var(--bg2);color:var(--text);font-family:var(--font);-webkit-appearance:none">'+a[2]+'</select></div>';}).join('')+'</div>'
     +'<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin:10px 2px 0"><span style="font-size:13px">Heures sup <span style="font-size:11px;color:var(--text3)">demande de la direction</span></span>'
-    +'<label class="tgl"><input type="checkbox" id="cv-exhs"'+(W.exHs?' checked':'')+' onchange="window._cvW.exHs=this.checked;var h=document.getElementById(\'cv-exhint\');if(h)h.textContent=this.checked?\'Les heures faites comptent : ce qui dépasse part en heures sup. Primes de la vacation faite.\':\'Les heures prévues comptent (pas d’heures sup). Primes de la vacation faite.\'"><span class="tgl-s"></span></label></div>'
-    +'<div class="cv-hint" id="cv-exhint" style="margin:8px 2px 4px">'+(W.exHs?'Les heures faites comptent : ce qui dépasse part en heures sup. Primes de la vacation faite.':'Les heures prévues comptent (pas d’heures sup). Primes de la vacation faite.')+'</div>'
+    +'<label class="tgl"><input type="checkbox" id="cv-exhs"'+(W.exHs?' checked':'')+' onchange="window._cvW.exHs=this.checked;_cvHsHint();_cvCalc()"><span class="tgl-s"></span></label></div>'
+    +'<div class="cv-hint" id="cv-exhint" style="margin:8px 2px 4px">'+_cvHsTxt()+'</div>'
     +'<button type="button" class="adj-pill" style="width:auto;padding:0 14px;height:30px;font-size:13px;margin:8px 0 2px" onclick="_cvSetWhen(\'week\')">Échanger toute la semaine…</button>';}
+// Ce que décide le toggle « Heures sup · demande de la direction » : coupé, la durée (échange : les heures prévues) ; activé, les horaires
+function _cvHsTxt(){var W=window._cvW||{},ex=window._cvMotif==='echange';
+  return W.exHs?'Tout ce qui sort des horaires prévus part en heures sup.':ex?'Les heures prévues comptent (pas d’heures sup).':'Ce qui dépasse la durée prévue part en heures sup.';}
+function _cvHsHint(){var h=document.getElementById('cv-exhint');if(h)h.textContent=_cvHsTxt();}
 // Nom : vacations connues du jour proposées ; en choisir une remplit horaires, pause et prime (ex. B1 rallongée sur un repos)
 // Vacations proposables ce jour-là : celles du cycle actif pour ce type de jour (sans cycle : la grille par défaut du jour), plus les vacations perso visibles
 function _cvDayVacs(date,VAC){var ns=_cycleVacList(date);

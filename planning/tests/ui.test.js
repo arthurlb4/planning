@@ -150,7 +150,8 @@ function mockApi(route) {
       pendingKey = k; avw(other); const a = !!S.overrides[k]; pendingKey = k; openCustomVacModal();
       // prime de la vacation du cycle aussi (sinon celle de l'autre vacation, ex. Antenne pour A1 certains jours, reste choisie)
       const cp = ci.primes || {}; document.getElementById('custom-prime').value = cp.antenne ? 'antenne' : cp.reel ? 'reel' : cp.coord ? 'coord' : '';
-      document.getElementById('custom-deb').value = ci.deb; document.getElementById('custom-fin').value = ci.fin; confirmCustomVac(); const b = !(S.overrides || {})[k]; closeModal(); return a && b; }));
+      let t = parseHM(ci.fin) - parseHM(ci.deb); if (t < 0) t += 1440; const pz = t - ci.dur; window._cvW.exHr = true; window._cvW.exT = { deb: ci.deb, fin: ci.fin, pause: pz >= 60 ? '60' : pz >= 45 ? '45' : '0' }; _cvSyncF();
+      document.getElementById('custom-prime').value = cp.antenne ? 'antenne' : cp.reel ? 'reel' : cp.coord ? 'coord' : ''; confirmCustomVac(); const b = !(S.overrides || {})[k]; closeModal(); return a && b; }));
     const lr = SENT['/lines/register'];
     if (process.env.SHOW) console.log(JSON.stringify(lr));
     ok('Ligne de la semaine envoyée au serveur', lr && /^S\d+$/.test(lr.ligne) && lr.pool && lr.weekVacs.length === 7, JSON.stringify(lr));
@@ -173,6 +174,15 @@ function mockApi(route) {
       await p.evaluate(() => openSettingsModal(0)); await p.waitForTimeout(300); await p.keyboard.press('Escape'); await p.waitForTimeout(400);
       ok('PC : Échap ferme la fenêtre', await p.evaluate(() => !document.querySelector('#modal-root .overlay'))); }
 
+    // Page du jour unifiée : fiche en tête, motif (échange par défaut), vacation faite dans la grille, toggle heures sup, Congé · Rendu · Absence
+    { const r = await p.evaluate(() => { const k = [...document.querySelectorAll('#cal .dci[data-key]')].map(e => e.dataset.key).find(k => k > dk(NOW) && !(S.overrides || {})[k] && !(S.conges || {})[k] && getVac(new Date(k + 'T12:00:00')).vac && getVac(new Date(k + 'T12:00:00')).vac !== 'RH');
+        openDay(k); const m = document.getElementById('modal-root'), out = [window._cvMotif, !!m.querySelector('.dbox'), !!m.querySelector('#cv-exg [data-exv]'), /Congé/.test(m.textContent) && /Absence/.test(m.textContent) && !/Échanger toute/.test('') ];
+        confirmCustomVac(); out.push(!(S.overrides || {})[k]); // rien changé : rien enregistré
+        openDay(k); _cvSetMotif('autre'); const b = [...document.querySelectorAll('#cv-exg [data-exv]')].find(x => x.dataset.exv !== window._cvW.exVac); _cvPickExVac(b);
+        const t = document.getElementById('cv-exhs'); t.checked = true; t.dispatchEvent(new Event('change')); confirmCustomVac(); const o = (S.overrides || {})[k];
+        out.push(!!o && o.vac === b.dataset.exv && o.hs === true && !document.querySelector('#modal-root .overlay')); delete S.overrides[k]; render(); return out; });
+      ok('Page du jour : échange par défaut, grille, Congé · Absence ; valider sans rien changer n’enregistre rien', r[0] === 'echange' && r[1] && r[2] && r[3] && r[4], JSON.stringify(r));
+      ok('Page du jour : autre vacation + heures sup demandées par la direction enregistrées', r[5], JSON.stringify(r)); }
     // fiche du jour, Modifier
     const day = await p.evaluate(() => { const k = dk(NOW); pendingKey = k; openDay(k); return !!document.querySelector('#modal-root .dbox'); });
     ok('Fiche du jour', day);
